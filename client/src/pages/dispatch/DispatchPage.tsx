@@ -2839,31 +2839,33 @@ export default function DispatchPage() {
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
-              <div className="panel-title-bar flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #1a5a9e' }}>
-                <div className="flex items-center gap-2">
+              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #1a5a9e' }}>
+                {/* Row 1: Call identification */}
+                <div className="panel-title-bar flex items-center gap-2" style={{ borderBottom: 'none' }}>
                   {selectedCall.priority === 'P1' && (
-                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
+                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
-                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
+                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
                   {selectedCall.case_number && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5">
+                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 whitespace-nowrap">
                       CASE {selectedCall.case_number}
                     </span>
                   )}
                   {selectedCall.incident_number && (
-                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5">
+                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap">
                       INC {selectedCall.incident_number}
                     </span>
                   )}
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                   {callWarnings.length > 0 && (
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse">
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse whitespace-nowrap">
                       <AlertTriangle style={{ width: 9, height: 9 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
                     </span>
                   )}
                 </div>
-                  <div className="ml-auto flex items-center gap-1.5 overflow-x-auto whitespace-nowrap">
+                {/* Row 2: Action buttons — separate row to prevent cramping */}
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#1e3048] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#0d1520' }}>
                     <PrintRecordButton
                       recordType="call"
                       recordData={{

@@ -35,7 +35,7 @@ export default function PanelTitleBar({
       {statusLed && (
         <span className={`led-dot ${statusLed} ${ledPulse ? 'animate-led-blink' : ''}`} aria-hidden="true" />
       )}
-      <span id={id} className={`select-none ${titleClassName}`}>{title}</span>
+      <span id={id} className={`select-none whitespace-nowrap shrink-0 ${titleClassName}`}>{title}</span>
       {children && (
         /* 38: Prevent children wrap from squishing title text */
         <div className="ml-auto flex items-center gap-1.5 min-w-0 overflow-x-auto scrollbar-dark whitespace-nowrap">
