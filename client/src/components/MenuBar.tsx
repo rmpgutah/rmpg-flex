@@ -79,6 +79,9 @@ import {
   MicOff,
   Video,
   ClipboardCheck,
+  Brain,
+  SlidersHorizontal,
+  AudioLines,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
 import { apiFetch } from '../hooks/useApi';
@@ -167,6 +170,15 @@ export default function MenuBar({
   const [compactMode, setCompactMode] = useState(() => {
     return localStorage.getItem('rmpg-compact') === 'true';
   });
+  const [voiceEngine, setVoiceEngine] = useState<'edge-tts' | 'browser'>(() => {
+    return (localStorage.getItem('rmpg-voice-engine') as 'edge-tts' | 'browser') || 'edge-tts';
+  });
+  const [alertMinTier, setAlertMinTier] = useState<'minor' | 'moderate' | 'major'>(() => {
+    return (localStorage.getItem('rmpg-alert-min-tier') as 'minor' | 'moderate' | 'major') || 'minor';
+  });
+  const [aiAssistEnabled, setAiAssistEnabled] = useState(() => {
+    return localStorage.getItem('rmpg-ai-assist') !== 'false';
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [show10Codes, setShow10Codes] = useState(false);
   const [showLawBooks, setShowLawBooks] = useState(false);
@@ -246,6 +258,23 @@ export default function MenuBar({
     localStorage.setItem('rmpg-compact', String(next));
     document.body.classList.toggle('compact-mode', next);
   }, [compactMode]);
+
+  const toggleVoiceEngine = useCallback(() => {
+    const next = voiceEngine === 'edge-tts' ? 'browser' : 'edge-tts';
+    setVoiceEngine(next);
+    localStorage.setItem('rmpg-voice-engine', next);
+  }, [voiceEngine]);
+
+  const setAlertTier = useCallback((tier: 'minor' | 'moderate' | 'major') => {
+    setAlertMinTier(tier);
+    localStorage.setItem('rmpg-alert-min-tier', tier);
+  }, []);
+
+  const toggleAiAssist = useCallback(() => {
+    const next = !aiAssistEnabled;
+    setAiAssistEnabled(next);
+    localStorage.setItem('rmpg-ai-assist', String(next));
+  }, [aiAssistEnabled]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -374,6 +403,20 @@ export default function MenuBar({
           { type: 'toggle', label: 'Sound Effects', icon: soundEnabled ? Volume2 : VolumeX, checked: soundEnabled, action: toggleSound },
           { type: 'toggle', label: 'Voice Alerts', icon: voiceAlertsEnabled ? Mic : MicOff, checked: voiceAlertsEnabled, action: toggleVoiceAlerts },
           { type: 'action', label: 'Test Voice Alerts', icon: Sparkles, action: () => demoAllVoiceAlerts() },
+          { type: 'separator' },
+          { type: 'toggle', label: `Voice Engine: ${voiceEngine === 'edge-tts' ? 'Neural AI' : 'Browser'}`, icon: AudioLines, checked: voiceEngine === 'edge-tts', action: toggleVoiceEngine },
+          {
+            type: 'submenu',
+            label: 'Alert Audio Level',
+            icon: SlidersHorizontal,
+            items: [
+              { type: 'toggle', label: 'All Alerts', icon: Bell, checked: alertMinTier === 'minor', action: () => setAlertTier('minor') },
+              { type: 'toggle', label: 'Important Only', icon: Bell, checked: alertMinTier === 'moderate', action: () => setAlertTier('moderate') },
+              { type: 'toggle', label: 'Emergencies Only', icon: Bell, checked: alertMinTier === 'major', action: () => setAlertTier('major') },
+            ],
+          },
+          { type: 'separator' },
+          { type: 'toggle', label: 'AI Dispatch Assistant', icon: Brain, checked: aiAssistEnabled, action: toggleAiAssist },
         ],
       },
       { type: 'separator' },
