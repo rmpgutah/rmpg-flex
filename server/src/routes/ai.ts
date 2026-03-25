@@ -129,6 +129,46 @@ router.post('/suggest-units', requireRole('admin', 'manager', 'supervisor', 'dis
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Master AI Orchestrator Endpoints
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── GET /activity — recent AI activity log (admin only) ───
+router.get('/activity', requireRole('admin'), (req: Request, res: Response) => {
+  const limit = parseInt(req.query.limit as string) || 50;
+  res.json(aiManager.getActivityLog(limit));
+});
+
+// ─── GET /master-config — master prompt + chain mode + routing (admin only) ───
+router.get('/master-config', requireRole('admin'), (_req: Request, res: Response) => {
+  const config = aiManager.getConfig();
+  res.json({
+    masterPrompt: config.masterPrompt,
+    chainMode: config.chainMode,
+    routingRules: config.routingRules,
+    providerPriority: config.providerPriority,
+  });
+});
+
+// ─── PUT /master-config — update master prompt + chain mode + routing (admin only) ───
+router.put('/master-config', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { masterPrompt, chainMode, routingRules, providerPriority } = req.body;
+    const updates: any = {};
+
+    if (masterPrompt !== undefined) updates.masterPrompt = masterPrompt;
+    if (chainMode !== undefined) updates.chainMode = chainMode;
+    if (routingRules) updates.routingRules = routingRules;
+    if (providerPriority && Array.isArray(providerPriority)) updates.providerPriority = providerPriority;
+
+    aiManager.saveConfig(updates);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[AI] PUT /master-config error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to save master AI configuration' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // System Health & Data Cleanup Endpoints
 // ═══════════════════════════════════════════════════════════════════════════
 

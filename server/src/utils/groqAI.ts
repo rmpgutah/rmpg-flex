@@ -104,6 +104,7 @@ export async function analyzeCall(
       temperature: 0.3,
       maxTokens: 300,
       jsonMode: true,
+      taskType: 'callAnalysis',
     });
 
     if (!text) return null;
@@ -162,6 +163,7 @@ export async function generateNarrative(
     return await aiManager.chat(systemPrompt, userContent, {
       temperature: 0.4,
       maxTokens: 200,
+      taskType: 'narrativeAssist',
     });
   } catch (err) {
     console.error('[groqAI] generateNarrative error:', err);
@@ -213,7 +215,7 @@ export async function suggestUnits(
     const text = await aiManager.chat(
       systemPrompt,
       `CALL:\n${callDesc}\n\nAVAILABLE UNITS:\n${unitsList}`,
-      { temperature: 0.2, maxTokens: 200, jsonMode: true },
+      { temperature: 0.2, maxTokens: 200, jsonMode: true, taskType: 'unitSuggestions' },
     );
 
     if (!text) return null;

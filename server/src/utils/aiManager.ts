@@ -27,6 +27,24 @@ import {
 // Config types
 // ---------------------------------------------------------------------------
 
+export type TaskType = 'callAnalysis' | 'narrativeAssist' | 'unitSuggestions' | 'safetyBriefings' | 'dataCleanup' | 'general';
+export type ProviderName = 'groq' | 'gemini' | 'openai' | 'ollama' | 'auto';
+
+export interface RoutingRule {
+  provider: ProviderName;
+}
+
+export interface AIActivityEntry {
+  id: string;
+  timestamp: string;
+  taskType: string;
+  provider: string;
+  latencyMs: number;
+  success: boolean;
+  error?: string;
+  promptPreview: string;
+}
+
 export interface AIFeatures {
   callAnalysis: boolean;
   narrativeAssist: boolean;
@@ -48,6 +66,10 @@ export interface AIConfig {
   autoFallback: boolean;
   features: AIFeatures;
   providers: ProviderConfig;
+  masterPrompt: string;
+  chainMode: boolean;
+  routingRules: Record<TaskType, RoutingRule>;
+  providerPriority: ProviderName[];
 }
 
 // ---------------------------------------------------------------------------
@@ -161,9 +183,40 @@ const DEFAULT_CONFIG: AIConfig = {
     openai: { apiKey: '', model: 'gpt-4o-mini', baseUrl: '' },
     ollama: { url: 'http://localhost:11434', model: 'llama3.1:8b' },
   },
+  masterPrompt: 'You are the RMPG Flex AI assistant, supporting law enforcement dispatch operations for Rocky Mountain Protective Group in Salt Lake City, Utah. Provide concise, accurate, and actionable intelligence.',
+  chainMode: false,
+  routingRules: {
+    callAnalysis: { provider: 'auto' },
+    narrativeAssist: { provider: 'auto' },
+    unitSuggestions: { provider: 'auto' },
+    safetyBriefings: { provider: 'auto' },
+    dataCleanup: { provider: 'auto' },
+    general: { provider: 'auto' },
+  },
+  providerPriority: ['groq', 'gemini', 'openai', 'ollama'],
 };
 
-let _config: AIConfig = { ...DEFAULT_CONFIG };
+let _config: AIConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+
+// ---------------------------------------------------------------------------
+// Activity log ring buffer
+// ---------------------------------------------------------------------------
+
+const activityLog: AIActivityEntry[] = [];
+const MAX_ACTIVITY = 200;
+
+function logActivity(entry: Omit<AIActivityEntry, 'id' | 'timestamp'>): void {
+  activityLog.unshift({
+    ...entry,
+    id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+  });
+  if (activityLog.length > MAX_ACTIVITY) activityLog.pop();
+}
+
+function getActivityLog(limit = 50): AIActivityEntry[] {
+  return activityLog.slice(0, limit);
+}
 
 export function loadConfig(): AIConfig {
   // Start with defaults
@@ -180,6 +233,12 @@ export function loadConfig(): AIConfig {
       if (file.providers?.gemini) Object.assign(cfg.providers.gemini, file.providers.gemini);
       if (file.providers?.openai) Object.assign(cfg.providers.openai, file.providers.openai);
       if (file.providers?.ollama) Object.assign(cfg.providers.ollama, file.providers.ollama);
+
+      // New orchestrator fields (backward-compatible — old configs won't have these)
+      if (typeof file.masterPrompt === 'string') cfg.masterPrompt = file.masterPrompt;
+      if (typeof file.chainMode === 'boolean') cfg.chainMode = file.chainMode;
+      if (file.routingRules) cfg.routingRules = { ...cfg.routingRules, ...file.routingRules };
+      if (Array.isArray(file.providerPriority)) cfg.providerPriority = file.providerPriority;
     }
   } catch (err) {
     console.warn('[aiManager] Failed to read ai-config.json:', err);
@@ -212,6 +271,10 @@ export function saveConfig(updates: Partial<AIConfig>): AIConfig {
     if (updates.providers.openai) Object.assign(_config.providers.openai, updates.providers.openai);
     if (updates.providers.ollama) Object.assign(_config.providers.ollama, updates.providers.ollama);
   }
+  if (typeof updates.masterPrompt === 'string') _config.masterPrompt = updates.masterPrompt;
+  if (typeof updates.chainMode === 'boolean') _config.chainMode = updates.chainMode;
+  if (updates.routingRules) _config.routingRules = { ..._config.routingRules, ...updates.routingRules };
+  if (Array.isArray(updates.providerPriority)) _config.providerPriority = updates.providerPriority;
 
   // Write to JSON file
   try {
@@ -254,7 +317,7 @@ function getProviderByName(name: string): AIProvider | undefined {
 async function chat(
   systemPrompt: string,
   userMessage: string,
-  options?: ChatOptions,
+  options?: ChatOptions & { taskType?: TaskType },
 ): Promise<string | null> {
   if (!rateLimitOk()) {
     console.warn('[aiManager] Rate limit reached');
@@ -263,21 +326,54 @@ async function chat(
 
   const cfg = _config;
   const start = Date.now();
+  const taskType = options?.taskType || 'general';
+  const promptPreview = userMessage.slice(0, 120);
+
+  // Prepend masterPrompt to system prompt if set and not already included
+  let finalSystemPrompt = systemPrompt;
+  if (cfg.masterPrompt && !systemPrompt.includes(cfg.masterPrompt)) {
+    finalSystemPrompt = cfg.masterPrompt + '\n\n' + systemPrompt;
+  }
 
   // Build ordered list of providers to try
   let ordered: AIProvider[] = [];
 
-  if (cfg.provider === 'auto') {
-    // Auto: try all available in order
-    ordered = providers.filter(p => p.isAvailable());
+  // Check if routing rule specifies a non-auto provider for this task type
+  const routingRule = cfg.routingRules?.[taskType];
+  const routedProvider = routingRule && routingRule.provider !== 'auto'
+    ? routingRule.provider
+    : null;
+
+  if (routedProvider) {
+    // Use the routed provider first
+    const primary = getProviderByName(routedProvider);
+    if (primary && primary.isAvailable()) ordered.push(primary);
+
+    // Fallback using providerPriority order
+    if (cfg.autoFallback) {
+      for (const name of cfg.providerPriority) {
+        if (name === routedProvider || name === 'auto') continue;
+        const p = getProviderByName(name);
+        if (p && p.isAvailable() && !ordered.includes(p)) ordered.push(p);
+      }
+    }
+  } else if (cfg.provider === 'auto') {
+    // Auto: use providerPriority order
+    for (const name of cfg.providerPriority) {
+      if (name === 'auto') continue;
+      const p = getProviderByName(name);
+      if (p && p.isAvailable()) ordered.push(p);
+    }
   } else {
     const primary = getProviderByName(cfg.provider);
     if (primary) ordered.push(primary);
 
-    // If autoFallback is enabled, add the rest
+    // If autoFallback is enabled, add the rest in providerPriority order
     if (cfg.autoFallback) {
-      for (const p of providers) {
-        if (p.name !== cfg.provider && p.isAvailable()) ordered.push(p);
+      for (const name of cfg.providerPriority) {
+        if (name === cfg.provider || name === 'auto') continue;
+        const p = getProviderByName(name);
+        if (p && p.isAvailable() && !ordered.includes(p)) ordered.push(p);
       }
     }
   }
@@ -286,18 +382,49 @@ async function chat(
 
   for (const provider of ordered) {
     try {
-      const result = await provider.chat(systemPrompt, userMessage, options);
+      const result = await provider.chat(finalSystemPrompt, userMessage, options);
       if (result !== null) {
-        recordRequest(Date.now() - start);
+        const latencyMs = Date.now() - start;
+        recordRequest(latencyMs);
+        logActivity({ taskType, provider: provider.name, latencyMs, success: true, promptPreview });
         return result;
       }
     } catch (err: any) {
+      const latencyMs = Date.now() - start;
+      logActivity({ taskType, provider: provider.name, latencyMs, success: false, error: err?.message, promptPreview });
       console.warn(`[aiManager] Provider ${provider.name} failed, trying next...`, err?.message);
       continue;
     }
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Chained chat — optional two-step classification + analysis
+// ---------------------------------------------------------------------------
+
+async function chainedChat(
+  taskType: TaskType,
+  userMessage: string,
+  options?: ChatOptions,
+): Promise<string | null> {
+  const masterSys = _config.masterPrompt || '';
+
+  if (!_config.chainMode) {
+    return chat(masterSys, userMessage, { ...options, taskType });
+  }
+
+  // Step 1: Quick classification with fast model
+  const classifyResult = await chat(
+    'Classify this dispatch request. Respond in JSON: {"complexity":"low"|"medium"|"high","summary":"one line summary"}',
+    userMessage,
+    { taskType: 'general', maxTokens: 100, jsonMode: true },
+  );
+
+  // Step 2: Full analysis with context from classification
+  const context = classifyResult ? `\nInitial analysis: ${classifyResult}` : '';
+  return chat(masterSys + context, userMessage, { ...options, taskType });
 }
 
 // ---------------------------------------------------------------------------
@@ -361,12 +488,14 @@ buildProviders();
 
 export const aiManager = {
   chat,
+  chainedChat,
   getStatus,
   testProvider,
   getConfig,
   loadConfig,
   saveConfig,
   getUsageStats,
+  getActivityLog,
 };
 
 export default aiManager;
