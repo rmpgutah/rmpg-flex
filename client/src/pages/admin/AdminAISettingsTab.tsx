@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Brain, CheckCircle2, XCircle, Loader2, Eye, EyeOff, Save,
   Zap, Activity, Shield, Mic, Database, Monitor, RefreshCw,
+  Heart, Trash2, AlertTriangle, Clock, HardDrive, Wifi, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -64,8 +65,8 @@ const FEATURE_LIST = [
   { key: 'narrativeAssist', label: 'Narrative Assist', desc: 'AI-powered narrative generation for dispatchers', icon: Zap },
   { key: 'unitSuggestions', label: 'Unit Suggestions', desc: 'AI-suggested unit assignments', icon: Activity },
   { key: 'safetyBriefings', label: 'Safety Briefings', desc: 'Voice-announce AI safety alerts', icon: Mic },
-  { key: 'dataCleanup', label: 'Data Cleanup', desc: 'AI-powered stale record detection (future)', icon: Database },
-  { key: 'systemMonitoring', label: 'System Monitoring', desc: 'AI health checks (future)', icon: Monitor },
+  { key: 'dataCleanup', label: 'Data Cleanup', desc: 'AI-powered stale record detection and auto-fix', icon: Database },
+  { key: 'systemMonitoring', label: 'System Monitoring', desc: 'AI-powered system health monitoring', icon: Monitor },
 ] as const;
 
 export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: Props) {
@@ -84,6 +85,14 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
   const [ollamaUrl, setOllamaUrl] = useState('');
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [dirty, setDirty] = useState(false);
+
+  // Health & Cleanup state
+  const [healthReport, setHealthReport] = useState<any>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [cleanupReport, setCleanupReport] = useState<any>(null);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [fixingIds, setFixingIds] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ staleCalls: true, orphanedUnits: true, incompleteRecords: true });
 
   // ── Fetch config + stats ──
   const fetchAll = useCallback(async () => {
@@ -371,16 +380,12 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
           {FEATURE_LIST.map(feat => {
             const Icon = feat.icon;
             const enabled = config ? (config.features as any)[feat.key] : false;
-            const isFuture = feat.key === 'dataCleanup' || feat.key === 'systemMonitoring';
             return (
               <div key={feat.key} className="flex items-center gap-3 px-4 py-3">
                 <Icon className={`w-4 h-4 shrink-0 ${enabled ? 'text-brand-400' : 'text-rmpg-600'}`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-white font-medium">{feat.label}</span>
-                    {isFuture && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-rmpg-700/30 text-rmpg-400">COMING SOON</span>
-                    )}
                   </div>
                   <p className="text-[10px] text-rmpg-500 mt-0.5">{feat.desc}</p>
                 </div>
@@ -435,6 +440,294 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
             </div>
           ) : (
             <p className="text-xs text-rmpg-500">No usage data available.</p>
+          )}
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════
+          Section 4: System Health
+         ══════════════════════════════════════════════════════════ */}
+      <section>
+        <h2 className="text-sm font-bold text-white tracking-wide uppercase mb-3 flex items-center gap-2">
+          <Heart className="w-4 h-4 text-brand-400" />
+          System Health
+          <button
+            onClick={async () => {
+              setHealthLoading(true);
+              try {
+                const report = await apiFetch<any>('/ai/health');
+                setHealthReport(report);
+              } catch (err: any) {
+                setError(err?.message || 'Health check failed');
+              } finally {
+                setHealthLoading(false);
+              }
+            }}
+            disabled={healthLoading}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+          >
+            {healthLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Check Health
+          </button>
+        </h2>
+
+        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4">
+          {healthReport ? (
+            <div className="space-y-4">
+              {/* AI Summary */}
+              {healthReport.aiSummary && (
+                <div className="px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded text-xs text-rmpg-300 leading-relaxed">
+                  {healthReport.aiSummary}
+                </div>
+              )}
+
+              {/* Metrics grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <HealthMetric
+                  label="Uptime"
+                  value={`${healthReport.server?.uptime_hours || 0}h`}
+                  status="green"
+                  icon={<Clock className="w-3.5 h-3.5" />}
+                />
+                <HealthMetric
+                  label="Memory (RSS)"
+                  value={`${healthReport.server?.memory_rss_mb || 0}MB`}
+                  status={(healthReport.server?.memory_rss_mb || 0) > 512 ? 'red' : (healthReport.server?.memory_rss_mb || 0) > 256 ? 'yellow' : 'green'}
+                  icon={<Monitor className="w-3.5 h-3.5" />}
+                />
+                <HealthMetric
+                  label="Database"
+                  value={`${healthReport.database?.size_mb || 0}MB`}
+                  status={healthReport.database?.integrity === 'ok' ? 'green' : 'red'}
+                  icon={<Database className="w-3.5 h-3.5" />}
+                />
+                <HealthMetric
+                  label="Connections"
+                  value={String(healthReport.websocket?.active_connections || 0)}
+                  status="green"
+                  icon={<Wifi className="w-3.5 h-3.5" />}
+                />
+                <HealthMetric
+                  label="AI Provider"
+                  value={healthReport.ai?.provider || 'none'}
+                  status={healthReport.ai?.available ? 'green' : 'red'}
+                  icon={<Brain className="w-3.5 h-3.5" />}
+                />
+                {healthReport.ssl?.days_remaining !== undefined && (
+                  <HealthMetric
+                    label="SSL Expires"
+                    value={`${healthReport.ssl.days_remaining}d`}
+                    status={healthReport.ssl.days_remaining < 14 ? 'red' : healthReport.ssl.days_remaining < 30 ? 'yellow' : 'green'}
+                    icon={<Shield className="w-3.5 h-3.5" />}
+                  />
+                )}
+                {healthReport.disk?.available_gb !== undefined && (
+                  <HealthMetric
+                    label="Disk Free"
+                    value={`${healthReport.disk.available_gb}GB`}
+                    status={healthReport.disk.available_gb < 2 ? 'red' : healthReport.disk.available_gb < 10 ? 'yellow' : 'green'}
+                    icon={<HardDrive className="w-3.5 h-3.5" />}
+                  />
+                )}
+              </div>
+
+              {/* Issues */}
+              {healthReport.issues?.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[10px] text-rmpg-500 uppercase font-medium">Issues Detected</div>
+                  {healthReport.issues.map((issue: string, i: number) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-red-900/10 border border-red-900/20 rounded text-xs text-red-400">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      {issue}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Record counts */}
+              {healthReport.database?.record_counts && (
+                <div className="space-y-1">
+                  <div className="text-[10px] text-rmpg-500 uppercase font-medium">Record Counts</div>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {Object.entries(healthReport.database.record_counts).map(([table, count]) => (
+                      <div key={table} className="text-center px-2 py-1.5 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                        <div className="text-xs font-mono text-white">{String(count)}</div>
+                        <div className="text-[9px] text-rmpg-600 mt-0.5 truncate">{table.replace(/_/g, ' ')}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="text-[10px] text-rmpg-600 text-right">Last checked: {healthReport.timestamp}</div>
+            </div>
+          ) : (
+            <p className="text-xs text-rmpg-500">Click "Check Health" to run a system health scan.</p>
+          )}
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════
+          Section 5: Data Cleanup
+         ══════════════════════════════════════════════════════════ */}
+      <section>
+        <h2 className="text-sm font-bold text-white tracking-wide uppercase mb-3 flex items-center gap-2">
+          <Trash2 className="w-4 h-4 text-brand-400" />
+          Data Cleanup
+          <button
+            onClick={async () => {
+              setCleanupLoading(true);
+              try {
+                const report = await apiFetch<any>('/ai/cleanup/scan');
+                setCleanupReport(report);
+              } catch (err: any) {
+                setError(err?.message || 'Cleanup scan failed');
+              } finally {
+                setCleanupLoading(false);
+              }
+            }}
+            disabled={cleanupLoading}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+          >
+            {cleanupLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Scan for Issues
+          </button>
+        </h2>
+
+        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4">
+          {cleanupReport ? (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="flex items-center gap-3">
+                <div className={`text-sm font-bold ${cleanupReport.totalIssues > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  {cleanupReport.totalIssues} issue{cleanupReport.totalIssues !== 1 ? 's' : ''} found
+                </div>
+                <div className="text-[10px] text-rmpg-600">Scanned at {cleanupReport.timestamp}</div>
+              </div>
+
+              {/* AI Summary */}
+              {cleanupReport.aiSummary && (
+                <div className="px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded text-xs text-rmpg-300 leading-relaxed">
+                  {cleanupReport.aiSummary}
+                </div>
+              )}
+
+              {/* Stale Calls */}
+              <CleanupSection
+                title={`Stale Calls (${cleanupReport.staleCalls?.count || 0})`}
+                expanded={expandedSections.staleCalls}
+                onToggle={() => setExpandedSections(p => ({ ...p, staleCalls: !p.staleCalls }))}
+                empty={!cleanupReport.staleCalls?.count}
+              >
+                {cleanupReport.staleCalls?.items?.map((item: any) => (
+                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-white font-mono">{item.call_number}</div>
+                      <div className="text-[10px] text-rmpg-500">
+                        {item.incident_type} &mdash; stuck in "{item.status}" for {item.hours_in_status}h
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      {(['clear', 'close', 'escalate'] as const).map(action => (
+                        <button
+                          key={action}
+                          disabled={fixingIds.has(`call-${item.call_id}`)}
+                          onClick={async () => {
+                            setFixingIds(p => new Set(p).add(`call-${item.call_id}`));
+                            try {
+                              await apiFetch('/ai/cleanup/fix', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ type: 'stale_call', id: item.call_id, action }),
+                              });
+                              // Re-scan
+                              const report = await apiFetch<any>('/ai/cleanup/scan');
+                              setCleanupReport(report);
+                            } catch (err: any) {
+                              setError(err?.message || 'Fix failed');
+                            } finally {
+                              setFixingIds(p => { const n = new Set(p); n.delete(`call-${item.call_id}`); return n; });
+                            }
+                          }}
+                          className={`px-2 py-1 text-[10px] font-medium rounded transition-colors disabled:opacity-50 ${
+                            action === 'escalate'
+                              ? 'bg-yellow-900/20 text-yellow-400 hover:bg-yellow-900/40 border border-yellow-900/30'
+                              : action === 'close'
+                              ? 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-900/30'
+                              : 'bg-brand-900/20 text-brand-400 hover:bg-brand-900/40 border border-brand-900/30'
+                          }`}
+                        >
+                          {fixingIds.has(`call-${item.call_id}`) ? '...' : action.charAt(0).toUpperCase() + action.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </CleanupSection>
+
+              {/* Orphaned Units */}
+              <CleanupSection
+                title={`Orphaned Units (${cleanupReport.orphanedUnits?.count || 0})`}
+                expanded={expandedSections.orphanedUnits}
+                onToggle={() => setExpandedSections(p => ({ ...p, orphanedUnits: !p.orphanedUnits }))}
+                empty={!cleanupReport.orphanedUnits?.count}
+              >
+                {cleanupReport.orphanedUnits?.items?.map((item: any) => (
+                  <div key={item.unit_id} className="flex items-center gap-3 px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-white font-mono">{item.call_sign}</div>
+                      <div className="text-[10px] text-rmpg-500">
+                        Shows "{item.status}" with no active call
+                      </div>
+                    </div>
+                    <button
+                      disabled={fixingIds.has(`unit-${item.unit_id}`)}
+                      onClick={async () => {
+                        setFixingIds(p => new Set(p).add(`unit-${item.unit_id}`));
+                        try {
+                          await apiFetch('/ai/cleanup/fix', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'orphaned_unit', id: item.unit_id, action: 'reset' }),
+                          });
+                          const report = await apiFetch<any>('/ai/cleanup/scan');
+                          setCleanupReport(report);
+                        } catch (err: any) {
+                          setError(err?.message || 'Fix failed');
+                        } finally {
+                          setFixingIds(p => { const n = new Set(p); n.delete(`unit-${item.unit_id}`); return n; });
+                        }
+                      }}
+                      className="px-2 py-1 text-[10px] font-medium rounded bg-brand-900/20 text-brand-400 hover:bg-brand-900/40 border border-brand-900/30 transition-colors disabled:opacity-50"
+                    >
+                      {fixingIds.has(`unit-${item.unit_id}`) ? '...' : 'Reset'}
+                    </button>
+                  </div>
+                ))}
+              </CleanupSection>
+
+              {/* Incomplete Records */}
+              <CleanupSection
+                title={`Incomplete Records (${cleanupReport.incompleteRecords?.count || 0})`}
+                expanded={expandedSections.incompleteRecords}
+                onToggle={() => setExpandedSections(p => ({ ...p, incompleteRecords: !p.incompleteRecords }))}
+                empty={!cleanupReport.incompleteRecords?.count}
+              >
+                {cleanupReport.incompleteRecords?.items?.map((item: any) => (
+                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-white font-mono">{item.call_number}</div>
+                      <div className="text-[10px] text-rmpg-500">
+                        Missing: {item.missing_fields?.join(', ')}
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-yellow-500 shrink-0">Needs review</span>
+                  </div>
+                ))}
+              </CleanupSection>
+            </div>
+          ) : (
+            <p className="text-xs text-rmpg-500">Click "Scan for Issues" to detect stale calls, orphaned units, and incomplete records.</p>
           )}
         </div>
       </section>
@@ -557,6 +850,72 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
     <div className="text-center">
       <div className="text-lg font-bold text-white font-mono">{value}</div>
       <div className="text-[10px] text-rmpg-500 mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function HealthMetric({
+  label,
+  value,
+  status,
+  icon,
+}: {
+  label: string;
+  value: string;
+  status: 'green' | 'yellow' | 'red';
+  icon: React.ReactNode;
+}) {
+  const colors = {
+    green: 'text-green-400 border-green-900/30 bg-green-900/10',
+    yellow: 'text-yellow-400 border-yellow-900/30 bg-yellow-900/10',
+    red: 'text-red-400 border-red-900/30 bg-red-900/10',
+  };
+  const dotColors = { green: 'bg-green-500', yellow: 'bg-yellow-500', red: 'bg-red-500' };
+
+  return (
+    <div className={`px-3 py-2 border rounded ${colors[status]}`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="text-rmpg-500">{icon}</span>
+        <span className="text-[10px] text-rmpg-500 uppercase">{label}</span>
+        <span className={`w-1.5 h-1.5 rounded-full ml-auto ${dotColors[status]}`} />
+      </div>
+      <div className="text-sm font-bold font-mono">{value}</div>
+    </div>
+  );
+}
+
+function CleanupSection({
+  title,
+  expanded,
+  onToggle,
+  empty,
+  children,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  empty: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-2 w-full text-left py-1"
+      >
+        {expanded ? (
+          <ChevronDown className="w-3.5 h-3.5 text-rmpg-500" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5 text-rmpg-500" />
+        )}
+        <span className="text-xs text-white font-medium">{title}</span>
+        {empty && <span className="text-[10px] text-green-500 ml-1">All clear</span>}
+      </button>
+      {expanded && !empty && (
+        <div className="space-y-1.5 mt-1.5 ml-5">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

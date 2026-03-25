@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { analyzeCall, generateNarrative, suggestUnits, isAIAvailable } from '../utils/groqAI';
 import aiManager from '../utils/aiManager';
+import { checkSystemHealth, getHealthSummary } from '../utils/aiSystemHealth';
+import { runDataCleanupScan, autoFixStaleCall, autoFixOrphanedUnit } from '../utils/aiDataCleanup';
+import { getDb } from '../models/database';
 
 const router = Router();
 router.use(authenticateToken);
@@ -122,6 +125,89 @@ router.post('/suggest-units', requireRole('admin', 'manager', 'supervisor', 'dis
   } catch (err: any) {
     console.error('[AI] /suggest-units error:', err?.message || err);
     res.status(500).json({ error: 'Unit suggestion failed' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// System Health & Data Cleanup Endpoints
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── GET /health — system health report (admin only) ───
+router.get('/health', requireRole('admin'), async (_req: Request, res: Response) => {
+  try {
+    const [report, summary] = await Promise.all([
+      checkSystemHealth(),
+      getHealthSummary(),
+    ]);
+    res.json({ ...report, aiSummary: summary });
+  } catch (err: any) {
+    console.error('[AI] /health error:', err?.message || err);
+    res.status(500).json({ error: 'Health check failed' });
+  }
+});
+
+// ─── GET /cleanup/scan — run data cleanup scan (admin only) ───
+router.get('/cleanup/scan', requireRole('admin'), async (_req: Request, res: Response) => {
+  try {
+    const report = await runDataCleanupScan();
+    res.json(report);
+  } catch (err: any) {
+    console.error('[AI] /cleanup/scan error:', err?.message || err);
+    res.status(500).json({ error: 'Data cleanup scan failed' });
+  }
+});
+
+// ─── POST /cleanup/fix — execute a specific fix action (admin only) ───
+router.post('/cleanup/fix', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    const { type, id, action } = req.body;
+
+    if (!type || !id) {
+      res.status(400).json({ error: 'type and id are required' });
+      return;
+    }
+
+    let success = false;
+
+    if (type === 'stale_call') {
+      if (!['clear', 'close', 'escalate'].includes(action)) {
+        res.status(400).json({ error: 'action must be clear, close, or escalate' });
+        return;
+      }
+      success = await autoFixStaleCall(Number(id), action);
+    } else if (type === 'orphaned_unit') {
+      success = await autoFixOrphanedUnit(Number(id));
+    } else {
+      res.status(400).json({ error: 'type must be stale_call or orphaned_unit' });
+      return;
+    }
+
+    if (success) {
+      res.json({ success: true, message: `${type} #${id} fixed with action: ${action || 'reset'}` });
+    } else {
+      res.status(404).json({ error: `${type} #${id} not found` });
+    }
+  } catch (err: any) {
+    console.error('[AI] /cleanup/fix error:', err?.message || err);
+    res.status(500).json({ error: 'Fix action failed' });
+  }
+});
+
+// ─── GET /cleanup/history — recent cleanup actions from audit log (admin only) ───
+router.get('/cleanup/history', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, user_id, action, entity_type, entity_id, details, created_at
+      FROM activity_log
+      WHERE details LIKE '%AI Data Cleanup%'
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    console.error('[AI] /cleanup/history error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch cleanup history' });
   }
 });
 
