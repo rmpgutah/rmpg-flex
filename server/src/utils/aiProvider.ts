@@ -189,7 +189,7 @@ export class OllamaProvider implements AIProvider {
 
   constructor(url?: string, model?: string) {
     this.baseUrl = (url || process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '');
-    this.model = model || 'llama3.1';
+    this.model = model || 'llama3.1:8b';
   }
 
   isAvailable(): boolean {

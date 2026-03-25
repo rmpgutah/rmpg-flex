@@ -159,7 +159,7 @@ const DEFAULT_CONFIG: AIConfig = {
     groq: { apiKey: '', model: 'llama-3.3-70b-versatile' },
     gemini: { apiKey: '', model: 'gemini-2.0-flash' },
     openai: { apiKey: '', model: 'gpt-4o-mini', baseUrl: '' },
-    ollama: { url: 'http://localhost:11434', model: 'llama3.1' },
+    ollama: { url: 'http://localhost:11434', model: 'llama3.1:8b' },
   },
 };
 
