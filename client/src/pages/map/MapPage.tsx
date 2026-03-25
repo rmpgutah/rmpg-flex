@@ -2003,6 +2003,7 @@ export default function MapPage() {
         <div
           ref={mapRef}
           className="absolute inset-0 bg-surface-deep"
+          style={{ width: '100%', height: '100%' }}
           role="application"
           aria-label="Tactical Map"
         />
