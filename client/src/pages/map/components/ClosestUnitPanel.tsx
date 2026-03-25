@@ -58,7 +58,7 @@ export default function ClosestUnitPanel({
     <div
       role="complementary"
       aria-label="Closest unit panel"
-      className="absolute z-[1002] flex flex-col"
+      className="absolute z-[1002] flex flex-col transition-all duration-200 ease-out shadow-lg"
       style={{
         top: 48,
         right: 12,
@@ -86,7 +86,7 @@ export default function ClosestUnitPanel({
         <button type="button"
           onClick={onClose}
           aria-label="Close closest units panel"
-          className="p-0.5 hover:bg-white/10 transition-colors"
+          className="p-0.5 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
           style={{ borderRadius: 2 }}
         >
           <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-white" />
@@ -123,13 +123,14 @@ export default function ClosestUnitPanel({
       </div>
 
       {/* Results List */}
-      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e3048 transparent' }}>
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {results.length === 0 ? (
-          <div className="text-center py-8">
+          <div className="flex flex-col items-center text-center py-8 gap-2">
+            <Navigation className="w-6 h-6" style={{ color: '#5a6e80', opacity: 0.4 }} />
             <div className="text-[10px] font-bold" style={{ color: '#5a6e80' }}>
-              No available units with GPS
+              No available units found
             </div>
-            <div className="text-[8px] mt-1" style={{ color: '#5a6e80' }}>
+            <div className="text-[8px]" style={{ color: '#5a6e80' }}>
               All units are currently assigned or have no position data
             </div>
           </div>
@@ -144,9 +145,10 @@ export default function ClosestUnitPanel({
             return (
               <div
                 key={unit.id}
-                className="px-3 py-2"
+                className="px-3 py-2 hover:bg-[#1a2636]/30 transition-colors duration-100"
                 style={{
                   borderBottom: idx < results.length - 1 ? '1px solid #1e304820' : undefined,
+                  background: idx % 2 === 0 ? '#0d1520' : '#111b28',
                 }}
               >
                 <div className="flex items-center gap-2">
@@ -163,11 +165,12 @@ export default function ClosestUnitPanel({
                     className="shrink-0"
                     style={{
                       display: 'inline-block',
-                      width: 8,
-                      height: 8,
+                      width: 10,
+                      height: 10,
                       borderRadius: '50%',
                       background: statusColor,
-                      boxShadow: `0 0 6px ${statusColor}80`,
+                      boxShadow: `0 0 8px ${statusColor}80, 0 0 3px ${statusColor}40`,
+                      border: `1px solid ${statusColor}60`,
                     }}
                   />
 
@@ -200,12 +203,12 @@ export default function ClosestUnitPanel({
 
                   {/* Distance + ETA */}
                   <div className="text-right shrink-0">
-                    <div className="text-[10px] font-bold" style={{ color: '#e5e7eb' }}>
+                    <div className="text-[10px] font-bold font-mono" style={{ color: '#60a5fa' }}>
                       {distanceMiles < 0.1
                         ? '<0.1 mi'
                         : `${distanceMiles.toFixed(1)} mi`}
                     </div>
-                    <div className="text-[8px] font-semibold" style={{ color: '#60a5fa' }}>
+                    <div className="text-[8px] font-semibold font-mono" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#9ca3af' }}>
                       ~{estimatedMinutes < 1
                         ? '<1 min'
                         : `${Math.round(estimatedMinutes)} min`}
@@ -232,7 +235,7 @@ export default function ClosestUnitPanel({
                       onClick={() => handleDispatch(unit.id)}
                       disabled={isDispatching}
                       aria-label={`Dispatch unit ${unit.call_sign}`}
-                      className="flex items-center gap-1 px-2 py-1 transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 transition-all duration-150 active:scale-[0.97] hover:brightness-125"
                       style={{
                         background: isDispatching ? '#1a5a9e20' : '#1a5a9e30',
                         border: '1px solid #1a5a9e80',

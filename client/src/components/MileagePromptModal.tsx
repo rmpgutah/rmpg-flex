@@ -96,7 +96,7 @@ export default function MileagePromptModal({
             )}
           </div>
 
-          {mode === 'ending' && startingMileage != null && mileage && (
+          {mode === 'ending' && startingMileage != null && mileage && !isNaN(parseFloat(mileage)) && (
             <div className="text-[10px] text-rmpg-400">
               Total miles: <span className="text-green-400 font-mono font-bold">
                 {Math.max(0, parseFloat(mileage) - startingMileage).toFixed(1)}

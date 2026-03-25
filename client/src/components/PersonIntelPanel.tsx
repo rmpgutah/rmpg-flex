@@ -128,8 +128,8 @@ export default function PersonIntelPanel() {
       if (data.results.length > 0) {
         setExpandedCards(new Set([data.results[0].utahPersonId]));
       }
-    } catch (err: any) {
-      setError(err.message || 'Search failed');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setLoading(false);
     }

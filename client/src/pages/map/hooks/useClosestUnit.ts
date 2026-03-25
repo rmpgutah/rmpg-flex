@@ -25,6 +25,7 @@ function haversineMiles(
   lat1: number, lng1: number,
   lat2: number, lng2: number,
 ): number {
+  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
@@ -62,8 +63,11 @@ export function useClosestUnit() {
 
     const results: ClosestUnitResult[] = [];
 
+    if (!Number.isFinite(callLat) || !Number.isFinite(callLng)) return [];
+
     for (const unit of units) {
       if (unit.latitude == null || unit.longitude == null) continue;
+      if (!Number.isFinite(unit.latitude) || !Number.isFinite(unit.longitude)) continue;
       if (!eligibleStatuses.has(unit.status)) continue;
 
       const distanceMiles = haversineMiles(callLat, callLng, unit.latitude, unit.longitude);

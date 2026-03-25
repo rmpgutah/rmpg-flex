@@ -64,6 +64,8 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!entityId.trim()) return;
+    const parsedEntityId = parseInt(entityId, 10);
+    if (isNaN(parsedEntityId) || parsedEntityId < 1) { setError('Invalid record ID'); return; }
     setSubmitting(true);
     setError('');
 
@@ -72,7 +74,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
         method: 'POST',
         body: JSON.stringify({
           entity_type: entityType,
-          entity_id: parseInt(entityId, 10),
+          entity_id: parsedEntityId,
           notes: notes.trim() || undefined,
         }),
       });
@@ -109,7 +111,8 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
           <span>LINK VIDEO TO RECORDS</span>
           <button type="button"
             onClick={onClose}
-            className="ml-auto hover:bg-white/10 p-0.5 transition-colors">
+            className="ml-auto hover:bg-white/10 p-0.5 transition-colors"
+            aria-label="Close modal">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>

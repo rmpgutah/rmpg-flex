@@ -34,16 +34,17 @@ export interface DataTableProps<T> {
 }
 
 // ── Skeleton loader rows ──────────────────────────────────────
-function SkeletonRows({ columns, count = 6 }: { columns: Column<any>[]; count?: number }) {
+function SkeletonRows<T = unknown>({ columns, count = 6 }: { columns: Column<T>[]; count?: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
         <tr key={i} className="border-b border-rmpg-700/30">
-          {columns.map((col) => (
+          {/* 3: Skeleton rows with deterministic widths and staggered animation delay */}
+          {columns.map((col, ci) => (
             <td key={col.key} className="px-3 py-2.5">
               <div
                 className="h-3 rounded-sm bg-rmpg-700/40 animate-pulse"
-                style={{ width: col.width || `${50 + Math.random() * 40}%` }}
+                style={{ width: col.width || `${55 + (ci * 11) % 35}%`, animationDelay: `${ci * 75}ms` }}
               />
             </td>
           ))}
@@ -90,7 +91,7 @@ export default function DataTable<T>({
 }: DataTableProps<T>) {
   const getKey = (row: T, index: number): string | number => {
     if (rowKey) return rowKey(row);
-    if ((row as any).id !== undefined) return (row as any).id;
+    if (row != null && typeof row === 'object' && 'id' in row) return (row as Record<string, unknown>).id as string | number;
     return index;
   };
 
@@ -98,9 +99,10 @@ export default function DataTable<T>({
     align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
 
   return (
-    <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base panel-beveled ${className}`}>
+    <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base panel-beveled scrollbar-dark ${className}`} role="region" aria-label={ariaLabel ? `${ariaLabel} region` : undefined}>
       <table className="w-full text-xs" aria-label={ariaLabel}>
-        <thead>
+        {/* 2: Sticky header with z-index so it stays on top during scroll */}
+        <thead className="sticky top-0 z-10">
           <tr
             className="border-b border-rmpg-600"
             style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
@@ -156,29 +158,31 @@ export default function DataTable<T>({
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={`border-b border-rmpg-700/30 transition-colors duration-100 ${
                     isSelected
-                      ? 'bg-brand-900/30 border-l-2 border-l-brand-500'
+                      ? 'bg-brand-900/30 border-l-2 border-l-brand-500 ring-1 ring-inset ring-brand-600/40'
                       : idx % 2 === 0
                         ? 'bg-transparent'
-                        : 'bg-rmpg-800/20'
+                        : 'bg-rmpg-800/30'
                   } ${
                     onRowClick
-                      ? 'cursor-pointer hover:bg-brand-900/15'
+                      ? 'cursor-pointer hover:bg-brand-900/20 active:bg-brand-900/30'
                       : 'hover:bg-white/[0.02]'
                   }`}
                   aria-selected={isSelected || undefined}
                 >
+                  {/* 6: Row number column with monospaced font and muted color */}
                   {showRowNumbers && (
-                    <td className="px-2 py-2 text-rmpg-500 text-center tabular-nums">{idx + 1}</td>
+                    <td className="px-2 py-2 text-rmpg-500 text-center tabular-nums font-mono text-[10px]">{idx + 1}</td>
                   )}
+                  {/* 7: Cell vertical padding increased for readability; 8: Whitespace nowrap on narrow cells */}
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-3 py-2 text-rmpg-200 ${alignClass(col.align)}`}
+                      className={`px-3 py-2.5 text-rmpg-200 ${alignClass(col.align)}`}
                       style={col.width ? { width: col.width } : undefined}
                     >
                       {col.render
                         ? col.render(row)
-                        : String((row as any)[col.key] ?? '')}
+                        : String((row as Record<string, unknown>)[col.key] ?? '')}
                     </td>
                   ))}
                 </tr>

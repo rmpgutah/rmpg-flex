@@ -146,7 +146,7 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 }
 
 function SectionDivider() {
-  return <div style={{ borderTop: '1px solid #1e2a3a' }} />;
+  return <div style={{ height: 1, background: 'linear-gradient(to right, transparent, #1e3048, transparent)' }} />;
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -224,7 +224,7 @@ export default function AdvancedHeatmapPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm flex flex-col"
+      className="panel-beveled rounded-sm flex flex-col transition-all duration-200 ease-out shadow-lg"
       style={{
         width: 400,
         maxHeight: '85vh',
@@ -232,6 +232,8 @@ export default function AdvancedHeatmapPanel({
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
         border: '1px solid #1e2a3a',
       }}
+      role="complementary"
+      aria-label="Advanced heatmap controls"
     >
       {/* ── Header Bar ────────────────────────────────── */}
       <div
@@ -248,14 +250,15 @@ export default function AdvancedHeatmapPanel({
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={onRefresh}
-            className="toolbar-btn p-1 rounded-sm hover:bg-surface-raised/50"
+            className="toolbar-btn p-1 rounded-sm hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97]"
             title="Refresh data"
+            aria-label="Refresh heatmap data"
           >
             <RotateCw size={12} className="text-rmpg-500 hover:text-rmpg-300" />
           </button>
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 rounded-sm hover:bg-surface-raised/50"
+            className="toolbar-btn p-1 rounded-sm hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97]"
             aria-label="Close advanced heatmap panel"
             title="Close"
           >
@@ -265,7 +268,7 @@ export default function AdvancedHeatmapPanel({
       </div>
 
       {/* ── Scrollable body ───────────────────────────── */}
-      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {/* ── Section 1: Mode Selector ──────────────── */}
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-4 gap-1.5">
@@ -276,12 +279,14 @@ export default function AdvancedHeatmapPanel({
                 <button type="button"
                   key={m.key}
                   onClick={() => onModeChange(m.key)}
-                  className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all"
+                  className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-[#1a2636]/50"
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${active ? m.accent + '66' : '#1e2a3a'}`,
+                    border: active ? `2px solid ${m.accent}` : '1px solid #1e2a3a',
                     color: active ? m.accent : '#64748b',
                   }}
+                  aria-label={`${m.label} heatmap mode`}
+                  title={`${m.label} - ${m.key === 'density' ? 'Show incident density' : m.key === 'risk' ? 'Show risk analysis' : m.key === 'temporal' ? 'Animate by time of day' : 'Compare time periods'}`}
                 >
                   <Icon size={14} />
                   <span className="text-[8px] font-bold uppercase tracking-wider">
@@ -360,7 +365,7 @@ export default function AdvancedHeatmapPanel({
                   <button type="button"
                     key={preset.label}
                     onClick={() => setDayPreset(preset.days)}
-                    className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
+                    className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-all duration-150 hover:text-rmpg-200 hover:bg-[#1a2636]/50 active:scale-[0.97]"
                     style={{
                       background: 'rgba(255,255,255,0.03)',
                       color: '#64748b',
@@ -379,12 +384,13 @@ export default function AdvancedHeatmapPanel({
                   <button type="button"
                     key={label}
                     onClick={() => toggleDay(idx)}
-                    className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all text-center"
+                    className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all duration-150 text-center active:scale-[0.97] hover:bg-[#1a2636]/50"
                     style={{
                       background: active ? activeMode.accentBg : '#0d1520',
                       border: `1px solid ${active ? activeMode.accent + '55' : '#1e2a3a'}`,
                       color: active ? activeMode.accent : '#475569',
                     }}
+                    aria-label={`Toggle ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][idx]}`}
                   >
                     {label}
                   </button>
@@ -575,7 +581,7 @@ export default function AdvancedHeatmapPanel({
                 <button type="button"
                   key={t.incident_type}
                   onClick={() => toggleType(t.incident_type)}
-                  className="flex items-center gap-2 w-full px-2 py-1 rounded-sm text-left transition-colors hover:bg-white/[0.03]"
+                  className="flex items-center gap-2 w-full px-2 py-1 rounded-sm text-left transition-all duration-100 hover:bg-[#1a2636]/50 active:scale-[0.98]"
                 >
                   <div
                     className="w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 transition-all"
@@ -628,7 +634,7 @@ export default function AdvancedHeatmapPanel({
               <div className="flex items-center gap-3">
                 <button type="button"
                   onClick={() => onTemporalPlayingChange(!temporalPlaying)}
-                  className="flex items-center justify-center w-10 h-10 rounded-sm transition-all"
+                  className="flex items-center justify-center w-10 h-10 rounded-sm transition-all duration-150 active:scale-[0.97]"
                   style={{
                     background: temporalPlaying
                       ? 'rgba(249,115,22,0.2)'

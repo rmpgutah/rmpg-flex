@@ -13,6 +13,8 @@ import crypto from 'crypto';
 import config from '../config';
 
 // Track legacy token usage for deprecation monitoring
+// [FIX 76] Cap legacy token tracking map size to prevent unbounded growth
+const MAX_LEGACY_ROUTES = 200;
 const legacyTokenCounts = new Map<string, number>();
 let lastLogTime = 0;
 
@@ -21,6 +23,10 @@ let lastLogTime = 0;
  * Throttled to once per 5 minutes per route to avoid log spam.
  */
 export function logLegacyTokenUsage(route: string): void {
+  // [FIX 77] Don't track more than MAX_LEGACY_ROUTES to prevent memory leak
+  if (!legacyTokenCounts.has(route) && legacyTokenCounts.size >= MAX_LEGACY_ROUTES) {
+    return;
+  }
   const count = (legacyTokenCounts.get(route) || 0) + 1;
   legacyTokenCounts.set(route, count);
   const now = Date.now();
@@ -63,7 +69,11 @@ export function verifyResourceAccess(
   exp: number,
   nonce?: string,
 ): boolean {
-  if (!sig || !exp || Date.now() / 1000 > exp) return false;
+  // [FIX 78] Validate input types before processing
+  if (!sig || typeof sig !== 'string' || !exp || typeof exp !== 'number') return false;
+  if (Date.now() / 1000 > exp) return false;
+  // [FIX 79] Validate sig is valid hex and reasonable length
+  if (sig.length !== 64 || !/^[0-9a-f]+$/i.test(sig)) return false;
   const data = nonce
     ? `${resourceType}:${resourceId}:${exp}:${nonce}`
     : `${resourceType}:${resourceId}:${exp}`;

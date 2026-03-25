@@ -10,15 +10,17 @@ export function useCountUp(target: number, duration = 600): number {
   const frameRef = useRef<number>(0);
 
   useEffect(() => {
+    if (!Number.isFinite(target)) return;
     const start = prevTarget.current;
     const diff = target - start;
     if (diff === 0) return;
+    const safeDuration = Math.max(duration, 1); // prevent division by zero
 
     const startTime = performance.now();
 
     const animate = (now: number) => {
       const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
+      const progress = Math.min(elapsed / safeDuration, 1);
       // Ease-out cubic for smooth deceleration
       const eased = 1 - Math.pow(1 - progress, 3);
       const current = Math.round(start + diff * eased);

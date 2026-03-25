@@ -43,10 +43,26 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
+    // [FIX 17] Add base-uri to prevent <base> tag injection attacks
+    "base-uri 'self'",
+    // [FIX 18] Add form-action to restrict form submission targets
+    "form-action 'self'",
+    // [FIX 19] Add object-src to block Flash/plugin-based attacks
+    "object-src 'none'",
   ].join('; '));
 
   // Remove powered-by header
   res.removeHeader('X-Powered-By');
+
+  // [FIX 20] Add Cross-Origin headers to prevent speculative execution side-channel attacks
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
+
+  // [FIX 21] Cache-Control for API responses to prevent sensitive data caching
+  if (req.path.startsWith('/api/')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+  }
 
   next();
 }

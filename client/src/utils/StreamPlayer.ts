@@ -85,8 +85,10 @@ export class StreamPlayer {
 
   /** Append a base64-encoded audio chunk to the stream */
   appendChunk(base64: string) {
+    if (!base64) return;
     // Decode base64 → binary
-    const binary = atob(base64);
+    let binary: string;
+    try { binary = atob(base64); } catch { return; }
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);

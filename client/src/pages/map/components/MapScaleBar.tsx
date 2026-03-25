@@ -85,19 +85,18 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
     <div
       role="img"
       aria-label={`Map scale: ${label}`}
-      className="backdrop-blur-md shadow-lg"
+      className="backdrop-blur-md shadow-lg transition-all duration-200 border border-[#1e3048]/50 rounded-sm"
       style={{
         borderRadius: 2,
-        background: 'rgba(13, 21, 32, 0.85)',
-        border: '1px solid #1e3048',
+        background: 'rgba(13, 21, 32, 0.9)',
         padding: '4px 8px 5px',
       }}
     >
       {/* Distance label */}
-      <div className="text-[8px] font-mono font-bold text-rmpg-200 tracking-wider text-center mb-1" style={{ width: barWidth }}>
+      <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-[#60a5fa] transition-colors" style={{ width: barWidth }}>
         {label}
       </div>
-      {/* Alternating bar segments */}
+      {/* Alternating bar segments with gradient */}
       <div className="flex" style={{ width: barWidth, height: 4 }}>
         {Array.from({ length: segments }).map((_, i) => (
           <div
@@ -105,15 +104,15 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
             style={{
               width: segWidth,
               height: '100%',
-              backgroundColor: i % 2 === 0 ? '#ffffff' : '#000000',
+              background: i % 2 === 0 ? 'linear-gradient(to right, #5a6e80, #9ca3af)' : '#000000',
               borderTop: '1px solid #ffffff',
               borderBottom: '1px solid #ffffff',
             }}
           />
         ))}
       </div>
-      {/* End ticks */}
-      <div className="relative" style={{ width: barWidth, height: 3 }}>
+      {/* End ticks (caps) */}
+      <div className="relative" style={{ width: barWidth, height: 4 }}>
         <div className="absolute left-0 top-0 w-px h-full bg-white" />
         <div className="absolute right-0 top-0 w-px h-full bg-white" />
       </div>

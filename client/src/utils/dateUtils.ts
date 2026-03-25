@@ -72,14 +72,17 @@ export function parseTimestamp(dateStr: string | null | undefined): Date {
   }
 
   // Date-only "YYYY-MM-DD" or other formats — let the browser handle it
-  return new Date(dateStr);
+  const result = new Date(dateStr);
+  return isNaN(result.getTime()) ? new Date() : result;
 }
 
 /**
  * Format a server timestamp for display as a short time (HH:MM 24h).
  */
 export function formatShortTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
+  if (isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
@@ -114,6 +117,7 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
+  if (diffMs < 0) return 'just now'; // future date safety
   const diffMin = Math.floor(diffMs / 60000);
 
   if (diffMin < 1) return 'just now';
@@ -148,15 +152,18 @@ export function formatDateRange(start: string | null | undefined, end: string | 
  * Get the number of days between two dates.
  */
 export function daysBetween(start: string, end: string): number {
+  if (!start || !end) return 0;
   const s = parseTimestamp(start);
   const e = parseTimestamp(end);
-  return Math.round((e.getTime() - s.getTime()) / 86400000);
+  const diff = e.getTime() - s.getTime();
+  return Number.isFinite(diff) ? Math.round(diff / 86400000) : 0;
 }
 
 /**
  * Check if a date is within N days from now (useful for expiry warnings).
  */
 export function isWithinDays(dateStr: string, days: number): boolean {
+  if (!dateStr) return false;
   const d = parseTimestamp(dateStr);
   const now = new Date();
   const diffDays = (d.getTime() - now.getTime()) / 86400000;
@@ -187,5 +194,6 @@ export function todayRange(): { start: string; end: string } {
 export function toDatetimeLocalValue(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
+  if (isNaN(d.getTime())) return '';
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }

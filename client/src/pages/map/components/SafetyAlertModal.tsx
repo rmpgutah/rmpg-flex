@@ -180,10 +180,10 @@ export default function SafetyAlertModal({
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
+      aria-label="Safety alert broadcast"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -192,12 +192,13 @@ export default function SafetyAlertModal({
       }}
     >
       <div
-        className="panel-beveled bg-surface-base flex flex-col"
+        className="panel-beveled bg-surface-base flex flex-col transition-all duration-200 ease-out shadow-lg animate-in fade-in zoom-in-95"
         style={{
           width: 420,
           maxWidth: '95vw',
           maxHeight: '90vh',
           border: '1px solid #1e2a3a',
+          borderTop: `2px solid ${selectedType ? (ALERT_TYPES.find(a => a.type === selectedType)?.color ?? '#ef4444') : '#ef4444'}`,
         }}
       >
         {/* Header */}
@@ -211,14 +212,14 @@ export default function SafetyAlertModal({
               Safety Broadcast
             </span>
           </div>
-          <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Cancel">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-red-900/30 transition-colors duration-150 rounded-sm" title="Cancel" aria-label="Cancel safety broadcast">
             <X size={14} className="text-rmpg-400" />
           </button>
         </div>
 
         {/* Body */}
         <div
-          className="flex-1 overflow-y-auto p-4 space-y-4"
+          className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
           style={{ scrollbarWidth: 'thin' }}
         >
           {/* Alert type grid */}
@@ -233,7 +234,7 @@ export default function SafetyAlertModal({
                   <button type="button"
                     key={at.type}
                     onClick={() => setSelectedType(at.type)}
-                    className="rounded-sm flex items-center gap-2 px-2.5 py-2 text-left transition-colors"
+                    className="rounded-sm flex items-center gap-2 px-2.5 py-2 text-left transition-all duration-150 active:scale-[0.97]"
                     style={{
                       background: isSelected ? at.bgColor : '#0d1520',
                       border: `1px solid ${isSelected ? at.color : '#1e2a3a'}`,
@@ -326,7 +327,7 @@ export default function SafetyAlertModal({
                 <button type="button"
                   key={r}
                   onClick={() => setRadius(r)}
-                  className="flex-1 rounded-sm py-1.5 text-xs font-semibold transition-colors"
+                  className="flex-1 rounded-sm py-1.5 text-xs font-semibold transition-all duration-150 active:scale-[0.97]"
                   style={{
                     background: radius === r ? 'rgba(59,130,246,0.2)' : '#0d1520',
                     border: `1px solid ${radius === r ? '#3b82f6' : '#1e2a3a'}`,
@@ -356,14 +357,16 @@ export default function SafetyAlertModal({
           <button type="button"
             onClick={onClose}
             disabled={broadcasting}
-            className="toolbar-btn rounded-sm px-4 py-2 text-xs text-rmpg-400"
+            className="toolbar-btn rounded-sm px-4 py-2 text-xs text-rmpg-400 transition-all duration-150 active:scale-[0.97]"
+            aria-label="Cancel broadcast"
           >
             Cancel
           </button>
           <button type="button"
             onClick={handleBroadcast}
             disabled={broadcasting || !selectedType}
-            className="rounded-sm px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+            className="rounded-sm px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
+            aria-label="Broadcast safety alert"
             style={{
               background:
                 broadcasting || !selectedType

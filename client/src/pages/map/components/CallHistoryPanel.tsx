@@ -96,8 +96,10 @@ export default function CallHistoryPanel({
 
   return (
     <div
-      className="panel-beveled bg-surface-base overflow-hidden shadow-xl"
+      className="panel-beveled bg-surface-base overflow-hidden shadow-xl transition-all duration-200 ease-out shadow-lg"
       style={{ width: 300 }}
+      role="complementary"
+      aria-label="Call history panel"
     >
       {/* Header */}
       <div
@@ -118,7 +120,7 @@ export default function CallHistoryPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1"
+          className="toolbar-btn p-1 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close call history panel"
           title="Close"
         >
@@ -128,9 +130,14 @@ export default function CallHistoryPanel({
 
       {/* Loading state */}
       {loading && (
-        <div className="flex items-center justify-center py-8 text-rmpg-500">
-          <div className="w-3 h-3 border border-cyan-500 border-t-transparent rounded-full animate-spin" />
-          <span className="ml-2 text-[9px] font-mono">Loading {days}d history...</span>
+        <div className="flex flex-col items-center justify-center py-8 text-rmpg-500 gap-2">
+          <div className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-[9px] font-mono animate-pulse">Loading {days}d history...</span>
+          <div className="space-y-1.5 w-full px-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse rounded-sm h-10" style={{ background: '#0d1520', opacity: 1 - i * 0.2 }} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -224,8 +231,7 @@ export default function CallHistoryPanel({
                 Recent Calls
               </div>
               <div
-                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1"
-                style={{ scrollbarWidth: 'thin' }}
+                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
               >
                 {stats.recent.map((call) => {
                   const pColor =
@@ -234,7 +240,8 @@ export default function CallHistoryPanel({
                   return (
                     <div
                       key={call.id}
-                      className="rounded-sm px-2 py-1.5 hover:bg-white/[0.03] transition-colors"
+                      className="rounded-sm px-2 py-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100"
+                      style={{ borderLeft: `2px solid ${pColor}` }}
                     >
                       <div className="flex items-center justify-between mb-0.5">
                         <span className="text-[9px] font-mono font-bold text-cyan-300">
@@ -274,8 +281,11 @@ export default function CallHistoryPanel({
 
           {/* Empty state */}
           {calls.length === 0 && (
-            <div className="text-center py-6 text-rmpg-600 text-[9px] font-mono">
-              No calls found for the past {days} day{days !== 1 ? 's' : ''}.
+            <div className="flex flex-col items-center gap-2 text-center py-8">
+              <Phone size={20} className="text-rmpg-600/40" />
+              <span className="text-rmpg-600 text-[9px] font-mono">
+                No calls found for the past {days} day{days !== 1 ? 's' : ''}.
+              </span>
             </div>
           )}
         </div>

@@ -43,7 +43,9 @@ const ACTION_CONFIG: Record<ActivityAction, { icon: React.ElementType; color: st
 };
 
 function formatTime(dateStr: string, showDate: boolean): string {
+  if (!dateStr) return '--:--:--';
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '--:--:--';
   if (showDate) {
     return date.toLocaleString('en-US', {
       month: 'short',

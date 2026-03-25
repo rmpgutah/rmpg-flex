@@ -249,6 +249,7 @@ router.get('/export', (req: Request, res: Response) => {
       LEFT JOIN users o ON i.officer_id = o.id
       ${whereClause}
       ORDER BY i.created_at DESC
+      LIMIT 5000
     `).all(...params);
 
     sendCsv(res, 'incidents_export.csv', [
@@ -272,6 +273,11 @@ router.get('/export', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const incidentId = parseInt(req.params.id, 10);
+    if (isNaN(incidentId)) {
+      res.status(400).json({ error: 'Invalid incident ID', code: 'INVALID_INCIDENT_ID' });
+      return;
+    }
     const incident = db.prepare(`
       SELECT i.*, o.full_name as officer_name, o.badge_number,
         s.full_name as supervisor_name, p.name as property_name,
@@ -284,7 +290,7 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN calls_for_service c ON i.call_id = c.id
       LEFT JOIN clients cl ON COALESCE(i.client_id, p.client_id) = cl.id
       WHERE i.id = ?
-    `).get(req.params.id) as any;
+    `).get(incidentId) as any;
 
     if (!incident) {
       res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });

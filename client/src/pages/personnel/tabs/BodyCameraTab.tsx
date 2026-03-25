@@ -483,8 +483,8 @@ export default function BodyCameraTab({
                       <span className="text-xs font-mono text-rmpg-400">{cam.storage_capacity_gb}GB</span>
                     </td>
                     <td>
-                      <span className={`text-xs font-medium capitalize ${EQUIPMENT_CONDITION_COLORS[cam.condition] || 'text-rmpg-400'}`}>
-                        {cam.condition}
+                      <span className={`text-xs font-medium capitalize ${(cam.condition && EQUIPMENT_CONDITION_COLORS[cam.condition]) || 'text-rmpg-400'}`}>
+                        {cam.condition || '-'}
                       </span>
                     </td>
                     <td>

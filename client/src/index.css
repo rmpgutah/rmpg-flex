@@ -3081,3 +3081,44 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   height: 1px;
   background: var(--border-default, #1e3048);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Focus-visible styles for keyboard navigation accessibility
+   ═══════════════════════════════════════════════════════════════ */
+*:focus-visible {
+  outline: 2px solid var(--brand-blue);
+  outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Print styles — hide UI chrome, show content
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  /* Hide navigation, toolbars, sidebars */
+  nav, .toolbar, [data-nav-dropdown], .status-bar,
+  .panel-title-bar button, .btn-primary, .btn-secondary {
+    display: none !important;
+  }
+  /* Ensure tables print cleanly */
+  .table-dark thead th,
+  .table-dark tbody td {
+    color: black !important;
+    background: white !important;
+    border-color: #ccc !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Reduced motion — respect user preference
+   ═══════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
