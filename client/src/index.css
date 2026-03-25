@@ -3077,3 +3077,11 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Alert Banner — strobe animation for major alerts
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes strobe {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
