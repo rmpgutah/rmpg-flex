@@ -33,25 +33,30 @@ export default function WeatherWidget({ weather }: WeatherWidgetProps) {
     <div
       role="status"
       aria-busy={loading}
-      className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-white/80 select-none pointer-events-auto"
+      aria-label={tooltip}
+      className="group flex items-center gap-1.5 px-2 py-1 text-[11px] text-white/80 select-none pointer-events-auto transition-all duration-200 ease-out hover:gap-2.5 hover:px-3 shadow-lg"
       style={{
         background: 'rgba(13,21,32,0.75)',
-        backdropFilter: 'blur(6px)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 2,
+        textShadow: '0 1px 2px rgba(0,0,0,0.5)',
       }}
       title={tooltip}
     >
       {loading && temp === null ? (
-        <span className="text-white/40">—</span>
+        <span className="text-white/40 animate-pulse">—</span>
       ) : temp === null && !loading ? (
         <span className="text-red-400/60" title="Weather data unavailable">!</span>
       ) : (
         <>
-          <span>{icon}</span>
+          <span className="text-[13px] transition-all duration-200">{icon}</span>
           <span className="font-medium tabular-nums">{temp ?? '—'}°F</span>
           <span className="text-white/40">|</span>
           <span className="text-white/50 tabular-nums">{windSpeed ?? '—'} mph</span>
+          <span className="hidden group-hover:inline text-white/40">|</span>
+          <span className="hidden group-hover:inline text-white/50 tabular-nums">{humidity ?? '—'}%</span>
         </>
       )}
     </div>

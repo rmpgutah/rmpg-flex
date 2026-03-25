@@ -37,7 +37,7 @@ try {
     ON gps_breadcrumbs(unit_id, recorded_at)`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_breadcrumbs_call_sign_recorded
     ON gps_breadcrumbs(call_sign, recorded_at)`).run();
-} catch { /* table may not exist yet at import time */ }
+} catch (err) { console.error('[GPS] Index creation skipped (table may not exist yet):', err instanceof Error ? err.message : err); }
 
 // Fix 16: Validate call_sign parameter format
 function isValidCallSign(callSign: string): boolean {
@@ -271,7 +271,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
           }
         }
       }
-    } catch { /* geofence check is non-critical */ }
+    } catch (geoErr) { console.error('[GPS] Geofence check error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
 
     const pointsCapped = pointsReceived > 60 ? pointsReceived - 60 : 0;
     const pointsInvalid = points.length - validPoints.length;
@@ -555,6 +555,7 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
     // Fix N+1: fetch breadcrumbs for all active units in a single grouped query.
     // ROW_NUMBER window partitions by unit_id, limited to 100 per unit.
     const unitIds = units.map(u => u.id);
+    if (unitIds.length === 0) { res.json([]); return; }
     const placeholders = unitIds.map(() => '?').join(',');
     const allBreadcrumbs = db.prepare(`
       SELECT unit_id, latitude, longitude, recorded_at
@@ -673,7 +674,7 @@ router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor
       LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE u.status != 'off_duty'
       ORDER BY u.call_sign
-    `).all(hoursStr, hoursStr, hoursStr, hoursStr);
+    `).all(hoursStr);
 
     res.json(units);
   } catch (error: any) {

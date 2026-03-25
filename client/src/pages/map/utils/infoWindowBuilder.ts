@@ -28,64 +28,77 @@ const C_TEXT_MUTED = '#5a6e80';
 const C_BLUE = '#60a5fa';
 const C_BRAND = '#1a5a9e';
 const C_GOLD = '#d4a017';
+const C_RED = '#f87171';
+const C_GREEN = '#4ade80';
+const C_AMBER = '#fbbf24';
+const C_PURPLE = '#a78bfa';
 
 function tabStyles(id: string): string {
   return `
     <style>
       #${id} input[type=radio]{display:none}
       #${id} .iw-tabs{display:flex;border-bottom:1px solid ${C_BORDER};margin-bottom:8px}
-      #${id} .iw-tab-label{padding:4px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:${C_TEXT_MUTED};cursor:pointer;border-bottom:2px solid transparent;font-family:${FONT_SANS};transition:color 0.15s,border-color 0.15s;user-select:none}
-      #${id} .iw-tab-label:hover{color:${C_TEXT_DIM}}
-      #${id} .iw-panel{display:none;max-height:260px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:${C_BORDER} transparent}
+      #${id} .iw-tab-label{padding:4px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:${C_TEXT_MUTED};cursor:pointer;border-bottom:2px solid transparent;font-family:${FONT_SANS};transition:color 0.15s,border-color 0.15s,background 0.15s;user-select:none}
+      #${id} .iw-tab-label:hover{color:${C_TEXT_DIM};background:${C_RAISED}}
+      #${id} .iw-panel{display:none;max-height:260px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:${C_BORDER} transparent;transition:opacity 0.15s ease}
       #${id} .iw-panel::-webkit-scrollbar{width:4px}
-      #${id} .iw-panel::-webkit-scrollbar-thumb{background:${C_BORDER};border-radius:2px}
+      #${id} .iw-panel::-webkit-scrollbar-thumb{background:${C_BORDER};border-radius:4px}
+      #${id} .iw-panel::-webkit-scrollbar-thumb:hover{background:${C_TEXT_MUTED}}
       #${id} input[type=radio]:nth-of-type(1):checked ~ .iw-tabs .iw-tab-label:nth-of-type(1),
       #${id} input[type=radio]:nth-of-type(2):checked ~ .iw-tabs .iw-tab-label:nth-of-type(2),
-      #${id} input[type=radio]:nth-of-type(3):checked ~ .iw-tabs .iw-tab-label:nth-of-type(3){color:${C_BLUE};border-bottom-color:${C_BLUE}}
+      #${id} input[type=radio]:nth-of-type(3):checked ~ .iw-tabs .iw-tab-label:nth-of-type(3),
+      #${id} input[type=radio]:nth-of-type(4):checked ~ .iw-tabs .iw-tab-label:nth-of-type(4){color:${C_BLUE};border-bottom-color:${C_BLUE};transform:translateY(0);box-shadow:0 1px 0 ${C_BLUE}40}
       #${id} input[type=radio]:nth-of-type(1):checked ~ .iw-panel:nth-of-type(1),
       #${id} input[type=radio]:nth-of-type(2):checked ~ .iw-panel:nth-of-type(2),
-      #${id} input[type=radio]:nth-of-type(3):checked ~ .iw-panel:nth-of-type(3){display:block}
+      #${id} input[type=radio]:nth-of-type(3):checked ~ .iw-panel:nth-of-type(3),
+      #${id} input[type=radio]:nth-of-type(4):checked ~ .iw-panel:nth-of-type(4){display:block}
+      @keyframes pulse-led{0%,100%{opacity:1}50%{opacity:0.5}}
+      @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
     </style>`;
 }
 
 function led(color: string, size = 8): string {
-  return `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 6px ${color}80;flex-shrink:0;"></span>`;
+  return `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 8px ${color}90;flex-shrink:0;transition:box-shadow 0.2s ease;"></span>`;
 }
 
 function badge(text: string, bg: string, fg: string): string {
-  return `<span style="display:inline-block;padding:1px 6px;font-size:8px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;background:${bg};color:${fg};border:1px solid ${fg}40;border-radius:2px;font-family:${FONT_MONO};">${escapeHtml(text)}</span>`;
+  return `<span style="display:inline-block;padding:1px 6px;font-size:8px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;background:${bg};color:${fg};border:1px solid ${fg}40;border-radius:2px;font-family:${FONT_MONO};white-space:nowrap;transition:background 0.15s ease,color 0.15s ease;">${escapeHtml(text)}</span>`;
 }
 
 function routeButton(unitCallSign: string, callNumber: string, uLat: number, uLng: number, cLat: number, cLng: number, label?: string): string {
   return `<button data-route-unit="${escapeHtml(unitCallSign)}" data-route-call="${escapeHtml(callNumber)}"
     data-route-ulat="${uLat}" data-route-ulng="${uLng}"
     data-route-clat="${cLat}" data-route-clng="${cLng}"
-    style="padding:2px 8px;background:${C_BRAND}30;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;">
+    style="padding:2px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;transition:background 0.15s ease,border-color 0.15s ease;">
     &#9654; ${escapeHtml(label || 'ROUTE')}
   </button>`;
 }
 
 function findClosestButton(callId: string): string {
   return `<button data-find-closest="${escapeHtml(callId)}"
-    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}30;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;">
+    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(26,90,158,0.3);">
     &#9737; FIND CLOSEST UNIT
   </button>`;
 }
 
 function dataRow(label: string, value: string, valueColor = C_TEXT): string {
   if (!value) return '';
-  return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:2px 0;">
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid ${C_BORDER}15;transition:background 0.1s ease;">
     <span style="font-size:8px;color:${C_TEXT_MUTED};font-family:${FONT_SANS};text-transform:uppercase;letter-spacing:0.5px;">${label}</span>
     <span style="font-size:10px;color:${valueColor};font-family:${FONT_MONO};font-weight:600;max-width:65%;text-align:right;word-break:break-word;">${escapeHtml(value)}</span>
   </div>`;
 }
 
 function sectionHeader(text: string, color = C_TEXT_MUTED): string {
-  return `<div style="font-size:8px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;margin-top:2px;font-family:${FONT_SANS};">${text}</div>`;
+  return `<div style="font-size:8px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;margin-top:2px;font-family:${FONT_SANS};border-bottom:1px solid ${C_BORDER}30;padding-bottom:4px;">${text}</div>`;
 }
 
 function emptyState(text: string): string {
-  return `<div style="font-size:9px;color:${C_TEXT_MUTED};text-align:center;padding:12px 0;">${escapeHtml(text)}</div>`;
+  return `<div style="font-size:9px;color:${C_TEXT_MUTED};text-align:center;padding:16px 0;border:1px dashed ${C_BORDER}40;border-radius:2px;margin:4px 0;">${escapeHtml(text)}</div>`;
+}
+
+function divider(): string {
+  return `<div style="height:1px;background:linear-gradient(to right, transparent, ${C_BORDER}60, transparent);margin:6px 0;"></div>`;
 }
 
 function formatTimestamp(ts: string | null | undefined): string {
@@ -121,13 +134,18 @@ export function buildUnitInfoWindow(
   const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status.replace(/_/g, ' ');
   const gpsSource = unit.gps_source || 'unknown';
 
+  // GPS accuracy indicator color
+  const gpsColor = gpsSource === 'device' ? C_GREEN : gpsSource === 'manual' ? C_GOLD : C_TEXT_MUTED;
+
   // Overview tab
   const overviewTab = `
-    ${dataRow('Officer', unit.officer_name, C_TEXT)}
-    ${dataRow('Status', statusLabel, statusColor)}
-    ${unit.vehicle ? dataRow('Vehicle', unit.vehicle, C_TEXT_DIM) : ''}
-    ${dataRow('GPS Source', gpsSource, gpsSource === 'device' ? '#22d3ee' : gpsSource === 'manual' ? C_GOLD : C_TEXT_MUTED)}
-    ${unit.last_gps_update ? dataRow('Last Update', formatTimestamp(unit.last_gps_update), C_TEXT_DIM) : ''}
+    <div style="padding:4px 6px;background:${C_BASE};border-radius:2px;border:1px solid ${C_BORDER}20;">
+      ${dataRow('Officer', unit.officer_name, C_TEXT)}
+      ${dataRow('Status', statusLabel, statusColor)}
+      ${unit.vehicle ? dataRow('Vehicle', unit.vehicle, C_TEXT_DIM) : ''}
+      ${dataRow('GPS Source', gpsSource + ' ', gpsColor)}
+      ${unit.last_gps_update ? dataRow('Last Update', formatTimestamp(unit.last_gps_update), C_TEXT_DIM) : ''}
+    </div>
   `;
 
   // Assignment tab
@@ -136,12 +154,14 @@ export function buildUnitInfoWindow(
     const pColor = PRIORITY_HEX[assignedCall.priority] || C_TEXT_MUTED;
     const hasRoute = assignedCall.latitude != null && assignedCall.longitude != null && unit.latitude != null && unit.longitude != null;
     assignmentTab = `
-      <div style="margin-bottom:6px;">${badge(assignedCall.priority, pColor + '25', pColor)}</div>
-      ${dataRow('Call #', assignedCall.call_number, C_BLUE)}
-      ${dataRow('Type', formatIncidentType(assignedCall.incident_type), pColor)}
-      ${dataRow('Location', assignedCall.location_address, C_TEXT_DIM)}
-      ${dataRow('Status', assignedCall.status.replace(/_/g, ' '), C_TEXT_DIM)}
-      ${assignedCall.property_name ? dataRow('Property', assignedCall.property_name, C_GOLD) : ''}
+      <div style="margin-bottom:8px;">${badge(assignedCall.priority, pColor + '25', pColor)}</div>
+      <div style="padding:4px 6px;background:${C_BASE};border-radius:2px;border:1px solid ${C_BORDER}20;">
+        ${dataRow('Call #', assignedCall.call_number, C_BLUE)}
+        ${dataRow('Type', formatIncidentType(assignedCall.incident_type), pColor)}
+        ${dataRow('Location', assignedCall.location_address, C_TEXT_DIM)}
+        ${dataRow('Status', assignedCall.status.replace(/_/g, ' '), C_TEXT_DIM)}
+        ${assignedCall.property_name ? dataRow('Property', assignedCall.property_name, C_GOLD) : ''}
+      </div>
       ${hasRoute ? `<div style="margin-top:8px;text-align:center;">${routeButton(unit.call_sign, assignedCall.call_number, unit.latitude!, unit.longitude!, assignedCall.latitude!, assignedCall.longitude!, 'Route to Call')}</div>` : ''}
     `;
   } else {
@@ -150,39 +170,40 @@ export function buildUnitInfoWindow(
 
   // History tab — shows current status context
   const historyTab = `
-    <div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid ${C_BORDER}30;">
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid ${C_BORDER}30;border-left:3px solid ${statusColor};padding-left:8px;">
       ${led(statusColor, 6)}
       <span style="font-size:9px;color:${statusColor};font-weight:700;font-family:${FONT_MONO};">${escapeHtml(statusLabel.toUpperCase())}</span>
       <span style="font-size:8px;color:${C_TEXT_MUTED};margin-left:auto;">Current</span>
     </div>
     ${unit.call_number ? `
-      <div style="padding:4px 0;font-size:9px;color:${C_TEXT_DIM};">
+      <div style="padding:4px 0;font-size:9px;color:${C_TEXT_DIM};border-left:3px solid ${C_BORDER}30;padding-left:8px;">
         Assigned to <span style="color:${C_BLUE};font-weight:700;">${escapeHtml(unit.call_number)}</span>
         ${unit.current_call_type ? `<span style="color:${C_TEXT_MUTED};"> &mdash; ${escapeHtml(formatIncidentType(unit.current_call_type))}</span>` : ''}
       </div>
     ` : ''}
-    ${emptyState('Full history not available in map view')}
+    ${emptyState('View full history in Records module')}
   `;
 
   return `
     ${tabStyles(id)}
-    <div id="${id}" style="width:320px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${statusColor}50;border-radius:2px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};">
-        ${led(statusColor, 10)}
+    <div id="${id}" style="width:340px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${statusColor}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};background:linear-gradient(to right, ${statusColor}08, transparent);">
+        ${led(statusColor, 12)}
         <span style="font-weight:900;font-size:15px;color:${statusColor};letter-spacing:-0.5px;">${escapeHtml(unit.call_sign)}</span>
         <span style="margin-left:auto;">${badge(statusLabel, statusColor + '20', statusColor)}</span>
       </div>
+      ${divider()}
       <input type="radio" name="${id}" id="${id}_t1" checked>
       <input type="radio" name="${id}" id="${id}_t2">
       <input type="radio" name="${id}" id="${id}_t3">
-      <div class="iw-tabs">
-        <label class="iw-tab-label" for="${id}_t1">Overview</label>
-        <label class="iw-tab-label" for="${id}_t2">Assignment</label>
-        <label class="iw-tab-label" for="${id}_t3">History</label>
+      <div class="iw-tabs" role="tablist">
+        <label class="iw-tab-label" for="${id}_t1" role="tab">Overview</label>
+        <label class="iw-tab-label" for="${id}_t2" role="tab">Assignment</label>
+        <label class="iw-tab-label" for="${id}_t3" role="tab">History</label>
       </div>
-      <div class="iw-panel">${overviewTab}</div>
-      <div class="iw-panel">${assignmentTab}</div>
-      <div class="iw-panel">${historyTab}</div>
+      <div class="iw-panel" role="tabpanel">${overviewTab}</div>
+      <div class="iw-panel" role="tabpanel">${assignmentTab}</div>
+      <div class="iw-panel" role="tabpanel">${historyTab}</div>
     </div>
   `;
 }
@@ -214,12 +235,14 @@ export function buildCallInfoWindow(
       ${badge(call.priority, pColor + '25', pColor)}
       <span style="font-size:10px;color:${pColor};font-weight:800;font-family:${FONT_MONO};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
     </div>
-    ${dataRow('Call #', call.call_number, C_BLUE)}
-    ${dataRow('Location', call.location_address, C_TEXT)}
-    ${call.property_name ? dataRow('Property', call.property_name, C_GOLD) : ''}
-    ${dataRow('Status', call.status.replace(/_/g, ' '), C_TEXT_DIM)}
-    ${call.source ? dataRow('Source', call.source, C_TEXT_DIM) : ''}
-    ${call.disposition ? dataRow('Disposition', call.disposition, C_TEXT_DIM) : ''}
+    <div style="padding:4px 6px;background:${C_BASE};border-radius:2px;border:1px solid ${C_BORDER}20;">
+      ${dataRow('Call #', call.call_number, C_BLUE)}
+      ${dataRow('Location', call.location_address, C_TEXT)}
+      ${call.property_name ? dataRow('Property', call.property_name, C_GOLD) : ''}
+      ${dataRow('Status', call.status.replace(/_/g, ' '), C_TEXT_DIM)}
+      ${call.source ? dataRow('Source', call.source, C_TEXT_DIM) : ''}
+      ${call.disposition ? dataRow('Disposition', call.disposition, C_TEXT_DIM) : ''}
+    </div>
     ${call.latitude != null && call.longitude != null ? findClosestButton(String(call.id)) : ''}
   `;
 
@@ -232,12 +255,12 @@ export function buildCallInfoWindow(
         const uc = UNIT_STATUS_HEX[u.status] || C_TEXT_MUTED;
         const uLabel = UNIT_STATUS_LABELS[u.status] || u.status;
         const hasRoute = u.latitude != null && u.longitude != null && call.latitude != null && call.longitude != null;
-        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid ${C_BORDER}20;">
+        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 2px;border-bottom:1px solid ${C_BORDER}20;transition:background 0.1s ease;" onmouseenter="this.style.background='${C_RAISED}'" onmouseleave="this.style.background='transparent'">
           ${led(uc, 6)}
           <span style="font-size:10px;color:${uc};font-weight:700;font-family:${FONT_MONO};">${escapeHtml(u.call_sign)}</span>
           <span style="font-size:9px;color:${C_TEXT_DIM};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(u.officer_name)}</span>
           <span style="font-size:7px;color:${uc};opacity:0.7;">${escapeHtml(uLabel)}</span>
-          ${hasRoute ? routeButton(u.call_sign, call.call_number, u.latitude!, u.longitude!, call.latitude!, call.longitude!) : ''}
+          ${hasRoute ? routeButton(u.call_sign, call.call_number, u.latitude!, u.longitude!, call.latitude!, call.longitude!) : `<span style="font-size:7px;color:${C_TEXT_MUTED};font-style:italic;">No route</span>`}
         </div>`;
       }).join('')}
     `;
@@ -254,12 +277,19 @@ export function buildCallInfoWindow(
     { label: 'Cleared', ts: call.cleared_at, color: '#22c55e' },
   ];
 
+  // Find last filled index for pulse animation
+  let lastFilledIdx = -1;
+  timelineItems.forEach((item, i) => { if (item.ts) lastFilledIdx = i; });
+
   const timelineTab = `
     ${sectionHeader('Call Timeline')}
     ${timelineItems.map((item, i) => {
       const filled = !!item.ts;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;${i < timelineItems.length - 1 ? `border-left:2px solid ${filled ? item.color + '50' : C_BORDER}30;margin-left:4px;padding-left:12px;` : 'margin-left:4px;padding-left:12px;border-left:2px solid transparent;'}">
-        <span style="position:relative;left:-17px;display:inline-block;width:8px;height:8px;border-radius:50%;background:${filled ? item.color : C_BORDER};box-shadow:${filled ? `0 0 4px ${item.color}60` : 'none'};flex-shrink:0;"></span>
+      const isLastFilled = i === lastFilledIdx;
+      const nextFilled = i < timelineItems.length - 1 && !!timelineItems[i + 1].ts;
+      const connectorColor = filled && nextFilled ? item.color + '60' : filled ? item.color + '30' : C_BORDER + '25';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;${i < timelineItems.length - 1 ? `border-left:2px solid ${connectorColor};margin-left:4px;padding-left:12px;` : 'margin-left:4px;padding-left:12px;border-left:2px solid transparent;'}">
+        <span style="position:relative;left:-17px;display:inline-block;width:8px;height:8px;border-radius:50%;background:${filled ? item.color : C_BORDER};box-shadow:${filled ? `0 0 6px ${item.color}70` : 'none'};flex-shrink:0;${isLastFilled ? 'animation:pulse-led 2s infinite;' : ''}"></span>
         <span style="font-size:9px;color:${filled ? item.color : C_TEXT_MUTED};font-weight:600;font-family:${FONT_SANS};margin-left:-12px;">${item.label}</span>
         <span style="font-size:9px;color:${filled ? C_TEXT : C_TEXT_MUTED};font-family:${FONT_MONO};margin-left:auto;">${filled ? formatTimestamp(item.ts) : '--'}</span>
       </div>`;
@@ -268,22 +298,23 @@ export function buildCallInfoWindow(
 
   return `
     ${tabStyles(id)}
-    <div id="${id}" style="width:320px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${pColor}50;border-radius:2px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};">
-        <span style="background:${pColor};color:#fff;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;border-radius:2px;">${escapeHtml(call.priority)}</span>
+    <div id="${id}" style="width:340px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${pColor}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};background:linear-gradient(to right, ${pColor}08, transparent);">
+        <span style="background:${pColor};color:#fff;padding:3px 10px;font-size:11px;font-weight:900;letter-spacing:0.5px;border-radius:2px;">${escapeHtml(call.priority)}</span>
         <span style="font-weight:900;font-size:13px;color:${pColor};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(call.call_number)}</span>
       </div>
+      ${divider()}
       <input type="radio" name="${id}" id="${id}_t1" checked>
       <input type="radio" name="${id}" id="${id}_t2">
       <input type="radio" name="${id}" id="${id}_t3">
-      <div class="iw-tabs">
-        <label class="iw-tab-label" for="${id}_t1">Overview</label>
-        <label class="iw-tab-label" for="${id}_t2">Units</label>
-        <label class="iw-tab-label" for="${id}_t3">Timeline</label>
+      <div class="iw-tabs" role="tablist">
+        <label class="iw-tab-label" for="${id}_t1" role="tab">Overview</label>
+        <label class="iw-tab-label" for="${id}_t2" role="tab">Units</label>
+        <label class="iw-tab-label" for="${id}_t3" role="tab">Timeline</label>
       </div>
-      <div class="iw-panel">${overviewTab}</div>
-      <div class="iw-panel">${unitsTab}</div>
-      <div class="iw-panel">${timelineTab}</div>
+      <div class="iw-panel" role="tabpanel">${overviewTab}</div>
+      <div class="iw-panel" role="tabpanel">${unitsTab}</div>
+      <div class="iw-panel" role="tabpanel">${timelineTab}</div>
     </div>
   `;
 }
@@ -327,11 +358,13 @@ export function buildPropertyInfoWindow(
   const id = nextId();
 
   if (!details) {
-    // Loading / fallback state
+    // Loading / fallback state with shimmer animation
     return `
-      <div style="min-width:200px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:12px;border:1px solid ${C_BLUE}50;border-radius:2px;">
+      <style>@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}</style>
+      <div style="min-width:200px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:12px;border:1px solid ${C_BLUE}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
         <div style="font-weight:900;font-size:13px;color:${C_BLUE};margin-bottom:4px;">${escapeHtml(prop.name)}</div>
-        <div style="font-size:10px;color:${C_TEXT_DIM};">Loading details...</div>
+        <div style="font-size:10px;color:${C_TEXT_DIM};margin-bottom:6px;">Loading details...</div>
+        <div style="height:4px;border-radius:2px;background:linear-gradient(90deg, ${C_SUNKEN}, ${C_RAISED}, ${C_SUNKEN});background-size:200% 100%;animation:shimmer 1.5s infinite;"></div>
       </div>
     `;
   }
@@ -361,11 +394,11 @@ export function buildPropertyInfoWindow(
       </div>
     ` : ''}
     ${details.sla_response_minutes ? `
-      <div style="margin-top:6px;font-size:8px;color:#4ade80;font-weight:600;">SLA: ${details.sla_response_minutes} min response</div>
+      <div style="margin-top:6px;font-size:8px;color:${details.sla_response_minutes <= 10 ? C_AMBER : C_GREEN};font-weight:600;${details.sla_response_minutes <= 10 ? 'animation:pulse-led 2s infinite;' : ''}">SLA: ${details.sla_response_minutes} min response</div>
     ` : ''}
     ${details.hazard_notes ? `
       <div style="margin-top:4px;padding:3px 5px;background:#f8717110;border:1px solid #f8717130;border-radius:2px;">
-        <span style="font-size:8px;color:#f87171;font-weight:700;">&#9888; HAZARD</span>
+        <span style="font-size:8px;color:#f87171;font-weight:700;animation:pulse-led 2s infinite;">&#9888; HAZARD</span>
         <div style="font-size:8px;color:#f87171;margin-top:1px;">${escapeHtml(details.hazard_notes)}</div>
       </div>
     ` : ''}
@@ -388,7 +421,8 @@ export function buildPropertyInfoWindow(
     historyTab = `
       ${sectionHeader(`Call History (${recentCalls.length})`)}
       ${recentCalls.slice(0, 5).map(c => {
-        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : C_BLUE;
+        const isActive = c.status === 'dispatched' || c.status === 'en_route' || c.status === 'on_scene';
+        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#93c5fd' : C_BLUE;
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
           <div style="overflow:hidden;flex:1;">
             <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
@@ -428,9 +462,9 @@ export function buildPropertyInfoWindow(
           let flagsArr: string[] = [];
           try { flagsArr = JSON.parse(p.flags || '[]'); } catch { /* ignore */ }
           const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';
-          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 2px;border-bottom:1px solid ${C_BORDER}20;transition:background 0.1s ease;" onmouseenter="this.style.background='${C_RAISED}'" onmouseleave="this.style.background='transparent'">
             <div style="display:flex;align-items:center;gap:4px;overflow:hidden;">
-              ${hasWarning ? '<span style="color:#ef4444;font-size:8px;">&#9888;</span>' : ''}
+              ${hasWarning ? '<span style="color:#ef4444;font-size:9px;text-shadow:0 0 4px #ef444460;">&#9888;</span>' : ''}
               <span style="color:${C_TEXT};font-size:9px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</span>
               ${p.title ? `<span style="color:${C_TEXT_MUTED};font-size:7px;">${escapeHtml(p.title)}</span>` : ''}
             </div>
@@ -457,22 +491,23 @@ export function buildPropertyInfoWindow(
 
   return `
     ${tabStyles(id)}
-    <div id="${id}" style="width:380px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_BLUE}50;border-radius:2px;">
-      <div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};">
+    <div id="${id}" style="width:400px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_BLUE}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+      <div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};background:linear-gradient(to right, ${C_BLUE}08, transparent);">
         <div style="font-weight:900;font-size:13px;color:${C_BLUE};margin-bottom:2px;">${escapeHtml(prop.name)}</div>
         ${prop.client_name ? `<div style="font-size:9px;color:${C_GOLD};font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
       </div>
+      ${divider()}
       <input type="radio" name="${id}" id="${id}_t1" checked>
       <input type="radio" name="${id}" id="${id}_t2">
       <input type="radio" name="${id}" id="${id}_t3">
-      <div class="iw-tabs">
-        <label class="iw-tab-label" for="${id}_t1">Overview</label>
-        <label class="iw-tab-label" for="${id}_t2">History</label>
-        <label class="iw-tab-label" for="${id}_t3">Contacts</label>
+      <div class="iw-tabs" role="tablist">
+        <label class="iw-tab-label" for="${id}_t1" role="tab">Overview</label>
+        <label class="iw-tab-label" for="${id}_t2" role="tab">History</label>
+        <label class="iw-tab-label" for="${id}_t3" role="tab">Contacts</label>
       </div>
-      <div class="iw-panel">${overviewTab}</div>
-      <div class="iw-panel">${historyTab}</div>
-      <div class="iw-panel">${contactsTab}</div>
+      <div class="iw-panel" role="tabpanel">${overviewTab}</div>
+      <div class="iw-panel" role="tabpanel">${historyTab}</div>
+      <div class="iw-panel" role="tabpanel">${contactsTab}</div>
     </div>
   `;
 }
@@ -481,10 +516,12 @@ export function buildPropertyInfoWindow(
 
 export function buildPropertyFallbackWindow(prop: MapProperty): string {
   return `
-    <div style="min-width:160px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_BLUE}50;border-radius:2px;">
+    <style>@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}</style>
+    <div style="min-width:160px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_BLUE}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
       <div style="font-weight:900;font-size:13px;color:${C_BLUE};margin-bottom:4px;">${escapeHtml(prop.name)}</div>
       <div style="font-size:10px;color:${C_TEXT_DIM};">${escapeHtml(prop.address)}</div>
       ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:${C_GOLD};font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
+      <div style="margin-top:6px;height:4px;border-radius:2px;background:linear-gradient(90deg, ${C_SUNKEN}, ${C_RAISED}, ${C_SUNKEN});background-size:200% 100%;animation:shimmer 1.5s infinite;"></div>
     </div>
   `;
 }

@@ -49,6 +49,7 @@ function toJulianDay(date: Date): number {
 }
 
 function calcSunElevation(date: Date, lat: number, lng: number): number {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 0;
   const JD = toJulianDay(date);
   const n = JD - 2451545.0; // days since J2000.0
 
@@ -139,6 +140,8 @@ export function useMapDaylightOverlay(
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastDateKeyRef = useRef<string>('');
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // ── Calculate and update ──────────────────────────────────
 
@@ -177,8 +180,8 @@ export function useMapDaylightOverlay(
         lastDateKeyRef.current = dateKey;
       } else {
         // Reuse previous sunset/sunrise and adjust for elapsed time
-        minutesToSunset = state.minutesToSunset != null ? state.minutesToSunset : findNextEvent(now, lat, lng, 0, 'setting');
-        minutesToSunrise = state.minutesToSunrise != null ? state.minutesToSunrise : findNextEvent(now, lat, lng, 0, 'rising');
+        minutesToSunset = stateRef.current.minutesToSunset != null ? stateRef.current.minutesToSunset : findNextEvent(now, lat, lng, 0, 'setting');
+        minutesToSunrise = stateRef.current.minutesToSunrise != null ? stateRef.current.minutesToSunrise : findNextEvent(now, lat, lng, 0, 'rising');
       }
 
       setState({

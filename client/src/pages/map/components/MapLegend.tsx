@@ -61,7 +61,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
 
   return (
     <div
-      className="backdrop-blur-md shadow-xl"
+      className="backdrop-blur-md shadow-xl transition-all duration-200 scrollbar-thin"
       style={{
         borderRadius: 2,
         background: 'rgba(13, 21, 32, 0.9)',
@@ -70,27 +70,28 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
         overflowY: 'auto',
         width: 168,
       }}
+      aria-label="Map legend"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
         <span className="text-[9px] font-mono font-black tracking-wider text-rmpg-300 uppercase">Legend</span>
-        <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors p-0.5">
-          <ChevronDown className="w-3 h-3" />
+        <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors duration-150 p-0.5">
+          <ChevronDown className="w-3 h-3 transition-transform duration-200" />
         </button>
       </div>
 
       <div className="px-2.5 py-2 space-y-2.5">
         {/* Unit Status */}
         <div>
-          <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">Unit Status</div>
+          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Unit Status</div>
           <div className="space-y-0.5">
             {STATUS_ORDER.map((status) => (
-              <div key={status} className="flex items-center gap-1.5">
+              <div key={status} className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
                 <div
-                  className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: UNIT_STATUS_COLORS[status], boxShadow: `0 0 4px ${UNIT_STATUS_COLORS[status]}60` }}
+                  className="w-3 h-3 rounded-sm shrink-0"
+                  style={{ backgroundColor: UNIT_STATUS_COLORS[status], boxShadow: `0 0 4px ${UNIT_STATUS_COLORS[status]}60`, width: 12, height: 12 }}
                 />
-                <span className="text-[9px] font-mono text-rmpg-200">{UNIT_STATUS_LABELS[status]}</span>
+                <span className="text-[9px] font-mono text-[#9ca3af]">{UNIT_STATUS_LABELS[status]}</span>
               </div>
             ))}
           </div>
@@ -98,12 +99,13 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
 
         {/* Call Priority */}
         <div>
-          <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">Call Priority</div>
+          <div className="h-px mb-2" style={{ background: 'linear-gradient(90deg, transparent, #1e3048, transparent)' }} />
+          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Call Priority</div>
           <div className="space-y-0.5">
             {PRIORITY_ORDER.map((p) => (
-              <div key={p} className="flex items-center gap-1.5">
-                <div className="w-2.5 h-1.5 shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p], borderRadius: 1 }} />
-                <span className="text-[9px] font-mono text-rmpg-200">{p} - {PRIORITY_LABELS[p]}</span>
+              <div key={p} className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+                <div className="shrink-0 rounded-sm" style={{ backgroundColor: PRIORITY_COLORS[p], width: 12, height: 12, borderRadius: 2 }} />
+                <span className="text-[9px] font-mono text-[#9ca3af]">{p} - {PRIORITY_LABELS[p]}</span>
               </div>
             ))}
           </div>
@@ -111,25 +113,26 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
 
         {/* Layer Symbols */}
         <div>
-          <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">Symbols</div>
+          <div className="h-px mb-2" style={{ background: 'linear-gradient(90deg, transparent, #1e3048, transparent)' }} />
+          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Symbols</div>
           <div className="space-y-0.5">
             {layers.properties && (
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: '#d4a017', opacity: 0.8 }} />
-                <span className="text-[9px] font-mono text-rmpg-200">Property</span>
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+                <div className="shrink-0 rounded-sm" style={{ backgroundColor: '#d4a017', opacity: 0.8, width: 12, height: 12 }} />
+                <span className="text-[9px] font-mono text-[#9ca3af]">Property</span>
               </div>
             )}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="shrink-0" style={{ width: 12, height: 2, background: 'linear-gradient(90deg, #3b82f6, #22c55e)', borderRadius: 1 }} />
-              <span className="text-[9px] font-mono text-rmpg-200">Tracking line</span>
+              <span className="text-[9px] font-mono text-[#9ca3af]">Tracking line</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="flex gap-px shrink-0">
                 <div className="w-1 h-1 rounded-full bg-cyan-400" />
                 <div className="w-1 h-1 rounded-full bg-cyan-400 opacity-70" />
                 <div className="w-1 h-1 rounded-full bg-cyan-400 opacity-40" />
               </div>
-              <span className="text-[9px] font-mono text-rmpg-200">Breadcrumb trail</span>
+              <span className="text-[9px] font-mono text-[#9ca3af]">Breadcrumb trail</span>
             </div>
           </div>
         </div>
@@ -137,7 +140,8 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
         {/* Breadcrumb Color Mode Legend */}
         {showBreadcrumbs && (
           <div>
-            <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">
+            <div className="h-px mb-2" style={{ background: 'linear-gradient(90deg, transparent, #1e3048, transparent)' }} />
+            <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">
               Breadcrumbs: {breadcrumbColorMode === 'unit' ? 'By Unit' : breadcrumbColorMode === 'speed' ? 'By Speed' : 'By Status'}
             </div>
             {breadcrumbColorMode === 'speed' && (

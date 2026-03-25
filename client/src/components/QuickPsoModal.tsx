@@ -130,7 +130,8 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors">
+            className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors"
+            aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -211,7 +212,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
           {/* Location */}
           <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address</label>
+            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address *</label>
             <AddressAutocomplete
               className="input-dark"
               placeholder="123 Main St, Salt Lake City, UT"

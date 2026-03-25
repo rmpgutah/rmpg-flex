@@ -28,7 +28,7 @@ export function exportToCsv(
     columns
       .map(c => {
         const val = row[c.key] ?? '';
-        const str = String(val).replace(/"/g, '""');
+        const str = String(val).replace(/"/g, '""').replace(/\r?\n/g, ' ');
         return `"${str}"`;
       })
       .join(','),

@@ -39,7 +39,7 @@ export default function WarrantAlertBanner({ alerts, onDismiss, onViewCall }: Pr
       {alerts.map(alert => (
         <div
           key={alert.id}
-          className={`flex items-start gap-3 p-3 rounded-sm border text-sm shadow-xl animate-in slide-in-from-right ${SEVERITY_STYLES[alert.severity || ''] || 'bg-red-950 border-red-700 text-red-200'}`}
+          className={`flex items-start gap-3 p-3 rounded-sm border text-sm shadow-xl animate-in slide-in-from-right ${(alert.severity && SEVERITY_STYLES[alert.severity]) || 'bg-red-950 border-red-700 text-red-200'}`}
         >
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 animate-pulse" />
           <div className="flex-1 min-w-0">
@@ -59,7 +59,7 @@ export default function WarrantAlertBanner({ alerts, onDismiss, onViewCall }: Pr
                 <ExternalLink className="w-3 h-3" /> View
               </button>
             )}
-            <button type="button" onClick={() => onDismiss(alert.id)} className="text-xs opacity-60 hover:opacity-100">
+            <button type="button" onClick={() => onDismiss(alert.id)} className="text-xs opacity-60 hover:opacity-100" aria-label="Dismiss warrant alert">
               <X className="w-3 h-3" />
             </button>
           </div>

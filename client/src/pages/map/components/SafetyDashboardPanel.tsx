@@ -116,7 +116,7 @@ function Section({
     <div>
       <button type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 w-full text-left py-1"
+        className="flex items-center gap-1 w-full text-left py-1 transition-all duration-150 active:scale-[0.97]"
         aria-expanded={open}
       >
         {open ? (
@@ -160,7 +160,7 @@ export default function SafetyDashboardPanel({
 
   return (
     <div
-      className="panel-beveled bg-surface-base flex flex-col overflow-hidden"
+      className="panel-beveled bg-surface-base flex flex-col overflow-hidden transition-all duration-200 ease-out shadow-lg backdrop-blur-sm"
       style={{ maxWidth: 320, maxHeight: '80vh' }}
     >
       {/* Header */}
@@ -174,14 +174,14 @@ export default function SafetyDashboardPanel({
             Safety Dashboard
           </span>
         </div>
-        <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Close">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close safety dashboard">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2"
+        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Section 1: Shift Risk Score ──────────────────── */}
@@ -190,7 +190,7 @@ export default function SafetyDashboardPanel({
             <div className="flex items-center gap-3">
               {/* Gauge arc */}
               <div className="relative" style={{ width: 56, height: 56 }}>
-                <svg viewBox="0 0 56 56" role="img" aria-label={`Risk score gauge: ${score}`} className="w-full h-full">
+                <svg viewBox="0 0 56 56" role="img" aria-label={`Risk score gauge: ${score}`} className="w-full h-full" style={{ filter: `drop-shadow(0 0 4px ${color}30)` }}>
                   {/* Background arc */}
                   <circle
                     cx="28"
@@ -217,7 +217,7 @@ export default function SafetyDashboardPanel({
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-sm font-bold" style={{ color }}>
+                  <span className={`text-sm font-bold ${score > 75 ? 'animate-pulse' : ''}`} style={{ color, textShadow: `0 0 8px ${color}40` }}>
                     {score}
                   </span>
                 </div>
@@ -437,7 +437,7 @@ export default function SafetyDashboardPanel({
         {shiftRisk && shiftRisk.alerts.length > 0 && (
           <Section title="Alerts History" defaultOpen={false}>
             <div
-              className="space-y-0.5 max-h-[120px] overflow-y-auto"
+              className="space-y-0.5 max-h-[120px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
               style={{ scrollbarWidth: 'thin' }}
             >
               {shiftRisk.alerts.map((alert, i) => (
@@ -472,7 +472,7 @@ function ThreatCard({
 }) {
   return (
     <div
-      className="rounded-sm p-1.5 flex items-center gap-1.5"
+      className="rounded-sm p-1.5 flex items-center gap-1.5 transition-all duration-150 hover:border-[#2a3f5a]"
       style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
     >
       <span className="led-dot" style={{ background: count > 0 ? ledColor : '#374151' }} />

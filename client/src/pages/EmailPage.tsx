@@ -949,7 +949,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       clearDraft();
       onSent();
       onClose();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
     finally { setSending(false); setShowScheduleModal(false); }
   };
 
@@ -1022,7 +1022,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       clearDraft();
       onSent();
       onClose();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
     finally { setSending(false); }
   };
 
@@ -1447,8 +1447,11 @@ function groupByConversation(messages: EmailMessage[]): ThreadGroup[] {
 
 interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
-const timeAgo = (date: string) => {
-  const ms = Date.now() - new Date(date).getTime();
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

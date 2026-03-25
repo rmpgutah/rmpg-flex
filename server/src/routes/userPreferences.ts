@@ -197,9 +197,10 @@ router.get('/recently-viewed', (req: Request, res: Response) => {
     const db = getDb();
     const userId = req.user!.userId;
     const user = db.prepare('SELECT recently_viewed FROM users WHERE id = ?').get(userId) as any;
-    const items = JSON.parse(user?.recently_viewed || '[]');
+    let items: any[] = [];
+    try { items = JSON.parse(user?.recently_viewed || '[]'); } catch { items = []; }
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+  } catch (error: any) { console.error('[UserPreferences] recently-viewed GET error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 router.post('/recently-viewed', (req: Request, res: Response) => {
@@ -210,7 +211,8 @@ router.post('/recently-viewed', (req: Request, res: Response) => {
     if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required', code: 'ENTITYTYPE_AND_ENTITYID_REQUIRED' });
 
     const user = db.prepare('SELECT recently_viewed FROM users WHERE id = ?').get(userId) as any;
-    let items = JSON.parse(user?.recently_viewed || '[]');
+    let items: any[];
+    try { items = JSON.parse(user?.recently_viewed || '[]'); } catch { items = []; }
     // Remove duplicates and add to front
     items = items.filter((i: any) => !(i.entity_type === entity_type && i.entity_id === entity_id));
     items.unshift({ entity_type, entity_id, title: title || '', viewed_at: localNow() });
@@ -218,7 +220,7 @@ router.post('/recently-viewed', (req: Request, res: Response) => {
 
     db.prepare('UPDATE users SET recently_viewed = ? WHERE id = ?').run(JSON.stringify(items), userId);
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+  } catch (error: any) { console.error('[UserPreferences] recently-viewed POST error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -229,9 +231,10 @@ router.get('/favorites', (req: Request, res: Response) => {
     const db = getDb();
     const userId = req.user!.userId;
     const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
-    const items = JSON.parse(user?.favorites || '[]');
+    let items: any[] = [];
+    try { items = JSON.parse(user?.favorites || '[]'); } catch { items = []; }
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+  } catch (error: any) { console.error('[UserPreferences] favorites GET error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 router.post('/favorites', (req: Request, res: Response) => {
@@ -242,7 +245,8 @@ router.post('/favorites', (req: Request, res: Response) => {
     if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required', code: 'ENTITYTYPE_AND_ENTITYID_REQUIRED' });
 
     const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
-    let items = JSON.parse(user?.favorites || '[]');
+    let items: any[];
+    try { items = JSON.parse(user?.favorites || '[]'); } catch { items = []; }
     // Don't add duplicates
     if (!items.find((i: any) => i.entity_type === entity_type && i.entity_id === entity_id)) {
       items.push({ entity_type, entity_id, title: title || '', added_at: localNow() });

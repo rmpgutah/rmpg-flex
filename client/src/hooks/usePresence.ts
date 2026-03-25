@@ -30,20 +30,21 @@ export function usePresence() {
   // Fetch initial presence on mount
   useEffect(() => {
     if (!isConnected) return;
-    let cancelled = false;
+    const controller = new AbortController();
 
-    apiFetch<{ users: PresenceUser[]; count?: number }>('/presence')
+    apiFetch<{ users: PresenceUser[]; count?: number }>('/presence', { signal: controller.signal })
       .then(data => {
-        if (!cancelled && data?.users) {
+        if (!controller.signal.aborted && data?.users) {
           setUsers(data.users);
           setCount(data.count || data.users.length);
         }
       })
       .catch((err) => {
-        if (!cancelled) console.warn('[usePresence] fetch presence failed:', err);
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (!controller.signal.aborted) console.warn('[usePresence] fetch presence failed:', err);
       });
 
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [isConnected]);
 
   return { users, count, isConnected };

@@ -157,9 +157,13 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
         <div key={item.person.id} className="safety-person-hit">
           <div
             className="safety-person-header"
+            role="button"
+            tabIndex={0}
+            aria-expanded={expandedPerson === item.person.id}
             onClick={() => setExpandedPerson(
               expandedPerson === item.person.id ? null : item.person.id
             )}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedPerson(expandedPerson === item.person.id ? null : item.person.id); } }}
           >
             <div className="flex items-center gap-1.5">
               <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} />
@@ -209,7 +213,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                   <div>
                     <span className="text-red-400 font-bold uppercase">{w.offense_level}</span>
                     <span className="text-rmpg-300 ml-1">{w.charge_description}</span>
-                    {w.bail_amount && (
+                    {w.bail_amount != null && w.bail_amount > 0 && (
                       <span className="text-rmpg-500 ml-1">Bail: ${w.bail_amount.toLocaleString()}</span>
                     )}
                   </div>
@@ -256,7 +260,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
             <span className="font-bold">OFAC SANCTIONS MATCH — {result.ofacHits.length} HIT(S)</span>
           </div>
           {result.ofacHits.map((hit, idx) => (
-            <div key={idx} className="safety-ofac-entry">
+            <div key={`ofac-${hit.name}-${idx}`} className="safety-ofac-entry">
               <span className="text-[10px] text-red-300 font-bold">{hit.name}</span>
               <span className="text-[9px] text-red-400/80">{hit.program}</span>
               <span className="text-[9px] text-rmpg-400">{hit.source_list} — {hit.type}</span>

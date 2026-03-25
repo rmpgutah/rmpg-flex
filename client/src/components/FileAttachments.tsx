@@ -210,7 +210,7 @@ export default function FileAttachments({
       {error && (
         <div className="px-2 py-1 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           {error}
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300" aria-label="Dismiss error">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -384,6 +384,9 @@ export default function FileAttachments({
       {/* Preview Modal */}
       {previewAttachment && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="File preview"
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-8"
           onClick={() => setPreviewAttachment(null)}
         >
@@ -403,6 +406,7 @@ export default function FileAttachments({
                 <button type="button"
                   onClick={() => setPreviewAttachment(null)}
                   className="p-1 hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
+                  aria-label="Close preview"
                 >
                   <X className="w-4 h-4" />
                 </button>

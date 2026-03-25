@@ -78,7 +78,7 @@ export default function TacticalToolsPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100vh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg"
+      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100vh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
       style={{ top: 8, right: 8 }}
     >
       {/* Header */}
@@ -88,15 +88,16 @@ export default function TacticalToolsPanel({
         </span>
         <button type="button"
           onClick={onClose}
-          className="text-rmpg-400 hover:text-white transition-colors"
+          className="text-rmpg-400 hover:text-white hover:bg-[#1a2636] transition-colors duration-150 rounded-sm p-0.5"
           title="Close"
+          aria-label="Close tactical tools"
         >
           <X size={14} />
         </button>
       </div>
 
       {/* Rally Point */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #d4a017' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Star size={11} className="text-yellow-400" />
           Rally Point
@@ -112,14 +113,14 @@ export default function TacticalToolsPanel({
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={onSetRallyPoint}
-            className="toolbar-btn text-[9px] px-2 py-0.5"
+            className="toolbar-btn text-[9px] px-2 py-0.5 transition-all duration-150 active:scale-[0.97]"
           >
             Set at Center
           </button>
           {rallyPoint && (
             <button type="button"
               onClick={onClearRallyPoint}
-              className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
+              className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300 transition-all duration-150 active:scale-[0.97]"
             >
               Clear
             </button>
@@ -128,7 +129,7 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* Command Rings */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #3b82f6' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Circle size={11} className="text-blue-400" />
           Command Rings
@@ -139,13 +140,13 @@ export default function TacticalToolsPanel({
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={onShowCommandRings}
-            className="toolbar-btn text-[9px] px-2 py-0.5"
+            className="toolbar-btn text-[9px] px-2 py-0.5 transition-all duration-150 active:scale-[0.97]"
           >
             Deploy at Center
           </button>
           <button type="button"
             onClick={onClearCommandRings}
-            className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
+            className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300 transition-all duration-150 active:scale-[0.97]"
           >
             Clear
           </button>
@@ -153,7 +154,7 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* K9 Deployment Radius */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #22c55e' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Dog size={11} className="text-green-400" />
           K9 Deployment Radius
@@ -164,13 +165,13 @@ export default function TacticalToolsPanel({
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={onShowK9Radius}
-            className="toolbar-btn text-[9px] px-2 py-0.5"
+            className="toolbar-btn text-[9px] px-2 py-0.5 transition-all duration-150 active:scale-[0.97]"
           >
             Show at Center
           </button>
           <button type="button"
             onClick={onClearK9Radius}
-            className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
+            className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300 transition-all duration-150 active:scale-[0.97]"
           >
             Clear
           </button>
@@ -178,7 +179,7 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* Emergency Services */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #06b6d4' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Building2 size={11} className="text-cyan-400" />
           Emergency Services
@@ -186,21 +187,21 @@ export default function TacticalToolsPanel({
         <div className="flex items-center gap-1.5 flex-wrap">
           <button type="button"
             onClick={onShowHospitals}
-            className="toolbar-btn text-[9px] px-2 py-0.5 inline-flex items-center gap-1"
+            className="toolbar-btn text-[9px] px-2 py-0.5 inline-flex items-center gap-1 transition-all duration-150 active:scale-[0.97]"
           >
             <Building2 size={9} />
             Show Hospitals
           </button>
           <button type="button"
             onClick={onShowFireStations}
-            className="toolbar-btn text-[9px] px-2 py-0.5 inline-flex items-center gap-1"
+            className="toolbar-btn text-[9px] px-2 py-0.5 inline-flex items-center gap-1 transition-all duration-150 active:scale-[0.97]"
           >
             <Flame size={9} />
             Show Fire Stations
           </button>
           <button type="button"
             onClick={onHideEmergencyServices}
-            className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
+            className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300 transition-all duration-150 active:scale-[0.97]"
           >
             Hide All
           </button>
@@ -208,7 +209,7 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* Entry/Exit Points */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #a855f7' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <MapPin size={11} className="text-purple-400" />
           Entry / Exit Points
@@ -224,7 +225,7 @@ export default function TacticalToolsPanel({
           />
           <button type="button"
             onClick={handleAddEntry}
-            className="toolbar-btn text-[9px] px-1.5 py-0.5 inline-flex items-center gap-0.5"
+            className="toolbar-btn text-[9px] px-1.5 py-0.5 inline-flex items-center gap-0.5 transition-all duration-150 active:scale-[0.97]"
             title="Add at Center"
           >
             <Plus size={9} />
@@ -248,7 +249,7 @@ export default function TacticalToolsPanel({
             </div>
             <button type="button"
               onClick={onClearEntryPoints}
-              className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300 inline-flex items-center gap-0.5"
+              className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300 inline-flex items-center gap-0.5 transition-all duration-150 active:scale-[0.97]"
             >
               <Trash2 size={9} />
               Clear All
@@ -258,7 +259,7 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* Crowd Density */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #f97316' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Users size={11} className="text-orange-400" />
           Crowd Density

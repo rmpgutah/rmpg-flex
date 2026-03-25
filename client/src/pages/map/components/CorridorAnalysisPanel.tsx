@@ -57,7 +57,7 @@ export default function CorridorAnalysisPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm bg-surface-base border border-rmpg-700 shadow-xl"
+      className="panel-beveled rounded-sm bg-surface-base border border-rmpg-700 shadow-xl transition-all duration-200 ease-out backdrop-blur-sm"
       style={{ width: 280, maxWidth: 280 }}
     >
       {/* Header */}
@@ -70,13 +70,14 @@ export default function CorridorAnalysisPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="p-0.5 rounded-sm hover:bg-rmpg-700/50 text-rmpg-400 hover:text-rmpg-200 transition-colors"
+          className="p-0.5 rounded-sm hover:bg-[#1a2636] text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
+          aria-label="Close corridor analysis"
         >
           <X size={12} />
         </button>
       </div>
 
-      <div className="p-3 space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin">
+      <div className="p-3 space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {/* === Corridor Analysis Section === */}
         <section className="space-y-2">
           <h3 className="text-[10px] uppercase tracking-widest text-rmpg-400 font-semibold flex items-center gap-1">
@@ -88,7 +89,8 @@ export default function CorridorAnalysisPanel({
             <button type="button"
               onClick={onAnalyzeCorridor}
               disabled={loading}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              aria-label="Analyze corridor route"
             >
               {loading ? <Loader2 size={10} className="animate-spin" /> : <Route size={10} />}
               Analyze Route
@@ -110,8 +112,8 @@ export default function CorridorAnalysisPanel({
               <div className="flex items-center justify-between px-2 py-1.5 rounded-sm bg-rmpg-700/20 border border-rmpg-700/50">
                 <span className="text-[9px] font-mono text-rmpg-400">TOTAL RISK</span>
                 <span
-                  className="text-[11px] font-mono font-bold"
-                  style={{ color: getRiskColor(corridorData.total_risk_score) }}
+                  className="text-[11px] font-mono font-bold tabular-nums"
+                  style={{ color: getRiskColor(corridorData.total_risk_score), textShadow: `0 0 6px ${getRiskColor(corridorData.total_risk_score)}30` }}
                 >
                   {corridorData.total_risk_score.toFixed(1)} — {getRiskLabel(corridorData.total_risk_score)}
                 </span>
@@ -135,8 +137,11 @@ export default function CorridorAnalysisPanel({
                   </div>
                   <div className="space-y-0.5">
                     {corridorData.segments.map((seg, i) => (
-                      <div key={i} className="flex items-center justify-between text-[9px] font-mono">
-                        <span className="text-rmpg-400">Seg {i + 1}</span>
+                      <div key={i} className="flex items-center justify-between text-[9px] font-mono hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
+                        <div className="flex items-center gap-1">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getRiskColor(seg.risk_score), boxShadow: `0 0 3px ${getRiskColor(seg.risk_score)}50` }} />
+                          <span className="text-rmpg-400">Seg {i + 1}</span>
+                        </div>
                         <div className="flex items-center gap-2">
                           {seg.traffic_label && (
                             <span className="text-rmpg-400/70">{seg.traffic_label}</span>
@@ -197,7 +202,8 @@ export default function CorridorAnalysisPanel({
             <button type="button"
               onClick={handlePursuitProject}
               disabled={loading}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-amber-600/20 border border-amber-500/30 text-amber-300 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-amber-600/20 border border-amber-500/30 text-amber-300 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              aria-label="Project pursuit path"
             >
               {loading ? <Loader2 size={10} className="animate-spin" /> : <Navigation size={10} />}
               Project
@@ -233,7 +239,8 @@ export default function CorridorAnalysisPanel({
             <button type="button"
               onClick={onShowEscapeRoutes}
               disabled={loading}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              aria-label="Show escape routes"
             >
               {loading ? <Loader2 size={10} className="animate-spin" /> : <Zap size={10} />}
               Show Escape Routes

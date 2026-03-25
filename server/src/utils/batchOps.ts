@@ -25,9 +25,19 @@ export function batchInsert(
   rows: Record<string, any>[],
 ): number {
   if (rows.length === 0) return 0;
+  // [FIX 88] Validate table name to prevent SQL injection (only allow alphanumeric + underscores)
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+    throw new Error(`Invalid table name: ${table}`);
+  }
 
   const db = getDb();
   const columns = Object.keys(rows[0]);
+  // [FIX 89] Validate column names to prevent SQL injection
+  for (const col of columns) {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(col)) {
+      throw new Error(`Invalid column name: ${col}`);
+    }
+  }
   const placeholders = columns.map(() => '?').join(', ');
   const sql = `INSERT INTO "${table}" (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders})`;
 
@@ -99,12 +109,19 @@ export function batchDelete(
   idColumn = 'id',
 ): number {
   if (ids.length === 0) return 0;
+  // [FIX 90] Validate table and column names
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) throw new Error(`Invalid table name: ${table}`);
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(idColumn)) throw new Error(`Invalid column name: ${idColumn}`);
+
+  // [FIX 91] Limit batch delete size to prevent extremely long IN clauses
+  const MAX_DELETE_BATCH = 999;
+  const limitedIds = ids.slice(0, MAX_DELETE_BATCH);
 
   const db = getDb();
-  const placeholders = ids.map(() => '?').join(', ');
+  const placeholders = limitedIds.map(() => '?').join(', ');
   const sql = `DELETE FROM "${table}" WHERE "${idColumn}" IN (${placeholders})`;
 
-  const result = db.prepare(sql).run(...ids);
+  const result = db.prepare(sql).run(...limitedIds);
   return result.changes;
 }
 

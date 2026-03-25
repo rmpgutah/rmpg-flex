@@ -23,7 +23,8 @@ function nextEventNumber(): string {
   const last = db.prepare(
     "SELECT event_number FROM court_events WHERE event_number LIKE ? ORDER BY id DESC LIMIT 1"
   ).get(`${prefix}%`) as { event_number: string } | undefined;
-  const seq = last ? parseInt(last.event_number.replace(prefix, ''), 10) + 1 : 1;
+  const parsed = last ? parseInt(last.event_number.replace(prefix, ''), 10) : 0;
+  const seq = isNaN(parsed) ? 1 : parsed + 1;
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
@@ -57,7 +58,6 @@ router.get('/events', (req: Request, res: Response) => {
       ORDER BY e.event_date ASC, e.event_time ASC
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
-    res.set('Cache-Control', 'private, max-age=30');
     res.set('Cache-Control', 'private, max-age=30');
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
@@ -171,7 +171,12 @@ router.post('/events', (req: Request, res: Response) => {
 
     // Notify assigned officers
     const officerIds = officers_required || [];
-    const parsedOfficers = typeof officerIds === 'string' ? JSON.parse(officerIds) : officerIds;
+    let parsedOfficers: any[];
+    try {
+      parsedOfficers = typeof officerIds === 'string' ? JSON.parse(officerIds) : officerIds;
+    } catch {
+      parsedOfficers = [];
+    }
     if (Array.isArray(parsedOfficers)) {
       for (const officerId of parsedOfficers) {
         const id = typeof officerId === 'number' ? officerId : parseInt(officerId, 10);

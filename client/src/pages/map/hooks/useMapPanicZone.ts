@@ -65,6 +65,7 @@ export function useMapPanicZone(
 
   const drawPanicZone = useCallback((lat: number, lng: number) => {
     if (!map || !window.google?.maps) return;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
     clearOverlays();
 

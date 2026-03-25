@@ -52,7 +52,7 @@ export default function SafetyZonesPanel({
   const totalFlagged = zones.reduce((s, z) => s + z.total_flagged, 0);
 
   return (
-    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ maxWidth: 300 }}>
+    <div className="panel-beveled bg-surface-base overflow-hidden transition-all duration-200 ease-out shadow-lg backdrop-blur-sm" style={{ maxWidth: 300 }}>
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
@@ -72,15 +72,17 @@ export default function SafetyZonesPanel({
         <div className="flex items-center gap-1">
           <button type="button"
             onClick={onRefresh}
-            className="toolbar-btn p-1"
+            className="toolbar-btn p-1 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
             title="Refresh"
+            aria-label="Refresh safety zones"
           >
             <RefreshCw size={11} className={`text-rmpg-400 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1"
+            className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm"
             title="Close"
+            aria-label="Close safety zones panel"
           >
             <X size={12} className="text-rmpg-400" />
           </button>
@@ -96,7 +98,7 @@ export default function SafetyZonesPanel({
             <button type="button"
               key={d}
               onClick={() => onDaysChange(d)}
-              className={`px-1.5 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+              className={`px-1.5 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-all duration-150 active:scale-[0.97] ${
                 days === d
                   ? 'bg-red-900/50 text-red-400 border border-red-700/50'
                   : 'text-rmpg-500 hover:text-rmpg-300'
@@ -113,8 +115,9 @@ export default function SafetyZonesPanel({
             <span className="text-[9px] font-mono text-rmpg-500">Analyzing zones…</span>
           </div>
         ) : zones.length === 0 ? (
-          <div className="py-4 text-center text-[9px] font-mono text-rmpg-500">
-            No flagged zones found in the last {days} days
+          <div className="py-4 text-center text-[9px] font-mono text-rmpg-500 border border-dashed border-[#1e3048] rounded-sm mx-1">
+            <div className="text-rmpg-600 mb-1">No flagged zones found</div>
+            <div className="text-[8px] text-rmpg-600">Try expanding the date range or refreshing</div>
           </div>
         ) : (
           <>
@@ -159,7 +162,7 @@ export default function SafetyZonesPanel({
 
             {/* ── Zone list ───────────────────────────────── */}
             <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold px-1">Zones</div>
-            <div className="max-h-52 space-y-1 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+            <div className="max-h-52 space-y-1 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
               {zones.map((zone, idx) => {
                 const isHigh = zone.risk_level === 'high';
                 const color = isHigh ? '#ef4444' : '#f59e0b';
@@ -170,7 +173,8 @@ export default function SafetyZonesPanel({
                   <button type="button"
                     key={`${zone.latitude}-${zone.longitude}-${idx}`}
                     onClick={() => onNavigate(zone.latitude, zone.longitude)}
-                    className="w-full text-left rounded-sm px-2 py-1.5 transition-colors hover:brightness-125"
+                    className="w-full text-left rounded-sm px-2 py-1.5 transition-all duration-150 hover:brightness-125 active:scale-[0.97]"
+                    aria-label={`Navigate to ${zone.risk_level} risk zone with ${zone.total_flagged} incidents`}
                     style={{
                       background: isHigh ? '#1a0808' : '#1a1508',
                       border: `1px solid ${isHigh ? '#3b1111' : '#3b2e0a'}`,

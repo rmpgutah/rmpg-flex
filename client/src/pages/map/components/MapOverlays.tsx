@@ -54,7 +54,9 @@ export default function MapOverlays({
       {/* Status Legend - Bottom Left (desktop only) */}
       {!isMobile && <div className="absolute bottom-2 left-2 z-[1000]">
         <div
-          className="backdrop-blur-md shadow-xl"
+          className="backdrop-blur-md shadow-xl transition-all duration-200"
+          role="region"
+          aria-label="Map legend"
           style={{
             borderRadius: 2,
             background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
@@ -86,11 +88,13 @@ export default function MapOverlays({
 
       {/* Stats Bar - Top Left (after layers panel, desktop only) */}
       {!isMobile && <div
-        className="absolute top-2 z-[1000] transition-all"
+        className="absolute top-2 z-[1000] transition-all duration-200 ease-out"
         style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
       >
         <div
-          className="backdrop-blur-md shadow-2xl"
+          className="backdrop-blur-md shadow-2xl transition-all duration-200"
+          role="status"
+          aria-label="Map statistics"
           style={{
             borderRadius: 2,
             background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
@@ -142,7 +146,9 @@ export default function MapOverlays({
       {/* Route Info Panel */}
       {activeRoute && (
         <div
-          className="absolute z-[1000] backdrop-blur-md"
+          className="absolute z-[1000] backdrop-blur-md transition-all duration-200 ease-out shadow-lg"
+          role="region"
+          aria-label="Active route information"
           style={{
             ...(isMobile
               ? { top: 56, left: 8, right: 8 }
@@ -161,7 +167,8 @@ export default function MapOverlays({
             </span>
             <button type="button"
               onClick={clearRoute}
-              style={{ background: 'none', border: 'none', color: '#5a6e80', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
+              className="hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
+              style={{ background: 'none', border: 'none', color: '#5a6e80', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
               aria-label="Clear route"
               title="Clear route"
             >
@@ -200,7 +207,7 @@ export default function MapOverlays({
                 const map = mapInstanceRef.current;
                 if (map) map.setZoom((map.getZoom() || 12) + 1);
               }}
-              className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+              className="flex items-center justify-center transition-all duration-150 hover:bg-white/10 active:bg-white/20 active:scale-[0.97]"
               style={{ width: 48, height: 48, borderBottom: '1px solid #1e3048' }}
               aria-label="Zoom in"
               title="Zoom in"
@@ -212,7 +219,7 @@ export default function MapOverlays({
                 const map = mapInstanceRef.current;
                 if (map) map.setZoom((map.getZoom() || 12) - 1);
               }}
-              className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+              className="flex items-center justify-center transition-all duration-150 hover:bg-white/10 active:bg-white/20 active:scale-[0.97]"
               style={{ width: 48, height: 48 }}
               aria-label="Zoom out"
               title="Zoom out"

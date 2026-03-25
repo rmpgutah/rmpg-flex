@@ -42,7 +42,9 @@ function getLedClass(action: string): string {
 }
 
 function formatTimestamp(dateStr: string): string {
+  if (!dateStr) return '--:--:--';
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '--:--:--';
   return date.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',

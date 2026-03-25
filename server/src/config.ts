@@ -157,6 +157,40 @@ export const config = {
 
   // Integrations
   serveManagerApiKey: process.env.SERVEMANAGER_API_KEY || '',
+
+  // Email (Microsoft Graph)
+  email: {
+    clientId: process.env.AZURE_CLIENT_ID || '',
+    clientSecret: process.env.AZURE_CLIENT_SECRET || '',
+    tenantId: process.env.AZURE_TENANT_ID || '',
+  },
 } as const;
+
+// ─── Environment Variable Validation ──────────────────
+// Warn about missing critical env vars at startup
+const requiredInProduction: Array<{ key: string; label: string }> = [
+  { key: 'JWT_SECRET', label: 'JWT signing secret' },
+];
+
+const recommendedInProduction: Array<{ key: string; label: string }> = [
+  { key: 'CORS_ORIGINS', label: 'Allowed CORS origins' },
+  { key: 'PRIMARY_DOMAIN', label: 'Primary domain for redirects' },
+  { key: 'WEBAUTHN_RP_ID', label: 'WebAuthn relying party ID' },
+];
+
+if (isProduction) {
+  const missing = requiredInProduction.filter(({ key }) => !process.env[key] || process.env[key] === defaultSecret);
+  if (missing.length > 0) {
+    console.warn(`\n[Config] Missing required environment variables in production:`);
+    missing.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));
+    console.warn('');
+  }
+  const unset = recommendedInProduction.filter(({ key }) => !process.env[key]);
+  if (unset.length > 0) {
+    console.warn(`[Config] Recommended environment variables not set:`);
+    unset.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));
+    console.warn('');
+  }
+}
 
 export default config;

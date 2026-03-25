@@ -62,7 +62,10 @@ export function isValidZip(zip: string): boolean {
 export function isValidDate(dateStr: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
   const d = new Date(dateStr + 'T00:00:00');
-  return !isNaN(d.getTime()) && d.toISOString().startsWith(dateStr);
+  if (isNaN(d.getTime())) return false;
+  // Verify the date components match (catches invalid dates like Feb 30)
+  const [y, m, day] = dateStr.split('-').map(Number);
+  return d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day;
 }
 
 /** Validate that a date is not in the future. */
@@ -75,7 +78,7 @@ export function isNotFutureDate(dateStr: string): boolean {
 /** Validate that a date range is valid (start <= end). */
 export function isValidDateRange(start: string, end: string): boolean {
   if (!isValidDate(start) || !isValidDate(end)) return false;
-  return new Date(start) <= new Date(end);
+  return new Date(start + 'T00:00:00') <= new Date(end + 'T00:00:00');
 }
 
 /** Validate an incident/case number format (e.g., RKY26-00001-BURG). */
@@ -120,7 +123,7 @@ export function isValidState(state: string): boolean {
  */
 export function calculateAge(dob: string): number | null {
   if (!isValidDate(dob)) return null;
-  const birth = new Date(dob);
+  const birth = new Date(dob + 'T00:00:00');
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
   const monthDiff = today.getMonth() - birth.getMonth();
@@ -225,13 +228,13 @@ export const INPUT_PLACEHOLDERS = {
 /** Validate that a string is a valid non-negative number */
 export function isValidPositiveNumber(value: string): boolean {
   const n = parseFloat(value);
-  return !isNaN(n) && n >= 0;
+  return Number.isFinite(n) && n >= 0;
 }
 
 /** Validate that a string is a valid integer within range */
 export function isValidIntegerInRange(value: string, min: number, max: number): boolean {
   const n = parseInt(value, 10);
-  return !isNaN(n) && Number.isInteger(n) && n >= min && n <= max;
+  return Number.isFinite(n) && Number.isInteger(n) && n >= min && n <= max;
 }
 
 /** Validate a Tax ID / EIN format (XX-XXXXXXX) */
