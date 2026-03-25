@@ -988,8 +988,13 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('caller_relationship', caller_relationship);
     addField('location_address', location_address);
     addField('property_id', property_id);
-    addField('latitude', latitude);
-    addField('longitude', longitude);
+    // Protect lat/lng from being wiped — only update if a real numeric value is provided
+    if (latitude !== undefined && latitude !== null && latitude !== '') {
+      updates.push('latitude = ?'); params.push(Number(latitude));
+    }
+    if (longitude !== undefined && longitude !== null && longitude !== '') {
+      updates.push('longitude = ?'); params.push(Number(longitude));
+    }
     addField('description', description);
     addField('notes', notes);
     addField('disposition', disposition);
