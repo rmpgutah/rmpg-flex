@@ -1004,8 +1004,8 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
   const text = sanitizePdfText(rawText);
   const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
-  // Reduce wrap width by 3mm to prevent Courier rounding errors causing mid-word breaks
-  const wrapWidth = maxWidth - 3;
+  // Reduce wrap width slightly to prevent Courier rounding errors causing overflow
+  const wrapWidth = maxWidth - 1;
   let lastPage = doc.getNumberOfPages();
   const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
   const hasMarkers = (s: string) => /(\*\*|__|\*[^*])/.test(s);
@@ -1022,9 +1022,7 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       doc.setFont('courier', 'normal');
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(hardLine);
-      const rawWrapped: string[] = doc.splitTextToSize(stripped, wrapWidth);
-      // Trim leading/trailing spaces from each line to prevent indent on wrap
-      const wrappedLines = rawWrapped.map((ln: string) => ln.trimStart());
+      const wrappedLines: string[] = doc.splitTextToSize(stripped, wrapWidth);
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];
@@ -1159,7 +1157,7 @@ export function addNarrativeSection(
     const hardLines = para.trim().split(/\n/);
     for (const hl of hardLines) {
       if (!hl.trim()) continue;
-      const lines = doc.splitTextToSize(stripFmt(hl.trim()), ffw - 3);
+      const lines = doc.splitTextToSize(stripFmt(hl.trim()), ffw - 1);
       totalLines += lines.length;
     }
     paraCount++;
@@ -1371,7 +1369,7 @@ export function addAttachmentsSection(
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
   const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 2) {
+  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 1) {
     doc.addPage();
     addConfidentialWatermark(doc);
 
