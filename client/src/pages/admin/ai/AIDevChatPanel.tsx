@@ -18,6 +18,49 @@ interface ChatSession {
   first_message: string;
 }
 
+// Generate contextual thinking steps based on the user's query
+function generateThinkingSteps(query: string): string[] {
+  const q = query.toLowerCase();
+  const steps: string[] = [];
+
+  steps.push(`> Analyzing query: "${query.slice(0, 80)}${query.length > 80 ? '...' : ''}"`);
+
+  // Detect query type and generate relevant thinking
+  if (q.includes('dispatch') || q.includes('call') || q.includes('cad')) {
+    steps.push('> Checking dispatch system architecture — WebSocket broadcasts, call lifecycle...');
+    steps.push('> Reviewing DispatchPage.tsx and dispatch routes for relevant patterns...');
+  } else if (q.includes('map') || q.includes('gps') || q.includes('location')) {
+    steps.push('> Examining map integration — Google Maps API, offline tiles, GPS tracking...');
+    steps.push('> Reviewing MapPage.tsx and geolocation utilities...');
+  } else if (q.includes('database') || q.includes('schema') || q.includes('table') || q.includes('sql')) {
+    steps.push('> Scanning database schema in server/src/models/database.ts...');
+    steps.push('> Identifying relevant tables, indexes, and relationships...');
+  } else if (q.includes('api') || q.includes('endpoint') || q.includes('route')) {
+    steps.push('> Examining Express route patterns in server/src/routes/...');
+    steps.push('> Checking middleware chain: auth → requireRole → handler → auditLog...');
+  } else if (q.includes('bug') || q.includes('error') || q.includes('fix') || q.includes('broken')) {
+    steps.push('> Analyzing reported issue — checking common failure points...');
+    steps.push('> Reviewing error handling patterns and edge cases...');
+  } else if (q.includes('ui') || q.includes('design') || q.includes('component') || q.includes('page')) {
+    steps.push('> Reviewing UI component architecture — React + Tailwind dark theme...');
+    steps.push('> Checking design system: surfaces #141e2b, brand blue #1a5a9e, flat panels...');
+  } else if (q.includes('auth') || q.includes('login') || q.includes('security') || q.includes('jwt')) {
+    steps.push('> Examining authentication flow — JWT + WebAuthn + TOTP 2FA...');
+    steps.push('> Reviewing middleware/auth.ts and session management...');
+  } else if (q.includes('improve') || q.includes('suggest') || q.includes('optimize') || q.includes('enhance')) {
+    steps.push('> Evaluating current implementation for improvement opportunities...');
+    steps.push('> Considering performance, UX, and maintainability trade-offs...');
+  } else {
+    steps.push('> Searching RMPG Flex codebase for relevant context...');
+    steps.push('> Cross-referencing with system architecture and patterns...');
+  }
+
+  steps.push('> Formulating comprehensive response with specific recommendations...');
+  steps.push('> Generating answer...');
+
+  return steps;
+}
+
 export default function AIDevChatPanel() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<string>('');
@@ -117,7 +160,17 @@ export default function AIDevChatPanel() {
     setIsStreaming(true);
     setStreamingContent('');
     setThinkingText('');
-    setIsThinking(false);
+    setIsThinking(true);
+
+    // Generate contextual thinking steps based on the query
+    const thinkSteps = generateThinkingSteps(text);
+    let thinkIdx = 0;
+    const thinkInterval = setInterval(() => {
+      if (thinkIdx < thinkSteps.length) {
+        setThinkingText(prev => prev + (prev ? '\n' : '') + thinkSteps[thinkIdx]);
+        thinkIdx++;
+      }
+    }, 1200);
 
     try {
       // Get auth token
@@ -174,6 +227,7 @@ export default function AIDevChatPanel() {
               // Legacy: generic thinking signal
               setIsThinking(true);
             } else if (parsed.token) {
+              clearInterval(thinkInterval); // Stop simulated thinking
               setIsThinking(false);
               fullContent += parsed.token;
               setStreamingContent(fullContent);
@@ -195,9 +249,12 @@ export default function AIDevChatPanel() {
       setStreamingContent('');
       fetchSessions();
     } catch (err: any) {
+      clearInterval(thinkInterval);
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err?.message || 'Connection failed'}` }]);
     } finally {
+      clearInterval(thinkInterval);
       setIsStreaming(false);
+      setIsThinking(false);
       setFileContext('');
       setShowFileInput(false);
     }
