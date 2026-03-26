@@ -189,7 +189,7 @@ export class OllamaProvider implements AIProvider {
 
   constructor(url?: string, model?: string) {
     this.baseUrl = (url || process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '');
-    this.model = model || 'llama3.1:8b';
+    this.model = model || 'qwen3.5-uncensored';
   }
 
   isAvailable(): boolean {
@@ -216,7 +216,7 @@ export class OllamaProvider implements AIProvider {
       }
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const timeout = setTimeout(() => controller.abort(), 120_000); // 2min for CPU inference on 9B
 
       const resp = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
@@ -232,7 +232,12 @@ export class OllamaProvider implements AIProvider {
       }
 
       const data = await resp.json();
-      return data?.message?.content?.trim() || null;
+      let content = data?.message?.content?.trim() || null;
+      // Strip <think>...</think> reasoning blocks from Qwen models
+      if (content) {
+        content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+      }
+      return content;
     } catch (err: any) {
       console.error(`[AI:ollama] chat error:`, err?.message || err);
       throw err;

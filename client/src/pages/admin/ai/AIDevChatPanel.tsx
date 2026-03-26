@@ -129,7 +129,10 @@ export default function AIDevChatPanel() {
           if (!line.startsWith('data: ')) continue;
           try {
             const parsed = JSON.parse(line.slice(6));
-            if (parsed.token) {
+            if (parsed.thinking) {
+              // Model is reasoning — show status but don't add to content
+              setStreamingContent('...');
+            } else if (parsed.token) {
               fullContent += parsed.token;
               setStreamingContent(fullContent);
             }

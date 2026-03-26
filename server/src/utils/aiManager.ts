@@ -167,8 +167,8 @@ function rateLimitOk(): boolean {
 const CONFIG_PATH = path.join(__dirname, '../../data/ai-config.json');
 
 const DEFAULT_CONFIG: AIConfig = {
-  provider: 'groq',
-  autoFallback: true,
+  provider: 'ollama',
+  autoFallback: false,
   features: {
     callAnalysis: true,
     narrativeAssist: true,
@@ -181,7 +181,7 @@ const DEFAULT_CONFIG: AIConfig = {
     groq: { apiKey: '', model: 'llama-3.3-70b-versatile' },
     gemini: { apiKey: '', model: 'gemini-2.0-flash' },
     openai: { apiKey: '', model: 'gpt-4o-mini', baseUrl: '' },
-    ollama: { url: 'http://localhost:11434', model: 'llama3.1:8b' },
+    ollama: { url: 'http://localhost:11434', model: 'qwen3.5-uncensored' },
   },
   masterPrompt: 'You are the RMPG Flex AI assistant, supporting law enforcement dispatch operations for Rocky Mountain Protective Group in Salt Lake City, Utah. Provide concise, accurate, and actionable intelligence.',
   chainMode: false,
@@ -193,7 +193,7 @@ const DEFAULT_CONFIG: AIConfig = {
     dataCleanup: { provider: 'auto' },
     general: { provider: 'auto' },
   },
-  providerPriority: ['groq', 'gemini', 'openai', 'ollama'],
+  providerPriority: ['ollama'],
 };
 
 let _config: AIConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));

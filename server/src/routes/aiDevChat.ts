@@ -185,8 +185,8 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
 
   const start = Date.now();
   const ollamaUrl = (config.providers.ollama.url || 'http://localhost:11434').replace(/\/+$/, '');
-  // Prefer qwen2.5-coder for dev chat — better at code tasks than general models
-  const model = 'qwen2.5-coder:7b';
+  // Use Qwen3.5 9B Uncensored — the single AI model for all RMPG Flex
+  const model = 'qwen3.5-uncensored';
 
   try {
     // Stream directly from Ollama for real-time token output
@@ -211,6 +211,7 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     }
 
     let fullContent = '';
+    let insideThink = false; // Track <think> blocks to suppress them from streaming
     const reader = ollamaResp.body.getReader();
     const decoder = new TextDecoder();
 
@@ -224,16 +225,31 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
         try {
           const parsed = JSON.parse(line);
           if (parsed.message?.content) {
-            fullContent += parsed.message.content;
-            res.write(`data: ${JSON.stringify({ token: parsed.message.content })}\n\n`);
+            const token = parsed.message.content;
+            fullContent += token;
+
+            // Suppress <think>...</think> reasoning blocks from streaming output
+            if (fullContent.includes('<think>') && !fullContent.includes('</think>')) {
+              insideThink = true;
+            }
+            if (insideThink && fullContent.includes('</think>')) {
+              insideThink = false;
+              // Send a "thinking" status instead of the reasoning
+              res.write(`data: ${JSON.stringify({ thinking: true })}\n\n`);
+              continue;
+            }
+            if (!insideThink && !token.includes('<think>')) {
+              res.write(`data: ${JSON.stringify({ token })}\n\n`);
+            }
           }
           if (parsed.done) {
             const latencyMs = Date.now() - start;
-            // Save complete response
+            // Strip <think> blocks from saved content
+            const cleanContent = fullContent.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
             db.prepare(`
               INSERT INTO ai_dev_chat (session_id, role, content, provider, model, latency_ms)
               VALUES (?, 'assistant', ?, 'ollama', ?, ?)
-            `).run(sessionId, fullContent, model, latencyMs);
+            `).run(sessionId, cleanContent, model, latencyMs);
 
             res.write(`data: ${JSON.stringify({ done: true, latencyMs })}\n\n`);
           }
