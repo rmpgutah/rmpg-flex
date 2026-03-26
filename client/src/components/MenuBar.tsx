@@ -189,6 +189,13 @@ export default function MenuBar({
   const [vcConfirmMode, setVcConfirmMode] = useState<'speak' | 'beep' | 'silent'>(() => getVoiceChannelConfig().confirmMode);
   const [vcDetailLevel, setVcDetailLevel] = useState<NarrativeDetail>(() => getDetailLevel());
 
+  // Advanced Voice Channel settings
+  const [stressDetection, setStressDetection] = useState(() => localStorage.getItem('rmpg-voice-stress-detection') !== 'false');
+  const [welfareChecks, setWelfareChecks] = useState(() => localStorage.getItem('rmpg-voice-welfare-checks') !== 'false');
+  const [proximityAlerts, setProximityAlerts] = useState(() => localStorage.getItem('rmpg-voice-proximity-alerts') !== 'false');
+  const [tacticalAssessments, setTacticalAssessments] = useState(() => localStorage.getItem('rmpg-voice-tactical-assessments') !== 'false');
+  const [nearestUnitsAuto, setNearestUnitsAuto] = useState(() => localStorage.getItem('rmpg-voice-nearest-units') !== 'false');
+
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [show10Codes, setShow10Codes] = useState(false);
   const [showLawBooks, setShowLawBooks] = useState(false);
@@ -324,6 +331,36 @@ export default function MenuBar({
     setVcDetailLevel(next);
     setDetailLevel(next);
   }, [vcDetailLevel]);
+
+  const toggleStressDetection = useCallback(() => {
+    const next = !stressDetection;
+    setStressDetection(next);
+    localStorage.setItem('rmpg-voice-stress-detection', String(next));
+  }, [stressDetection]);
+
+  const toggleWelfareChecks = useCallback(() => {
+    const next = !welfareChecks;
+    setWelfareChecks(next);
+    localStorage.setItem('rmpg-voice-welfare-checks', String(next));
+  }, [welfareChecks]);
+
+  const toggleProximityAlerts = useCallback(() => {
+    const next = !proximityAlerts;
+    setProximityAlerts(next);
+    localStorage.setItem('rmpg-voice-proximity-alerts', String(next));
+  }, [proximityAlerts]);
+
+  const toggleTacticalAssessments = useCallback(() => {
+    const next = !tacticalAssessments;
+    setTacticalAssessments(next);
+    localStorage.setItem('rmpg-voice-tactical-assessments', String(next));
+  }, [tacticalAssessments]);
+
+  const toggleNearestUnitsAuto = useCallback(() => {
+    const next = !nearestUnitsAuto;
+    setNearestUnitsAuto(next);
+    localStorage.setItem('rmpg-voice-nearest-units', String(next));
+  }, [nearestUnitsAuto]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -485,6 +522,12 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: `Confirmation: ${vcConfirmMode === 'speak' ? 'Speak' : vcConfirmMode === 'beep' ? 'Beep Only' : 'Silent'}`, icon: Volume2, action: cycleVcConfirmMode },
           { type: 'action', label: `Alert Detail: ${vcDetailLevel === 'minimal' ? 'Minimal' : vcDetailLevel === 'standard' ? 'Standard' : 'Full Tactical'}`, icon: SlidersHorizontal, action: cycleVcDetailLevel },
+          { type: 'separator' },
+          { type: 'toggle', label: 'Stress Detection', checked: stressDetection, action: toggleStressDetection },
+          { type: 'toggle', label: 'Welfare Checks', checked: welfareChecks, action: toggleWelfareChecks },
+          { type: 'toggle', label: 'Proximity Alerts', checked: proximityAlerts, action: toggleProximityAlerts },
+          { type: 'toggle', label: 'Tactical Assessments', checked: tacticalAssessments, action: toggleTacticalAssessments },
+          { type: 'toggle', label: 'Auto Nearest Units', checked: nearestUnitsAuto, action: toggleNearestUnitsAuto },
         ],
       },
       { type: 'separator' },
