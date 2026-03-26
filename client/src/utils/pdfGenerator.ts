@@ -96,6 +96,34 @@ export function getActiveBranding(): PdfBranding { return activeBranding; }
 
 // Section counter removed — section headers now display clean titles without numbering
 
+/**
+ * Sanitize Unicode characters that jsPDF's built-in Courier/Helvetica can't render.
+ * These fonts only support Latin-1 (ISO-8859-1). Unicode arrows, em-dashes, curly quotes,
+ * etc. have zero width in font metrics, causing justification to spread text wildly.
+ */
+export function sanitizePdfText(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\u2192/g, '->')    // → right arrow
+    .replace(/\u2190/g, '<-')    // ← left arrow
+    .replace(/\u2194/g, '<->')   // ↔ left-right arrow
+    .replace(/\u2014/g, '--')    // — em dash
+    .replace(/\u2013/g, '-')     // – en dash
+    .replace(/\u2018/g, "'")     // ' left single quote
+    .replace(/\u2019/g, "'")     // ' right single quote
+    .replace(/\u201C/g, '"')     // " left double quote
+    .replace(/\u201D/g, '"')     // " right double quote
+    .replace(/\u2026/g, '...')   // … ellipsis
+    .replace(/\u2022/g, '*')     // • bullet
+    .replace(/\u00A0/g, ' ')     // non-breaking space
+    .replace(/\u200B/g, '')      // zero-width space
+    .replace(/\u00B7/g, '.')     // · middle dot
+    .replace(/\u2713/g, '[X]')   // ✓ check mark
+    .replace(/\u2717/g, '[ ]')   // ✗ cross mark
+    .replace(/\u26A0/g, '[!]')   // ⚠ warning
+    .replace(/[^\x00-\xFF]/g, '?'); // Replace any remaining non-Latin-1 chars
+}
+
 // Cached images (loaded once per session)
 let cachedSeal: string | null = null;
 let cachedLogoDark: string | null = null;
@@ -460,8 +488,9 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
 
-  const isEmpty = !value || value.trim() === '';
-  const displayText = isEmpty ? '\u2014' : value;
+  const sanitized = sanitizePdfText(value);
+  const isEmpty = !sanitized || sanitized.trim() === '';
+  const displayText = isEmpty ? '--' : sanitized;
   const allFieldLines = isEmpty ? [displayText] : doc.splitTextToSize(displayText, maxW);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
@@ -972,8 +1001,9 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
  * Text is justified (words distributed to fill line width) except for
  * the last line of each paragraph which stays left-aligned.
  */
-export function addFormattedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
-  if (!text) return y;
+export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
+  if (!rawText) return y;
+  const text = sanitizePdfText(rawText);
   const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
   let lastPage = doc.getNumberOfPages();
@@ -1458,7 +1488,7 @@ export function addTableWithShading(
     const cellLines: string[][] = [];
     let maxLines = 1;
     for (let c = 0; c < row.length; c++) {
-      const cellText = row[c] || '';
+      const cellText = sanitizePdfText(row[c] || '');
       const availW = colWidths[c] || 30;
       const allCellLines = cellText ? doc.splitTextToSize(cellText, availW) : [''];
       const lines = allCellLines.slice(0, maxCellLines);
