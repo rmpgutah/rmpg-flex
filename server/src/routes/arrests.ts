@@ -27,7 +27,7 @@ import {
   UTAH_COUNTY_DEFAULTS,
 } from '../utils/arrestScraper';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastRecordUpdate } from '../utils/websocket';
+import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -201,6 +201,10 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     auditLog(req, 'arrest_created', 'arrest_record', newId,
       `Manual booking: ${fullName}`);
     broadcastRecordUpdate({ type: 'arrest_created', id: newId });
+    broadcastDispatchUpdate({
+      action: 'arrest_created',
+      arrest: { id: newId, subject_name: fullName, charge: charges, booking_number: validBookingNum, officer_name: user?.username || '' },
+    });
 
     // Run cross-linking for the new record
     try { crossLinkArrests(); } catch { /* non-critical */ }

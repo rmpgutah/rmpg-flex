@@ -1600,7 +1600,34 @@ export type WSMessageType =
   // Welfare monitoring
   | 'welfare_check'
   | 'welfare_alert'
-  | 'welfare_emergency';
+  | 'welfare_emergency'
+  // Warrant system
+  | 'warrant'
+  | 'warrants_updated'
+  | 'warrant_served'
+  | 'warrant_recalled'
+  // Trespass orders
+  | 'trespass_order_violated'
+  | 'trespass_order_created'
+  | 'trespass_order_served'
+  // Map safety
+  | 'safety:broadcast'
+  // Dispatch broadcasts
+  | 'dispatch_broadcast'
+  // Comms
+  | 'new_message'
+  | 'emergency_message'
+  // Integration health
+  | 'integration_health_alert'
+  // Arrests/citations
+  | 'arrest_created'
+  | 'citation_issued'
+  // Serve manager
+  | 'serve_attempt'
+  | 'serve_created'
+  // Radio events (for cross-integration)
+  // Security
+  | 'security:updated';
 
 export interface WSMessage {
   type: WSMessageType;

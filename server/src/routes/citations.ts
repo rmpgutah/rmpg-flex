@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastCitationUpdate } from '../utils/websocket';
+import { broadcastCitationUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -366,6 +366,10 @@ router.post('/', (req: Request, res: Response) => {
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
     broadcastCitationUpdate({ type: 'citation_created', id: result.lastInsertRowid, citation_number });
+    broadcastDispatchUpdate({
+      action: 'citation_issued',
+      citation: { id: result.lastInsertRowid, citation_number, subject_name: person_name, violation: violation_description, officer_name: issuing_officer_name },
+    });
     res.status(201).json({ data: created });
   } catch (error: any) {
     console.error('Create citation error:', error);
