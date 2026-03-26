@@ -186,7 +186,7 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
   const start = Date.now();
   const ollamaUrl = (config.providers.ollama.url || 'http://localhost:11434').replace(/\/+$/, '');
   // Use Qwen3.5 9B Uncensored — the single AI model for all RMPG Flex
-  const model = 'qwen3.5-fast';
+  const model = 'qwen2.5:3b';
 
   try {
     // Stream directly from Ollama for real-time token output

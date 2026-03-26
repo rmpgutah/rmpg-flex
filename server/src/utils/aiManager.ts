@@ -203,7 +203,7 @@ const DEFAULT_CONFIG: AIConfig = {
     groq: { apiKey: '', model: 'llama-3.3-70b-versatile' },
     gemini: { apiKey: '', model: 'gemini-2.0-flash' },
     openai: { apiKey: '', model: 'gpt-4o-mini', baseUrl: '' },
-    ollama: { url: 'http://localhost:11434', model: 'qwen3.5-fast' },
+    ollama: { url: 'http://localhost:11434', model: 'qwen2.5:3b' },
   },
   masterPrompt: 'You are the RMPG Flex AI assistant, supporting law enforcement dispatch operations for Rocky Mountain Protective Group in Salt Lake City, Utah. Provide concise, accurate, and actionable intelligence.',
   chainMode: false,
