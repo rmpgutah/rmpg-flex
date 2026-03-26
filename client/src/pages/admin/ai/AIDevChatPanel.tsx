@@ -18,45 +18,165 @@ interface ChatSession {
   first_message: string;
 }
 
-// Generate contextual thinking steps based on the user's query
-function generateThinkingSteps(query: string): string[] {
+interface ThinkStep {
+  phase: string;       // Phase label (shown as header)
+  icon: string;        // Emoji icon
+  detail: string;      // Detailed reasoning text
+  files?: string[];    // Files being examined
+}
+
+// Generate rich, contextual thinking narrative based on query
+function generateThinkingSteps(query: string): ThinkStep[] {
   const q = query.toLowerCase();
-  const steps: string[] = [];
+  const words = query.split(/\s+/).length;
+  const steps: ThinkStep[] = [];
 
-  steps.push(`> Analyzing query: "${query.slice(0, 80)}${query.length > 80 ? '...' : ''}"`);
+  // Phase 1: Query Analysis (always)
+  steps.push({
+    phase: 'QUERY ANALYSIS',
+    icon: '🔍',
+    detail: `Parsing input: "${query.slice(0, 100)}${query.length > 100 ? '...' : ''}"\n` +
+      `Tokens: ~${words} words | Complexity: ${words > 20 ? 'HIGH' : words > 10 ? 'MEDIUM' : 'LOW'}\n` +
+      `Intent classification: ${
+        q.match(/how|what|why|explain/) ? 'INFORMATIONAL' :
+        q.match(/fix|bug|error|broken/) ? 'DIAGNOSTIC' :
+        q.match(/add|create|build|implement/) ? 'GENERATIVE' :
+        q.match(/improve|optimize|enhance/) ? 'OPTIMIZATION' :
+        'GENERAL'
+      }`,
+  });
 
-  // Detect query type and generate relevant thinking
-  if (q.includes('dispatch') || q.includes('call') || q.includes('cad')) {
-    steps.push('> Checking dispatch system architecture — WebSocket broadcasts, call lifecycle...');
-    steps.push('> Reviewing DispatchPage.tsx and dispatch routes for relevant patterns...');
-  } else if (q.includes('map') || q.includes('gps') || q.includes('location')) {
-    steps.push('> Examining map integration — Google Maps API, offline tiles, GPS tracking...');
-    steps.push('> Reviewing MapPage.tsx and geolocation utilities...');
-  } else if (q.includes('database') || q.includes('schema') || q.includes('table') || q.includes('sql')) {
-    steps.push('> Scanning database schema in server/src/models/database.ts...');
-    steps.push('> Identifying relevant tables, indexes, and relationships...');
-  } else if (q.includes('api') || q.includes('endpoint') || q.includes('route')) {
-    steps.push('> Examining Express route patterns in server/src/routes/...');
-    steps.push('> Checking middleware chain: auth → requireRole → handler → auditLog...');
-  } else if (q.includes('bug') || q.includes('error') || q.includes('fix') || q.includes('broken')) {
-    steps.push('> Analyzing reported issue — checking common failure points...');
-    steps.push('> Reviewing error handling patterns and edge cases...');
-  } else if (q.includes('ui') || q.includes('design') || q.includes('component') || q.includes('page')) {
-    steps.push('> Reviewing UI component architecture — React + Tailwind dark theme...');
-    steps.push('> Checking design system: surfaces #141e2b, brand blue #1a5a9e, flat panels...');
-  } else if (q.includes('auth') || q.includes('login') || q.includes('security') || q.includes('jwt')) {
-    steps.push('> Examining authentication flow — JWT + WebAuthn + TOTP 2FA...');
-    steps.push('> Reviewing middleware/auth.ts and session management...');
-  } else if (q.includes('improve') || q.includes('suggest') || q.includes('optimize') || q.includes('enhance')) {
-    steps.push('> Evaluating current implementation for improvement opportunities...');
-    steps.push('> Considering performance, UX, and maintainability trade-offs...');
+  // Phase 2: Context-aware knowledge retrieval
+  if (q.includes('dispatch') || q.includes('call') || q.includes('cad') || q.includes('unit')) {
+    steps.push({
+      phase: 'INTEL RETRIEVAL — DISPATCH SYSTEM',
+      icon: '📡',
+      detail: 'Accessing dispatch architecture knowledge base...\n' +
+        'Key components identified:\n' +
+        '  ├─ WebSocket real-time broadcast system (ws://)\n' +
+        '  ├─ Call lifecycle: PENDING → DISPATCHED → EN_ROUTE → ON_SCENE → CLOSED\n' +
+        '  ├─ Unit status tracking: AVAILABLE → DISPATCHED → BUSY → OUT_OF_SERVICE\n' +
+        '  └─ Auto-assignment algorithm with priority weighting',
+      files: ['client/src/pages/dispatch/DispatchPage.tsx', 'server/src/routes/dispatch/', 'server/src/utils/websocket.ts'],
+    });
+  } else if (q.includes('map') || q.includes('gps') || q.includes('location') || q.includes('geo')) {
+    steps.push({
+      phase: 'INTEL RETRIEVAL — GEOSPATIAL SYSTEM',
+      icon: '🗺️',
+      detail: 'Accessing geospatial architecture knowledge base...\n' +
+        'Key components identified:\n' +
+        '  ├─ Google Maps JS API (dark styled) — primary map provider\n' +
+        '  ├─ CartoDB dark_matter tiles — offline fallback layer\n' +
+        '  ├─ GPS tracking via WebSocket (real-time unit positions)\n' +
+        '  └─ Service Worker tile caching: Z7-Z15 coverage for SLC metro',
+      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/googleMapsLoader.ts', 'server/src/utils/geocode.ts'],
+    });
+  } else if (q.includes('database') || q.includes('schema') || q.includes('table') || q.includes('sql') || q.includes('data')) {
+    steps.push({
+      phase: 'INTEL RETRIEVAL — DATABASE ARCHITECTURE',
+      icon: '🗄️',
+      detail: 'Accessing database schema knowledge base...\n' +
+        'Engine: SQLite via better-sqlite3 (WAL mode)\n' +
+        'Key tables identified:\n' +
+        '  ├─ users, sessions (auth layer)\n' +
+        '  ├─ calls, units, bolos (dispatch layer)\n' +
+        '  ├─ incidents, warrants, citations (records layer)\n' +
+        '  ├─ persons, vehicles, properties (entity layer)\n' +
+        '  └─ ai_dev_chat, ai_activity_log (intelligence layer)',
+      files: ['server/src/models/database.ts', 'server/data/rmpg-flex.db'],
+    });
+  } else if (q.includes('api') || q.includes('endpoint') || q.includes('route') || q.includes('backend')) {
+    steps.push({
+      phase: 'INTEL RETRIEVAL — API ARCHITECTURE',
+      icon: '⚡',
+      detail: 'Accessing API route architecture...\n' +
+        'Pattern: Express Router → authenticateToken → requireRole → handler\n' +
+        'Route domains identified:\n' +
+        '  ├─ /api/dispatch/ — call & unit management\n' +
+        '  ├─ /api/records/ — persons, vehicles, properties\n' +
+        '  ├─ /api/incidents/ — incident reports & narratives\n' +
+        '  ├─ /api/ai/ — AI operations & admin config\n' +
+        '  └─ /api/admin/ — system config & user management',
+      files: ['server/src/routes/', 'server/src/middleware/auth.ts'],
+    });
+  } else if (q.includes('bug') || q.includes('error') || q.includes('fix') || q.includes('broken') || q.includes('fail')) {
+    steps.push({
+      phase: 'DIAGNOSTIC SCAN',
+      icon: '🔧',
+      detail: 'Initiating diagnostic analysis...\n' +
+        'Checking common failure vectors:\n' +
+        '  ├─ ESM compatibility (require → import)\n' +
+        '  ├─ Database query errors (column names, table references)\n' +
+        '  ├─ WebSocket connection state (auth, reconnect logic)\n' +
+        '  ├─ API response handling (null checks, error boundaries)\n' +
+        '  └─ Memory/performance (large page components, stale closures)',
+    });
+  } else if (q.includes('ui') || q.includes('design') || q.includes('component') || q.includes('page') || q.includes('frontend')) {
+    steps.push({
+      phase: 'INTEL RETRIEVAL — UI/DESIGN SYSTEM',
+      icon: '🎨',
+      detail: 'Accessing design system knowledge base...\n' +
+        'Theme: Spillman Flex / Motorola Solutions CAD aesthetic\n' +
+        '  ├─ Surfaces: #141e2b (base), #1a2636 (raised), #0d1520 (sunken)\n' +
+        '  ├─ Brand: blue #1a5a9e, gold #d4a017\n' +
+        '  ├─ Border-radius: 2px (flat retro console)\n' +
+        '  ├─ Font: system sans-serif, monospace for data\n' +
+        '  └─ Layout: toolbar + dropdown menus (no sidebar)',
+      files: ['client/src/components/Layout.tsx', 'client/src/index.css', 'client/tailwind.config.js'],
+    });
+  } else if (q.includes('auth') || q.includes('login') || q.includes('security') || q.includes('jwt') || q.includes('password')) {
+    steps.push({
+      phase: 'INTEL RETRIEVAL — SECURITY ARCHITECTURE',
+      icon: '🔒',
+      detail: 'Accessing security architecture knowledge base...\n' +
+        'Authentication stack:\n' +
+        '  ├─ JWT (access + refresh tokens)\n' +
+        '  ├─ WebAuthn / FIDO2 (YubiKey hardware keys)\n' +
+        '  ├─ TOTP 2FA (AES-256-GCM encrypted secrets)\n' +
+        '  ├─ Role-based access: admin, manager, supervisor, officer, dispatcher\n' +
+        '  └─ Account lockout + password policy enforcement',
+      files: ['server/src/middleware/auth.ts', 'server/src/routes/auth.ts'],
+    });
+  } else if (q.includes('improve') || q.includes('suggest') || q.includes('optimize') || q.includes('enhance') || q.includes('better')) {
+    steps.push({
+      phase: 'OPTIMIZATION ANALYSIS',
+      icon: '📊',
+      detail: 'Running optimization assessment...\n' +
+        'Evaluation criteria:\n' +
+        '  ├─ Performance: bundle size, render count, query efficiency\n' +
+        '  ├─ UX: loading states, error handling, responsiveness\n' +
+        '  ├─ Security: input validation, auth coverage, OWASP compliance\n' +
+        '  ├─ Maintainability: code splitting, patterns, tech debt\n' +
+        '  └─ Reliability: error boundaries, retries, graceful degradation',
+    });
   } else {
-    steps.push('> Searching RMPG Flex codebase for relevant context...');
-    steps.push('> Cross-referencing with system architecture and patterns...');
+    steps.push({
+      phase: 'KNOWLEDGE BASE SEARCH',
+      icon: '🧠',
+      detail: 'Scanning full RMPG Flex knowledge base...\n' +
+        'Cross-referencing query against:\n' +
+        '  ├─ System architecture documentation\n' +
+        '  ├─ Code patterns and conventions\n' +
+        '  ├─ Database schema and relationships\n' +
+        '  └─ Operational procedures and workflows',
+    });
   }
 
-  steps.push('> Formulating comprehensive response with specific recommendations...');
-  steps.push('> Generating answer...');
+  // Phase 3: Planning (always)
+  steps.push({
+    phase: 'RESPONSE PLANNING',
+    icon: '📋',
+    detail: 'Structuring response strategy...\n' +
+      'Output format: detailed analysis with actionable specifics\n' +
+      'Including: file paths, code examples, architecture context',
+  });
+
+  // Phase 4: Generation (always)
+  steps.push({
+    phase: 'GENERATING RESPONSE',
+    icon: '✍️',
+    detail: 'Composing answer from analyzed context...',
+  });
 
   return steps;
 }
@@ -162,15 +282,36 @@ export default function AIDevChatPanel() {
     setThinkingText('');
     setIsThinking(true);
 
-    // Generate contextual thinking steps based on the query
+    // Generate rich contextual thinking steps
     const thinkSteps = generateThinkingSteps(text);
     let thinkIdx = 0;
+    let charIdx = 0;
+    let currentStepText = '';
     const thinkInterval = setInterval(() => {
-      if (thinkIdx < thinkSteps.length) {
-        setThinkingText(prev => prev + (prev ? '\n' : '') + thinkSteps[thinkIdx]);
+      if (thinkIdx >= thinkSteps.length) return;
+      const step = thinkSteps[thinkIdx];
+      const fullStepText = `${step.icon} ── ${step.phase} ──────────────\n${step.detail}${step.files ? '\n📁 ' + step.files.join(', ') : ''}`;
+
+      if (charIdx < fullStepText.length) {
+        // Type out characters for a typewriter effect
+        const charsPerTick = 3;
+        currentStepText = fullStepText.slice(0, charIdx + charsPerTick);
+        charIdx += charsPerTick;
+        setThinkingText(prev => {
+          const lines = prev.split('\n\n');
+          if (lines.length > thinkIdx + 1) lines.pop(); // remove in-progress step
+          if (thinkIdx > 0 && lines.length <= thinkIdx) lines.push(currentStepText);
+          else if (thinkIdx === 0) return currentStepText;
+          else { lines[thinkIdx] = currentStepText; }
+          return lines.join('\n\n');
+        });
+      } else {
+        // Step complete, move to next
         thinkIdx++;
+        charIdx = 0;
+        currentStepText = '';
       }
-    }, 1200);
+    }, 50); // Fast typewriter — 50ms per tick, 3 chars each = ~60 chars/sec
 
     try {
       // Get auth token
@@ -467,29 +608,65 @@ export default function AIDevChatPanel() {
                 <Bot className={`w-4.5 h-4.5 text-white ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
               <div className="max-w-[80%]">
-                {/* Thinking phase — show AI's internal reasoning */}
+                {/* Thinking phase — rich visual reasoning display */}
                 {(isThinking || thinkingText) && !streamingContent && (
-                  <div className="bg-[#1a2636] rounded-lg rounded-tl-sm border border-amber-500/30 overflow-hidden mb-2">
-                    <div className="h-0.5 bg-[#0d1520] overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-transparent via-amber-500 to-transparent"
-                        style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
-                    </div>
-                    <div className="px-3 py-2">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <div className="relative">
-                          <div className="w-6 h-6 rounded bg-amber-500/20 border border-amber-500/40 flex items-center justify-center">
-                            <Bot className="w-3.5 h-3.5 text-amber-400" />
-                          </div>
-                          {isThinking && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-ping" />}
-                        </div>
-                        <span className="text-[11px] text-amber-400 font-medium tracking-wide uppercase">
-                          {isThinking ? 'Thinking...' : 'Thought Process Complete'}
-                        </span>
-                        <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
+                  <div className="bg-gradient-to-b from-[#1a2636] to-[#141e2b] rounded-lg rounded-tl-sm border border-amber-500/20 overflow-hidden mb-2 min-w-[340px]">
+                    {/* Animated header bar */}
+                    <div className="relative">
+                      <div className="h-1 bg-[#0d1520] overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600"
+                          style={{ width: '30%', animation: 'shimmer 1.2s infinite linear' }} />
                       </div>
-                      <div className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto font-mono bg-[#0d1520] rounded p-2 border border-[#1a3550]">
-                        {thinkingText || 'Analyzing your request...'}
-                        {isThinking && <span className="inline-block w-1.5 h-3 bg-amber-400 animate-pulse ml-0.5" />}
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-amber-500/5 border-b border-amber-500/10">
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <div className="w-5 h-5 rounded bg-amber-500/20 flex items-center justify-center">
+                              <Bot className="w-3 h-3 text-amber-400" />
+                            </div>
+                            {isThinking && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-ping opacity-75" />}
+                            {isThinking && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full" />}
+                          </div>
+                          <span className="text-[10px] text-amber-400 font-bold tracking-[0.15em] uppercase">
+                            {isThinking ? 'AI REASONING' : 'ANALYSIS COMPLETE'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isThinking && (
+                            <div className="flex gap-0.5">
+                              {[0, 1, 2, 3, 4].map(i => (
+                                <div key={i} className="w-1 bg-amber-400/60 rounded-full animate-pulse"
+                                  style={{ height: `${6 + Math.sin(Date.now() / 300 + i) * 4}px`, animationDelay: `${i * 100}ms` }} />
+                              ))}
+                            </div>
+                          )}
+                          <span className="text-[10px] text-gray-600 font-mono tabular-nums">{elapsedSec}s</span>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Thinking content with terminal-style display */}
+                    <div className="p-2">
+                      <div className="text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] max-h-48 overflow-y-auto font-mono bg-[#0a0f18] rounded p-3 border border-[#1a2a3a] shadow-inner"
+                        style={{ scrollBehavior: 'smooth' }}
+                        ref={el => { if (el && isThinking) el.scrollTop = el.scrollHeight; }}>
+                        {thinkingText ? thinkingText.split('\n').map((line, i) => {
+                          // Color-code different line types
+                          if (line.match(/^[🔍📡🗺️🗄️⚡🔧🎨🔒📊🧠📋✍️]/)) {
+                            return <div key={i} className="text-amber-400 font-bold mt-2 first:mt-0">{line}</div>;
+                          }
+                          if (line.startsWith('  ├─') || line.startsWith('  └─')) {
+                            return <div key={i} className="text-cyan-400/80">{line}</div>;
+                          }
+                          if (line.startsWith('📁')) {
+                            return <div key={i} className="text-blue-400/70 text-[10px] mt-0.5">{line}</div>;
+                          }
+                          if (line.match(/^(Tokens|Intent|Engine|Pattern|Theme|Output|Including|Evaluation|Authentication|Checking)/)) {
+                            return <div key={i} className="text-gray-400">{line}</div>;
+                          }
+                          return <div key={i} className="text-gray-400">{line}</div>;
+                        }) : (
+                          <span className="text-gray-600">Initializing analysis...</span>
+                        )}
+                        {isThinking && <span className="inline-block w-1.5 h-3.5 bg-amber-400 animate-pulse ml-0.5 align-text-bottom" />}
                       </div>
                     </div>
                   </div>
