@@ -2615,15 +2615,38 @@ export default function DispatchPage() {
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
+                              setCalls(prev => [mapped, ...prev]);
                               setSelectedCall(mapped);
-                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched — ${ordinal} visit`, 'success');
+                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
                             }
                           } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
                       >
                         <RotateCcw style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
                         Schedule Return Visit
+                      </button>
+                    )}
+
+                    {/* Undo Return Visit button (mobile) — only on pending child calls */}
+                    {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                      <button type="button"
+                        className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
+                        style={{ background: '#ef444420', border: '1px solid #ef444450', color: '#ef4444' }}
+                        onClick={async () => {
+                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
+                          try {
+                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                            if (result?.parent) {
+                              const mapped = mapDbCall(result.parent);
+                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                              setSelectedCall(mapped);
+                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                      >
+                        <Undo2 style={{ width: 12, height: 12, display: 'inline', marginRight: 6 }} />
+                        Undo Return Visit
                       </button>
                     )}
                   </div>
@@ -3083,8 +3106,8 @@ export default function DispatchPage() {
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
                     )}
-                    {/* Schedule Return Visit — PSO calls in completed states */}
-                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {/* Schedule Return Visit — PSO/Process Service calls in completed states */}
+                    {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: '#d4a01725', borderColor: '#d4a01750', color: '#d4a017' }}
@@ -3099,15 +3122,37 @@ export default function DispatchPage() {
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
+                              setCalls(prev => [mapped, ...prev]);
                               setSelectedCall(mapped);
-                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched as ${ordinal} visit`, 'success');
+                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
                             }
                           } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
-                        title="Schedule a return visit for this PSO call"
+                        title="Schedule a return visit — creates a new linked call"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
+                      </button>
+                    )}
+                    {/* Undo Return Visit — only on pending child calls */}
+                    {!isEditing && (selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: '#ef444420', borderColor: '#ef444450', color: '#ef4444' }}
+                        onClick={async () => {
+                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
+                          try {
+                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                            if (result?.parent) {
+                              const mapped = mapDbCall(result.parent);
+                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                              setSelectedCall(mapped);
+                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                        title="Undo this return visit and delete this call"
+                      >
+                        <Undo2 style={{ width: 10, height: 10 }} /> Undo Visit
                       </button>
                     )}
                     {/* Send to Serve Queue — PSO calls */}

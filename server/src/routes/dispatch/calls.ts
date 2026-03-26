@@ -1378,6 +1378,85 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
   }
 });
 
+// POST /api/dispatch/calls/:id/undo-redispatch - Undo a return visit (delete child, restore parent)
+router.post('/calls/:id/undo-redispatch', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const childCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!childCall) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    if (!childCall.parent_call_id) {
+      res.status(400).json({ error: 'This call is not a re-dispatch — it has no parent call', code: 'NOT_A_REDISPATCH' });
+      return;
+    }
+
+    // Only allow undo on pending/new calls that haven't been worked yet
+    if (!['pending'].includes(childCall.status)) {
+      res.status(400).json({ error: 'Can only undo a return visit that is still pending. Once dispatched, it cannot be undone.', code: 'CHILD_NOT_PENDING' });
+      return;
+    }
+
+    const parentCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(childCall.parent_call_id) as any;
+    if (!parentCall) {
+      res.status(404).json({ error: 'Parent call not found', code: 'PARENT_NOT_FOUND' });
+      return;
+    }
+
+    const now = localNow();
+
+    const undoTx = db.transaction(() => {
+      // Delete the child call's related records
+      db.prepare('DELETE FROM call_persons WHERE call_id = ?').run(childCall.id);
+      db.prepare('DELETE FROM call_vehicles WHERE call_id = ?').run(childCall.id);
+      db.prepare('DELETE FROM call_units WHERE call_id = ?').run(childCall.id);
+      db.prepare('DELETE FROM serve_queue WHERE call_id = ?').run(childCall.id);
+
+      // Delete the child call itself
+      db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(childCall.id);
+
+      // Remove the last visit history entry for the parent (the snapshot created during redispatch)
+      const lastVisit = db.prepare(
+        'SELECT id FROM call_visit_history WHERE call_id = ? ORDER BY visit_number DESC LIMIT 1'
+      ).get(parentCall.id) as any;
+      if (lastVisit) {
+        db.prepare('DELETE FROM call_visit_history WHERE id = ?').run(lastVisit.id);
+      }
+
+      // Remove the "Re-dispatched → new call" note from parent
+      let parentNotes: any[] = [];
+      try { parentNotes = JSON.parse(parentCall.notes || '[]'); } catch { parentNotes = []; }
+      parentNotes = parentNotes.filter((n: any) => !n.text?.includes(`Re-dispatched → new call ${childCall.call_number}`));
+      parentNotes.push({
+        id: String(Date.now()),
+        author: req.user?.fullName || 'System',
+        text: `Return visit ${childCall.call_number} was undone`,
+        timestamp: now,
+      });
+      db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(parentNotes), now, parentCall.id);
+
+      // Activity log
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'undo_redispatch', 'call', ?, ?, ?)
+      `).run(req.user!.userId, parentCall.id, `Undid return visit ${childCall.call_number} for ${parentCall.call_number}`, req.ip || 'unknown');
+    });
+    undoTx();
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(parentCall.id) as any;
+    broadcastDispatchUpdate({ action: 'call_deleted', call: { id: childCall.id, call_number: childCall.call_number } });
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+
+    res.json({ success: true, parent: updated, deleted_call: childCall.call_number });
+  } catch (error: any) {
+    console.error('Undo redispatch error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to undo return visit', code: 'UNDO_REDISPATCH_ERROR' });
+  }
+});
+
 // GET /api/dispatch/calls/:id/visit-history - Get visit history for a PSO call
 router.get('/calls/:id/visit-history', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
