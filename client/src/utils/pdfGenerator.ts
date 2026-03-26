@@ -491,7 +491,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
   const displayText = isEmpty ? '--' : sanitized;
-  const allFieldLines = isEmpty ? [displayText] : doc.splitTextToSize(displayText, maxW);
+  const allFieldLines = isEmpty ? [displayText] : doc.splitTextToSize(displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
     const lastLn = lines[lines.length - 1];
@@ -1006,6 +1006,8 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
   const text = sanitizePdfText(rawText);
   const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
+  // Reduce wrap width by 3mm to prevent Courier rounding errors causing mid-word breaks
+  const wrapWidth = maxWidth - 3;
   let lastPage = doc.getNumberOfPages();
   const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
   const hasMarkers = (s: string) => /(\*\*|__|\*[^*])/.test(s);
@@ -1022,7 +1024,7 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       doc.setFont('courier', 'normal');
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(hardLine);
-      const wrappedLines: string[] = doc.splitTextToSize(stripped, maxWidth);
+      const wrappedLines: string[] = doc.splitTextToSize(stripped, wrapWidth);
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];
@@ -1063,8 +1065,8 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
           if (words.length > 3) {
             doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             const textWidth = doc.getTextWidth(words.join(''));
-            const extraSpace = (maxWidth - textWidth) / (words.length - 1);
-            const fillRatio = textWidth / maxWidth;
+            const extraSpace = (wrapWidth - textWidth) / (words.length - 1);
+            const fillRatio = textWidth / wrapWidth;
             // Only justify if line fills >60% of width AND extra space per gap <= 1.5mm
             if (extraSpace <= 1.5 && fillRatio > 0.6) {
               let cx = x;
@@ -1157,7 +1159,7 @@ export function addNarrativeSection(
     const hardLines = para.trim().split(/\n/);
     for (const hl of hardLines) {
       if (!hl.trim()) continue;
-      const lines = doc.splitTextToSize(stripFmt(hl.trim()), ffw);
+      const lines = doc.splitTextToSize(stripFmt(hl.trim()), ffw - 3);
       totalLines += lines.length;
     }
     paraCount++;
@@ -1490,7 +1492,7 @@ export function addTableWithShading(
     for (let c = 0; c < row.length; c++) {
       const cellText = sanitizePdfText(row[c] || '');
       const availW = colWidths[c] || 30;
-      const allCellLines = cellText ? doc.splitTextToSize(cellText, availW) : [''];
+      const allCellLines = cellText ? doc.splitTextToSize(cellText, availW - 1) : [''];
       const lines = allCellLines.slice(0, maxCellLines);
       if (allCellLines.length > maxCellLines && lines.length > 0) {
         const lastLine = lines[lines.length - 1];

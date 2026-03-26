@@ -33,6 +33,7 @@ import {
   addAttachmentsSection,
   addImageToPage,
   formSectionPageBreak,
+  sanitizePdfText,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import {
@@ -813,7 +814,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
       // Clip text to fit within column width
-      const val = f.value || '—';
+      const val = sanitizePdfText(f.value || '—');
       const clipped = doc.splitTextToSize(val, maxW)[0] || val;
       doc.text(clipped, fx, barY + 7.5);
     });
@@ -826,7 +827,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('courier', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(255, 255, 255);
-      doc.text(data.contract_id || '', LAYOUT.PAGE_MARGIN + 3, barY + 16);
+      doc.text(sanitizePdfText(data.contract_id || ''), LAYOUT.PAGE_MARGIN + 3, barY + 16);
     }
 
     y = barY + barH + 2;
@@ -1122,7 +1123,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.text(`Visit #${visit.visit_number}`, lx, y);
 
       // Status badge
-      const statusText = ` — ${(visit.status || 'unknown').toUpperCase()}`;
+      const statusText = sanitizePdfText(` — ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
@@ -1136,7 +1137,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        const unitsText = `Units: ${unitsList.join(', ')}`;
+        const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
         const unitsW = doc.getTextWidth(unitsText);
         doc.text(unitsText, lx + ffw - unitsW, y);
       }
@@ -1154,7 +1155,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(timeFields.join('    '), lx + SPACING.MD, y);
+        doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM + 0.5;
       }
 
@@ -1171,7 +1172,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(mileageFields.join('    '), lx + SPACING.MD, y);
+        doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM + 0.5;
       }
 
@@ -1180,7 +1181,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text(`Disposition: ${visit.disposition}`, lx + SPACING.MD, y);
+        doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
         y += SPACING.SM + 0.5;
       }
 
@@ -1739,7 +1740,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_INVERTED);
-      doc.text(`RECORD ${ri + 1} — ${(r.record_type || 'UNKNOWN').replace(/_/g, ' ').toUpperCase()}`, lx + 2, cy + 3.2);
+      doc.text(sanitizePdfText(`RECORD ${ri + 1} — ${(r.record_type || 'UNKNOWN').replace(/_/g, ' ').toUpperCase()}`), lx + 2, cy + 3.2);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       cy += 7;
 
