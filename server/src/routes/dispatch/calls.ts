@@ -1203,59 +1203,55 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
   }
 });
 
-// POST /api/dispatch/calls/:id/redispatch - Re-dispatch a PSO call (increment attempt)
+// POST /api/dispatch/calls/:id/redispatch - Re-dispatch creates a NEW linked call
 router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
-  // Note: primary handler is now at top-level in index.ts — this is a fallback
   try {
     const db = getDb();
-    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) {
+    const parentCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!parentCall) {
       res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
-    // Only allow re-dispatch on PSO Client Request incidents
-    if (call.incident_type !== 'pso_client_request') {
-      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request calls', code: 'REDISPATCH_IS_ONLY_AVAILABLE' });
+    // Allow re-dispatch on PSO and process_service calls
+    if (!['pso_client_request', 'process_service'].includes(parentCall.incident_type)) {
+      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' });
       return;
     }
 
     // Only allow re-dispatch on completed/inactive calls
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
-      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_CLEARED' });
+    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(parentCall.status)) {
+      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' });
       return;
     }
 
     const now = localNow();
-    const currentAttempt = call.pso_attempt_number || 1;
+    const currentAttempt = parentCall.pso_attempt_number || 1;
     const newAttempt = currentAttempt + 1;
 
-    // Ordinal suffix for note
-    const ordinal = (n: number) => {
-      const s = ['th', 'st', 'nd', 'rd'];
-      const v = n % 100;
-      if (v >= 11 && v <= 13) return n + 'th';
-      return n + (s[n % 10] || s[0]);
-    };
+    // Find the root call in the chain (trace back through parent_call_id)
+    let rootCallId = parentCall.id;
+    let rootCallNumber = parentCall.call_number;
+    if (parentCall.parent_call_id) {
+      const rootCall = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(parentCall.parent_call_id) as any;
+      if (rootCall) { rootCallId = rootCall.id; rootCallNumber = rootCall.call_number; }
+    }
 
-    // ── Snapshot current visit into history BEFORE resetting ──
-    // Get assigned unit call signs for the snapshot
+    // Snapshot current visit into visit history for the parent call
     let assignedCallSigns: string[] = [];
     try {
-      const parsedIds = JSON.parse(call.assigned_unit_ids || '[]');
+      const parsedIds = JSON.parse(parentCall.assigned_unit_ids || '[]');
       const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
       if (unitIds.length) {
-        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})
-          LIMIT 1000
-        `).all(...unitIds) as any[];
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')}) LIMIT 100`).all(...unitIds) as any[];
         assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
       }
     } catch (parseErr) { console.error(`[Calls] Failed to parse assigned_unit_ids for redispatch:`, parseErr instanceof Error ? parseErr.message : parseErr); }
 
-    // Classify this visit's time window for PSO compliance tracking
-    const attemptTime = call.onscene_at || call.cleared_at || call.closed_at || now;
+    const attemptTime = parentCall.onscene_at || parentCall.cleared_at || parentCall.closed_at || now;
     const { window: timeWindow, isWeekend } = classifyServiceWindow(attemptTime);
 
+    // Save visit history snapshot
     db.prepare(`
       INSERT INTO call_visit_history
         (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
@@ -1263,62 +1259,119 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
          time_window, is_weekend)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      req.params.id, currentAttempt, call.status,
-      call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at,
-      JSON.stringify(assignedCallSigns), call.responding_vehicle_id || null,
-      call.starting_mileage ?? null, call.ending_mileage ?? null,
-      call.disposition || null, null, req.user?.fullName || 'Dispatch', now,
+      parentCall.id, currentAttempt, parentCall.status,
+      parentCall.dispatched_at, parentCall.enroute_at, parentCall.onscene_at, parentCall.cleared_at, parentCall.closed_at,
+      JSON.stringify(assignedCallSigns), parentCall.responding_vehicle_id || null,
+      parentCall.starting_mileage ?? null, parentCall.ending_mileage ?? null,
+      parentCall.disposition || null, null, req.user?.fullName || 'Dispatch', now,
       timeWindow, isWeekend ? 1 : 0
     );
 
-    // Parse existing notes to append re-dispatch note
-    let notes: any[] = [];
-    if (call.notes) {
-      try { notes = JSON.parse(call.notes); } catch (parseErr) { console.error('[Calls] Failed to parse notes for redispatch:', parseErr instanceof Error ? parseErr.message : parseErr); notes = []; }
+    // Generate new call number
+    const year = new Date().getFullYear().toString().slice(-2);
+    const lastCall = db.prepare(`SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`).get(`${year}-CFS%`) as any;
+    let nextSeq = 1;
+    if (lastCall?.call_number) {
+      const parsed = parseInt(lastCall.call_number.replace(`${year}-CFS`, ''), 10);
+      if (!isNaN(parsed)) nextSeq = parsed + 1;
     }
+    const newCallNumber = `${year}-CFS${String(nextSeq).padStart(5, '0')}`;
+
     const { scheduled_note } = req.body || {};
+    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n%100; return n + (v>=11&&v<=13 ? 'th' : (s[n%10]||s[0])); };
     const noteText = scheduled_note
-      ? `Re-dispatched — ${ordinal(newAttempt)} visit. Note: ${scheduled_note}`
-      : `Re-dispatched — ${ordinal(newAttempt)} visit`;
-    notes.push({
+      ? `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt. Note: ${scheduled_note}`
+      : `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt`;
+
+    const initialNotes = JSON.stringify([{
       id: String(Date.now()),
       author: req.user?.fullName || 'Dispatch',
       text: noteText,
       timestamp: now,
-      created_at: now,
+    }]);
+
+    // Create the NEW call linked to parent
+    const result = db.prepare(`
+      INSERT INTO calls_for_service (
+        call_number, incident_type, priority, status, source,
+        caller_name, caller_phone, caller_relationship, caller_address,
+        location_address, property_id, client_id, latitude, longitude,
+        description, notes, parent_call_id, pso_attempt_number,
+        pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+        pso_service_type, pso_billing_code, pso_authorization,
+        pso_service_windows,
+        process_service_type, process_served_to, process_served_address,
+        dispatcher_id, created_at, updated_at
+      ) VALUES (
+        ?, ?, ?, 'pending', ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?,
+        ?, ?, ?,
+        ?, ?, ?
+      )
+    `).run(
+      newCallNumber, parentCall.incident_type, parentCall.priority, parentCall.source || 'dispatch',
+      parentCall.caller_name, parentCall.caller_phone, parentCall.caller_relationship, parentCall.caller_address,
+      parentCall.location_address, parentCall.property_id, parentCall.client_id, parentCall.latitude, parentCall.longitude,
+      parentCall.description, initialNotes, rootCallId, newAttempt,
+      parentCall.pso_requestor_name, parentCall.pso_requestor_phone, parentCall.pso_requestor_email,
+      parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
+      parentCall.pso_service_windows,
+      parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
+      req.user!.userId, now, now
+    );
+
+    const newCallId = result.lastInsertRowid;
+
+    // Mark parent call with a back-link note
+    let parentNotes: any[] = [];
+    try { parentNotes = JSON.parse(parentCall.notes || '[]'); } catch { parentNotes = []; }
+    parentNotes.push({
+      id: String(Date.now() + 1),
+      author: 'System',
+      text: `Re-dispatched → new call ${newCallNumber}`,
+      timestamp: now,
     });
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(parentNotes), now, parentCall.id);
 
-    // Reset status to pending, clear dispatch timestamps + mileage, increment attempt
-    db.prepare(`
-      UPDATE calls_for_service SET
-        status = 'pending',
-        dispatched_at = NULL,
-        enroute_at = NULL,
-        onscene_at = NULL,
-        cleared_at = NULL,
-        closed_at = NULL,
-        starting_mileage = NULL,
-        ending_mileage = NULL,
-        responding_vehicle_id = NULL,
-        pso_attempt_number = ?,
-        pso_72hr_notified = NULL,
-        notes = ?,
-        updated_at = ?
-      WHERE id = ?
-    `).run(newAttempt, JSON.stringify(notes), now, req.params.id);
-
-    // Activity log
+    // Activity log for both calls
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'call_redispatched', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown');
+    `).run(req.user!.userId, parentCall.id, `Re-dispatched → ${newCallNumber} (${ordinal(newAttempt)} attempt)`, req.ip || 'unknown');
 
-    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    // Attach visit history to the response
-    const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
-    broadcastDispatchUpdate({ action: 'call_updated', call: { ...updated, visit_history: visitHistory } });
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_created_from_redispatch', 'call', ?, ?, ?)
+    `).run(req.user!.userId, newCallId, `Created from re-dispatch of ${parentCall.call_number} (${ordinal(newAttempt)} attempt)`, req.ip || 'unknown');
 
-    res.json({ ...updated, visit_history: visitHistory });
+    // Auto-send to serve queue if applicable
+    try {
+      const { createServeQueueFromCall } = require('../../utils/serveQueueLinker');
+      const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId) as any;
+      if (newCall) createServeQueueFromCall(db, newCall, req.user!.userId);
+    } catch { /* non-fatal */ }
+
+    const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId) as any;
+    // Collect full chain for response
+    const chainCalls = db.prepare(`
+      SELECT id, call_number, status, pso_attempt_number, created_at, cleared_at, disposition, parent_call_id
+      FROM calls_for_service WHERE id = ? OR parent_call_id = ? ORDER BY pso_attempt_number ASC, id ASC
+    `).all(rootCallId, rootCallId) as any[];
+
+    broadcastDispatchUpdate({ action: 'call_created', call: newCall });
+    broadcastDispatchUpdate({ action: 'call_updated', call: parentCall }); // update parent notes
+
+    res.status(201).json({
+      ...newCall,
+      chain: chainCalls,
+      parent_call_number: parentCall.call_number,
+    });
   } catch (error: any) {
     console.error('Re-dispatch call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to re-dispatch call', code: 'REDISPATCH_CALL_ERROR' });

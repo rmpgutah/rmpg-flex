@@ -4217,13 +4217,44 @@ export default function DispatchPage() {
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
                             <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
-                              <option value="">— Select —</option>
-                              <option value="subpoena">Subpoena</option>
-                              <option value="summons">Summons</option>
-                              <option value="complaint">Complaint</option>
-                              <option value="eviction">Eviction</option>
-                              <option value="restraining_order">Restraining Order</option>
-                              <option value="other">Other</option>
+                              <option value="">— Select Document Type —</option>
+                              <optgroup label="Civil Process">
+                                <option value="subpoena">Subpoena</option>
+                                <option value="summons">Summons &amp; Complaint</option>
+                                <option value="complaint">Complaint</option>
+                                <option value="civil_summons">Civil Summons</option>
+                                <option value="small_claims">Small Claims</option>
+                                <option value="garnishment">Garnishment</option>
+                                <option value="writ_of_execution">Writ of Execution</option>
+                                <option value="writ_of_restitution">Writ of Restitution</option>
+                                <option value="writ_of_garnishment">Writ of Garnishment</option>
+                                <option value="writ_of_attachment">Writ of Attachment</option>
+                              </optgroup>
+                              <optgroup label="Family / Domestic">
+                                <option value="restraining_order">Protective / Restraining Order</option>
+                                <option value="divorce_papers">Divorce Papers</option>
+                                <option value="custody_order">Custody Order</option>
+                                <option value="child_support">Child Support Order</option>
+                                <option value="stalking_injunction">Stalking Injunction</option>
+                              </optgroup>
+                              <optgroup label="Real Property">
+                                <option value="eviction">Eviction Notice</option>
+                                <option value="unlawful_detainer">Unlawful Detainer</option>
+                                <option value="notice_to_quit">Notice to Quit</option>
+                                <option value="foreclosure">Foreclosure Notice</option>
+                              </optgroup>
+                              <optgroup label="Court Orders">
+                                <option value="court_order">Court Order</option>
+                                <option value="temporary_order">Temporary Order</option>
+                                <option value="motion">Motion / Petition</option>
+                                <option value="notice_of_hearing">Notice of Hearing</option>
+                                <option value="order_to_show_cause">Order to Show Cause</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="demand_letter">Demand Letter</option>
+                                <option value="cease_and_desist">Cease &amp; Desist</option>
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                           <div>
@@ -4248,10 +4279,28 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-amber-400">Service Result</label>
                             <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
-                              <option value="served">Served</option>
-                              <option value="unable_to_serve">Unable to Serve</option>
-                              <option value="refused">Refused</option>
-                              <option value="substitute_service">Substitute Service</option>
+                              <optgroup label="Successful">
+                                <option value="served">Personal Service</option>
+                                <option value="substitute_service">Substitute Service</option>
+                                <option value="abode_service">Abode / Dwelling Service</option>
+                                <option value="posted">Posted (Nail &amp; Mail)</option>
+                                <option value="left_with">Left With (Co-Resident)</option>
+                              </optgroup>
+                              <optgroup label="Unsuccessful">
+                                <option value="no_answer">No Answer / Not Home</option>
+                                <option value="unable_to_locate">Unable to Locate</option>
+                                <option value="refused">Refused Service</option>
+                                <option value="evasion">Evasion / Avoiding Service</option>
+                                <option value="bad_address">Bad / Invalid Address</option>
+                                <option value="moved">Subject Moved</option>
+                                <option value="deceased">Subject Deceased</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="non_est">Non Est Inventus (Not Found)</option>
+                                <option value="unable_to_serve">Unable to Serve (General)</option>
+                                <option value="returned_to_attorney">Returned to Attorney</option>
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                         </div>

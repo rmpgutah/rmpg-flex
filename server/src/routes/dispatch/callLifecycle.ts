@@ -411,6 +411,36 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
       req.ip || 'unknown'
     );
 
+    // ── Link all chained calls to this incident report ──
+    // Find root call (trace up through parent_call_id)
+    let rootId = call.id;
+    if (call.parent_call_id) {
+      const root = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(call.parent_call_id) as any;
+      if (root) rootId = root.id;
+    }
+    // Find all calls in the chain (root + all children)
+    const chainedCalls = db.prepare(`
+      SELECT id, call_number FROM calls_for_service
+      WHERE id = ? OR parent_call_id = ?
+      ORDER BY id ASC
+    `).all(rootId, rootId) as any[];
+
+    if (chainedCalls.length > 1) {
+      const incidentId = Number(result.lastInsertRowid);
+      const updateCase = db.prepare('UPDATE calls_for_service SET case_number = ? WHERE id = ? AND (case_number IS NULL OR case_number = ?)');
+      const linkNarrative: string[] = [`\n--- Linked Calls (${chainedCalls.length} in chain) ---`];
+      for (const cc of chainedCalls) {
+        // Set case_number on all calls in chain so they're cross-referenced
+        updateCase.run(incidentNumber, cc.id, '');
+        if (cc.id !== call.id) {
+          linkNarrative.push(`  ${cc.call_number} (linked)`);
+        }
+      }
+      // Append chain info to the incident narrative
+      db.prepare('UPDATE incidents SET narrative = narrative || ?, linked_incidents = ? WHERE id = ?')
+        .run(linkNarrative.join('\n'), JSON.stringify(chainedCalls.map((c: any) => c.call_number)), incidentId);
+    }
+
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('[CallLifecycle] generate incident error:', error?.message || 'Unknown error');
