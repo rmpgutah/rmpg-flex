@@ -1101,6 +1101,19 @@ function createTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_company_docs_category ON company_documents(category);
     CREATE INDEX IF NOT EXISTS idx_company_docs_published ON company_documents(published);
+
+    CREATE TABLE IF NOT EXISTS ai_dev_chat (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('user','assistant','system')),
+      content TEXT NOT NULL,
+      model TEXT,
+      provider TEXT,
+      tokens_used INTEGER DEFAULT 0,
+      latency_ms INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_dev_chat_session ON ai_dev_chat(session_id);
   `);
 }
 

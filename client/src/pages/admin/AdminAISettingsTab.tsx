@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Brain, Loader2, Server, Zap, Activity, Shield, LayoutDashboard,
+  Brain, Loader2, Server, Zap, Activity, Shield, LayoutDashboard, MessageSquareCode,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { AIConfig, ProviderInfo, UsageStats } from './ai/AISharedComponents';
@@ -10,6 +10,7 @@ import AICapabilitiesPanel from './ai/AICapabilitiesPanel';
 import AIActivityPanel from './ai/AIActivityPanel';
 import AIIntelligencePanel from './ai/AIIntelligencePanel';
 import AIMasterConfigPanel from './ai/AIMasterConfigPanel';
+import AIDevChatPanel from './ai/AIDevChatPanel';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -17,7 +18,7 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
-type AISection = 'command_center' | 'providers' | 'capabilities' | 'activity' | 'intelligence' | 'master_config';
+type AISection = 'command_center' | 'providers' | 'capabilities' | 'activity' | 'intelligence' | 'master_config' | 'dev_chat';
 
 const SECTIONS: Array<{ id: AISection; label: string; icon: React.FC<{ className?: string }> }> = [
   { id: 'command_center', label: 'Command Center', icon: LayoutDashboard },
@@ -26,6 +27,7 @@ const SECTIONS: Array<{ id: AISection; label: string; icon: React.FC<{ className
   { id: 'activity', label: 'Activity Log', icon: Activity },
   { id: 'intelligence', label: 'System Intelligence', icon: Shield },
   { id: 'master_config', label: 'Master AI', icon: Brain },
+  { id: 'dev_chat', label: 'Dev Assistant', icon: MessageSquareCode },
 ];
 
 export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: Props) {
@@ -121,6 +123,8 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
       {section === 'intelligence' && <AIIntelligencePanel setError={setError} />}
 
       {section === 'master_config' && <AIMasterConfigPanel setError={setError} />}
+
+      {section === 'dev_chat' && <AIDevChatPanel />}
     </div>
   );
 }

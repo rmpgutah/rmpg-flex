@@ -100,6 +100,7 @@ import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
 import aiRoutes from './routes/ai';
+import aiDevChatRoutes from './routes/aiDevChat';
 import { authenticateToken } from './middleware/auth';
 
 const app = express();
@@ -382,6 +383,7 @@ app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
