@@ -313,7 +313,14 @@ function briefNarrative(text: string | undefined): string | undefined {
  * @param detail - Override detail level (defaults to stored preference)
  * @returns Natural speech text with period-separated phrases
  */
-export function composeDispatchNarrative(call: CallData, detail?: NarrativeDetail): string {
+export function composeDispatchNarrative(
+  call: CallData,
+  detail?: NarrativeDetail,
+  extra?: {
+    threatContext?: { threatLevel?: string; briefingSummary?: string };
+    nearestUnits?: Array<{ callSign: string; distance: number; etaMinutes: number }>;
+  },
+): string {
   const level = detail ?? getDetailLevel();
   const callType = resolveCallType(call);
   const location = buildLocation(call);
@@ -360,6 +367,22 @@ export function composeDispatchNarrative(call: CallData, detail?: NarrativeDetai
   // 5. Safety flags (standard + full)
   const safety = buildSafetyFlags(call);
   if (safety) phrases.push(safety);
+
+  // 5b. Threat context (if provided)
+  if (extra?.threatContext?.briefingSummary) {
+    phrases.push(extra.threatContext.briefingSummary);
+  }
+
+  // 5c. Nearest units (full detail only)
+  if (level === 'full' && extra?.nearestUnits && extra.nearestUnits.length > 0) {
+    const unitParts = extra.nearestUnits.slice(0, 3).map(u => {
+      const dist = u.distance >= 1000
+        ? `${(u.distance / 1000).toFixed(1)} kilometers`
+        : `${u.distance} meters`;
+      return `${u.callSign}, ${dist}, ${u.etaMinutes} minute${u.etaMinutes !== 1 ? 's' : ''}`;
+    });
+    phrases.push(`Nearest units: ${unitParts.join('. ')}.`);
+  }
 
   // 6. Service requests (standard + full)
   const services = buildServiceRequests(call);
