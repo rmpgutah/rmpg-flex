@@ -99,6 +99,7 @@ import mapGeofenceRoutes from './routes/mapGeofences';
 import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
+import voiceRoutes from './routes/voice';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import { authenticateToken } from './middleware/auth';
@@ -382,6 +383,7 @@ app.use('/api/map/geofences', mapGeofenceRoutes);
 app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
+app.use('/api/voice', voiceRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
