@@ -773,15 +773,29 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
 
-  setActiveCaseNumber(data.case_number || data.call_number);
+  setActiveCaseNumber(data.call_number);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: 'CALL FOR SERVICE REPORT',
     formNumber: 'FORM PS-201',
-    caseNumber: data.case_number || data.call_number,
+    caseNumber: data.call_number,
     reportDate: fmtTimestamp(data.created_at || ''),
   });
+
+  // Show linked incident number below header if attached
+  if (data.incident_number) {
+    const cw = getContentWidth(doc);
+    doc.setFillColor(15, 20, 28);
+    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 6, 'F');
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(212, 160, 23);
+    doc.text('INCIDENT REPORT:', LAYOUT.PAGE_MARGIN + 2, y + 4);
+    doc.setTextColor(255, 255, 255);
+    doc.text(sanitizePdfText(data.incident_number), LAYOUT.PAGE_MARGIN + 28, y + 4);
+    y += 7;
+  }
 
   // ── Dispatch District Info Bar (gold columns — below header) ──
   {
