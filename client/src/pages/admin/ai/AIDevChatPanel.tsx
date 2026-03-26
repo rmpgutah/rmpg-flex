@@ -265,6 +265,10 @@ export default function AIDevChatPanel() {
   };
 
   return (
+    <>
+    <style>{`
+      @keyframes shimmer { 0% { transform: translateX(-200%); } 100% { transform: translateX(400%); } }
+    `}</style>
     <div className="flex h-[calc(100vh-280px)] min-h-[500px] bg-[#0d1520] rounded border border-[#1a3550] overflow-hidden">
       {/* Session Sidebar */}
       <div className="w-60 flex-shrink-0 bg-[#0d1520] border-r border-[#1a3550] flex flex-col">
@@ -390,29 +394,73 @@ export default function AIDevChatPanel() {
           {/* Streaming message */}
           {isStreaming && (
             <div className="flex gap-3 justify-start">
-              <div className="w-7 h-7 rounded bg-[#1a5a9e] flex items-center justify-center flex-shrink-0">
-                <Bot className="w-4 h-4 text-white" />
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
+                <Bot className={`w-4.5 h-4.5 text-white ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
-              <div className="max-w-[80%] bg-[#1a2636] text-gray-200 rounded-lg rounded-tl-sm px-3 py-2 border border-[#1a3550]">
+              <div className="max-w-[80%]">
                 {streamingContent ? (
-                  <div className="text-sm whitespace-pre-wrap leading-relaxed">
-                    {renderContent(streamingContent)}
-                    <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
+                  <div className="bg-[#1a2636] text-gray-200 rounded-lg rounded-tl-sm px-3 py-2 border border-[#1a3550]">
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                      {renderContent(streamingContent)}
+                      <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
+                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3 text-gray-400 text-sm">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="bg-[#1a2636] rounded-lg rounded-tl-sm border border-blue-500/30 overflow-hidden">
+                    {/* Animated progress bar at top */}
+                    <div className="h-0.5 bg-[#0d1520] overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[shimmer_1.5s_infinite]"
+                        style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
                     </div>
-                    <span>
-                      {elapsedSec < 5 ? 'Connecting to AI...' :
-                       elapsedSec < 15 ? 'AI is processing...' :
-                       elapsedSec < 30 ? 'Still working — complex query...' :
-                       'Taking longer than usual — please wait...'}
-                    </span>
-                    <span className="text-xs text-gray-600 font-mono">{elapsedSec}s</span>
+                    <div className="px-4 py-3">
+                      {/* Brain activity animation */}
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center">
+                            <Bot className="w-5 h-5 text-blue-400" />
+                          </div>
+                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-blue-500 rounded-full animate-ping opacity-75" />
+                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-blue-400 rounded-full" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm text-white font-medium">
+                            {elapsedSec < 3 ? 'Initializing AI...' :
+                             elapsedSec < 8 ? 'Processing your request...' :
+                             elapsedSec < 15 ? 'Analyzing and generating response...' :
+                             elapsedSec < 25 ? 'Working on a detailed answer...' :
+                             'Almost there — complex analysis...'}
+                          </p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">
+                            qwen2.5 local model &middot; {elapsedSec}s elapsed
+                          </p>
+                        </div>
+                      </div>
+                      {/* Step-by-step thought process */}
+                      <div className="space-y-1.5 mt-1">
+                        {[
+                          { label: 'Reading query', delay: 0 },
+                          { label: 'Analyzing context', delay: 3 },
+                          { label: 'Searching knowledge base', delay: 6 },
+                          { label: 'Planning response', delay: 10 },
+                          { label: 'Generating answer', delay: 15 },
+                        ].map((step, i) => {
+                          const isActive = elapsedSec >= step.delay;
+                          const isDone = i < 4 && elapsedSec >= [3, 6, 10, 15, 999][i];
+                          return (
+                            <div key={i} className={`flex items-center gap-2 transition-all duration-500 ${isActive ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
+                              {isDone ? (
+                                <svg className="w-3 h-3 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                              ) : isActive ? (
+                                <Loader2 className="w-3 h-3 text-blue-400 animate-spin flex-shrink-0" />
+                              ) : null}
+                              <span className={`text-[11px] ${isDone ? 'text-gray-600 line-through' : 'text-gray-400'}`}>
+                                {step.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -486,5 +534,6 @@ export default function AIDevChatPanel() {
         </div>
       </div>
     </div>
+    </>
   );
 }
