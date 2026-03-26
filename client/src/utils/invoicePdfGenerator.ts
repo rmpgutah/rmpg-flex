@@ -24,6 +24,7 @@ import {
   getActiveBranding,
   loadPdfAssets,
   formSectionPageBreak,
+  sanitizePdfText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -220,7 +221,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         const item = items[i];
 
         // Dynamic row height for multi-line descriptions
-        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
+        const descLines = doc.splitTextToSize(sanitizePdfText(item.description || ''), cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height

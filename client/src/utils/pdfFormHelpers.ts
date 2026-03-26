@@ -6,6 +6,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { sanitizePdfText } from './pdfGenerator';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getGridStartX, getGridContentWidth,
@@ -85,6 +86,9 @@ export function drawFormCell(
   h: number,
 ): void {
   const pad = SPACING.FORM_CELL_PAD;
+
+  // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
+  if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
   // Cell border
   doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
@@ -559,7 +563,7 @@ export function drawNibrsHeader(
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_CASE_NUMBER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(config.caseNumber, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+    doc.text(sanitizePdfText(config.caseNumber), caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;

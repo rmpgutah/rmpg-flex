@@ -845,44 +845,41 @@ export function addSignatureBlock(
 export function addStackedSignatures(
   doc: jsPDF,
   role1: string,
-  role2: string,
+  _role2: string,
   y: number,
   sig1?: PdfSignatureData,
-  sig2?: PdfSignatureData,
+  _sig2?: PdfSignatureData,
   priority?: string,
 ): number {
   const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
-  const totalNeeded = 60; // approximate space for both blocks + seal
+  const totalNeeded = 35; // officer block + seal side by side
   y = checkPageBreak(doc, y, totalNeeded, priority);
 
-  // ── Reporting Officer — full width ──
-  y = addSignatureBlock(doc, role1, mx, y, cw, sig1);
+  // ── Reporting Officer (left) + Company Seal (right) — side by side ──
+  const sealSize = 26; // square box
+  const sealGap = 3;
+  const officerW = cw - sealSize - sealGap;
+  const blockY = y;
 
-  // ── Supervisor Review + Company Seal — side by side ──
-  const sealSize = 24; // square box
-  const sealGap = 2;
-  const supW = cw - sealSize - sealGap;
-  const supY = y;
+  // Officer signature block at reduced width
+  const officerEndY = addSignatureBlock(doc, role1, mx, blockY, officerW, sig1);
 
-  // Supervisor block at reduced width (reuses addSignatureBlock)
-  const supEndY = addSignatureBlock(doc, role2, mx, supY, supW, sig2);
-
-  // Company Seal box — same height as supervisor block
+  // Company Seal box — same height as officer block, aligned right
   const roleBarH = SPACING.SIGNATURE_ROLE_H;
   const sigRowH = 12;
   const infoRowH = 8;
   const blockH = roleBarH + sigRowH + infoRowH;
-  const sealX = mx + supW + sealGap;
+  const sealX = mx + officerW + sealGap;
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(sealX, supY, sealSize, blockH);
+  doc.rect(sealX, blockY, sealSize, blockH);
 
   // Dashed circle
   const circleR = (sealSize - 6) / 2;
   const cx = sealX + sealSize / 2;
-  const cy = supY + blockH / 2;
+  const cy = blockY + blockH / 2;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(0.3);
   const segs = 36;
@@ -903,7 +900,7 @@ export function addStackedSignatures(
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return supEndY;
+  return officerEndY;
 }
 
 /**
@@ -950,6 +947,7 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
  */
 export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE): number {
   if (!text) return y;
+  text = sanitizePdfText(text);
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1024,7 +1022,9 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       doc.setFont('courier', 'normal');
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(hardLine);
-      const wrappedLines: string[] = doc.splitTextToSize(stripped, wrapWidth);
+      const rawWrapped: string[] = doc.splitTextToSize(stripped, wrapWidth);
+      // Trim leading/trailing spaces from each line to prevent indent on wrap
+      const wrappedLines = rawWrapped.map((ln: string) => ln.trimStart());
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];
