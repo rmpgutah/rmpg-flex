@@ -2371,10 +2371,29 @@ export default function DispatchPage() {
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
-                      {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
-                          VISIT #{selectedCall.pso_attempt_number}
-                        </span>
+                      {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                        isAdminOrManager ? (
+                          <select
+                            className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
+                            style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
+                            value={selectedCall.pso_attempt_number || 1}
+                            onChange={async (e) => {
+                              const val = parseInt(e.target.value, 10);
+                              try {
+                                const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ pso_attempt_number: val }) });
+                                const updated = mapDbCall(result);
+                                setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                                setSelectedCall(updated);
+                              } catch { addToast('Failed to update visit number', 'error'); }
+                            }}
+                          >
+                            {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>VISIT #{n}</option>)}
+                          </select>
+                        ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                            VISIT #{selectedCall.pso_attempt_number}
+                          </span>
+                        ) : null
                       )}
                     </div>
                     <div className="space-y-1 text-xs text-rmpg-200">
