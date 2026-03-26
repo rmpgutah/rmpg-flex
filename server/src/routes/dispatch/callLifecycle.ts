@@ -233,7 +233,12 @@ router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'man
       try { db.prepare('DELETE FROM call_persons WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_persons:', e instanceof Error ? e.message : e); }
       try { db.prepare('DELETE FROM call_vehicles WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_vehicles:', e instanceof Error ? e.message : e); }
       try { db.prepare('DELETE FROM call_units WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_units:', e instanceof Error ? e.message : e); }
-      try { db.prepare('DELETE FROM dashcam_video_links WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete dashcam_video_links:', e instanceof Error ? e.message : e); }
+      try { db.prepare("DELETE FROM dashcam_video_links WHERE entity_type = 'call' AND entity_id = ?").run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete dashcam_video_links:', e instanceof Error ? e.message : e); }
+      // Additional FK tables
+      try { db.prepare('DELETE FROM alarm_responses WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete alarm_responses:', e instanceof Error ? e.message : e); }
+      try { db.prepare('UPDATE body_camera_recordings SET call_id = NULL WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify body_camera_recordings FK:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM serve_queue WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete serve_queue:', e instanceof Error ? e.message : e); }
+      try { db.prepare('UPDATE calls_for_service SET parent_call_id = NULL WHERE parent_call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify child call parent_call_id:', e instanceof Error ? e.message : e); }
 
       // Delete related activity log entries
       try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete activity_log entries:', e instanceof Error ? e.message : e); }
