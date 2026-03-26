@@ -1027,15 +1027,16 @@ export function addFormattedText(doc: jsPDF, text: string, x: number, y: number,
         charIdx = i;
 
         // For lines without formatting markers, use justified word spacing
-        // Only justify if enough words exist and spacing won't be absurdly wide
+        // Only justify if enough words AND line fills >60% of width AND gap is small
         if (!hasMarkers(lineSeg) && !isLastLine && wrappedLine.trim().length > 0) {
           const words = wrappedLine.split(/\s+/).filter(w => w.length > 0);
-          if (words.length > 1) {
+          if (words.length > 3) {
             doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             const textWidth = doc.getTextWidth(words.join(''));
             const extraSpace = (maxWidth - textWidth) / (words.length - 1);
-            // Cap justification: if extra space per gap exceeds 3mm, left-align instead
-            if (extraSpace <= 3) {
+            const fillRatio = textWidth / maxWidth;
+            // Only justify if line fills >60% of width AND extra space per gap <= 1.5mm
+            if (extraSpace <= 1.5 && fillRatio > 0.6) {
               let cx = x;
               for (let wi = 0; wi < words.length; wi++) {
                 doc.text(words[wi], cx, y);
@@ -1406,7 +1407,7 @@ export function addTableWithShading(
   const minRowH = 6;
   const cellLineH = 3.8;      // Line height within table cells
   const cellPad = 2;           // Padding inside cells
-  const maxCellLines = 5;     // Cap per cell to prevent runaway heights
+  const maxCellLines = 12;    // Allow longer notes in table cells
 
   // Pre-compute column widths from position deltas
   const colWidths: number[] = [];
