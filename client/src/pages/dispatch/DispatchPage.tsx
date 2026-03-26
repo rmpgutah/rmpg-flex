@@ -4092,10 +4092,36 @@ export default function DispatchPage() {
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
-                        {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                          <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
-                            {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
-                          </span>
+                        {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                          isAdminOrManager && !isEditing ? (
+                            <select
+                              className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
+                              style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
+                              value={selectedCall.pso_attempt_number || 1}
+                              onChange={async (e) => {
+                                const newAttempt = parseInt(e.target.value, 10);
+                                try {
+                                  const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ pso_attempt_number: newAttempt }),
+                                  });
+                                  const updated = mapDbCall(result);
+                                  setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                                  setSelectedCall(updated);
+                                  addToast(`Attempt number set to ${newAttempt}`, 'success');
+                                } catch (err) { addToast('Failed to update attempt number', 'error'); }
+                              }}
+                              title="Admin: change attempt number"
+                            >
+                              {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                                <option key={n} value={n}>{n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`} ATTEMPT</option>
+                              ))}
+                            </select>
+                          ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
+                            <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                              {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
+                            </span>
+                          ) : null
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
