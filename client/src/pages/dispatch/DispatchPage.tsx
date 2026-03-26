@@ -4247,10 +4247,10 @@ export default function DispatchPage() {
                   </div>
                 )}
 
-                {/* ── PROCESS SERVICE DETAILS — Info tab ─── */}
+                {/* ── PROCESS SERVICE DETAILS — Info tab (always visible for PSO/process calls) ─── */}
                 {detailTab === 'info' && (isEditing
-                  ? editData.pso_service_type === 'process_service'
-                  : (selectedCall.pso_service_type === 'process_service' || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
+                  ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
+                  : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
                   <div className="border-t border-[#1e3048] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
