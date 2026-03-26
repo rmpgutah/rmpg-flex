@@ -1821,7 +1821,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 18. Signature Block — full-width stacked ──────────────
-  y = addStackedSignatures(doc, 'Entering Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
+  y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig(), undefined, prio);
 }
 
 // ── Vehicle Record ───────────────────────────────────────────
@@ -1950,8 +1950,7 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  y = checkPageBreak(doc, y, 40);
-  y = addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
+  y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig());
 }
 
 // ── Warrant ──────────────────────────────────────────────────
@@ -2055,7 +2054,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
   // Signature Block — full-width stacked
-  y = addStackedSignatures(doc, 'Entering Officer', 'Serving Officer', y, getOfficerSig(), undefined, statusPrio);
+  y = addStackedSignatures(doc, 'Serving Officer', '', y, getOfficerSig(), undefined, statusPrio);
 }
 
 // ── Evidence / Property Custody Report ───────────────────────
@@ -2425,9 +2424,8 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
-  // Signature Block — full-width
-  y = checkPageBreak(doc, y, 40);
-  y = addSignatureBlock(doc, 'Fleet Manager', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
+  // Signature Block — officer + company seal
+  y = addStackedSignatures(doc, 'Fleet Manager', '', y, getOfficerSig());
 }
 
 // ── Personnel / Officer Record ───────────────────────────────
@@ -2845,9 +2843,8 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  // Signature Block — full-width
-  y = checkPageBreak(doc, y, 40);
-  y = addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
+  // Signature Block — officer + company seal
+  y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
 }
 
 // ── Citation Report ──────────────────────────────────────────
