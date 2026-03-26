@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Brain, Loader2, Server, Zap, Activity, Shield, LayoutDashboard, MessageSquareCode,
+  SlidersHorizontal, FlaskConical, Settings2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { AIConfig, ProviderInfo, UsageStats } from './ai/AISharedComponents';
@@ -11,6 +12,9 @@ import AIActivityPanel from './ai/AIActivityPanel';
 import AIIntelligencePanel from './ai/AIIntelligencePanel';
 import AIMasterConfigPanel from './ai/AIMasterConfigPanel';
 import AIDevChatPanel from './ai/AIDevChatPanel';
+import AIModelTuningPanel from './ai/AIModelTuningPanel';
+import AIPromptWorkshopPanel from './ai/AIPromptWorkshopPanel';
+import AIBehaviorPanel from './ai/AIBehaviorPanel';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -18,13 +22,16 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
-type AISection = 'command_center' | 'providers' | 'capabilities' | 'activity' | 'intelligence' | 'master_config' | 'dev_chat';
+type AISection = 'command_center' | 'providers' | 'capabilities' | 'model_tuning' | 'prompt_workshop' | 'activity' | 'behavior' | 'intelligence' | 'master_config' | 'dev_chat';
 
 const SECTIONS: Array<{ id: AISection; label: string; icon: React.FC<{ className?: string }> }> = [
   { id: 'command_center', label: 'Command Center', icon: LayoutDashboard },
   { id: 'providers', label: 'Providers', icon: Server },
   { id: 'capabilities', label: 'Capabilities', icon: Zap },
+  { id: 'model_tuning', label: 'Model Tuning', icon: SlidersHorizontal },
+  { id: 'prompt_workshop', label: 'Prompt Workshop', icon: FlaskConical },
   { id: 'activity', label: 'Activity Log', icon: Activity },
+  { id: 'behavior', label: 'AI Behavior', icon: Settings2 },
   { id: 'intelligence', label: 'System Intelligence', icon: Shield },
   { id: 'master_config', label: 'Master AI', icon: Brain },
   { id: 'dev_chat', label: 'Dev Assistant', icon: MessageSquareCode },
@@ -118,7 +125,13 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
         />
       )}
 
+      {section === 'model_tuning' && <AIModelTuningPanel />}
+
+      {section === 'prompt_workshop' && <AIPromptWorkshopPanel />}
+
       {section === 'activity' && <AIActivityPanel />}
+
+      {section === 'behavior' && <AIBehaviorPanel />}
 
       {section === 'intelligence' && <AIIntelligencePanel setError={setError} />}
 

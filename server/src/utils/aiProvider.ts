@@ -15,6 +15,8 @@ import Groq from 'groq-sdk';
 export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
+  topP?: number;
+  repeatPenalty?: number;
   jsonMode?: boolean;
 }
 
@@ -51,6 +53,7 @@ export class GroqProvider implements AIProvider {
         model: this.model,
         temperature: options?.temperature ?? 0.3,
         max_tokens: options?.maxTokens ?? 300,
+        top_p: options?.topP ?? 0.9,
         ...(options?.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
         messages: [
           { role: 'system', content: systemPrompt },
@@ -95,6 +98,7 @@ export class GeminiProvider implements AIProvider {
         generationConfig: {
           temperature: options?.temperature ?? 0.3,
           maxOutputTokens: options?.maxTokens ?? 300,
+          topP: options?.topP ?? 0.9,
           ...(options?.jsonMode ? { responseMimeType: 'application/json' } : {}),
         },
       };
@@ -146,6 +150,8 @@ export class OpenAIProvider implements AIProvider {
         model: this.model,
         temperature: options?.temperature ?? 0.3,
         max_tokens: options?.maxTokens ?? 300,
+        top_p: options?.topP ?? 0.9,
+        frequency_penalty: options?.repeatPenalty ? options.repeatPenalty - 1.0 : 0,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
@@ -189,7 +195,7 @@ export class OllamaProvider implements AIProvider {
 
   constructor(url?: string, model?: string) {
     this.baseUrl = (url || process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '');
-    this.model = model || 'qwen3.5-uncensored';
+    this.model = model || 'qwen3.5-fast';
   }
 
   isAvailable(): boolean {
@@ -209,6 +215,8 @@ export class OllamaProvider implements AIProvider {
         options: {
           temperature: options?.temperature ?? 0.3,
           num_predict: options?.maxTokens ?? 300,
+          top_p: options?.topP ?? 0.9,
+          repeat_penalty: options?.repeatPenalty ?? 1.1,
         },
       };
       if (options?.jsonMode) {

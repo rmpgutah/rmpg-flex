@@ -293,6 +293,156 @@ router.post('/smart-search', requireRole('admin', 'manager', 'supervisor', 'offi
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Enhanced AI Admin Endpoints
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Model Parameters ───
+router.get('/model-params', requireRole('admin'), (_req: Request, res: Response) => {
+  const cfg = aiManager.getConfig();
+  res.json({
+    defaultParams: cfg.defaultParams,
+    featureParams: cfg.featureParams,
+  });
+});
+
+router.put('/model-params', requireRole('admin'), (req: Request, res: Response) => {
+  const { defaultParams, featureParams } = req.body;
+  aiManager.saveConfig({ defaultParams, featureParams });
+  res.json({ success: true });
+});
+
+// ─── Model Presets ───
+router.get('/presets', requireRole('admin'), (_req: Request, res: Response) => {
+  const database = getDb();
+  const presets = database.prepare('SELECT * FROM ai_model_presets ORDER BY name').all();
+  res.json(presets);
+});
+
+router.post('/presets', requireRole('admin'), (req: Request, res: Response) => {
+  const { name, temperature, max_tokens, top_p, repeat_penalty } = req.body;
+  if (!name) { res.status(400).json({ error: 'name required' }); return; }
+  const database = getDb();
+  const result = database.prepare(
+    'INSERT INTO ai_model_presets (name, temperature, max_tokens, top_p, repeat_penalty) VALUES (?, ?, ?, ?, ?)'
+  ).run(name, temperature ?? 0.3, max_tokens ?? 500, top_p ?? 0.9, repeat_penalty ?? 1.1);
+  res.json({ success: true, id: result.lastInsertRowid });
+});
+
+router.delete('/presets/:id', requireRole('admin'), (req: Request, res: Response) => {
+  const database = getDb();
+  database.prepare('DELETE FROM ai_model_presets WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// ─── Prompt Templates ───
+router.get('/templates', requireRole('admin'), (_req: Request, res: Response) => {
+  const database = getDb();
+  const templates = database.prepare('SELECT * FROM ai_prompt_templates ORDER BY category, name').all();
+  res.json(templates);
+});
+
+router.post('/templates', requireRole('admin'), (req: Request, res: Response) => {
+  const { name, category, system_prompt, user_prompt_template, variables } = req.body;
+  if (!name || !category || !system_prompt) { res.status(400).json({ error: 'name, category, system_prompt required' }); return; }
+  const database = getDb();
+  const result = database.prepare(
+    'INSERT INTO ai_prompt_templates (name, category, system_prompt, user_prompt_template, variables) VALUES (?, ?, ?, ?, ?)'
+  ).run(name, category, system_prompt, user_prompt_template || '', JSON.stringify(variables || []));
+  res.json({ success: true, id: result.lastInsertRowid });
+});
+
+router.put('/templates/:id', requireRole('admin'), (req: Request, res: Response) => {
+  const { name, category, system_prompt, user_prompt_template, variables } = req.body;
+  const database = getDb();
+  database.prepare(
+    `UPDATE ai_prompt_templates SET name=?, category=?, system_prompt=?, user_prompt_template=?, variables=?, updated_at=datetime('now','localtime') WHERE id=?`
+  ).run(name, category, system_prompt, user_prompt_template || '', JSON.stringify(variables || []), req.params.id);
+  res.json({ success: true });
+});
+
+router.delete('/templates/:id', requireRole('admin'), (req: Request, res: Response) => {
+  const database = getDb();
+  database.prepare('DELETE FROM ai_prompt_templates WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// ─── Prompt Testing ───
+router.post('/prompt-test', requireRole('admin'), async (req: Request, res: Response) => {
+  const { systemPrompt, userMessage, temperature, maxTokens } = req.body;
+  if (!systemPrompt || !userMessage) { res.status(400).json({ error: 'systemPrompt and userMessage required' }); return; }
+  const start = Date.now();
+  try {
+    const response = await aiManager.chat(systemPrompt, userMessage, {
+      taskType: 'general',
+      temperature: temperature ?? 0.3,
+      maxTokens: maxTokens ?? 500,
+    });
+    res.json({ content: response, latencyMs: Date.now() - start });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Test failed' });
+  }
+});
+
+// ─── Behavior Config ───
+router.get('/behavior', requireRole('admin'), (_req: Request, res: Response) => {
+  const cfg = aiManager.getConfig();
+  res.json(cfg.behavior);
+});
+
+router.put('/behavior', requireRole('admin'), (req: Request, res: Response) => {
+  aiManager.saveConfig({ behavior: req.body });
+  res.json({ success: true });
+});
+
+// ─── Enhanced Activity Log (from DB) ───
+router.get('/activity-log', requireRole('admin'), (req: Request, res: Response) => {
+  const database = getDb();
+  const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+  const offset = parseInt(req.query.offset as string) || 0;
+  const taskType = req.query.taskType as string;
+  const from = req.query.from as string;
+  const to = req.query.to as string;
+
+  let where = 'WHERE 1=1';
+  const params: any[] = [];
+  if (taskType && taskType !== 'all') { where += ' AND task_type = ?'; params.push(taskType); }
+  if (from) { where += ' AND created_at >= ?'; params.push(from); }
+  if (to) { where += ' AND created_at <= ?'; params.push(to + ' 23:59:59'); }
+
+  const total = (database.prepare(`SELECT COUNT(*) as count FROM ai_activity_log ${where}`).get(...params) as any).count;
+  const rows = database.prepare(`SELECT * FROM ai_activity_log ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  res.json({ rows, total, limit, offset });
+});
+
+router.get('/activity-log/export/csv', requireRole('admin'), (_req: Request, res: Response) => {
+  const database = getDb();
+  const rows = database.prepare('SELECT id, task_type, provider, model, latency_ms, success, error, prompt_preview, tokens_used, rating, created_at FROM ai_activity_log ORDER BY id DESC LIMIT 1000').all() as any[];
+
+  const headers = 'id,task_type,provider,model,latency_ms,success,error,prompt_preview,tokens_used,rating,created_at';
+  const csvRows = rows.map((r: any) =>
+    `${r.id},"${r.task_type}","${r.provider}","${r.model || ''}",${r.latency_ms},${r.success},"${(r.error || '').replace(/"/g, '""')}","${(r.prompt_preview || '').replace(/"/g, '""')}",${r.tokens_used || 0},${r.rating || ''},${r.created_at}`
+  );
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=ai-activity-log.csv');
+  res.send(headers + '\n' + csvRows.join('\n'));
+});
+
+router.get('/activity-log/:id', requireRole('admin'), (req: Request, res: Response) => {
+  const database = getDb();
+  const row = database.prepare('SELECT * FROM ai_activity_log WHERE id = ?').get(req.params.id);
+  if (!row) { res.status(404).json({ error: 'Not found' }); return; }
+  res.json(row);
+});
+
+router.put('/activity-log/:id/rate', requireRole('admin'), (req: Request, res: Response) => {
+  const { rating } = req.body;
+  const database = getDb();
+  database.prepare('UPDATE ai_activity_log SET rating = ? WHERE id = ?').run(rating, req.params.id);
+  res.json({ success: true });
+});
+
 // ─── Helpers ───
 
 function maskKey(key: string): string {
