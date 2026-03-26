@@ -26,6 +26,13 @@ import {
 } from '../utils/voiceAlerts';
 import { classifySeverity } from '../utils/alertSeverity';
 import { announceWithSeverity, isEdgeTTSEnabled } from '../utils/edgeTTS';
+import {
+  composeDispatchNarrative,
+  composePanicNarrative,
+  composeBoloNarrative,
+  composeBackupNarrative,
+  composePursuitNarrative,
+} from '../utils/narrativeComposer';
 import type { AlertBannerItem } from '../components/DispatchAlertBanner';
 
 /**
@@ -95,7 +102,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
           const call = normalizeCallForVoice(data.call);
           const { severity } = classifySeverity('call_created', call);
           if (isEdgeTTSEnabled()) {
-            const text = `New call: ${call.call_type || call.nature || 'Unknown'} at ${call.location || 'unknown location'}`;
+            const text = composeDispatchNarrative(call);
             announceWithSeverity(text, severity);
           } else {
             announceNewCall(call);
@@ -113,8 +120,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
           if (status === 'dispatched') {
             const { severity } = classifySeverity('call_dispatched', call);
             if (isEdgeTTSEnabled()) {
-              const units = Array.isArray(call.assigned_units) ? call.assigned_units.join(', ') : '';
-              const text = `Dispatched${units ? ` ${units}` : ''} to ${call.call_type || 'call'} at ${call.location || 'unknown location'}`;
+              const text = composeDispatchNarrative(call);
               announceWithSeverity(text, severity);
             } else {
               announceDispatchEvent(call);
@@ -153,7 +159,9 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const officerName = data.user_name || data.userName || data.officerName || 'Unknown officer';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Panic alert! ${officerName} has activated panic.`, 'major');
+          const loc = data.location || data.gps_address || '';
+          const cs = data.call_sign || data.unit || '';
+          announceWithSeverity(composePanicNarrative(officerName, loc, cs), 'major');
         } else {
           announcePanicAlert(officerName);
         }
@@ -167,7 +175,14 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const boloTitle = data.title || data.subject || 'Alert';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`BOLO alert: ${boloTitle}`, 'moderate');
+          announceWithSeverity(composeBoloNarrative({
+            type: boloTitle,
+            description: data.description || data.details || '',
+            vehicle_description: data.vehicle_description || data.vehicle || '',
+            suspect_description: data.suspect_description || '',
+            last_seen_location: data.last_seen_location || '',
+            direction_of_travel: data.direction_of_travel || '',
+          }), 'moderate');
         } else {
           announceBolo(boloTitle, data.priority);
         }
@@ -196,7 +211,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const loc = data.location || 'unknown location';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Backup requested by ${unit} at ${loc}`, 'moderate');
+          announceWithSeverity(composeBackupNarrative(unit, loc, data.call_number), 'moderate');
         } else {
           announceBackupRequest({ officer_name: unit, location: loc });
         }
@@ -211,7 +226,13 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const direction = data.direction || '';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Pursuit update: ${unit}${direction ? ` heading ${direction}` : ''}`, 'major');
+          announceWithSeverity(composePursuitNarrative({
+            unit,
+            direction,
+            location: data.location || '',
+            speed: data.speed || '',
+            vehicle_description: data.vehicle_description || '',
+          }), 'major');
         } else {
           announcePursuit({ officer_name: unit, direction });
         }
