@@ -25,6 +25,7 @@ import {
   loadPdfAssets,
   formSectionPageBreak,
   sanitizePdfText,
+  addSignatureBlock,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -352,6 +353,11 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // ── Signature Block ──────────────────────────────────
+  y = checkPageBreak(doc, y, 30);
+  y += SPACING.MD;
+  y = addSignatureBlock(doc, 'Authorized By', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
 
   // ── Footer on all pages ──────────────────────────────
   const totalPages = doc.getNumberOfPages();

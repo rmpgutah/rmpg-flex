@@ -8,7 +8,7 @@
 
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
-import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText } from './pdfGenerator';
+import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak } from './pdfGenerator';
 import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
 
 // ── Types matching the server patrol-tracking response ──────
@@ -588,6 +588,12 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       }
     }
   }
+
+  // ── Signature Block ──────────────────────────────────
+  y = checkPageBreak(doc, y, 30);
+  y += 3;
+  const cw = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN * 2;
+  y = addSignatureBlock(doc, 'Reporting Officer', LAYOUT.PAGE_MARGIN, y, cw);
 
   // ── Apply headers/footers to all pages ───────────────
   const totalPages = doc.internal.pages.length - 1;
