@@ -326,8 +326,6 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
   if (loading) return <LoadingSpinner />;
 
 
-  if (loading) return <LoadingSpinner />;
-
   return (
     <div className="p-4 space-y-4">
       {/* ═══ Header ═══ */}

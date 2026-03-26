@@ -3071,7 +3071,6 @@ export default function DispatchPage() {
                           if (e.key === 'Enter') {
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
-                              // Link/unlink incident by updating call's case_number to the incident number
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
                               const updated = mapDbCall(result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));

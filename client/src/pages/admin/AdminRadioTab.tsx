@@ -193,8 +193,6 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
   if (loading) return <LoadingSpinner />;
 
 
-  if (loading) return <LoadingSpinner />;
-
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
