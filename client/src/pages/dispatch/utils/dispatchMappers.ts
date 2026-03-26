@@ -100,7 +100,7 @@ export function mapDbCall(row: any): CallForService {
     le_notified: !!row.le_notified,
     le_agency: row.le_agency || undefined,
     le_case_number: row.le_case_number || undefined,
-    case_number: row.case_number || row.incident_number || undefined,
+    case_number: row.case_number || undefined,
     incident_number: row.incident_number || undefined,
     // Additional operational flags
     mental_health_crisis: !!row.mental_health_crisis,
