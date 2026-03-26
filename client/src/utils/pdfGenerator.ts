@@ -1004,8 +1004,25 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
   const text = sanitizePdfText(rawText);
   const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
-  // Reduce wrap width slightly to prevent Courier rounding errors causing overflow
-  const wrapWidth = maxWidth - 1;
+  // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
+  const wordWrap = (str: string, maxW: number): string[] => {
+    const words = str.split(/(\s+)/); // Split keeping whitespace tokens
+    const result: string[] = [];
+    let currentLine = '';
+    for (const word of words) {
+      if (!word) continue;
+      const testLine = currentLine + word;
+      const testWidth = doc.getTextWidth(testLine.trimEnd());
+      if (testWidth > maxW && currentLine.trim().length > 0) {
+        result.push(currentLine.trimEnd());
+        currentLine = word.trimStart(); // Start new line without leading space
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine.trim()) result.push(currentLine.trimEnd());
+    return result.length > 0 ? result : [str];
+  };
   let lastPage = doc.getNumberOfPages();
   const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
   const hasMarkers = (s: string) => /(\*\*|__|\*[^*])/.test(s);
@@ -1022,12 +1039,10 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       doc.setFont('courier', 'normal');
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(hardLine);
-      const wrappedLines: string[] = doc.splitTextToSize(stripped, wrapWidth);
+      const wrappedLines: string[] = wordWrap(stripped, maxWidth);
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
-        const rawLine = wrappedLines[wli];
-        // Trim leading spaces from continuation lines to prevent indent
-        const wrappedLine = wli > 0 ? rawLine.trimStart() : rawLine;
+        const wrappedLine = wrappedLines[wli];
         const isLastLine = wli === wrappedLines.length - 1 && hlIdx === hardLines.length - 1;
         y = checkPageBreak(doc, y, lineH + SPACING.SM);
         // If page changed, call onPageBreak to draw section continuation header
@@ -1037,7 +1052,7 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
           if (onPageBreak) y = onPageBreak(y);
         }
         const lineLen = wrappedLine.length;
-        // Skip leading whitespace in source text to stay in sync after trim
+        // Skip whitespace between words at line boundaries
         while (charIdx < hardLine.length && hardLine[charIdx] === ' ' && wli > 0) charIdx++;
         let segStart = charIdx;
         let visibleCount = 0;
@@ -1067,8 +1082,8 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
           if (words.length > 3) {
             doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             const textWidth = doc.getTextWidth(words.join(''));
-            const extraSpace = (wrapWidth - textWidth) / (words.length - 1);
-            const fillRatio = textWidth / wrapWidth;
+            const extraSpace = (maxWidth - textWidth) / (words.length - 1);
+            const fillRatio = textWidth / maxWidth;
             // Only justify if line fills >60% of width AND extra space per gap <= 1.5mm
             if (extraSpace <= 1.5 && fillRatio > 0.6) {
               let cx = x;
@@ -1161,7 +1176,12 @@ export function addNarrativeSection(
     const hardLines = para.trim().split(/\n/);
     for (const hl of hardLines) {
       if (!hl.trim()) continue;
-      const lines = doc.splitTextToSize(stripFmt(hl.trim()), ffw - 1);
+      const estCharW = doc.getTextWidth('M');
+      const charsPerLine = Math.floor(ffw / estCharW);
+      const words = stripFmt(hl.trim()).split(/\s+/);
+      let lineCount = 1, lineLen = 0;
+      for (const w of words) { if (lineLen + w.length + 1 > charsPerLine && lineLen > 0) { lineCount++; lineLen = w.length; } else { lineLen += (lineLen > 0 ? 1 : 0) + w.length; } }
+      const lines = new Array(lineCount);
       totalLines += lines.length;
     }
     paraCount++;
