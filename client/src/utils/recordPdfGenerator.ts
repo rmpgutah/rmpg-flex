@@ -864,7 +864,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Caller Information
-  y = checkPageBreak(doc, y, 25, prio);
+  y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
@@ -877,7 +877,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Location
-  y = checkPageBreak(doc, y, 35, prio);
+  y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     { const yL = addFieldPair(doc, 'Latitude', data.latitude != null ? String(data.latitude) : '', lx, y, hfw);
@@ -921,7 +921,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Incident Details
-  y = checkPageBreak(doc, y, 35, prio);
+  y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
     y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
@@ -993,7 +993,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Scene Conditions
-  y = checkPageBreak(doc, y, 25, prio);
+  y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Weather', value: data.weather_conditions || '' },
@@ -1065,7 +1065,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // PSO Client Request (conditional)
   if (data.incident_type === 'pso_client_request') {
-    y = checkPageBreak(doc, y, 35, prio);
+    y = checkPageBreak(doc, y, 20, prio);
     const attemptNum = data.pso_attempt_number || 1;
     const attemptLabel = attemptNum > 1
       ? ` — ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
