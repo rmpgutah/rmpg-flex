@@ -1025,7 +1025,9 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       const wrappedLines: string[] = doc.splitTextToSize(stripped, wrapWidth);
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
-        const wrappedLine = wrappedLines[wli];
+        const rawLine = wrappedLines[wli];
+        // Trim leading spaces from continuation lines to prevent indent
+        const wrappedLine = wli > 0 ? rawLine.trimStart() : rawLine;
         const isLastLine = wli === wrappedLines.length - 1 && hlIdx === hardLines.length - 1;
         y = checkPageBreak(doc, y, lineH + SPACING.SM);
         // If page changed, call onPageBreak to draw section continuation header
@@ -1035,6 +1037,8 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
           if (onPageBreak) y = onPageBreak(y);
         }
         const lineLen = wrappedLine.length;
+        // Skip leading whitespace in source text to stay in sync after trim
+        while (charIdx < hardLine.length && hardLine[charIdx] === ' ' && wli > 0) charIdx++;
         let segStart = charIdx;
         let visibleCount = 0;
         let i = charIdx;

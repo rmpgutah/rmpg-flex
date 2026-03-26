@@ -108,7 +108,7 @@ export const SPACING = {
   CONTENT_INSET:      1.5,   // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height
   SECTION_GAP:        0.8,   // Gap between sections
-  SECTION_CONTENT_PAD: 1.8,  // Gap from header bar to first content
+  SECTION_CONTENT_PAD: 3.5,  // Gap from header bar to first content
   SECTION_BOTTOM_PAD:  1.2,  // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   7,     // Height of field box
