@@ -4159,14 +4159,30 @@ export default function DispatchPage() {
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Service Type</label>
                             <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
-                              <option value="">— Select —</option>
-                              <option value="patrol">Patrol</option>
-                              <option value="static_guard">Static Guard</option>
-                              <option value="escort">Escort</option>
-                              <option value="event_security">Event Security</option>
-                              <option value="surveillance">Surveillance</option>
-                              <option value="access_control">Access Control</option>
-                              <option value="other">Other</option>
+                              <option value="">— Select Service Type —</option>
+                              <optgroup label="Process Service">
+                                <option value="process_service">Process Service (General)</option>
+                                <option value="subpoena_service">Subpoena Service</option>
+                                <option value="summons_service">Summons &amp; Complaint</option>
+                                <option value="eviction_service">Eviction / Unlawful Detainer</option>
+                                <option value="restraining_order_service">Protective Order Service</option>
+                                <option value="writ_service">Writ Service</option>
+                                <option value="court_filing">Court Filing / Delivery</option>
+                                <option value="skip_trace">Skip Trace &amp; Locate</option>
+                                <option value="stake_out">Stake Out / Surveillance</option>
+                                <option value="rush_service">Rush / Same-Day Service</option>
+                              </optgroup>
+                              <optgroup label="Security Services">
+                                <option value="patrol">Patrol</option>
+                                <option value="static_guard">Static Guard</option>
+                                <option value="escort">Escort</option>
+                                <option value="event_security">Event Security</option>
+                                <option value="surveillance">Surveillance</option>
+                                <option value="access_control">Access Control</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                           <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
