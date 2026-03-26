@@ -39,8 +39,8 @@ const DENIAL_RE = /\b(cancel|negative|no|deny|stop|abort|disregard)\b/i;
 
 // ─── Public API ─────────────────────────────────────────────
 
-export function addEntry(entry: ConversationEntry): void {
-  entries.push(entry);
+export function addEntry(entry: Omit<ConversationEntry, 'timestamp'> & { timestamp?: number }): void {
+  entries.push({ ...entry, timestamp: entry.timestamp ?? Date.now() });
   lastInteraction = Date.now();
 
   // Auto-trim to max

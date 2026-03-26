@@ -372,7 +372,8 @@ export type UnitStatus =
   | 'enroute'
   | 'onscene'
   | 'busy'
-  | 'off_duty';
+  | 'off_duty'
+  | 'out_of_service';
 
 export interface Unit {
   id: string;
@@ -1595,7 +1596,11 @@ export type WSMessageType =
   // Voice dispatch alerts
   | 'backup_request'
   | 'pursuit_update'
-  | 'all_units';
+  | 'all_units'
+  // Welfare monitoring
+  | 'welfare_check'
+  | 'welfare_alert'
+  | 'welfare_emergency';
 
 export interface WSMessage {
   type: WSMessageType;
