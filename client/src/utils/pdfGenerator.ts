@@ -878,54 +878,62 @@ export function addStackedSignatures(
 ): number {
   const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
-  const totalNeeded = 35; // officer block + seal side by side
+  const totalNeeded = 40; // full-width sig block + company seal row
   y = checkPageBreak(doc, y, totalNeeded, priority);
 
-  // ── Reporting Officer (left) + Company Seal (right) — side by side ──
-  const sealSize = 26; // square box
-  const sealGap = 3;
-  const officerW = cw - sealSize - sealGap;
+  // ── Full-width Reporting Officer signature block ──
   const blockY = y;
+  y = addSignatureBlock(doc, role1, mx, blockY, cw, sig1);
 
-  // Officer signature block at reduced width
-  const officerEndY = addSignatureBlock(doc, role1, mx, blockY, officerW, sig1);
-
-  // Company Seal box — same height as officer block, aligned right
-  const roleBarH = SPACING.SIGNATURE_ROLE_H;
-  const sigRowH = 12;
-  const infoRowH = 8;
-  const blockH = roleBarH + sigRowH + infoRowH;
-  const sealX = mx + officerW + sealGap;
+  // ── Company Seal — small inline row below signature ──
+  const sealRowH = 12;
+  const sealR = 4;
+  y = checkPageBreak(doc, y, sealRowH + 2, priority);
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(sealX, blockY, sealSize, blockH);
+  doc.rect(mx, y, cw, sealRowH);
 
-  // Dashed circle
-  const circleR = (sealSize - 6) / 2;
-  const cx = sealX + sealSize / 2;
-  const cy = blockY + blockH / 2;
+  // Dashed circle on the right side
+  const cx = mx + cw - 14;
+  const cy = y + sealRowH / 2;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(0.3);
-  const segs = 36;
+  const segs = 24;
   for (let i = 0; i < segs; i++) {
     if (i % 2 === 0) {
       const a1 = (i / segs) * 2 * Math.PI;
       const a2 = ((i + 1) / segs) * 2 * Math.PI;
-      doc.line(cx + circleR * Math.cos(a1), cy + circleR * Math.sin(a1),
-               cx + circleR * Math.cos(a2), cy + circleR * Math.sin(a2));
+      doc.line(cx + sealR * Math.cos(a1), cy + sealR * Math.sin(a1),
+               cx + sealR * Math.cos(a2), cy + sealR * Math.sin(a2));
     }
   }
 
+  // "COMPANY SEAL" label next to circle
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('COMPANY', cx, cy - 1, { align: 'center' });
-  doc.text('SEAL', cx, cy + 2, { align: 'center' });
+  doc.text('COMPANY SEAL', cx - sealR - 2, cy + 0.5, { align: 'right' });
+
+  // "SUPERVISOR REVIEW" label on the left
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+  doc.text('SUPERVISOR REVIEW:', mx + SPACING.CONTENT_INSET, cy + 0.5);
+
+  // Supervisor signature line
+  const sigLineX = mx + 32;
+  const sigLineEndX = mx + cw - 35;
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(BORDER.SIGNATURE_LINE);
+  doc.line(sigLineX, cy + 2, sigLineEndX, cy + 2);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5);
+  doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  doc.text('X', sigLineX - 3, cy + 1);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return officerEndY;
+  return y + sealRowH + SPACING.SM;
 }
 
 /**
