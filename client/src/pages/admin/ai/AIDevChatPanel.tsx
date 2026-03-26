@@ -608,9 +608,11 @@ export default function AIDevChatPanel() {
                 <Bot className={`w-4.5 h-4.5 text-white ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
               <div className="max-w-[80%]">
-                {/* Thinking phase — rich visual reasoning display */}
-                {(isThinking || thinkingText) && !streamingContent && (
-                  <div className="bg-gradient-to-b from-[#1a2636] to-[#141e2b] rounded-lg rounded-tl-sm border border-amber-500/20 overflow-hidden mb-2 min-w-[340px]">
+                {/* Thinking phase — rich visual reasoning display (stays visible during response) */}
+                {(isThinking || thinkingText) && (
+                  <div className={`bg-gradient-to-b from-[#1a2636] to-[#141e2b] rounded-lg rounded-tl-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
+                    streamingContent ? 'border-amber-500/10 max-h-28' : 'border-amber-500/20'
+                  }`}>
                     {/* Animated header bar */}
                     <div className="relative">
                       <div className="h-1 bg-[#0d1520] overflow-hidden">
@@ -627,7 +629,7 @@ export default function AIDevChatPanel() {
                             {isThinking && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full" />}
                           </div>
                           <span className="text-[10px] text-amber-400 font-bold tracking-[0.15em] uppercase">
-                            {isThinking ? 'AI REASONING' : 'ANALYSIS COMPLETE'}
+                            {streamingContent ? 'REASONING (COMPLETE)' : isThinking ? 'AI REASONING' : 'ANALYSIS COMPLETE'}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -645,7 +647,9 @@ export default function AIDevChatPanel() {
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className="text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] max-h-48 overflow-y-auto font-mono bg-[#0a0f18] rounded p-3 border border-[#1a2a3a] shadow-inner"
+                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0a0f18] rounded p-3 border border-[#1a2a3a] shadow-inner transition-all duration-300 ${
+                        streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
+                      }`}
                         style={{ scrollBehavior: 'smooth' }}
                         ref={el => { if (el && isThinking) el.scrollTop = el.scrollHeight; }}>
                         {thinkingText ? thinkingText.split('\n').map((line, i) => {
@@ -672,19 +676,14 @@ export default function AIDevChatPanel() {
                   </div>
                 )}
 
-                {/* Response content — streaming tokens */}
+                {/* Response content — streams alongside reasoning */}
                 {streamingContent ? (
-                  <div className="bg-[#1a2636] text-gray-200 rounded-lg rounded-tl-sm px-3 py-2 border border-[#1a3550]">
-                    {thinkingText && (
-                      <details className="mb-2">
-                        <summary className="text-[10px] text-amber-500/60 cursor-pointer hover:text-amber-400 transition-colors">
-                          View AI thought process ({thinkingText.length} chars)
-                        </summary>
-                        <div className="text-[10px] text-gray-500 whitespace-pre-wrap leading-relaxed mt-1 font-mono bg-[#0d1520] rounded p-2 border border-[#1a3550] max-h-32 overflow-y-auto">
-                          {thinkingText}
-                        </div>
-                      </details>
-                    )}
+                  <div className="bg-[#1a2636] text-gray-200 rounded-lg rounded-tl-sm px-3 py-2 border border-blue-500/30">
+                    <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a3550]">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                      <span className="text-[10px] text-blue-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
+                      <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
+                    </div>
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">
                       {renderContent(streamingContent)}
                       <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
