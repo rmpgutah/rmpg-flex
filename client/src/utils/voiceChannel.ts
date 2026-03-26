@@ -16,6 +16,8 @@
 
 import { announceWithSeverity, speak, clearQueue } from './edgeTTS';
 import type { AlertSeverity } from './alertSeverity';
+import { createStressAnalyzer, type StressResult } from './stressAnalyzer';
+import * as conversationMemory from './conversationMemory';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -50,6 +52,7 @@ export interface VoiceChannelCallbacks {
   onTranscript: (text: string, isFinal: boolean) => void;
   onCommandResult: (result: CommandResult) => void;
   onError: (error: string) => void;
+  onStressDetected?: (result: StressResult) => void;
 }
 
 // ─── localStorage Keys ──────────────────────────────────────
@@ -361,6 +364,10 @@ export class VoiceChannel {
   // Pending alert that should preempt listening
   private pendingAlert: { narrative: string; severity: AlertSeverity } | null = null;
 
+  // Stress analysis
+  private stressAnalyzer: ReturnType<typeof createStressAnalyzer> | null = null;
+  private stressAudioContext: AudioContext | null = null;
+
   constructor(callbacks: VoiceChannelCallbacks) {
     this.callbacks = callbacks;
     this.config = getVoiceChannelConfig();
@@ -436,6 +443,13 @@ export class VoiceChannel {
     this.destroyed = true;
     this.stopListening();
     this.clearListenTimer();
+    // Clean up stress analyzer
+    this.stressAnalyzer?.disconnect();
+    this.stressAnalyzer = null;
+    if (this.stressAudioContext) {
+      this.stressAudioContext.close().catch(() => {});
+      this.stressAudioContext = null;
+    }
     this.setState('idle');
   }
 
@@ -527,6 +541,14 @@ export class VoiceChannel {
       // MediaRecorder not available — fall back to Web Speech API only
       console.warn('MediaRecorder unavailable, using Web Speech API only');
     }
+
+    // Start stress analysis on the mic stream
+    try {
+      this.stressAudioContext = new AudioContext();
+      const source = this.stressAudioContext.createMediaStreamSource(this.mediaStream!);
+      this.stressAnalyzer = createStressAnalyzer(this.stressAudioContext);
+      this.stressAnalyzer.connectSource(source);
+    } catch { /* stress analysis non-critical */ }
 
     // Web Speech API for parallel real-time transcription
     this.startWebSpeechRecognition();
@@ -683,6 +705,30 @@ export class VoiceChannel {
 
     if (this.destroyed) return;
 
+    // Check stress level from audio analysis
+    const stress = this.stressAnalyzer?.getResult();
+    if (stress?.isStressed && this.callbacks.onStressDetected) {
+      this.callbacks.onStressDetected(stress);
+    }
+
+    // Add officer entry to conversation memory
+    conversationMemory.addEntry({ role: 'officer', text: transcript });
+
+    // Check for pending confirmation in conversation memory
+    const pending = conversationMemory.getPendingConfirmation();
+    if (pending && transcript) {
+      if (conversationMemory.isConfirmation(transcript)) {
+        // Re-send the pending action as confirmed
+        // Fall through to normal processing with the original pending text
+      } else if (conversationMemory.isDenial(transcript)) {
+        conversationMemory.clearMemory();
+        const cancelResult: CommandResult = { success: true, action: 'cancelled', message: 'Cancelled.' };
+        this.callbacks.onCommandResult(cancelResult);
+        await this.respond(cancelResult);
+        return;
+      }
+    }
+
     // 1. Try quick command match first (instant, client-side)
     let result = matchQuickCommand(transcript);
 
@@ -713,6 +759,9 @@ export class VoiceChannel {
           : 'No speech detected',
       };
     }
+
+    // Record system response in conversation memory
+    conversationMemory.addEntry({ role: 'system', text: result.message, action: result.action });
 
     this.callbacks.onCommandResult(result);
     await this.respond(result);
