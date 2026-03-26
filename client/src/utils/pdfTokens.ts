@@ -107,9 +107,9 @@ export const SPACING = {
 
   CONTENT_INSET:      1.5,   // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height
-  SECTION_GAP:        0.8,   // Gap between sections
+  SECTION_GAP:        1.5,   // Gap between sections
   SECTION_CONTENT_PAD: 3.5,  // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  1.2,  // Padding inside section before bottom border
+  SECTION_BOTTOM_PAD:  2.0,  // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   7,     // Height of field box
   FIELD_ROW_ADVANCE:  7.5,   // Y-advance after field row
@@ -128,7 +128,7 @@ export const SPACING = {
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
   HEADER_HEIGHT:     19,     // Compact header bar
-  FOOTER_HEIGHT:     5.5,    // Slim footer
+  FOOTER_HEIGHT:     7,      // Footer with breathing room
   HEADER_TOP:        5,      // Y-start of header bar
   CLASSIF_BAR_H:     4.5,    // Classification bar height
   SEAL_SIZE:         13,     // Compact logo

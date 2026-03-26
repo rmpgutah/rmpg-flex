@@ -168,7 +168,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
       // Table header
       const cols = [
-        { label: 'DESCRIPTION', x: lx, w: cw - SPACING.CONTENT_INSET * 2 - 66 },
+        { label: 'DESCRIPTION', x: lx, w: Math.max(40, cw - SPACING.CONTENT_INSET * 2 - 66) },
         { label: 'QTY', x: pageWidth - LAYOUT.PAGE_MARGIN - 70, w: 15 },
         { label: 'RATE', x: pageWidth - LAYOUT.PAGE_MARGIN - 50, w: 22 },
         { label: 'AMOUNT', x: pageWidth - LAYOUT.PAGE_MARGIN - 25, w: 25 },

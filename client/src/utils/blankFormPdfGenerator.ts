@@ -64,6 +64,8 @@ function addLinedArea(doc: jsPDF, y: number, lineCount: number, indent = 0): num
   const lx = getLeftX() + indent;
   const ffw = getFullFieldWidth(doc) - indent;
   const lineGap = 8; // spacing between lines for handwriting
+  const totalH = lineCount * lineGap;
+  y = checkPageBreak(doc, y, Math.min(totalH, 50)); // check for at least 50mm or total
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
   for (let i = 0; i < lineCount; i++) {
@@ -121,6 +123,7 @@ function addCheckboxRow(doc: jsPDF, labels: string[], y: number): number {
     if (nextX > maxX && x > getLeftX()) {
       // Wrap to next line
       y += rowH;
+      y = checkPageBreak(doc, y, rowH + 2);
       x = getLeftX();
       x = addCheckboxField(doc, label, false, x, y);
     } else {
@@ -505,6 +508,7 @@ function generateBlankCitationForm(doc: jsPDF) {
   // Signatures — officer + subject
   y = checkPageBreak(doc, y, 60);
   y = addSignatureBlock(doc, 'Issuing Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+  y = checkPageBreak(doc, y, 30);
   y = addSignatureBlock(doc, 'Subject Acknowledgment', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
 }
 

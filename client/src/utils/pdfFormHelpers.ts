@@ -447,9 +447,10 @@ export function drawFormSection(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const textY = curY + bannerH / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+    const textY = curY + (bannerH + bannerCapH) / 2;
     doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
-    curY += bannerH;
+    curY += bannerH + 1.5; // 1.5mm gap between banner and first grid row
   }
 
   // Draw grid rows

@@ -391,7 +391,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPageFooter(doc, i, totalPages);
+    addPageFooter(doc, i, totalPages, 'serve_affidavit');
     if (i > 1) addConfidentialWatermark(doc);
   }
 
@@ -602,7 +602,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPageFooter(doc, i, totalPages);
+    addPageFooter(doc, i, totalPages, 'serve_non_service');
     if (i > 1) addConfidentialWatermark(doc);
   }
 
@@ -746,7 +746,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPageFooter(doc, i, totalPages);
+    addPageFooter(doc, i, totalPages, 'service_log');
     if (i > 1) addConfidentialWatermark(doc);
   }
 

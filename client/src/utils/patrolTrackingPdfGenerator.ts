@@ -150,7 +150,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     // Only draw the top header bar on pages 2+
     if (pageNum > 1) {
       // Dark gray header bar
-      doc.setFillColor(55, 60, 72);
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
       doc.rect(0, 0, pageW, 14, 'F');
 
       // Logo in header
@@ -179,22 +179,24 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     }
 
     // Footer on ALL pages
+    const footerH = 8;
+    const footerY = pageH - footerH;
     doc.setFillColor(240, 240, 245);
-    doc.rect(0, pageH - 8, pageW, 8, 'F');
+    doc.rect(0, footerY, pageW, footerH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(0.2);
-    doc.line(0, pageH - 8, pageW, pageH - 8);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.line(0, footerY, pageW, footerY);
     doc.setTextColor(...COLOR.TEXT_MUTED);
-    doc.setFontSize(5.5);
-    doc.text(sanitizePdfText(`Generated: ${reportDate}  |  ${formNum}  |  CONFIDENTIAL -- INTERNAL USE ONLY`), margin, pageH - 3.5);
-    doc.text(`Page ${pageNum} of ${totalPages}`, pageW - margin, pageH - 3.5, { align: 'right' });
+    doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
+    doc.text(sanitizePdfText(`Generated: ${reportDate}  |  ${formNum}  |  CONFIDENTIAL -- INTERNAL USE ONLY`), margin, footerY + footerH / 2 + 0.5);
+    doc.text(`Page ${pageNum} of ${totalPages}`, pageW - margin, footerY + footerH / 2 + 0.5, { align: 'right' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
   }
 
   // ── Utility: draw a section header bar (dark gray bg + white text) ──
   function drawSectionHeader(title: string) {
     const barH = 7;
-    doc.setFillColor(55, 60, 72);
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(margin, yPos, contentW, barH, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);

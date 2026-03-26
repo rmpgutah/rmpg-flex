@@ -909,33 +909,37 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Zone ID', value: data.zone_id || '' },
       { label: 'Beat ID', value: data.beat_id || '' },
     ], y);
-    // Mileage + Vehicle ID
-    if (data.starting_mileage || data.ending_mileage || data.responding_vehicle_id) {
-      if (data.responding_vehicle_id) {
-        y = addThreeColumnFields(doc, [
-          { label: 'Vehicle ID', value: data.responding_vehicle_id },
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Mileage
+  if (data.starting_mileage || data.ending_mileage || data.responding_vehicle_id) {
+    y = checkPageBreak(doc, y, 25, prio);
+    const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
+    if (data.responding_vehicle_id) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Vehicle ID', value: data.responding_vehicle_id },
+        { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : '' },
+        { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : '' },
+      ], y);
+    }
+    const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
+      ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
+      : '';
+    if (totalMiles || (!data.responding_vehicle_id && (data.starting_mileage || data.ending_mileage))) {
+      y = addThreeColumnFields(doc, [
+        ...(!data.responding_vehicle_id ? [
           { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : '' },
           { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : '' },
-        ], y);
-      }
-      const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
-        ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
-        : '';
-      if (totalMiles || (!data.responding_vehicle_id && (data.starting_mileage || data.ending_mileage))) {
-        y = addThreeColumnFields(doc, [
-          ...(!data.responding_vehicle_id ? [
-            { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : '' },
-            { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : '' },
-          ] : []),
-          ...(totalMiles ? [{ label: 'Total Miles', value: totalMiles }] : []),
-        ] as { label: string; value: string }[], y);
-      }
+        ] : []),
+        ...(totalMiles ? [{ label: 'Total Miles', value: totalMiles }] : []),
+      ] as { label: string; value: string }[], y);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // Incident Details
-  y = checkPageBreak(doc, y, 15, prio);
+  y = checkPageBreak(doc, y, 25, prio);
   { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
     y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
@@ -1021,8 +1025,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Flags — evenly distributed grid (6 columns × 4 rows)
-  y = checkPageBreak(doc, y, 30, prio);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY + 2;
+  y = checkPageBreak(doc, y, 25, prio);
+  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
     const cols = 6;
     const colW = ffw / cols;
     const rowH = 4.8;
@@ -1069,7 +1073,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // LE Coordination
   if (data.le_agency || data.le_case_number) {
-    y = checkPageBreak(doc, y, 15, prio);
+    y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Agency', data.le_agency || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'LE Case Number', data.le_case_number || '', rx, y, hfw);
@@ -1079,7 +1083,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // PSO Client Request (conditional)
   if (data.incident_type === 'pso_client_request') {
-    y = checkPageBreak(doc, y, 20, prio);
+    y = checkPageBreak(doc, y, 25, prio);
     const attemptNum = data.pso_attempt_number || 1;
     const attemptLabel = attemptNum > 1
       ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
@@ -1120,13 +1124,16 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Visit History Timeline (PSO calls with return visits)
   if (data.incident_type === 'pso_client_request' && data.visit_history && data.visit_history.length > 0) {
-    y = checkPageBreak(doc, y, 20 + data.visit_history.length * 12, prio);
+    y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
     y = sec.contentY;
 
-    for (const visit of data.visit_history) {
+    for (let vi = 0; vi < data.visit_history.length; vi++) {
+      const visit = data.visit_history[vi];
+      // Ensure each visit entry has page break checking (need ~14mm per entry)
       y = checkPageBreak(doc, y, 14, prio);
-      const ordSuffix = visit.visit_number === 1 ? 'st' : visit.visit_number === 2 ? 'nd' : visit.visit_number === 3 ? 'rd' : 'th';
+      // Consistent spacing between visit entries
+      if (vi > 0) y += SPACING.SECTION_GAP;
 
       // Visit header line
       doc.setFont('helvetica', 'bold');

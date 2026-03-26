@@ -124,6 +124,28 @@ export function sanitizePdfText(text: string): string {
     .replace(/[^\x00-\xFF]/g, '?'); // Replace any remaining non-Latin-1 chars
 }
 
+/**
+ * Word-aware text wrapper — splits on spaces first, only breaking within
+ * words as a last resort. Unlike jsPDF's splitTextToSize which can break
+ * mid-word with Courier, this respects word boundaries.
+ */
+function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
+  const words = text.split(/(\s+)/);
+  const lines: string[] = [];
+  let currentLine = '';
+  for (const word of words) {
+    const testLine = currentLine + word;
+    if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
+      lines.push(currentLine.trimEnd());
+      currentLine = word.trimStart();
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine.trim()) lines.push(currentLine.trimEnd());
+  return lines.length ? lines : [''];
+}
+
 // Cached images (loaded once per session)
 let cachedSeal: string | null = null;
 let cachedLogoDark: string | null = null;
@@ -389,8 +411,9 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  // Vertically centered in header bar: baseline ≈ midpoint + half ascent
-  const sectionTextY = y + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+  // Vertically centered in header bar: baseline ≈ top + (barH + capH) / 2
+  const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+  const sectionTextY = y + (SPACING.SECTION_HEADER_H + capH) / 2;
   doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
 
   // Reset text color to primary (black) — prevents white text leaking into content
@@ -491,7 +514,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
   const displayText = isEmpty ? '--' : sanitized;
-  const allFieldLines = isEmpty ? [displayText] : doc.splitTextToSize(displayText, maxW - 1);
+  const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
     const lastLn = lines[lines.length - 1];
@@ -637,7 +660,8 @@ export function addFlagBadges(
 
     // Draw text (white on colored bg)
     doc.setTextColor(255, 255, 255);
-    const textY = curY + pillH / 2 + fontSize * 0.14;
+    const pillCapH = fontSize * 0.35;
+    const textY = curY + (pillH + pillCapH) / 2;
     doc.text(text, curX + pillPadX, textY);
 
     curX += pillW + pillGapX;
@@ -669,7 +693,7 @@ export function addCautionBlock(
   const maxW = width - innerPad * 2;
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  const allLines = doc.splitTextToSize(sanitizePdfText(cautionText), maxW - 1);
+  const allLines = wordWrapText(doc, sanitizePdfText(cautionText), maxW - 1);
   const lines = allLines.slice(0, 6);
   if (allLines.length > 6) lines[5] = lines[5].length > 3 ? lines[5].slice(0, -3) + '...' : '...';
   const lineH = 3.5;
@@ -764,8 +788,9 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  const roleTextY = y + roleBarH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
-  doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, roleTextY);
+  const roleCapH = FONT.SIZE_FIELD_LABEL * 0.35;
+  const roleTextY = y + (roleBarH + roleCapH) / 2;
+  doc.text(sanitizePdfText(roleLabel.toUpperCase()), x + SPACING.CONTENT_INSET, roleTextY);
 
   // ── Signature area ──
   const row1Y = y + roleBarH;
@@ -816,7 +841,7 @@ export function addSignatureBlock(
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
   if (hasSigData) {
     doc.setFont('courier', 'normal');
-    doc.setFontSize(7);
+    doc.setFontSize(8);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const valY = row2Y + infoRowH - 1.5;
     if (sigData!.printedName) doc.text(sigData!.printedName, x + SPACING.MD, valY);
@@ -962,7 +987,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
     const para = paragraphs[p].trim();
     if (!para) continue;
 
-    const lines: string[] = doc.splitTextToSize(para, maxWidth - 1);
+    const lines: string[] = wordWrapText(doc, para, maxWidth - 1);
     for (let li = 0; li < lines.length; li++) {
       y = checkPageBreak(doc, y, lineH + SPACING.SM);
       const line = lines[li];
@@ -1207,7 +1232,8 @@ export function addNarrativeSection(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const textYpos = newY + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+    const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
     doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
     // Draw fresh background tint for remaining text on this page
@@ -1393,7 +1419,7 @@ export function addAttachmentsSection(
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
   const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 1) {
+  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 3) {
     doc.addPage();
     addConfidentialWatermark(doc);
 
@@ -1411,7 +1437,8 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
 
     // Text vertically centered in continuation header
-    const contTextY = contY + contH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
+    const contCapH = FONT.SIZE_FIELD_LABEL * 0.35;
+    const contTextY = contY + (contH + contCapH) / 2;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
@@ -1489,7 +1516,7 @@ export function addTableWithShading(
     const capH = FONT.SIZE_TABLE_HEADER * 0.35;  // approximate cap-height in mm
     const textY = atY + (headerRowH + capH) / 2;
     for (const h of headers) {
-      doc.text(h.label, h.x, textY);
+      doc.text(sanitizePdfText(h.label), h.x, textY);
     }
     return atY + headerRowH;
   };
@@ -1514,7 +1541,7 @@ export function addTableWithShading(
     for (let c = 0; c < row.length; c++) {
       const cellText = sanitizePdfText(row[c] || '');
       const availW = colWidths[c] || 30;
-      const allCellLines = cellText ? doc.splitTextToSize(cellText, availW - 1) : [''];
+      const allCellLines = cellText ? wordWrapText(doc, cellText, availW - 1) : [''];
       const lines = allCellLines.slice(0, maxCellLines);
       if (allCellLines.length > maxCellLines && lines.length > 0) {
         const lastLine = lines[lines.length - 1];
