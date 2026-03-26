@@ -1007,10 +1007,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Flags — evenly distributed grid (6 columns × 4 rows)
   y = checkPageBreak(doc, y, 30, prio);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY + 2;
     const cols = 6;
     const colW = ffw / cols;
-    const rowH = 4.5;
+    const rowH = 4.8;
     const flagGrid: { label: string; checked: boolean }[][] = [
       [
         { label: 'Injuries', checked: !!data.injuries_reported },
