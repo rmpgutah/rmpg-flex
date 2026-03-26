@@ -11,7 +11,7 @@ const router = Router();
 
 // ── Upgrade 45: Legal status transition map ──
 // Defines which status transitions are allowed.
-const LEGAL_TRANSITIONS: Record<string, string[]> = {
+export const LEGAL_TRANSITIONS: Record<string, string[]> = {
   pending:     ['dispatched', 'cancelled', 'on_hold'],
   dispatched:  ['enroute', 'onscene', 'cleared', 'cancelled', 'on_hold', 'pending'],
   enroute:     ['onscene', 'cleared', 'cancelled', 'on_hold', 'dispatched'],
@@ -23,7 +23,7 @@ const LEGAL_TRANSITIONS: Record<string, string[]> = {
   archived:    ['closed'],                           // unarchive only
 };
 
-function isLegalTransition(fromStatus: string, toStatus: string): boolean {
+export function isLegalTransition(fromStatus: string, toStatus: string): boolean {
   const allowed = LEGAL_TRANSITIONS[fromStatus];
   if (!allowed) return false;
   return allowed.includes(toStatus);
@@ -122,7 +122,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 });
 
 // POST /api/dispatch/calls/:id/archive - Archive a closed/cleared call
-router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -171,7 +171,7 @@ router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin'
 });
 
 // POST /api/dispatch/calls/:id/unarchive - Restore archived call back to closed
-router.post('/calls/:id/unarchive', validateParamIdMiddleware, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/unarchive', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

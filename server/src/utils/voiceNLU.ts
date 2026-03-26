@@ -40,6 +40,10 @@ Available actions:
 - start_statement: Begin recording a statement. Params: subject_name (string optional)
 - end_statement: Stop recording a statement. Params: none
 - code_4: Mark scene as code 4 (no further assistance needed). Params: call_id (number optional)
+- sitrep: Request situation report / status summary. Params: none
+- run_name: Look up a person by name across all databases. Params: name (string)
+- officer_down: EMERGENCY — officer down / shots fired / panic. Params: none
+- area_check: Check recent activity and hazards in current area. Params: none
 
 Respond with ONLY valid JSON in this exact format:
 { "action": "action_name", "params": { ... }, "confidence": 0.0-1.0 }

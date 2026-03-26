@@ -214,6 +214,25 @@ const QUICK_COMMANDS: QuickCommandPattern[] = [
     action: 'mark_evidence',
     message: 'Evidence marked at current location',
   },
+
+  // ── Situation Awareness ──
+  {
+    pattern: /\b(?:sitrep|sit\s*rep|situation\s*report|status\s*report)\b/i,
+    action: 'sitrep',
+    message: 'Generating situation report',
+  },
+  {
+    pattern: /\b(?:area\s*check|area\s*scan)\b/i,
+    action: 'area_check',
+    message: 'Checking area activity',
+  },
+
+  // ── Emergency ──
+  {
+    pattern: /\b(?:officer\s*down|shots?\s*fired|10[- ]?99|panic|emergency\s*traffic)\b/i,
+    action: 'officer_down',
+    message: 'EMERGENCY — Officer down broadcast transmitted',
+  },
 ];
 
 /**

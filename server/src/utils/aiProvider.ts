@@ -6,7 +6,8 @@
  * transparently by the aiManager.
  */
 
-import Groq from 'groq-sdk';
+// Lazy-imported: groq-sdk is optional and only needed when Groq provider is used
+let Groq: any = null;
 
 // ---------------------------------------------------------------------------
 // Provider Interface
@@ -34,12 +35,20 @@ export interface AIProvider {
 export class GroqProvider implements AIProvider {
   name = 'groq';
   model: string;
-  private client: Groq | null;
+  private client: any | null;
+  private initPromise: Promise<void> | null = null;
 
   constructor(apiKey?: string, model?: string) {
     const key = apiKey || process.env.GROQ_API_KEY || '';
     this.model = model || 'llama-3.3-70b-versatile';
-    this.client = key ? new Groq({ apiKey: key }) : null;
+    this.client = null;
+    if (key) {
+      // Lazy-load groq-sdk only when actually needed
+      this.initPromise = import('groq-sdk').then(mod => {
+        Groq = mod.default || mod;
+        this.client = new Groq({ apiKey: key });
+      }).catch(() => { /* groq-sdk not installed — provider stays unavailable */ });
+    }
   }
 
   isAvailable(): boolean {

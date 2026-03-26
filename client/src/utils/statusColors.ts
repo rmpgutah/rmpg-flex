@@ -17,6 +17,7 @@ export const UNIT_STATUS_HEX: Record<UnitStatus, string> = {
   onscene: '#a855f7',
   busy: '#ef4444',
   off_duty: '#6b7280',
+  out_of_service: '#991b1b',
 };
 
 export const UNIT_STATUS_CLASSES: Record<UnitStatus, string> = {
@@ -26,6 +27,7 @@ export const UNIT_STATUS_CLASSES: Record<UnitStatus, string> = {
   onscene: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   busy: 'bg-red-900/50 text-red-400 border border-red-700/50',
   off_duty: 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50',
+  out_of_service: 'bg-red-950/50 text-red-300 border border-red-800/50',
 };
 
 export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
@@ -35,6 +37,7 @@ export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
   onscene: 'On Scene',
   busy: 'Busy',
   off_duty: 'Off Duty',
+  out_of_service: 'Out of Service',
 };
 
 export const UNIT_STATUS_ABBREV: Record<UnitStatus, string> = {
@@ -44,6 +47,7 @@ export const UNIT_STATUS_ABBREV: Record<UnitStatus, string> = {
   onscene: 'ONS',
   busy: 'BSY',
   off_duty: 'OFD',
+  out_of_service: 'OOS',
 };
 
 // ── Call Priority ───────────────────────────────────────────
