@@ -13,6 +13,7 @@ import {
   isVoiceChannelEnabled,
 } from '../utils/voiceChannel';
 import type { AlertSeverity } from '../utils/alertSeverity';
+import { useWebSocket } from '../context/WebSocketContext';
 
 export interface UseVoiceChannelResult {
   state: VoiceChannelState;
@@ -23,6 +24,7 @@ export interface UseVoiceChannelResult {
   alert: (narrative: string, severity: AlertSeverity) => void;
   enabled: boolean;
   stressDetected: boolean;
+  isRadioBusy: () => boolean;
 }
 
 export function useVoiceChannel(): UseVoiceChannelResult {
@@ -32,6 +34,7 @@ export function useVoiceChannel(): UseVoiceChannelResult {
   const [error, setError] = useState<string | null>(null);
   const [enabled] = useState(() => isVoiceChannelEnabled());
   const [stressDetected, setStressDetected] = useState(false);
+  const { subscribe } = useWebSocket();
 
   const channelRef = useRef<VoiceChannel | null>(null);
   const transcriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,14 +77,24 @@ export function useVoiceChannel(): UseVoiceChannelResult {
 
     channelRef.current = channel;
 
+    // Track radio PTT state for voice channel muting
+    const unsubRadioStart = subscribe('radio_transmit_start' as any, () => {
+      channelRef.current?.setRadioActive(true);
+    });
+    const unsubRadioEnd = subscribe('radio_transmit_end' as any, () => {
+      channelRef.current?.setRadioActive(false);
+    });
+
     return () => {
       channel.destroy();
       channelRef.current = null;
+      unsubRadioStart();
+      unsubRadioEnd();
       if (transcriptTimerRef.current) clearTimeout(transcriptTimerRef.current);
       if (commandTimerRef.current) clearTimeout(commandTimerRef.current);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
     };
-  }, [enabled]);
+  }, [enabled, subscribe]);
 
   // V-key listener for manual listen activation
   useEffect(() => {
@@ -115,6 +128,8 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     channelRef.current?.alert(narrative, severity);
   }, []);
 
+  const isRadioBusy = useCallback(() => channelRef.current?.isRadioBusy() ?? false, []);
+
   return {
     state,
     transcript,
@@ -124,5 +139,6 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     alert,
     enabled,
     stressDetected,
+    isRadioBusy,
   };
 }

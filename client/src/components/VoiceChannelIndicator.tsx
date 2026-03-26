@@ -10,7 +10,7 @@ import { useVoiceChannel } from '../hooks/useVoiceChannel';
 import { isRecording as isStatementRecording, getStatementState } from '../utils/statementRecorder';
 
 export default function VoiceChannelIndicator() {
-  const { state, transcript, lastCommand, error, activateManualListen, enabled, stressDetected } = useVoiceChannel();
+  const { state, transcript, lastCommand, error, activateManualListen, enabled, stressDetected, isRadioBusy } = useVoiceChannel();
 
   const [statementActive, setStatementActive] = useState(false);
   const [statementWords, setStatementWords] = useState(0);
@@ -50,6 +50,13 @@ export default function VoiceChannelIndicator() {
     <div className="fixed bottom-8 right-4 z-[9999] flex flex-col items-end gap-2 max-w-xs">
       {/* State badge */}
       {!isIdle && <StateBadge state={state} onClickMic={activateManualListen} />}
+
+      {/* Radio PTT active — listen timer paused */}
+      {state === 'listening' && isRadioBusy() && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-purple-600 text-white text-xs font-mono uppercase tracking-wider shadow-lg">
+          <span>RADIO ACTIVE — PAUSED</span>
+        </div>
+      )}
 
       {/* Idle mic button when there's an error or command showing */}
       {isIdle && hasOverlay && (

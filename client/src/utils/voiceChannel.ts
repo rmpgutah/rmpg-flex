@@ -357,6 +357,9 @@ export class VoiceChannel {
   private listenTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
+  // Radio PTT cross-integration
+  private radioActive = false;
+
   // Track the latest transcript from Web Speech API
   private lastTranscript = '';
   private hasSpeechDetected = false;
@@ -381,6 +384,22 @@ export class VoiceChannel {
 
   refreshConfig(): void {
     this.config = getVoiceChannelConfig();
+  }
+
+  /** Call when radio PTT starts or ends on any channel */
+  setRadioActive(active: boolean): void {
+    this.radioActive = active;
+    if (active && this.state === 'listening') {
+      // Pause listen timer — don't timeout while radio is busy
+      this.clearListenTimer();
+    } else if (!active && this.state === 'listening') {
+      // Resume listen timer
+      this.resetListenTimer();
+    }
+  }
+
+  isRadioBusy(): boolean {
+    return this.radioActive;
   }
 
   /**
@@ -463,6 +482,16 @@ export class VoiceChannel {
 
   private async runAlert(narrative: string, severity: AlertSeverity): Promise<void> {
     this.setState('alerting');
+
+    // If radio is active, wait up to 10s for it to clear before speaking
+    if (this.radioActive) {
+      await new Promise<void>(resolve => {
+        const check = setInterval(() => {
+          if (!this.radioActive) { clearInterval(check); resolve(); }
+        }, 500);
+        setTimeout(() => { clearInterval(check); resolve(); }, 10_000);
+      });
+    }
 
     try {
       await announceWithSeverity(narrative, severity);
