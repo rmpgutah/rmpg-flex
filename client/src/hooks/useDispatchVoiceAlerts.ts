@@ -115,7 +115,10 @@ export function useDispatchVoiceAlerts(options?: {
           const call = normalizeCallForVoice(data.call);
           const { severity } = classifySeverity('call_created', call);
           if (isEdgeTTSEnabled()) {
-            const text = composeDispatchNarrative(call);
+            const text = composeDispatchNarrative(call, undefined, {
+              threatContext: data.threatContext || undefined,
+              nearestUnits: data.nearestUnits || undefined,
+            });
             speak(text, severity);
           } else {
             announceNewCall(call);
@@ -263,6 +266,48 @@ export function useDispatchVoiceAlerts(options?: {
         } else {
           announceAllUnits(allUnitsMsg);
         }
+      })
+    );
+
+    // ── Welfare check (directed at this officer) ──
+    unsubs.push(
+      subscribe('welfare_check', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const text = data.message || 'Status check. Are you code 4?';
+        if (voiceAlert) {
+          voiceAlert(text, 'moderate');
+        } else {
+          announceWithSeverity(text, 'moderate');
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WELFARE CHECK', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Welfare emergency (all units) ──
+    unsubs.push(
+      subscribe('welfare_emergency', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const text = data.message || 'Welfare emergency. All units respond.';
+        if (voiceAlert) {
+          voiceAlert(text, 'major');
+        } else {
+          announceWithSeverity(text, 'major');
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'WELFARE EMERGENCY', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Welfare alert (supervisor notification) ──
+    unsubs.push(
+      subscribe('welfare_alert', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const text = data.message || 'Officer welfare alert.';
+        if (voiceAlert) {
+          voiceAlert(text, 'moderate');
+        } else {
+          announceWithSeverity(text, 'moderate');
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WELFARE ALERT', message: text, timestamp: Date.now() });
       })
     );
 
