@@ -1083,14 +1083,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       y = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email, lx, y, ffw);
     }
 
-    // Process Service sub-section
-    if (data.pso_service_type === 'process_service' || data.process_service_type) {
-      y += SPACING.MD;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text('PROCESS SERVICE DETAILS', lx, y);
-      y += SPACING.MD;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+
+    // Process Service sub-section — separate section to avoid page break issues
+    if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
+      y = checkPageBreak(doc, y, 30, prio);
+      const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
         { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
         { label: 'Serve To', value: data.process_served_to || '' },
@@ -1102,8 +1100,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { const yL = addFieldPair(doc, 'Served At', data.process_served_at || '', lx, y, hfw);
         const yR = addFieldPair(doc, 'Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
         y = Math.max(yL, yR); }
+      y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
     }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // Visit History Timeline (PSO calls with return visits)

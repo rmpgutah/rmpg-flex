@@ -23,6 +23,7 @@ import {
   setActiveFormKey,
   setActiveCaseNumber,
   formSectionPageBreak,
+  sanitizePdfText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,

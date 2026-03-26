@@ -583,7 +583,7 @@ export function drawNibrsHeader(
       doc.text(config.formNumber, margin + 2, y + 3);
     }
     if (config.reportDate) {
-      doc.text(`REPORT DATE: ${config.reportDate}`, margin + contentW - 2, y + 3, { align: 'right' });
+      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 3, { align: 'right' });
     }
     y += 5;
   }
