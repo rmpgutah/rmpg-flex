@@ -85,12 +85,25 @@ function nextAlertId(): string { return `alert-${Date.now()}-${++alertIdCounter}
  * When `onAlert` is provided, each event also pushes a visual
  * AlertBannerItem for the DispatchAlertBanner overlay.
  */
-export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBannerItem) => void }): void {
+export function useDispatchVoiceAlerts(options?: {
+  onAlert?: (alert: AlertBannerItem) => void;
+  voiceAlert?: (narrative: string, severity: 'minor' | 'moderate' | 'major') => void;
+}): void {
   const { subscribe } = useWebSocket();
   const onAlert = options?.onAlert;
+  const voiceAlert = options?.voiceAlert;
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
+
+    // Route TTS through voice channel when active, otherwise direct
+    const speak = (text: string, severity: 'minor' | 'moderate' | 'major') => {
+      if (voiceAlert) {
+        voiceAlert(text, severity);
+      } else {
+        speak(text, severity);
+      }
+    };
 
     // ── Dispatch updates (call created, status changed, units dispatched) ──
     unsubs.push(
@@ -103,7 +116,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
           const { severity } = classifySeverity('call_created', call);
           if (isEdgeTTSEnabled()) {
             const text = composeDispatchNarrative(call);
-            announceWithSeverity(text, severity);
+            speak(text, severity);
           } else {
             announceNewCall(call);
             announceCallAlerts(call);
@@ -121,7 +134,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
             const { severity } = classifySeverity('call_dispatched', call);
             if (isEdgeTTSEnabled()) {
               const text = composeDispatchNarrative(call);
-              announceWithSeverity(text, severity);
+              speak(text, severity);
             } else {
               announceDispatchEvent(call);
             }
@@ -138,7 +151,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
 
         if (action === 'ai_analysis' && data.analysis?.safetyBriefing && data.analysis.confidence > 0.7) {
           const severity = data.analysis.severityOverride || 'moderate';
-          announceWithSeverity(
+          speak(
             `AI safety alert, call ${data.call_number}: ${data.analysis.safetyBriefing}`,
             severity
           );
@@ -161,7 +174,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         if (isEdgeTTSEnabled()) {
           const loc = data.location || data.gps_address || '';
           const cs = data.call_sign || data.unit || '';
-          announceWithSeverity(composePanicNarrative(officerName, loc, cs), 'major');
+          speak(composePanicNarrative(officerName, loc, cs), 'major');
         } else {
           announcePanicAlert(officerName);
         }
@@ -175,7 +188,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const boloTitle = data.title || data.subject || 'Alert';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(composeBoloNarrative({
+          speak(composeBoloNarrative({
             type: boloTitle,
             description: data.description || data.details || '',
             vehicle_description: data.vehicle_description || data.vehicle || '',
@@ -196,7 +209,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const subjectName = data.subject_name || data.name || 'Unknown subject';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Warrant hit on ${subjectName}`, 'moderate');
+          speak(`Warrant hit on ${subjectName}`, 'moderate');
         } else {
           announceWarrantHit(subjectName);
         }
@@ -211,7 +224,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const loc = data.location || 'unknown location';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(composeBackupNarrative(unit, loc, data.call_number), 'moderate');
+          speak(composeBackupNarrative(unit, loc, data.call_number), 'moderate');
         } else {
           announceBackupRequest({ officer_name: unit, location: loc });
         }
@@ -226,7 +239,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const direction = data.direction || '';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(composePursuitNarrative({
+          speak(composePursuitNarrative({
             unit,
             direction,
             location: data.location || '',
@@ -246,7 +259,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const allUnitsMsg = data.message || data.text || '';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`All units: ${allUnitsMsg}`, 'moderate');
+          speak(`All units: ${allUnitsMsg}`, 'moderate');
         } else {
           announceAllUnits(allUnitsMsg);
         }
@@ -256,5 +269,5 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
     return () => {
       unsubs.forEach(fn => fn());
     };
-  }, [subscribe, onAlert]);
+  }, [subscribe, onAlert, voiceAlert]);
 }
