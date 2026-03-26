@@ -211,7 +211,8 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     }
 
     let fullContent = '';
-    let insideThink = false; // Track <think> blocks to suppress them from streaming
+    let insideThink = false;
+    let thinkContent = '';
     const reader = ollamaResp.body.getReader();
     const decoder = new TextDecoder();
 
@@ -220,7 +221,6 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
-      // Ollama streams one JSON object per line
       for (const line of chunk.split('\n').filter(Boolean)) {
         try {
           const parsed = JSON.parse(line);
@@ -228,29 +228,36 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
             const token = parsed.message.content;
             fullContent += token;
 
-            // Suppress <think>...</think> reasoning blocks from streaming output
+            // Detect <think> block boundaries
             if (fullContent.includes('<think>') && !fullContent.includes('</think>')) {
               insideThink = true;
             }
-            if (insideThink && fullContent.includes('</think>')) {
-              insideThink = false;
-              // Send a "thinking" status instead of the reasoning
-              res.write(`data: ${JSON.stringify({ thinking: true })}\n\n`);
+            if (insideThink) {
+              // Stream thinking tokens to frontend as "thinking_token"
+              const cleanToken = token.replace(/<\/?think>/g, '');
+              if (cleanToken) {
+                thinkContent += cleanToken;
+                res.write(`data: ${JSON.stringify({ thinking_token: cleanToken })}\n\n`);
+              }
+              if (fullContent.includes('</think>')) {
+                insideThink = false;
+                res.write(`data: ${JSON.stringify({ thinking_done: true })}\n\n`);
+              }
               continue;
             }
-            if (!insideThink && !token.includes('<think>')) {
-              res.write(`data: ${JSON.stringify({ token })}\n\n`);
+            // Stream normal response tokens
+            const cleanToken = token.replace(/<\/?think>/g, '');
+            if (cleanToken) {
+              res.write(`data: ${JSON.stringify({ token: cleanToken })}\n\n`);
             }
           }
           if (parsed.done) {
             const latencyMs = Date.now() - start;
-            // Strip <think> blocks from saved content
             const cleanContent = fullContent.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
             db.prepare(`
               INSERT INTO ai_dev_chat (session_id, role, content, provider, model, latency_ms)
               VALUES (?, 'assistant', ?, 'ollama', ?, ?)
             `).run(sessionId, cleanContent, model, latencyMs);
-
             res.write(`data: ${JSON.stringify({ done: true, latencyMs })}\n\n`);
           }
         } catch { /* partial JSON line, skip */ }

@@ -25,6 +25,8 @@ export default function AIDevChatPanel() {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [thinkingText, setThinkingText] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
   const [fileContext, setFileContext] = useState('');
   const [showFileInput, setShowFileInput] = useState(false);
   const [aiStatus, setAiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -114,6 +116,8 @@ export default function AIDevChatPanel() {
     setInput('');
     setIsStreaming(true);
     setStreamingContent('');
+    setThinkingText('');
+    setIsThinking(false);
 
     try {
       // Get auth token
@@ -159,10 +163,18 @@ export default function AIDevChatPanel() {
           if (!line.startsWith('data: ')) continue;
           try {
             const parsed = JSON.parse(line.slice(6));
-            if (parsed.thinking) {
-              // Model is reasoning — show status but don't add to content
-              setStreamingContent('...');
+            if (parsed.thinking_token) {
+              // Stream AI's internal reasoning as visible text
+              setIsThinking(true);
+              setThinkingText(prev => prev + parsed.thinking_token);
+            } else if (parsed.thinking_done) {
+              // Thinking phase complete, response coming next
+              setIsThinking(false);
+            } else if (parsed.thinking) {
+              // Legacy: generic thinking signal
+              setIsThinking(true);
             } else if (parsed.token) {
+              setIsThinking(false);
               fullContent += parsed.token;
               setStreamingContent(fullContent);
             }
@@ -398,67 +410,67 @@ export default function AIDevChatPanel() {
                 <Bot className={`w-4.5 h-4.5 text-white ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
               <div className="max-w-[80%]">
+                {/* Thinking phase — show AI's internal reasoning */}
+                {(isThinking || thinkingText) && !streamingContent && (
+                  <div className="bg-[#1a2636] rounded-lg rounded-tl-sm border border-amber-500/30 overflow-hidden mb-2">
+                    <div className="h-0.5 bg-[#0d1520] overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-transparent via-amber-500 to-transparent"
+                        style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
+                    </div>
+                    <div className="px-3 py-2">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className="relative">
+                          <div className="w-6 h-6 rounded bg-amber-500/20 border border-amber-500/40 flex items-center justify-center">
+                            <Bot className="w-3.5 h-3.5 text-amber-400" />
+                          </div>
+                          {isThinking && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-ping" />}
+                        </div>
+                        <span className="text-[11px] text-amber-400 font-medium tracking-wide uppercase">
+                          {isThinking ? 'Thinking...' : 'Thought Process Complete'}
+                        </span>
+                        <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
+                      </div>
+                      <div className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto font-mono bg-[#0d1520] rounded p-2 border border-[#1a3550]">
+                        {thinkingText || 'Analyzing your request...'}
+                        {isThinking && <span className="inline-block w-1.5 h-3 bg-amber-400 animate-pulse ml-0.5" />}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Response content — streaming tokens */}
                 {streamingContent ? (
                   <div className="bg-[#1a2636] text-gray-200 rounded-lg rounded-tl-sm px-3 py-2 border border-[#1a3550]">
+                    {thinkingText && (
+                      <details className="mb-2">
+                        <summary className="text-[10px] text-amber-500/60 cursor-pointer hover:text-amber-400 transition-colors">
+                          View AI thought process ({thinkingText.length} chars)
+                        </summary>
+                        <div className="text-[10px] text-gray-500 whitespace-pre-wrap leading-relaxed mt-1 font-mono bg-[#0d1520] rounded p-2 border border-[#1a3550] max-h-32 overflow-y-auto">
+                          {thinkingText}
+                        </div>
+                      </details>
+                    )}
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">
                       {renderContent(streamingContent)}
                       <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
                     </div>
                   </div>
-                ) : (
+                ) : !thinkingText && (
                   <div className="bg-[#1a2636] rounded-lg rounded-tl-sm border border-blue-500/30 overflow-hidden">
-                    {/* Animated progress bar at top */}
                     <div className="h-0.5 bg-[#0d1520] overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[shimmer_1.5s_infinite]"
+                      <div className="h-full bg-gradient-to-r from-transparent via-blue-500 to-transparent"
                         style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
                     </div>
-                    <div className="px-4 py-3">
-                      {/* Brain activity animation */}
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="relative">
-                          <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center">
-                            <Bot className="w-5 h-5 text-blue-400" />
-                          </div>
-                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-blue-500 rounded-full animate-ping opacity-75" />
-                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-blue-400 rounded-full" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm text-white font-medium">
-                            {elapsedSec < 3 ? 'Initializing AI...' :
-                             elapsedSec < 8 ? 'Processing your request...' :
-                             elapsedSec < 15 ? 'Analyzing and generating response...' :
-                             elapsedSec < 25 ? 'Working on a detailed answer...' :
-                             'Almost there — complex analysis...'}
-                          </p>
-                          <p className="text-[10px] text-gray-500 mt-0.5">
-                            qwen2.5 local model &middot; {elapsedSec}s elapsed
-                          </p>
-                        </div>
-                      </div>
-                      {/* Step-by-step thought process */}
-                      <div className="space-y-1.5 mt-1">
-                        {[
-                          { label: 'Reading query', delay: 0 },
-                          { label: 'Analyzing context', delay: 3 },
-                          { label: 'Searching knowledge base', delay: 6 },
-                          { label: 'Planning response', delay: 10 },
-                          { label: 'Generating answer', delay: 15 },
-                        ].map((step, i) => {
-                          const isActive = elapsedSec >= step.delay;
-                          const isDone = i < 4 && elapsedSec >= [3, 6, 10, 15, 999][i];
-                          return (
-                            <div key={i} className={`flex items-center gap-2 transition-all duration-500 ${isActive ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
-                              {isDone ? (
-                                <svg className="w-3 h-3 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                              ) : isActive ? (
-                                <Loader2 className="w-3 h-3 text-blue-400 animate-spin flex-shrink-0" />
-                              ) : null}
-                              <span className={`text-[11px] ${isDone ? 'text-gray-600 line-through' : 'text-gray-400'}`}>
-                                {step.label}
-                              </span>
-                            </div>
-                          );
-                        })}
+                    <div className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                        <span className="text-sm text-gray-400">
+                          {elapsedSec < 3 ? 'Connecting to AI model...' :
+                           elapsedSec < 10 ? 'Waiting for response...' :
+                           'Processing — this may take a moment...'}
+                        </span>
+                        <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
                       </div>
                     </div>
                   </div>
