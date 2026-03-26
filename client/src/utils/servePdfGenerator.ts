@@ -634,7 +634,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
-  const dateRangeLabel = `${data.dateRange.start} — ${data.dateRange.end}`;
+  const dateRangeLabel = `${data.dateRange.start} -- ${data.dateRange.end}`;
   setActiveCaseNumber('');
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',

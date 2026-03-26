@@ -814,7 +814,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
       // Clip text to fit within column width
-      const val = sanitizePdfText(f.value || '—');
+      const val = sanitizePdfText(f.value || '--');
       const clipped = doc.splitTextToSize(val, maxW)[0] || val;
       doc.text(clipped, fx, barY + 7.5);
     });
@@ -1068,7 +1068,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 20, prio);
     const attemptNum = data.pso_attempt_number || 1;
     const attemptLabel = attemptNum > 1
-      ? ` — ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
+      ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
       : '';
     const sec = openAutoSection(doc, `PSO Client Request Details${attemptLabel}`, y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
@@ -1107,7 +1107,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Visit History Timeline (PSO calls with return visits)
   if (data.incident_type === 'pso_client_request' && data.visit_history && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 20 + data.visit_history.length * 12, prio);
-    const sec = openAutoSection(doc, `Visit History — ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
+    const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
     y = sec.contentY;
 
     for (const visit of data.visit_history) {
@@ -1121,7 +1121,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.text(`Visit #${visit.visit_number}`, lx, y);
 
       // Status badge
-      const statusText = sanitizePdfText(` — ${(visit.status || 'unknown').toUpperCase()}`);
+      const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
@@ -1562,10 +1562,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const warrantRows = data.warrants.map(w => [
-      w.warrant_number || '—',
+      w.warrant_number || '--',
       titleCase(w.type || ''),
       titleCase(w.status || ''),
-      w.charge_description || '—',
+      w.charge_description || '--',
       titleCase(w.offense_level || ''),
       fmtDate(w.date_issued),
     ]);
@@ -1596,7 +1596,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const incidentRows = data.incidents.map(inc => [
-      inc.incident_number || '—',
+      inc.incident_number || '--',
       titleCase((inc.incident_type || '').replace(/_/g, ' ')),
       titleCase(inc.role || ''),
       titleCase(inc.status || ''),
@@ -1628,10 +1628,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const citationRows = data.citations.map(c => [
-      c.citation_number || '—',
+      c.citation_number || '--',
       titleCase(c.type || ''),
       titleCase(c.status || ''),
-      c.violation_description || c.statute_citation || '—',
+      c.violation_description || c.statute_citation || '--',
       fmtDate(c.violation_date),
     ]);
     y = addTableWithShading(
@@ -1660,10 +1660,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const callRows = data.calls.map(c => [
-      c.call_number || '—',
+      c.call_number || '--',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
       (c.status || '').toUpperCase(),
-      c.location || '—',
+      c.location || '--',
       fmtDate(c.created_at),
     ]);
     y = addTableWithShading(
@@ -1698,10 +1698,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const crCw = getContentWidth(doc);
     const crRows = data.criminal_records.map(r => [
       (r.record_type || '').replace(/_/g, ' ').toUpperCase(),
-      r.offense || '—',
-      (r.offense_level || '').toUpperCase() || '—',
-      r.case_number || '—',
-      r.disposition || '—',
+      r.offense || '--',
+      (r.offense_level || '').toUpperCase() || '--',
+      r.case_number || '--',
+      r.disposition || '--',
       fmtDate(r.offense_date),
     ]);
     y = addTableWithShading(
@@ -1743,18 +1743,18 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       cy += 7;
 
       // Row 1: Offense + Level
-      { const yL = addFieldPair(doc, 'Offense', r.offense || '—', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Offense Level', (r.offense_level || '—').toUpperCase(), rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Offense', r.offense || '--', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Offense Level', (r.offense_level || '--').toUpperCase(), rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       // Row 2: Statute + Case Number
-      { const yL = addFieldPair(doc, 'Statute', r.statute || '—', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Case Number', r.case_number || '—', rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Statute', r.statute || '--', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Case Number', r.case_number || '--', rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       // Row 3: Agency + Jurisdiction
-      { const yL = addFieldPair(doc, 'Agency', r.agency || '—', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Jurisdiction', r.jurisdiction || '—', rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Agency', r.agency || '--', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Jurisdiction', r.jurisdiction || '--', rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       // Row 4: Offense Date + Disposition Date
@@ -1763,8 +1763,8 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
         cy = Math.max(yL, yR); }
 
       // Row 5: Disposition + Sentence
-      { const yL = addFieldPair(doc, 'Disposition', r.disposition || '—', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Sentence', r.sentence || '—', rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Disposition', r.disposition || '--', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Sentence', r.sentence || '--', rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       return cy;

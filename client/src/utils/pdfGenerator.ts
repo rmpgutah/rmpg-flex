@@ -391,7 +391,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   // Vertically centered in header bar: baseline ≈ midpoint + half ascent
   const sectionTextY = y + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
-  doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
 
   // Reset text color to primary (black) — prevents white text leaking into content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -669,7 +669,7 @@ export function addCautionBlock(
   const maxW = width - innerPad * 2;
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  const allLines = doc.splitTextToSize(cautionText, maxW);
+  const allLines = doc.splitTextToSize(sanitizePdfText(cautionText), maxW - 1);
   const lines = allLines.slice(0, 6);
   if (allLines.length > 6) lines[5] = lines[5].length > 3 ? lines[5].slice(0, -3) + '...' : '...';
   const lineH = 3.5;
@@ -690,7 +690,7 @@ export function addCautionBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(180, 60, 0);
-  doc.text('⚠ CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
+  doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
 
   // Text content
   doc.setFont('courier', 'normal');
@@ -962,7 +962,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
     const para = paragraphs[p].trim();
     if (!para) continue;
 
-    const lines: string[] = doc.splitTextToSize(para, maxWidth);
+    const lines: string[] = doc.splitTextToSize(para, maxWidth - 1);
     for (let li = 0; li < lines.length; li++) {
       y = checkPageBreak(doc, y, lineH + SPACING.SM);
       const line = lines[li];
@@ -1195,7 +1195,7 @@ export function addNarrativeSection(
   doc.rect(lx - 2, y - 2, ffw + 4, maxTintH, 'F');
 
   // Page break callback: draw section continuation sub-header + fresh tint
-  const contTitle = title.toUpperCase() + ' \u2014 CONTINUED';
+  const contTitle = title.toUpperCase() + ' -- CONTINUED';
   const narrativePageBreak = (newY: number): number => {
     // Draw section sub-header bar
     const cw = getContentWidth(doc);
@@ -1240,7 +1240,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
   for (let si = 0; si < supplements.length; si++) {
     const sup = supplements[si];
     y = checkPageBreak(doc, y, 18, data.priority);
-    const supTitle = `Supplement #${si + 1}: ${sup.report_number || ''}${sup.report_type ? ' \u2014 ' + sup.report_type.replace(/_/g, ' ').toUpperCase() : ''}`;
+    const supTitle = `Supplement #${si + 1}: ${sup.report_number || ''}${sup.report_type ? ' -- ' + sup.report_type.replace(/_/g, ' ').toUpperCase() : ''}`;
 
     // Build grid rows for metadata
     const metaRows: FormRow[] = [
@@ -1415,7 +1415,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(`${activeBranding.report_header_text} \u2014 CONTINUED`, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
     // Form number + case number on right (also vertically centered)
     const rightParts: string[] = [];
@@ -1920,13 +1920,13 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         onPageBreak: formSectionPageBreak,
         rows: [
           { cells: [
-            { label: 'SCENE SAFETY', value: data.scene_safety || '\u2014', ratio: 1 },
-            { label: 'WEATHER', value: data.weather_conditions || '\u2014', ratio: 1 },
-            { label: 'LIGHTING', value: data.lighting_conditions || '\u2014', ratio: 1 },
+            { label: 'SCENE SAFETY', value: data.scene_safety || '--', ratio: 1 },
+            { label: 'WEATHER', value: data.weather_conditions || '--', ratio: 1 },
+            { label: 'LIGHTING', value: data.lighting_conditions || '--', ratio: 1 },
           ]},
           { cells: [
             { label: 'WEAPONS INVOLVED', value: data.weapons_involved || 'None', ratio: 1 },
-            { label: 'DIRECTION OF TRAVEL', value: data.direction_of_travel || '\u2014', ratio: 1 },
+            { label: 'DIRECTION OF TRAVEL', value: data.direction_of_travel || '--', ratio: 1 },
           ]},
         ],
         y,
@@ -1948,7 +1948,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
           { label: 'INJURY DESCRIPTION', value: data.injury_description || '', ratio: 2 },
         ]},
         { cells: [
-          { label: 'DAMAGE ESTIMATE', value: data.damage_estimate ? '$' + data.damage_estimate : '\u2014', ratio: 1 },
+          { label: 'DAMAGE ESTIMATE', value: data.damage_estimate ? '$' + data.damage_estimate : '--', ratio: 1 },
           { label: 'DAMAGE DESCRIPTION', value: data.damage_description || '', ratio: 2 },
         ]},
       ],
@@ -2207,7 +2207,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text('WARNING — TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
+  doc.text('WARNING -- TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   y += 12;
@@ -2280,7 +2280,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   y += SPACING.LG;
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('DISTRIBUTION: ORIGINAL \u2014 FILE | COPY 1 \u2014 SUBJECT | COPY 2 \u2014 PROPERTY MANAGEMENT', lx, y);
+  doc.text('DISTRIBUTION: ORIGINAL -- FILE | COPY 1 -- SUBJECT | COPY 2 -- PROPERTY MANAGEMENT', lx, y);
 }
 
 function generateAccidentReport(doc: jsPDF, data: IncidentData) {
@@ -2395,7 +2395,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     }
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('(DRAW DIAGRAM \u2014 INDICATE NORTH, VEHICLES, DIRECTION OF TRAVEL, POINT OF IMPACT)', pageWidth / 2, y + 60, { align: 'center' });
+    doc.text('(DRAW DIAGRAM -- INDICATE NORTH, VEHICLES, DIRECTION OF TRAVEL, POINT OF IMPACT)', pageWidth / 2, y + 60, { align: 'center' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     y += 65;
@@ -2408,7 +2408,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   // Injuries & Damage
   y = checkPageBreak(doc, y, 20, data.priority);
   { const sec = openAutoSection(doc, 'Injuries & Damage', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Injuries', `${data.injuries || 'None'}${data.injury_description ? ' \u2014 ' + data.injury_description : ''}`, lx, y, hfw);
+    { const yL = addFieldPair(doc, 'Injuries', `${data.injuries || 'None'}${data.injury_description ? ' -- ' + data.injury_description : ''}`, lx, y, hfw);
       const yR = addFieldPair(doc, 'Damage Estimate', data.damage_estimate ? '$' + data.damage_estimate : '', rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -2537,7 +2537,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER_SMALL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text('MANDATORY REPORT \u2014 MUST BE COMPLETED WITHIN 24 HOURS OF INCIDENT', pageWidth / 2, y + 5.5, { align: 'center' });
+  doc.text('MANDATORY REPORT -- MUST BE COMPLETED WITHIN 24 HOURS OF INCIDENT', pageWidth / 2, y + 5.5, { align: 'center' });
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   y += 12;
@@ -2643,7 +2643,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
       const yR = addFieldPair(doc, 'Sec/Zone/Beat', [data.section_id, data.zone_id, data.beat_id].filter(Boolean).join(' / ') || '', rx, y, hfw);
       y = Math.max(yL, yR); }
     { const yL = addFieldPair(doc, 'Shift Date', data.occurred_date || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Shift Time', `${data.occurred_time || ''} \u2014 ${data.end_time || ''}`, rx, y, hfw);
+      const yR = addFieldPair(doc, 'Shift Time', `${data.occurred_time || ''} -- ${data.end_time || ''}`, rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }

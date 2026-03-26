@@ -232,7 +232,7 @@ export function drawSideTab(
   // jsPDF's align:'center' acts on the pre-rotation axis, so with
   // angle:90 it would center across the tab WIDTH (wrong axis).
   // Instead we measure text width and offset the anchor Y ourselves.
-  const upperLabel = label.toUpperCase();
+  const upperLabel = sanitizePdfText(label.toUpperCase());
   const maxTextLen = height - 4;
   let fontSize: number = FONT.SIZE_SIDEBAR_TAB;
 
@@ -448,7 +448,7 @@ export function drawFormSection(
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     const textY = curY + bannerH / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
-    doc.text(config.sideTab.label.toUpperCase(), gridX + SPACING.CONTENT_INSET + 1, textY);
+    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
     curY += bannerH;
   }
 
