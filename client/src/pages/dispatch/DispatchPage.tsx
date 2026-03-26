@@ -3004,15 +3004,76 @@ export default function DispatchPage() {
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
                   <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
-                  {selectedCall.case_number && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 whitespace-nowrap">
-                      CASE {selectedCall.case_number}
-                    </span>
+                  {/* Case Number — editable by admin/manager */}
+                  {(selectedCall.case_number || isAdminOrManager) && (
+                    editingTimestamp === 'case_number' ? (
+                      <input
+                        type="text"
+                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[140px]"
+                        defaultValue={selectedCall.case_number || ''}
+                        placeholder="Case #"
+                        autoFocus
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
+                            } catch { addToast('Failed to update case number', 'error'); }
+                            setEditingTimestamp(null);
+                          }
+                          if (e.key === 'Escape') setEditingTimestamp(null);
+                        }}
+                        onBlur={() => setEditingTimestamp(null)}
+                      />
+                    ) : (
+                      <span
+                        className={`text-[10px] font-bold font-mono px-1.5 py-0.5 whitespace-nowrap ${selectedCall.case_number ? 'text-amber-300 bg-amber-900/30 border border-amber-700/40' : 'text-rmpg-600 border border-dashed border-rmpg-600/40'} ${isAdminOrManager ? 'cursor-pointer hover:brightness-125' : ''}`}
+                        onClick={() => isAdminOrManager && setEditingTimestamp('case_number')}
+                        title={isAdminOrManager ? 'Click to edit case number' : undefined}
+                      >
+                        {selectedCall.case_number ? `CASE ${selectedCall.case_number}` : isAdminOrManager ? '+ CASE #' : ''}
+                      </span>
+                    )
                   )}
-                  {selectedCall.incident_number && (
-                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap">
-                      INC {selectedCall.incident_number}
-                    </span>
+                  {/* Incident Number — editable by admin/manager */}
+                  {(selectedCall.incident_number || isAdminOrManager) && (
+                    editingTimestamp === 'incident_number' ? (
+                      <input
+                        type="text"
+                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
+                        defaultValue={(selectedCall as any).incident_number || ''}
+                        placeholder="Incident #"
+                        autoFocus
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            try {
+                              // Link/unlink incident by updating call's case_number to the incident number
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
+                            } catch { addToast('Failed to update incident link', 'error'); }
+                            setEditingTimestamp(null);
+                          }
+                          if (e.key === 'Escape') setEditingTimestamp(null);
+                        }}
+                        onBlur={() => setEditingTimestamp(null)}
+                      />
+                    ) : selectedCall.incident_number ? (
+                      <span
+                        className={`text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap ${isAdminOrManager ? 'cursor-pointer hover:brightness-125' : ''}`}
+                        onClick={() => isAdminOrManager && setEditingTimestamp('incident_number')}
+                        title={isAdminOrManager ? 'Click to edit incident link' : undefined}
+                      >
+                        INC {selectedCall.incident_number}
+                      </span>
+                    ) : null
                   )}
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />

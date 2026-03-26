@@ -871,6 +871,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       cross_street, location_building, location_floor, location_room,
       weapons_involved, injuries_reported, num_subjects,
       subject_description, vehicle_description, direction_of_travel,
+      case_number, case_id,
       source, caller_address, zone_beat, section_id, zone_id, beat_id, responding_officer, secondary_type,
       contact_method, scene_safety, weather_conditions, lighting_conditions,
       num_victims, alcohol_involved, drugs_involved, domestic_violence,
@@ -1063,6 +1064,8 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('le_notified', le_notified !== undefined ? toBoolInt(le_notified) : undefined);
     addField('le_agency', le_agency === 'None' ? null : le_agency);
     addField('le_case_number', le_case_number);
+    addField('case_number', case_number);
+    addField('case_id', case_id);
     addField('damage_estimate', damage_estimate);
     addField('damage_description', damage_description);
     addField('action_taken', action_taken);
