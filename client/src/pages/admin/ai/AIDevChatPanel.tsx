@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle, Wifi, WifiOff } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
 interface ChatMessage {
@@ -27,8 +27,38 @@ export default function AIDevChatPanel() {
   const [streamingContent, setStreamingContent] = useState('');
   const [fileContext, setFileContext] = useState('');
   const [showFileInput, setShowFileInput] = useState(false);
+  const [aiStatus, setAiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [aiModel, setAiModel] = useState<string>('');
+  const [elapsedSec, setElapsedSec] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Check AI connection on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const status = await apiFetch<{ provider: string; available: boolean; model: string; providers: any[] }>('/ai/status');
+        const ollamaProvider = status.providers?.find((p: any) => p.name === 'ollama');
+        setAiStatus(ollamaProvider?.available ? 'online' : 'offline');
+        setAiModel(ollamaProvider?.model || status.model || 'unknown');
+      } catch {
+        setAiStatus('offline');
+      }
+    })();
+  }, []);
+
+  // Elapsed time counter while streaming
+  useEffect(() => {
+    if (isStreaming) {
+      setElapsedSec(0);
+      timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isStreaming]);
 
   // Generate session ID
   const newSessionId = () => `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -277,6 +307,28 @@ export default function AIDevChatPanel() {
 
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
+        {/* AI Status Bar */}
+        <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#1a3550] bg-[#141e2b]">
+          <div className="flex items-center gap-2">
+            {aiStatus === 'checking' && <Loader2 className="w-3 h-3 text-yellow-500 animate-spin" />}
+            {aiStatus === 'online' && <Circle className="w-2.5 h-2.5 text-green-500 fill-green-500" />}
+            {aiStatus === 'offline' && <Circle className="w-2.5 h-2.5 text-red-500 fill-red-500" />}
+            <span className="text-[10px] text-gray-400">
+              {aiStatus === 'checking' ? 'Connecting...' : aiStatus === 'online' ? `AI Online — ${aiModel}` : 'AI Offline'}
+            </span>
+          </div>
+          {isStreaming && (
+            <div className="flex items-center gap-2">
+              <div className="flex gap-0.5">
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span className="text-[10px] text-blue-400 font-mono">{elapsedSec}s</span>
+            </div>
+          )}
+        </div>
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && !streamingContent && (
@@ -348,9 +400,19 @@ export default function AIDevChatPanel() {
                     <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-gray-500 text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Thinking...
+                  <div className="flex items-center gap-3 text-gray-400 text-sm">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                    <span>
+                      {elapsedSec < 5 ? 'Connecting to AI...' :
+                       elapsedSec < 15 ? 'AI is processing...' :
+                       elapsedSec < 30 ? 'Still working — complex query...' :
+                       'Taking longer than usual — please wait...'}
+                    </span>
+                    <span className="text-xs text-gray-600 font-mono">{elapsedSec}s</span>
                   </div>
                 )}
               </div>
