@@ -3465,51 +3465,61 @@ export default function DispatchPage() {
                       )}
                     </div>
 
-                    {/* Timeline */}
+                    {/* Timeline — editable by admin/manager */}
                     <div>
-                      <label className="field-label">Timeline:</label>
+                      <div className="flex items-center justify-between">
+                        <label className="field-label">Timeline:</label>
+                        {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
+                      </div>
                       <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #1e3048' }}>
-                        <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                          <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
-                          <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Created</span>
-                          <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.created_at)}</span>
-                          <span className="text-[#4b5563] text-[9px] font-mono tabular-nums">({formatElapsed(selectedCall.created_at)})</span>
-                        </div>
-                        {selectedCall.dispatched_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#f59e0b', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Dispatched</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.dispatched_at)}</span>
+                        {([
+                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#6b7280', showElapsed: true },
+                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
+                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
+                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
+                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
+                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
+                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#6b7280' },
+                        ] as const).filter(ts => ts.value || isAdminOrManager).map(ts => (
+                          <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#1e3048', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
+                            {editingTimestamp === ts.field ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="datetime-local"
+                                  className="input-dark text-[10px] font-mono px-1 py-0.5 w-[155px]"
+                                  defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                    if (e.key === 'Escape') setEditingTimestamp(null);
+                                  }}
+                                  onBlur={(e) => {
+                                    if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                    else setEditingTimestamp(null);
+                                  }}
+                                />
+                                {ts.value && ts.field !== 'created_at' && (
+                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span
+                                className={`text-white font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                                onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                                title={isAdminOrManager ? 'Click to edit' : undefined}
+                              >
+                                {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic text-[9px]">— not set —</span>}
+                              </span>
+                            )}
+                            {ts.showElapsed && ts.value && !editingTimestamp && (
+                              <span className="text-[#4b5563] text-[9px] font-mono tabular-nums">({formatElapsed(ts.value)})</span>
+                            )}
                           </div>
-                        )}
-                        {selectedCall.enroute_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#3b82f6', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>En Route</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.enroute_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.onscene_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#a855f7', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>On Scene</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.onscene_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.cleared_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#22c55e', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Cleared</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.cleared_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.archived_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Archived</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.archived_at)}</span>
-                          </div>
-                        )}
+                        ))}
                       </div>
                     </div>
 
