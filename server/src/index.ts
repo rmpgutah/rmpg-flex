@@ -103,6 +103,8 @@ import voiceRoutes from './routes/voice';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import { authenticateToken } from './middleware/auth';
+import { checkWelfareWatches } from './utils/officerWelfare';
+import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
 
@@ -594,6 +596,19 @@ try {
     } catch (err: any) {
       console.warn('[Utah Warrants] Failed to start scheduler:', err?.message || err);
     }
+
+    // Voice system timers — welfare checks and pursuit updates every 30s
+    setInterval(() => {
+      try { checkWelfareWatches(); } catch (err: any) {
+        console.error('[WELFARE] Timer error:', err?.message);
+      }
+    }, 30_000);
+
+    setInterval(() => {
+      try { generatePursuitUpdates(); } catch (err: any) {
+        console.error('[PURSUIT] Timer error:', err?.message);
+      }
+    }, 30_000);
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)

@@ -5,6 +5,7 @@ import { validateParamId, validateParamIdMiddleware } from '../../middleware/san
 import { broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow } from '../../utils/timeUtils';
 import { auditLog } from '../../utils/auditLogger';
+import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
 
 
 const router = Router();
@@ -272,6 +273,21 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     `).get(unit.id);
 
     broadcastUnitUpdate({ action: 'unit_status_changed', unit: updated });
+
+    // Start welfare monitoring when unit goes onscene
+    if (status === 'onscene') {
+      try {
+        const call = unit.current_call_id
+          ? db.prepare('SELECT id, call_number, priority FROM calls_for_service WHERE id = ?').get(unit.current_call_id) as any
+          : null;
+        if (call) startWelfareWatch(req.user!.userId, unit.call_sign, call.id, call.call_number, call.priority);
+      } catch { /* non-critical */ }
+    }
+
+    // Clear welfare watch when officer goes available/off_duty
+    if (['available', 'off_duty', 'out_of_service'].includes(status)) {
+      try { clearWelfareWatch(req.user!.userId); } catch { /* non-critical */ }
+    }
 
     res.json(updated);
   } catch (error: any) {
