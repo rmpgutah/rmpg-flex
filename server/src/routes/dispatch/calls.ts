@@ -1101,6 +1101,18 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('process_service_result', process_service_result);
     addField('client_id', resolvedUpdateClientId);
 
+    // ── Admin/Manager timeline override: allow editing dispatch timestamps ──
+    if (['admin', 'manager'].includes(req.user?.role || '')) {
+      const { dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, created_at: created_at_override } = req.body;
+      const isValidIso = (v: any) => typeof v === 'string' && v.length >= 10 && !isNaN(new Date(v).getTime());
+      if (dispatched_at !== undefined) { if (dispatched_at === null || dispatched_at === '') { updates.push('dispatched_at = NULL'); } else if (isValidIso(dispatched_at)) { addField('dispatched_at', dispatched_at); } }
+      if (enroute_at !== undefined) { if (enroute_at === null || enroute_at === '') { updates.push('enroute_at = NULL'); } else if (isValidIso(enroute_at)) { addField('enroute_at', enroute_at); } }
+      if (onscene_at !== undefined) { if (onscene_at === null || onscene_at === '') { updates.push('onscene_at = NULL'); } else if (isValidIso(onscene_at)) { addField('onscene_at', onscene_at); } }
+      if (cleared_at !== undefined) { if (cleared_at === null || cleared_at === '') { updates.push('cleared_at = NULL'); } else if (isValidIso(cleared_at)) { addField('cleared_at', cleared_at); } }
+      if (closed_at !== undefined) { if (closed_at === null || closed_at === '') { updates.push('closed_at = NULL'); } else if (isValidIso(closed_at)) { addField('closed_at', closed_at); } }
+      if (created_at_override !== undefined && isValidIso(created_at_override)) { addField('created_at', created_at_override); }
+    }
+
     // Upgrade 17: Track status_changed_at on every status change
     if (status !== undefined && status !== call.status) {
       updates.push('status_changed_at = ?');

@@ -77,6 +77,7 @@ import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
+import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
@@ -94,6 +95,8 @@ import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 
 export default function DispatchPage() {
+  const { user } = useAuth();
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -134,6 +137,8 @@ export default function DispatchPage() {
   const [ncicInitialQuery, setNcicInitialQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   // Timeline / activity log entries for selected call
   const [activityEntries, setActivityEntries] = useState<any[]>([]);
+  // Timeline editing (admin/manager only)
+  const [editingTimestamp, setEditingTimestamp] = useState<string | null>(null);
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Record<string, any>>({});
@@ -1254,6 +1259,25 @@ export default function DispatchPage() {
     }
   };
 
+  // ── Admin timeline edit handler ──
+  const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
+    if (!selectedCall || !isAdminOrManager) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [field]: value || null }),
+      });
+      const updated = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+      setSelectedCall(updated);
+      addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
+    } catch (err) {
+      console.error('Failed to update timeline:', err);
+      addToast('Failed to update timeline', 'error');
+    }
+    setEditingTimestamp(null);
+  }, [selectedCall, isAdminOrManager, addToast]);
+
   // Parse simple markdown markers into React elements for display
   const renderFormattedText = useCallback((text: string) => {
     if (!text) return text;
@@ -2227,38 +2251,59 @@ export default function DispatchPage() {
                   </div>
                 )}
 
-                {/* Timestamps */}
+                {/* Timestamps — editable by admin/manager */}
                 <div className="panel-inset p-3">
-                  <div className="field-label mb-2">Timeline</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="field-label">Timeline</div>
+                    {isAdminOrManager && <span className="text-[8px] text-rmpg-500 font-mono">CLICK TO EDIT</span>}
+                  </div>
                   <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-rmpg-400">Created</span>
-                      <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.created_at)}</span>
-                    </div>
-                    {selectedCall.dispatched_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Dispatched</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.dispatched_at)}</span>
+                    {([
+                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#9ca3af' },
+                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
+                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
+                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
+                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
+                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
+                    ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
+                      <div key={ts.field} className="flex justify-between items-center group">
+                        <span className="text-rmpg-400 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ts.color, boxShadow: ts.value ? `0 0 4px ${ts.color}80` : 'none' }} />
+                          {ts.label}
+                        </span>
+                        {editingTimestamp === ts.field ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="datetime-local"
+                              className="input-dark text-[10px] font-mono px-1 py-0.5 w-[155px]"
+                              defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                if (e.key === 'Escape') setEditingTimestamp(null);
+                              }}
+                              onBlur={(e) => {
+                                if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                else setEditingTimestamp(null);
+                              }}
+                            />
+                            {ts.value && ts.field !== 'created_at' && (
+                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span
+                            className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                            onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                            title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
+                          >
+                            {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {selectedCall.enroute_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Enroute</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.enroute_at)}</span>
-                      </div>
-                    )}
-                    {selectedCall.onscene_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">On Scene</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.onscene_at)}</span>
-                      </div>
-                    )}
-                    {selectedCall.cleared_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Cleared</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.cleared_at)}</span>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </div>
 

@@ -3324,6 +3324,12 @@ function migrateSchema(): void {
   // ── Feature 3: Call tag system ──
   addCol('calls_for_service', 'tags', "TEXT DEFAULT '[]'");
 
+  // ── Dispatch analytics columns ──
+  addCol('calls_for_service', 'priority_score', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'response_time_seconds', 'REAL');
+  addCol('calls_for_service', 'status_changed_at', 'TEXT');
+  addCol('calls_for_service', 'onscene_duration_seconds', 'REAL');
+
   // ── Feature 5: Shift handoff notes ──
   // Stored in system_config table with config_key='shift_handoff_notes'
 
