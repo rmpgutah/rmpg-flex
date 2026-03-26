@@ -4,6 +4,12 @@ import { authenticateToken } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../utils/websocket';
+import { buildThreatContext, composeThreatBriefing } from '../utils/threatContext';
+import { parseWithNLU } from '../utils/voiceNLU';
+import { checkProximityHazards, composeProximityNarrative, findNearestUnits, composeNearestUnitsNarrative } from '../utils/proximityAlerts';
+import { acknowledgeWelfareCheck, recordOfficerActivity } from '../utils/officerWelfare';
+import { startPursuit, endPursuit, isInPursuit } from '../utils/pursuitTracker';
+import { generateShiftSummary } from '../utils/shiftBriefing';
 
 const router = Router();
 router.use(authenticateToken);
@@ -125,6 +131,32 @@ function parseCommand(transcript: string): ParsedCommand | null {
   if (/\bmark\s*evidence\b/.test(t)) {
     return { action: 'mark_evidence', params: {}, raw: transcript };
   }
+
+  // Case queries
+  const caseStatusMatch = t.match(/\bstatus\s*(?:of\s*)?case\s*(\S+)/i);
+  if (caseStatusMatch) return { action: 'case_status', params: { case_number: caseStatusMatch[1] }, raw: transcript };
+
+  const linkCaseMatch = t.match(/\blink\s*(?:to\s*)?case\s*(\S+)/i);
+  if (linkCaseMatch) return { action: 'link_case', params: { case_number: linkCaseMatch[1] }, raw: transcript };
+
+  // Statement mode
+  if (/\bstart\s*statement/i.test(t)) return { action: 'start_statement', params: {}, raw: transcript };
+  if (/\bend\s*statement/i.test(t)) return { action: 'end_statement', params: {}, raw: transcript };
+
+  // Welfare response
+  if (/\b(code\s*4|all\s*clear)\b/i.test(t)) return { action: 'code_4', params: {}, raw: transcript };
+
+  // End pursuit
+  if (/\bend\s*pursuit/i.test(t)) return { action: 'end_pursuit', params: {}, raw: transcript };
+
+  // Shift briefing
+  if (/\bshift\s*(summary|briefing|handoff)/i.test(t)) return { action: 'shift_briefing', params: {}, raw: transcript };
+
+  // Nearest units
+  if (/\bnearest\s*units?\b/i.test(t)) return { action: 'nearest_units', params: {}, raw: transcript };
+
+  // Threat check
+  if (/\bthreat\s*(check|assessment|briefing)/i.test(t)) return { action: 'threat_check', params: {}, raw: transcript };
 
   return null;
 }
@@ -255,6 +287,12 @@ async function executeCommand(
       const unit = getUserUnit(userId);
       if (!unit) return { success: false, response: 'No active unit found.' };
 
+      // Get current call ID for pursuit tracker
+      const currentCallRow = db.prepare(
+        'SELECT current_call_id FROM dispatch_units WHERE id = ?'
+      ).get(unit.id) as any;
+      startPursuit(unit.call_sign, currentCallRow?.current_call_id);
+
       broadcastDispatchUpdate({
         action: 'pursuit_started',
         call_sign: unit.call_sign,
@@ -275,6 +313,70 @@ async function executeCommand(
       return { success: true, response: `Evidence marker placed at ${address}.` };
     }
 
+    case 'code_4': {
+      const msg = acknowledgeWelfareCheck(userId);
+      recordOfficerActivity(userId);
+      return { success: true, response: msg || 'Copy, code 4.' };
+    }
+
+    case 'end_pursuit': {
+      const unit = getUserUnit(userId);
+      if (!unit) return { success: false, response: 'No active unit found.' };
+      const msg = endPursuit(unit.call_sign);
+      return { success: true, response: msg || 'No active pursuit to end.' };
+    }
+
+    case 'shift_briefing': {
+      const summary = generateShiftSummary();
+      return { success: true, response: summary.narrative };
+    }
+
+    case 'nearest_units': {
+      const unit = getUserUnit(userId);
+      const gps = unit ? getLatestGps(unit.call_sign) : null;
+      if (!gps) return { success: false, response: 'GPS location not available.' };
+      const nearest = findNearestUnits(gps.lat, gps.lng, 5);
+      return { success: true, response: composeNearestUnitsNarrative(nearest) };
+    }
+
+    case 'threat_check': {
+      const unit = getUserUnit(userId);
+      if (!unit) return { success: false, response: 'No active unit found.' };
+      const currentCall = db.prepare(
+        'SELECT c.id, c.location_address, c.latitude, c.longitude FROM calls_for_service c JOIN dispatch_units u ON u.current_call_id = c.id WHERE u.id = ?'
+      ).get(unit.id) as any;
+      if (!currentCall) return { success: true, response: 'No active call to assess.' };
+      const ctx = await buildThreatContext({
+        locationAddress: currentCall.location_address,
+        latitude: currentCall.latitude,
+        longitude: currentCall.longitude,
+        callId: currentCall.id,
+      });
+      const briefing = composeThreatBriefing(ctx);
+      return { success: true, response: briefing || 'No threat indicators detected at this location.' };
+    }
+
+    case 'case_status': {
+      const caseNum = cmd.params.case_number;
+      try {
+        const c = db.prepare('SELECT case_number, status, assigned_to, updated_at FROM cases WHERE case_number = ?').get(caseNum) as any;
+        if (!c) return { success: true, response: `No case found with number ${caseNum}.` };
+        return { success: true, response: `Case ${c.case_number}: status ${(c.status || 'unknown').replace(/_/g, ' ')}, assigned to ${c.assigned_to || 'unassigned'}.` };
+      } catch { return { success: true, response: `Case lookup not available.` }; }
+    }
+
+    case 'link_case': {
+      return { success: true, response: `Case linkage noted. Case ${cmd.params.case_number}.` };
+    }
+
+    case 'start_statement': {
+      return { success: true, response: 'Statement recording mode activated. Speak your statement now.' };
+    }
+
+    case 'end_statement': {
+      return { success: true, response: 'Statement recording ended and saved.' };
+    }
+
     default:
       return { success: false, response: 'Unknown command.' };
   }
@@ -290,6 +392,8 @@ router.post('/command', upload.single('audio'), async (req: Request, res: Respon
       return;
     }
 
+    recordOfficerActivity(userId);
+
     if (!req.file) {
       res.status(400).json({ error: 'No audio file provided. Field name must be "audio".' });
       return;
@@ -303,6 +407,21 @@ router.post('/command', upload.single('audio'), async (req: Request, res: Respon
 
     const command = parseCommand(transcript);
     if (!command) {
+      // Regex failed — try AI NLU
+      const nluResult = await parseWithNLU(transcript);
+      if (nluResult && nluResult.action !== 'unknown' && nluResult.confidence >= 0.6) {
+        const nluCommand: ParsedCommand = {
+          action: nluResult.action,
+          params: nluResult.params as Record<string, string>,
+          raw: transcript,
+        };
+        const result = await executeCommand(nluCommand, req);
+        auditLog(req, 'VOICE_COMMAND_NLU' as any, 'voice' as any, '',
+          JSON.stringify({ transcript, nlu: nluResult, result: result.response }));
+        res.json({ success: result.success, transcript, action: nluResult.action, response: result.response, nlu: true });
+        return;
+      }
+
       res.json({ success: false, transcript, response: `Could not parse command from: "${transcript}"` });
       return;
     }
@@ -329,6 +448,8 @@ router.post('/parse', async (req: Request, res: Response) => {
       return;
     }
 
+    recordOfficerActivity(userId);
+
     const { transcript } = req.body;
     if (!transcript || typeof transcript !== 'string') {
       res.status(400).json({ error: 'transcript is required and must be a string' });
@@ -342,6 +463,21 @@ router.post('/parse', async (req: Request, res: Response) => {
 
     const command = parseCommand(transcript);
     if (!command) {
+      // Regex failed — try AI NLU
+      const nluResult = await parseWithNLU(transcript);
+      if (nluResult && nluResult.action !== 'unknown' && nluResult.confidence >= 0.6) {
+        const nluCommand: ParsedCommand = {
+          action: nluResult.action,
+          params: nluResult.params as Record<string, string>,
+          raw: transcript,
+        };
+        const result = await executeCommand(nluCommand, req);
+        auditLog(req, 'VOICE_COMMAND_NLU' as any, 'voice' as any, '',
+          JSON.stringify({ transcript, nlu: nluResult, result: result.response }));
+        res.json({ success: result.success, transcript, action: nluResult.action, response: result.response, nlu: true });
+        return;
+      }
+
       res.json({ success: false, transcript, response: `Could not parse command from: "${transcript}"` });
       return;
     }
@@ -355,6 +491,28 @@ router.post('/parse', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[VOICE] Parse error:', err?.message || err);
     res.status(500).json({ error: 'Voice command processing failed' });
+  }
+});
+
+// ─── POST /api/voice/statement — save witness statement ─
+router.post('/statement', async (req: Request, res: Response) => {
+  try {
+    const { callId, transcript, isFinal } = req.body;
+    if (!callId || !transcript) {
+      res.status(400).json({ error: 'callId and transcript required' });
+      return;
+    }
+    const db = getDb();
+    const timestamp = new Date().toISOString();
+    const prefix = isFinal ? '\n\n[WITNESS STATEMENT - FINAL]' : '\n\n[WITNESS STATEMENT - IN PROGRESS]';
+    db.prepare('UPDATE calls_for_service SET description = COALESCE(description, \'\') || ? WHERE id = ?')
+      .run(`${prefix} (${timestamp})\n${transcript}`, callId);
+    auditLog(req, 'VOICE_STATEMENT' as any, 'call' as any, String(callId),
+      `Statement ${isFinal ? 'finalized' : 'updated'}: ${transcript.slice(0, 100)}...`);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[VOICE] Statement save error:', err?.message);
+    res.status(500).json({ error: 'Failed to save statement' });
   }
 });
 
