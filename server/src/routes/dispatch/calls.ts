@@ -11,6 +11,8 @@ import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
+import { buildThreatContext } from '../../utils/threatContext';
+import { findNearestUnits } from '../../utils/proximityAlerts';
 
 // ── Upgrade 1: Priority score calculation ──
 // Higher scores = more urgent. Used for sorting the dispatch queue.
@@ -287,7 +289,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     }
 
     // Upgrade 9: Validate source enum if provided
-    const VALID_SOURCES = ['phone', 'radio', 'walk_in', 'online', 'alarm', 'officer_initiated', 'panic', 'dispatch', 'email', 'app', 'other'];
+    const VALID_SOURCES = ['phone', 'radio', 'walk_in', 'online', 'alarm', 'officer_initiated', 'patrol', 'panic', 'dispatch', 'email', 'app', 'other'];
     if (source && !VALID_SOURCES.includes(source)) {
       res.status(400).json({ error: `Invalid source. Must be one of: ${VALID_SOURCES.join(', ')}`, code: 'INVALID_SOURCE' });
       return;
@@ -578,8 +580,38 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // If no coordinates were provided, geocode the address asynchronously
     geocodeCallIfNeeded(call.id, location_address, latitude, longitude);
 
-    // Broadcast to dispatch channel
-    broadcastDispatchUpdate({ action: 'call_created', call });
+    // Find nearest units (sync)
+    let nearestUnits: any[] = [];
+    try {
+      if (call.latitude && call.longitude) {
+        nearestUnits = findNearestUnits(call.latitude, call.longitude, 3);
+      }
+    } catch { /* non-critical */ }
+
+    // Broadcast to dispatch channel (immediate, threat context added async below)
+    broadcastDispatchUpdate({ action: 'call_created', call, nearestUnits });
+
+    // Build threat context asynchronously and broadcast enrichment if available
+    buildThreatContext({
+      locationAddress: call.location_address,
+      latitude: call.latitude,
+      longitude: call.longitude,
+      callId: call.id,
+    }).then((ctx) => {
+      if (ctx.briefingSummary) {
+        broadcastDispatchUpdate({
+          action: 'call_created',
+          call,
+          threatContext: {
+            threatLevel: ctx.threatLevel,
+            briefingSummary: ctx.briefingSummary,
+            premiseHistoryCount: ctx.premiseHistory.length,
+            activeWarrantCount: ctx.activeWarrants.length,
+          },
+          nearestUnits,
+        });
+      }
+    }).catch(() => { /* non-critical */ });
 
     // Notify dispatch/supervisors of new call
     createNotificationForRoles(

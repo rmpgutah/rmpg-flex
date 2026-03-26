@@ -8,6 +8,8 @@ import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
+import { buildThreatContext } from '../../utils/threatContext';
+import { findNearestUnits } from '../../utils/proximityAlerts';
 
 const router = Router();
 
@@ -775,7 +777,38 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
       WHERE c.id = ?
     `).get(call.id);
 
-    broadcastDispatchUpdate({ action: 'call_created', call: enrichedCall || call });
+    // Find nearest units (sync)
+    let nearestUnits: any[] = [];
+    try {
+      const panicCall = enrichedCall || call;
+      if (panicCall.latitude && panicCall.longitude) {
+        nearestUnits = findNearestUnits(panicCall.latitude, panicCall.longitude, 3);
+      }
+    } catch { /* non-critical */ }
+
+    broadcastDispatchUpdate({ action: 'call_created', call: enrichedCall || call, nearestUnits });
+
+    // Async threat context enrichment for panic call
+    buildThreatContext({
+      locationAddress: (enrichedCall || call).location_address,
+      latitude: (enrichedCall || call).latitude,
+      longitude: (enrichedCall || call).longitude,
+      callId: call.id,
+    }).then((ctx) => {
+      if (ctx.briefingSummary) {
+        broadcastDispatchUpdate({
+          action: 'call_created',
+          call: enrichedCall || call,
+          threatContext: {
+            threatLevel: ctx.threatLevel,
+            briefingSummary: ctx.briefingSummary,
+            premiseHistoryCount: ctx.premiseHistory.length,
+            activeWarrantCount: ctx.activeWarrants.length,
+          },
+          nearestUnits,
+        });
+      }
+    }).catch(() => { /* non-critical */ });
 
     auditLog(req, 'panic_activated', 'call', call.id, `PANIC alert by ${user.full_name} (${user.badge_number || 'N/A'}) — call ${callNumber} created`);
 
