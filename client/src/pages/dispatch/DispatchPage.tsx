@@ -2382,8 +2382,8 @@ export default function DispatchPage() {
                               try {
                                 const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ pso_attempt_number: val }) });
                                 const updated = mapDbCall(result);
-                                setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
-                                setSelectedCall(updated);
+                                setCalls(prev => prev.map(c => String(c.id) === String(updated.id) ? { ...c, ...updated } : c));
+                                setSelectedCall(prev => prev ? { ...prev, ...updated } : updated);
                               } catch { addToast('Failed to update visit number', 'error'); }
                             }}
                           >
@@ -4186,8 +4186,8 @@ export default function DispatchPage() {
                                     body: JSON.stringify({ pso_attempt_number: newAttempt }),
                                   });
                                   const updated = mapDbCall(result);
-                                  setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
-                                  setSelectedCall(updated);
+                                  setCalls(prev => prev.map(c => String(c.id) === String(updated.id) ? { ...c, ...updated } : c));
+                                  setSelectedCall(prev => prev ? { ...prev, ...updated } : updated);
                                   addToast(`Attempt number set to ${newAttempt}`, 'success');
                                 } catch (err) { addToast('Failed to update attempt number', 'error'); }
                               }}
