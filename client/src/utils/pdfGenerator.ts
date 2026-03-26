@@ -438,7 +438,7 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
  * Shows "—" em-dash for empty/null values.
  * Returns Y position for next row.
  */
-export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
+export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const labelH = 3;          // Height reserved for floating label above box
@@ -446,7 +446,9 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const innerPad = 1.5;      // Horizontal padding inside box
   const maxW = width - 2 * innerPad;
   const lineStep = 3.5;      // Y-step per extra line of value text
-  const maxLines = 4;        // Cap at 4 lines
+  // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
+  const isLongText = (value || '').length > 200 || width > 160;
+  const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
 
   // Floating label above the box
   doc.setFont('helvetica', 'bold');
@@ -468,6 +470,10 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   }
   const extraLines = Math.max(0, lines.length - 1);
   const boxH = baseBoxH + extraLines * lineStep;
+
+  // Page break if field won't fit on current page
+  const totalFieldH = labelH + boxH + 1;
+  y = checkPageBreak(doc, y, totalFieldH);
 
   // Value box with border (positioned below the label)
   const boxY = y + labelH;
