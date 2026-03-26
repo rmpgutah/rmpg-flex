@@ -22,6 +22,7 @@ export interface UseVoiceChannelResult {
   activateManualListen: () => void;
   alert: (narrative: string, severity: AlertSeverity) => void;
   enabled: boolean;
+  stressDetected: boolean;
 }
 
 export function useVoiceChannel(): UseVoiceChannelResult {
@@ -30,6 +31,7 @@ export function useVoiceChannel(): UseVoiceChannelResult {
   const [lastCommand, setLastCommand] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enabled] = useState(() => isVoiceChannelEnabled());
+  const [stressDetected, setStressDetected] = useState(false);
 
   const channelRef = useRef<VoiceChannel | null>(null);
   const transcriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,6 +63,12 @@ export function useVoiceChannel(): UseVoiceChannelResult {
         // Clear after 5s
         if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
         errorTimerRef.current = setTimeout(() => setError(null), 5000);
+      },
+      onStressDetected: (result) => {
+        if (result.isStressed) {
+          setStressDetected(true);
+          setTimeout(() => setStressDetected(false), 5000);
+        }
       },
     });
 
@@ -115,5 +123,6 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     activateManualListen,
     alert,
     enabled,
+    stressDetected,
   };
 }

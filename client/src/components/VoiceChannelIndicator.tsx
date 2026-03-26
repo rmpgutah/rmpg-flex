@@ -5,10 +5,25 @@
 // and errors in the bottom-right corner of the screen.
 // ============================================================
 
+import { useState, useEffect } from 'react';
 import { useVoiceChannel } from '../hooks/useVoiceChannel';
+import { isRecording as isStatementRecording, getStatementState } from '../utils/statementRecorder';
 
 export default function VoiceChannelIndicator() {
-  const { state, transcript, lastCommand, error, activateManualListen, enabled } = useVoiceChannel();
+  const { state, transcript, lastCommand, error, activateManualListen, enabled, stressDetected } = useVoiceChannel();
+
+  const [statementActive, setStatementActive] = useState(false);
+  const [statementWords, setStatementWords] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStatementActive(isStatementRecording());
+      if (isStatementRecording()) {
+        setStatementWords(getStatementState().wordCount);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (!enabled) return null;
 
@@ -64,6 +79,25 @@ export default function VoiceChannelIndicator() {
         >
           <div className="font-semibold">{lastCommand.action}</div>
           <div className="mt-0.5 text-gray-300">{lastCommand.message}</div>
+        </div>
+      )}
+
+      {/* Statement recording indicator */}
+      {statementActive && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-red-700 text-white text-xs font-mono uppercase tracking-wider shadow-lg">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400"></span>
+          </span>
+          <span>RECORDING STATEMENT</span>
+          <span className="text-[10px] opacity-70">{statementWords} words</span>
+        </div>
+      )}
+
+      {/* Stress detection indicator */}
+      {stressDetected && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-mono uppercase tracking-wider shadow-lg animate-pulse">
+          STRESS DETECTED
         </div>
       )}
 
