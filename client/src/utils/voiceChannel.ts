@@ -350,7 +350,7 @@ export class VoiceChannel {
   private mediaStream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
-  private recognition: SpeechRecognition | null = null;
+  private recognition: InstanceType<NonNullable<typeof window.SpeechRecognition>> | null = null;
   private listenTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
@@ -536,17 +536,15 @@ export class VoiceChannel {
   }
 
   private startWebSpeechRecognition(): void {
-    const SpeechRecognition =
-      (window as unknown as Record<string, unknown>).SpeechRecognition as typeof window.SpeechRecognition | undefined
-      || (window as unknown as Record<string, unknown>).webkitSpeechRecognition as typeof window.SpeechRecognition | undefined;
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionCtor) {
       // Browser doesn't support Web Speech API — rely on server Whisper
       return;
     }
 
     try {
-      this.recognition = new SpeechRecognition();
+      this.recognition = new SpeechRecognitionCtor();
       this.recognition.continuous = true;
       this.recognition.interimResults = true;
       this.recognition.lang = 'en-US';
