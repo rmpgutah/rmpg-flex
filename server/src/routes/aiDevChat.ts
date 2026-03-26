@@ -185,7 +185,8 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
 
   const start = Date.now();
   const ollamaUrl = (config.providers.ollama.url || 'http://localhost:11434').replace(/\/+$/, '');
-  const model = config.providers.ollama.model || 'llama3.1:8b';
+  // Prefer qwen2.5-coder for dev chat — better at code tasks than general models
+  const model = 'qwen2.5-coder:7b';
 
   try {
     // Stream directly from Ollama for real-time token output
