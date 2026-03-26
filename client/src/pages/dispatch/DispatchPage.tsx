@@ -3488,8 +3488,9 @@ export default function DispatchPage() {
                               <div className="flex items-center gap-1">
                                 <input
                                   type="datetime-local"
-                                  className="input-dark text-[10px] font-mono px-1 py-0.5 w-[155px]"
-                                  defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                                  step="1"
+                                  className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
+                                  defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
                                   autoFocus
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
