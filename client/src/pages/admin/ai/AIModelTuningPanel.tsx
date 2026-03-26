@@ -59,7 +59,12 @@ export default function AIModelTuningPanel() {
         apiFetch<Preset[]>('/ai/presets'),
       ]);
       setDefaults(paramsData.defaultParams);
-      if (paramsData.featureParams) setFeatureParams(paramsData.featureParams);
+      if (paramsData.featureParams) {
+        // Merge with defaults so every feature key exists
+        const merged: Record<string, FeatureOverride> = {};
+        FEATURES.forEach(f => { merged[f] = paramsData.featureParams[f] || {}; });
+        setFeatureParams(merged as Record<FeatureName, FeatureOverride>);
+      }
       setPresets(presetsData);
     } catch (err: any) {
       setError(err?.message || 'Failed to load model parameters');
@@ -122,7 +127,7 @@ export default function AIModelTuningPanel() {
     setFeatureParams(prev => ({
       ...prev,
       [feature]: {
-        ...prev[feature],
+        ...(prev[feature] || {}),
         [key]: raw === '' ? null : parseFloat(raw),
       },
     }));
@@ -196,7 +201,7 @@ export default function AIModelTuningPanel() {
                           <input
                             type="number"
                             step={key === 'maxTokens' ? 64 : 0.05}
-                            value={featureParams[feature][key] ?? ''}
+                            value={(featureParams[feature] || {})[key] ?? ''}
                             onChange={e => updateFeatureOverride(feature, key, e.target.value)}
                             placeholder="—"
                             className="w-20 px-2 py-1 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs placeholder-gray-700 focus:outline-none focus:border-blue-500"
