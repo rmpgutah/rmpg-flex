@@ -368,7 +368,29 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
     if (!validStatuses.includes(status)) {
       res.status(400).json({ error: 'Invalid status', code: 'INVALID_STATUS', valid: validStatuses });
+      return;
+    }
 
+    // ── Legal status transition enforcement ──────────────────────
+    const LEGAL_TRANSITIONS: Record<string, string[]> = {
+      pending:     ['dispatched', 'cancelled', 'on_hold'],
+      dispatched:  ['enroute', 'onscene', 'cleared', 'cancelled', 'on_hold', 'pending'],
+      enroute:     ['onscene', 'cleared', 'cancelled', 'on_hold', 'dispatched'],
+      onscene:     ['cleared', 'closed', 'cancelled', 'on_hold', 'enroute'],
+      cleared:     ['closed', 'archived', 'onscene'],
+      closed:      ['archived', 'cleared'],
+      cancelled:   ['archived', 'pending'],
+      on_hold:     ['pending', 'dispatched', 'enroute', 'onscene'],
+      archived:    ['closed'],
+    };
+    const allowed = LEGAL_TRANSITIONS[call.status] || [];
+    if (!allowed.includes(status)) {
+      res.status(400).json({
+        error: `Cannot transition from '${call.status}' to '${status}'`,
+        code: 'ILLEGAL_STATUS_TRANSITION',
+        current_status: call.status,
+        allowed_transitions: allowed,
+      });
       return;
     }
 
