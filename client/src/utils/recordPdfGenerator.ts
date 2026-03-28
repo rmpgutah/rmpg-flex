@@ -805,46 +805,37 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || '--' }] : []),
     ];
 
-    // Dynamic column widths — tight fit, Area gets remaining space
+    // Dynamic column widths — measure all values, no truncation
+    const dValSize = 6; // smaller font for district bar values to fit everything
+    const dPad = 3;
     doc.setFont('courier', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    const dPad = 4; // left+right padding per column
-    // Measure natural width needed for each field (value or label, whichever wider)
-    const naturalWidths = distFields.map((f, idx) => {
+    doc.setFontSize(dValSize);
+    // Measure each column's natural width
+    const naturalWidths = distFields.map((f) => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       const labelW = doc.getTextWidth(f.label);
       doc.setFont('courier', 'normal');
-      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setFontSize(dValSize);
       const valW = doc.getTextWidth(sanitizePdfText(f.value));
-      // For AREA (index 3), don't cap — let it take remaining space
-      if (idx === 3) return 999; // placeholder, will be computed below
       return Math.max(labelW, valW) + dPad;
     });
-    // Fixed columns = all except AREA
-    const fixedTotal = naturalWidths.reduce((a, w, i) => i === 3 ? a : a + w, 0);
-    // AREA gets whatever space remains
-    naturalWidths[3] = Math.max(25, cw - fixedTotal);
-    const finalWidths = naturalWidths;
+    // Scale proportionally to fill exactly cw
+    const totalNat = naturalWidths.reduce((a, b) => a + b, 0);
+    const finalWidths = naturalWidths.map(w => (w / totalNat) * cw);
 
     let colX = LAYOUT.PAGE_MARGIN;
     distFields.forEach((f, i) => {
       const fw = finalWidths[i];
-      const fx = colX + 2;
-      const maxW = fw - 4;
+      const fx = colX + 1.5;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(f.label, fx, barY + 3);
       doc.setFont('courier', 'normal');
-      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setFontSize(dValSize);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      let val = sanitizePdfText(f.value);
-      if (doc.getTextWidth(val) > maxW) {
-        while (val.length > 0 && doc.getTextWidth(val + '...') > maxW) val = val.slice(0, -1);
-        val = val + '...';
-      }
-      doc.text(val, fx, barY + 7);
+      doc.text(sanitizePdfText(f.value), fx, barY + 7);
       colX += fw;
     });
 
