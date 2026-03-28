@@ -998,6 +998,8 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
   const text = sanitizePdfText(rawText);
   const lineH = fontSize * 0.38 + 0.6;
   const paragraphGap = SPACING.MD;
+  // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
+  const safeMaxWidth = maxWidth - 2;
   // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
   const wordWrap = (str: string, maxW: number): string[] => {
     const words = str.split(/(\s+)/); // Split keeping whitespace tokens
@@ -1033,7 +1035,7 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       doc.setFont('courier', 'normal');
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(hardLine);
-      const wrappedLines: string[] = wordWrap(stripped, maxWidth);
+      const wrappedLines: string[] = wordWrap(stripped, safeMaxWidth);
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];

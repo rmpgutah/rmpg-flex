@@ -1136,7 +1136,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // ── Incident Details — dynamic page break ──
-  y = checkPageBreak(doc, y, 15, prio);
+  y = checkPageBreak(doc, y, 25, prio);
   { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
     y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
@@ -1145,7 +1145,25 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.text('DESCRIPTION', lx, y);
     y += 3.5;
     doc.setFont('helvetica', 'normal');
-    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw);
+    // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
+    const descPageBreak = (newY: number): number => {
+      const cw = getContentWidth(doc);
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
+      doc.setDrawColor(...COLOR.BORDER_SECTION);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+    };
+    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
     y += SPACING.MD;
     y = addThreeColumnFields(doc, [
       { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
