@@ -858,7 +858,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
-  y = checkPageBreak(doc, y, 30, prio);
+  y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: fmtTimestamp(data.created_at || '') },
@@ -872,7 +872,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Caller Information
-  y = checkPageBreak(doc, y, 25, prio);
+  y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
@@ -885,7 +885,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Location
-  y = checkPageBreak(doc, y, 25, prio);
+  y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     { const yL = addFieldPair(doc, 'Latitude', data.latitude != null ? String(data.latitude) : '', lx, y, hfw);
@@ -919,7 +919,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Scene Conditions — right after Incident Location (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
-  y = checkPageBreak(doc, y, 17, prio);
+  y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Weather', value: data.weather_conditions || '' },
@@ -934,7 +934,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Mileage — single row: Vehicle ID | Starting | Ending | Total (header 5.5 + row 10 + pad 1.5 = 17mm)
   if (data.starting_mileage != null || data.ending_mileage != null || data.responding_vehicle_id) {
-    y = checkPageBreak(doc, y, 17, prio);
+    y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
     const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
       ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
@@ -957,7 +957,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Linked Persons — field-pair box rows (matches Assigned Units style)
   if (data.linked_persons && data.linked_persons.length > 0) {
-    y = checkPageBreak(doc, y, 25, prio);
+    y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
     // 5 columns using ffw (inside section borders): Name | Role | DOB | Race/Sex | Phone
     const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.15, ffw * 0.22, ffw * 0.23];
@@ -985,7 +985,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Linked Vehicles — field-pair box rows (matches Linked Persons style)
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
-    y = checkPageBreak(doc, y, 25, prio);
+    y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, `Linked Vehicles (${data.linked_vehicles.length})`, y); y = sec.contentY;
     const vColW = [ffw * 0.15, ffw * 0.25, ffw * 0.12, ffw * 0.18, ffw * 0.30];
     const nv = 'Not Provided';
@@ -1037,7 +1037,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Flags — clean 6-column checkbox grid
-  y = checkPageBreak(doc, y, 30, prio);
+  y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
     y += SPACING.SM;
     const cols = 6;
@@ -1086,7 +1086,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // LE Coordination
   if (data.le_agency || data.le_case_number) {
-    y = checkPageBreak(doc, y, 25, prio);
+    y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Agency', data.le_agency || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'LE Case Number', data.le_case_number || '', rx, y, hfw);
@@ -1096,7 +1096,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // PSO Client Request (conditional)
   if (data.incident_type === 'pso_client_request') {
-    y = checkPageBreak(doc, y, 25, prio);
+    y = checkPageBreak(doc, y, 12, prio);
     const attemptNum = data.pso_attempt_number || 1;
     const attemptLabel = attemptNum > 1
       ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
@@ -1231,7 +1231,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const unitDetail = data.assigned_units_detail;
   const unitCount = unitDetail?.length || data.assigned_units?.length || 0;
   if (unitCount > 0) {
-    y = checkPageBreak(doc, y, 10 + (unitCount * 6), prio);
+    y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
     if (unitDetail && unitDetail.length > 0) {
       const UNIT_ROLES = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
@@ -1260,7 +1260,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Damage Assessment (conditional)
   if (data.damage_estimate || data.damage_description) {
-    y = checkPageBreak(doc, y, 25, prio);
+    y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
       const yR = addFieldPair(doc, 'Description', data.damage_description || '', rx, y, hfw);

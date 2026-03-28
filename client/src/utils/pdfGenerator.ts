@@ -492,11 +492,11 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 2.5;        // Height reserved for floating label above box
-  const baseBoxH = 6;        // Minimum value box height (compact)
-  const innerPad = 1.5;      // Horizontal padding inside box
+  const labelH = 2.2;        // Height reserved for floating label above box
+  const baseBoxH = 5.5;      // Minimum value box height (compact)
+  const innerPad = 1.2;      // Horizontal padding inside box
   const maxW = width - 2 * innerPad;
-  const lineStep = 3.2;      // Y-step per extra line of value text
+  const lineStep = 3;        // Y-step per extra line of value text
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
