@@ -513,7 +513,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
-  const displayText = isEmpty ? '--' : sanitized;
+  const displayText = isEmpty ? '--' : sanitized.toUpperCase();
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {

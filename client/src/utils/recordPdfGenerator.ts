@@ -934,7 +934,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addThreeColumnFields(doc, [
       { label: 'Weather', value: data.weather_conditions || '' },
       { label: 'Lighting', value: data.lighting_conditions || '' },
-      { label: 'Weapons Involved', value: data.weapons_involved || '' },
+      { label: 'Weapons Involved', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'None' : data.weapons_involved },
     ], y);
     if (data.scene_safety) {
       y = addFieldPair(doc, 'Scene Safety / Hazards', data.scene_safety, lx, y, ffw);
@@ -995,9 +995,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
-    const pCw = getContentWidth(doc);
-    // 5 columns: Name (wider) | Role | DOB | Race/Sex (wider) | Phone
-    const pColW = [pCw * 0.25, pCw * 0.15, pCw * 0.15, pCw * 0.22, pCw * 0.23];
+    // 5 columns using ffw (inside section borders): Name | Role | DOB | Race/Sex | Phone
+    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.15, ffw * 0.22, ffw * 0.23];
     for (const p of data.linked_persons) {
       y = checkPageBreak(doc, y, 12);
       const pFields = [
@@ -1042,11 +1041,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Flags — clean 4-column checkbox grid
-  y = checkPageBreak(doc, y, 35, prio);
+  // Flags — clean 6-column checkbox grid
+  y = checkPageBreak(doc, y, 30, prio);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    y += SPACING.SM; // Gap between header bar and first checkbox row
-    const cols = 4;
+    y += SPACING.SM;
+    const cols = 6;
     const colW = ffw / cols;
     const rowH = 5;
     const flagGrid: { label: string; checked: boolean }[][] = [
@@ -1055,14 +1054,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Alcohol', checked: !!data.alcohol_involved },
         { label: 'Drugs', checked: !!data.drugs_involved },
         { label: 'DV', checked: !!data.domestic_violence },
-      ],
-      [
         { label: 'Mental Health', checked: !!data.mental_health_crisis },
         { label: 'Juvenile', checked: !!data.juvenile_involved },
-        { label: 'Felony IP', checked: !!data.felony_in_progress },
-        { label: 'Ofc Safety', checked: !!data.officer_safety_caution },
       ],
       [
+        { label: 'Felony IP', checked: !!data.felony_in_progress },
+        { label: 'Ofc Safety', checked: !!data.officer_safety_caution },
         { label: 'Gang', checked: !!data.gang_related },
         { label: 'HAZMAT', checked: !!data.hazmat },
         { label: 'Veh Pursuit', checked: !!data.vehicle_pursuit },
@@ -1073,14 +1070,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'EMS Req', checked: !!data.ems_requested },
         { label: 'Fire Req', checked: !!data.fire_requested },
         { label: 'Evidence', checked: !!data.evidence_collected },
-      ],
-      [
         { label: 'BWC Active', checked: !!data.body_camera_active },
         { label: 'Photos', checked: !!data.photos_taken },
-        { label: 'Supvr Notified', checked: !!data.supervisor_notified },
-        { label: 'LE Notified', checked: !!data.le_notified },
       ],
       [
+        { label: 'Supvr Notified', checked: !!data.supervisor_notified },
+        { label: 'LE Notified', checked: !!data.le_notified },
         { label: 'Trespass', checked: !!data.trespass_issued },
       ],
     ];
