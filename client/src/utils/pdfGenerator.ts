@@ -862,7 +862,7 @@ export function addStackedSignatures(
   const sigRowH = 8;
   const infoRowH = 6;
   const totalH = roleBarH + sigRowH + infoRowH;
-  const sealColW = 42; // 42mm square seal box
+  const sealColW = 25; // ~1 inch square (notary stamp size)
   const sigW = cw - sealColW;
   y = checkPageBreak(doc, y, Math.max(totalH, sealColW), priority);
 
