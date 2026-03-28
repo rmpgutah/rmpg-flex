@@ -878,33 +878,25 @@ export function addStackedSignatures(
 ): number {
   const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
-  const totalNeeded = 35; // officer block + seal side by side
+  const totalNeeded = 42; // officer block full-width + seal below
   y = checkPageBreak(doc, y, totalNeeded, priority);
 
-  // ── Reporting Officer (left) + Company Seal (right) — side by side ──
-  const sealSize = 26; // square box
-  const sealGap = 3;
-  const officerW = cw - sealSize - sealGap;
-  const blockY = y;
+  // ── Reporting Officer — full width (margin to margin) ──
+  const officerEndY = addSignatureBlock(doc, role1, mx, y, cw, sig1);
 
-  // Officer signature block at reduced width
-  const officerEndY = addSignatureBlock(doc, role1, mx, blockY, officerW, sig1);
-
-  // Company Seal box — same height as officer block, aligned right
-  const roleBarH = SPACING.SIGNATURE_ROLE_H;
-  const sigRowH = 12;
-  const infoRowH = 8;
-  const blockH = roleBarH + sigRowH + infoRowH;
-  const sealX = mx + officerW + sealGap;
+  // ── Company Seal — centered below officer block ──
+  const sealBoxH = 16;
+  const sealBoxW = cw;
+  const sealBoxY = officerEndY;
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(sealX, blockY, sealSize, blockH);
+  doc.rect(mx, sealBoxY, sealBoxW, sealBoxH);
 
-  // Dashed circle
-  const circleR = (sealSize - 6) / 2;
-  const cx = sealX + sealSize / 2;
-  const cy = blockY + blockH / 2;
+  // Dashed circle (centered in the seal box)
+  const circleR = (sealBoxH - 4) / 2;
+  const cx = mx + sealBoxW / 2;
+  const cy = sealBoxY + sealBoxH / 2;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(0.3);
   const segs = 36;
@@ -920,12 +912,11 @@ export function addStackedSignatures(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('COMPANY', cx, cy - 1, { align: 'center' });
-  doc.text('SEAL', cx, cy + 2, { align: 'center' });
+  doc.text('COMPANY SEAL', cx, cy + 1, { align: 'center' });
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return officerEndY;
+  return sealBoxY + sealBoxH + SPACING.SM;
 }
 
 /**
@@ -1488,7 +1479,7 @@ export function addTableWithShading(
   const minRowH = 6;
   const cellLineH = 3.8;      // Line height within table cells
   const cellPad = 2;           // Padding inside cells
-  const maxCellLines = 12;    // Allow longer notes in table cells
+  const maxCellLines = 50;    // Show full note text without truncation
 
   // Pre-compute column widths from position deltas
   const colWidths: number[] = [];

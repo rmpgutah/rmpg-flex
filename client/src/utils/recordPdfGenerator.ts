@@ -829,7 +829,16 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(255, 255, 255);
       // Clip text to fit within column width
       const val = sanitizePdfText(f.value || '--');
-      const clipped = doc.splitTextToSize(val, maxW)[0] || val;
+      // Clip to column width using word-aware measurement (avoid mid-word breaks)
+      let clipped = val;
+      if (doc.getTextWidth(val) > maxW) {
+        // Truncate character-by-character until it fits, then add ellipsis
+        let truncated = val;
+        while (truncated.length > 0 && doc.getTextWidth(truncated + '...') > maxW) {
+          truncated = truncated.slice(0, -1);
+        }
+        clipped = truncated.length < val.length ? truncated + '...' : val;
+      }
       doc.text(clipped, fx, barY + 7.5);
     });
 
@@ -878,7 +887,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Caller Information
-  y = checkPageBreak(doc, y, 15, prio);
+  y = checkPageBreak(doc, y, 22, prio);
   { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
@@ -891,7 +900,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Location
-  y = checkPageBreak(doc, y, 15, prio);
+  y = checkPageBreak(doc, y, 22, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     { const yL = addFieldPair(doc, 'Latitude', data.latitude != null ? String(data.latitude) : '', lx, y, hfw);
@@ -1011,7 +1020,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Scene Conditions
-  y = checkPageBreak(doc, y, 15, prio);
+  y = checkPageBreak(doc, y, 22, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Weather', value: data.weather_conditions || '' },
@@ -1025,8 +1034,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Flags — evenly distributed grid (6 columns × 4 rows)
-  y = checkPageBreak(doc, y, 25, prio);
+  y = checkPageBreak(doc, y, 30, prio);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
+    y += SPACING.SM; // Gap between header bar and first checkbox row
     const cols = 6;
     const colW = ffw / cols;
     const rowH = 4.8;
@@ -1105,7 +1115,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
     // Process Service sub-section — separate section to avoid page break issues
     if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
-      y = checkPageBreak(doc, y, 30, prio);
+      y = checkPageBreak(doc, y, 22, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
         { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
@@ -1131,9 +1141,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     for (let vi = 0; vi < data.visit_history.length; vi++) {
       const visit = data.visit_history[vi];
       // Ensure each visit entry has page break checking (need ~14mm per entry)
-      y = checkPageBreak(doc, y, 14, prio);
-      // Consistent spacing between visit entries
-      if (vi > 0) y += SPACING.SECTION_GAP;
+      y = checkPageBreak(doc, y, 16, prio);
+      // Consistent spacing between visit entries with separator line
+      if (vi > 0) {
+        doc.setDrawColor(...COLOR.BORDER_TABLE);
+        doc.setLineWidth(BORDER.TABLE_ROW);
+        doc.line(lx, y, lx + ffw, y);
+        y += SPACING.SECTION_GAP;
+      }
 
       // Visit header line
       doc.setFont('helvetica', 'bold');
@@ -1211,7 +1226,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Damage Assessment (conditional)
   if (data.damage_estimate || data.damage_description) {
-    y = checkPageBreak(doc, y, 15, prio);
+    y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
       const yR = addFieldPair(doc, 'Description', data.damage_description || '', rx, y, hfw);
@@ -1220,14 +1235,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Resolution Details
-  y = checkPageBreak(doc, y, 20, prio);
+  y = checkPageBreak(doc, y, 30, prio);
   { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    if (data.action_taken) {
-      y = addFieldPair(doc, 'Action Taken', data.action_taken, lx, y, ffw);
-    }
+    y = addFieldPair(doc, 'Action Taken', data.action_taken || '--', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -1325,7 +1338,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Notes
   if (data.notes && data.notes.length > 0) {
-    y = checkPageBreak(doc, y, 20, prio);
+    y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
     const noteRows = data.notes.map(n => [
       fmtTimestamp(n.created_at),
