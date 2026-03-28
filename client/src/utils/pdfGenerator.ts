@@ -869,13 +869,13 @@ export function addStackedSignatures(
   // ── Reporting Officer signature block (left side) ──
   addSignatureBlock(doc, role1, mx, y, sigW, sig1);
 
-  // ── Company Seal (right column, square) ──
+  // ── Company Seal (right column) — aligned to full signature block height ──
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(mx + sigW, y, sealColW, sealColW); // 42x42 square
+  doc.rect(mx + sigW, y, sealColW, totalH); // matches signature block height
 
   // Dashed circle centered in seal column
-  const sealH = sealColW;
+  const sealH = totalH;
   const circleR = Math.min(sealColW, sealH) / 2 - 2;
   const cx = mx + sigW + sealColW / 2;
   const cy = y + sealH / 2;
@@ -922,11 +922,6 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   // Footer text position — pushed up from edge for print margin safety
   const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 2;
   const textY = barY + 5;
-
-  // Thin accent line above footer
-  doc.setDrawColor(...COLOR.BORDER_TABLE);
-  doc.setLineWidth(BORDER.ACCENT_FOOTER);
-  doc.line(LAYOUT.PAGE_MARGIN, barY, LAYOUT.PAGE_MARGIN + cw, barY);
 
   // Left: Form # + INTERNAL USE ONLY — bold, readable
   doc.setFont('helvetica', 'bold');
