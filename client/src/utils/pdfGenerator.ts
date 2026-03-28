@@ -862,7 +862,7 @@ export function addStackedSignatures(
   const sigRowH = 8;
   const infoRowH = 6;
   const totalH = roleBarH + sigRowH + infoRowH;
-  const sealColW = 25; // Company seal column width
+  const sealColW = totalH; // Square: width = height
   const sigW = cw - sealColW;
   y = checkPageBreak(doc, y, totalH, priority);
 
