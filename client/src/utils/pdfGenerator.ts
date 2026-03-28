@@ -749,6 +749,8 @@ export function addSignatureBlock(
   y: number,
   blockWidth: number,
   sigData?: PdfSignatureData,
+  overrideSigRowH?: number,
+  overrideInfoRowH?: number,
 ): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -758,8 +760,8 @@ export function addSignatureBlock(
   const width = blockWidth;
 
   const roleBarH = SPACING.SIGNATURE_ROLE_H;
-  const sigRowH = 12;
-  const infoRowH = 8;
+  const sigRowH = overrideSigRowH ?? 12;
+  const infoRowH = overrideInfoRowH ?? 8;
   const totalH = roleBarH + sigRowH + infoRowH;
 
   // ── Role label header bar ──
@@ -866,8 +868,8 @@ export function addStackedSignatures(
   const sigW = cw - sealColW;
   y = checkPageBreak(doc, y, Math.max(totalH, sealColW), priority);
 
-  // ── Reporting Officer signature block (left side) ──
-  addSignatureBlock(doc, role1, mx, y, sigW, sig1);
+  // ── Reporting Officer signature block (left side) — pass row heights to match seal ──
+  addSignatureBlock(doc, role1, mx, y, sigW, sig1, sigRowH, infoRowH);
 
   // ── Company Seal (right column) — aligned to full signature block height ──
   doc.setDrawColor(0, 0, 0);
