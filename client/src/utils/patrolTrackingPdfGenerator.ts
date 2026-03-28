@@ -8,7 +8,7 @@
 
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
-import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak } from './pdfGenerator';
+import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark } from './pdfGenerator';
 import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
 
 // ── Types matching the server patrol-tracking response ──────
@@ -235,12 +235,15 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // ── Utility: new page with proper yPos ──────────────
   function newPage() {
     doc.addPage();
+    addConfidentialWatermark(doc);
+    // @ts-expect-error jsPDF GState — safety reset after watermark
+    doc.setGState(new doc.GState({ opacity: 1.0 }));
     yPos = margin + 18; // after header + accent strip
   }
 
   // ── Utility: check space and maybe new page ────────
   function ensureSpace(needed: number) {
-    if (yPos + needed > pageH - 12) {
+    if (yPos + needed > pageH - LAYOUT.FOOTER_HEIGHT - 5) {
       newPage();
     }
   }

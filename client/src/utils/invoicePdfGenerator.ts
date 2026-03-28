@@ -26,6 +26,7 @@ import {
   formSectionPageBreak,
   sanitizePdfText,
   addSignatureBlock,
+  wordWrapText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -224,8 +225,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
         const item = items[i];
 
-        // Dynamic row height for multi-line descriptions
-        const descLines = doc.splitTextToSize(sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
+        // Dynamic row height for multi-line descriptions — use wordWrapText to prevent mid-word breaks
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+        const descLines = wordWrapText(doc, sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height
@@ -330,10 +333,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       { label: 'REFERENCE', x: payColPositions[3] },
     ];
     const payRows = payments.map(p => [
-      (p.payment_date?.substring(0, 10) || '').toUpperCase(),
+      sanitizePdfText(p.payment_date?.substring(0, 10) || '').toUpperCase(),
       fmt(p.amount).toUpperCase(),
-      (p.payment_method || '').toUpperCase(),
-      (p.reference_number || '').toUpperCase(),
+      sanitizePdfText(p.payment_method || '').toUpperCase(),
+      sanitizePdfText(p.reference_number || '').toUpperCase(),
     ]);
     y = addTableWithShading(doc, payHeaders, payRows, y, payColPositions);
 
@@ -346,7 +349,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Notes', y);
     y = sec.contentY;
     doc.setFont('courier', 'normal');
-    y = addWrappedText(doc, data.notes.toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE);
+    y = addWrappedText(doc, sanitizePdfText(data.notes).toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE);
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }

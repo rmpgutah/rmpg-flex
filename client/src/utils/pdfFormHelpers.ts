@@ -6,7 +6,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
-import { sanitizePdfText } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText } from './pdfGenerator';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getGridStartX, getGridContentWidth,
@@ -289,10 +289,11 @@ export function drawCheckboxGrid(
       doc.line(cbX + 0.85, cbY + 1.8, cbX + 1.9, cbY + 0.4);
     }
 
-    // Label text
-    const labelText = items[i].code
+    // Label text — sanitize to prevent Unicode crashes
+    const rawLabel = items[i].code
       ? `${items[i].code} = ${items[i].label}`
       : items[i].label;
+    const labelText = sanitizePdfText(rawLabel);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
@@ -356,12 +357,12 @@ export function drawCodeReferenceTable(
     doc.setFont('courier', 'bold');
     doc.setFontSize(4.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(codes[i].code || '', cellX + 1, curY + 2.3);
+    doc.text(sanitizePdfText(codes[i].code || ''), cellX + 1, curY + 2.3);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(`= ${codes[i].description || ''}`, cellX + 5.5, curY + 2.3, {
+    doc.text(sanitizePdfText(`= ${codes[i].description || ''}`), cellX + 5.5, curY + 2.3, {
       maxWidth: colW - 7,
     });
   }

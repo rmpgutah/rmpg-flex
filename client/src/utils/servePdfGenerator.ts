@@ -107,7 +107,7 @@ function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = FONT.
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text(title.toUpperCase(), pageWidth / 2, y, { align: 'center' });
+  doc.text(sanitizePdfText(title).toUpperCase(), pageWidth / 2, y, { align: 'center' });
   return y + fontSize * 0.5 + SPACING.LG;
 }
 
@@ -498,11 +498,11 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     ];
     const rows = data.attempts.map(a => [
       String(a.number),
-      (a.date || '').toUpperCase(),
-      (a.time || '').toUpperCase(),
+      sanitizePdfText(a.date || '').toUpperCase(),
+      sanitizePdfText(a.time || '').toUpperCase(),
       `${a.gpsLat.toFixed(4)}, ${a.gpsLng.toFixed(4)}`,
-      (a.result || '').toUpperCase(),
-      (a.notes || '').toUpperCase(),
+      sanitizePdfText(a.result || '').toUpperCase(),
+      sanitizePdfText(a.notes || '').toUpperCase(),
     ]);
 
     y = addTableWithShading(doc, headers, rows, y, cols);
@@ -537,7 +537,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
       y += SPACING.SM;
 
       if (trace.addressesTried.length > 0) {
-        y = addFieldPair(doc, 'Addresses Tried', trace.addressesTried.join('; '), lx, y, ffw);
+        y = addFieldPair(doc, 'Addresses Tried', trace.addressesTried.map(a => sanitizePdfText(a)).join('; '), lx, y, ffw);
         y += SPACING.SM;
       }
 
@@ -634,7 +634,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
-  const dateRangeLabel = `${data.dateRange.start} -- ${data.dateRange.end}`;
+  const dateRangeLabel = `${sanitizePdfText(data.dateRange.start)} -- ${sanitizePdfText(data.dateRange.end)}`;
   setActiveCaseNumber('');
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -707,14 +707,14 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const rows: string[][] = [];
     Array.from(clientGroups.entries()).forEach(([clientName, jobs]) => {
       // Group header row (bold client name spanning first column, rest empty)
-      rows.push([`[${clientName.toUpperCase()}]`, '', '', '', '']);
+      rows.push([`[${sanitizePdfText(clientName).toUpperCase()}]`, '', '', '', '']);
       for (const job of jobs) {
         rows.push([
-          (job.recipientName || '').toUpperCase(),
-          (job.address || '').toUpperCase(),
-          (job.documentType || '').toUpperCase(),
+          sanitizePdfText(job.recipientName || '').toUpperCase(),
+          sanitizePdfText(job.address || '').toUpperCase(),
+          sanitizePdfText(job.documentType || '').toUpperCase(),
           String(job.attempts),
-          (job.result || '').toUpperCase(),
+          sanitizePdfText(job.result || '').toUpperCase(),
         ]);
       }
     });

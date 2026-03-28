@@ -129,7 +129,7 @@ export function sanitizePdfText(text: string): string {
  * words as a last resort. Unlike jsPDF's splitTextToSize which can break
  * mid-word with Courier, this respects word boundaries.
  */
-function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
+export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
   const words = text.split(/(\s+)/);
   const lines: string[] = [];
   let currentLine = '';
@@ -557,10 +557,11 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text(label.toUpperCase(), x + boxSize + 1.5, y);
+  const safeLabel = sanitizePdfText(label).toUpperCase();
+  doc.text(safeLabel, x + boxSize + 1.5, y);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  return x + boxSize + 1.5 + doc.getTextWidth(label) + 3;
+  return x + boxSize + 1.5 + doc.getTextWidth(safeLabel) + 3;
 }
 
 /**
@@ -823,12 +824,12 @@ export function addSignatureBlock(
     doc.setFontSize(8);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const valY = row2Y + infoRowH - 1.5;
-    if (sigData!.printedName) doc.text(sigData!.printedName, x + SPACING.MD, valY);
-    if (sigData!.badgeNumber) doc.text(sigData!.badgeNumber, x + colW + SPACING.MD, valY);
+    if (sigData!.printedName) doc.text(sanitizePdfText(sigData!.printedName).toUpperCase(), x + SPACING.MD, valY);
+    if (sigData!.badgeNumber) doc.text(sanitizePdfText(sigData!.badgeNumber).toUpperCase(), x + colW + SPACING.MD, valY);
     const now = new Date();
     const pad2 = (n: number) => String(n).padStart(2, '0');
     const dateStr = sigData!.date || `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
-    doc.text(dateStr, x + colW * 2 + SPACING.MD, valY);
+    doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
   }
 
   // Outer border
