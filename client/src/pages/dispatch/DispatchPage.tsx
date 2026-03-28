@@ -94,6 +94,78 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 
+// Label maps for human-readable display of stored values
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  process_service: 'Process Service (General)',
+  subpoena_service: 'Subpoena Service',
+  summons_service: 'Summons & Complaint',
+  eviction_service: 'Eviction / Unlawful Detainer',
+  restraining_order_service: 'Protective Order Service',
+  writ_service: 'Writ Service',
+  court_filing: 'Court Filing / Delivery',
+  skip_trace: 'Skip Trace & Locate',
+  stake_out: 'Stake Out / Surveillance',
+  rush_service: 'Rush / Same-Day Service',
+  patrol: 'Patrol',
+  static_guard: 'Static Guard',
+  escort: 'Escort',
+  event_security: 'Event Security',
+  surveillance: 'Surveillance',
+  access_control: 'Access Control',
+  other: 'Other',
+};
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  // Civil Process
+  subpoena: 'Subpoena',
+  summons: 'Summons & Complaint',
+  complaint: 'Complaint',
+  civil_summons: 'Civil Summons',
+  small_claims: 'Small Claims',
+  garnishment: 'Garnishment',
+  writ_of_execution: 'Writ of Execution',
+  writ_of_restitution: 'Writ of Restitution',
+  writ_of_garnishment: 'Writ of Garnishment',
+  writ_of_attachment: 'Writ of Attachment',
+  // Family / Domestic
+  restraining_order: 'Protective / Restraining Order',
+  divorce_papers: 'Divorce Papers',
+  custody_order: 'Custody Order',
+  child_support: 'Child Support Order',
+  stalking_injunction: 'Stalking Injunction',
+  // Real Property
+  eviction: 'Eviction Notice',
+  unlawful_detainer: 'Unlawful Detainer',
+  notice_to_quit: 'Notice to Quit',
+  foreclosure: 'Foreclosure Notice',
+  // Court Orders
+  court_order: 'Court Order',
+  temporary_order: 'Temporary Order',
+  motion: 'Motion / Petition',
+  notice_of_hearing: 'Notice of Hearing',
+  order_to_show_cause: 'Order to Show Cause',
+  // Other
+  demand_letter: 'Demand Letter',
+  cease_and_desist: 'Cease & Desist',
+  civil: 'Civil Papers',
+  writ: 'Writ',
+  order: 'Court Order',
+  notice: 'Notice',
+  petition: 'Petition',
+  levy: 'Levy',
+  other: 'Other',
+};
+
+function formatServiceType(val: string | undefined | null): string {
+  if (!val) return '';
+  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatDocumentType(val: string | undefined | null): string {
+  if (!val) return '';
+  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
@@ -2397,7 +2469,7 @@ export default function DispatchPage() {
                       )}
                     </div>
                     <div className="space-y-1 text-xs text-rmpg-200">
-                      {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {selectedCall.pso_service_type.replace(/_/g, ' ')}</div>}
+                      {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</div>}
                       {selectedCall.pso_requestor_name && <div><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</div>}
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
@@ -4299,7 +4371,7 @@ export default function DispatchPage() {
                         {selectedCall.pso_requestor_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</span>}
                         {selectedCall.pso_requestor_phone && <span className="text-rmpg-200"><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</span>}
                         {selectedCall.pso_requestor_email && <span className="text-rmpg-200"><span className="text-rmpg-400">Email:</span> {selectedCall.pso_requestor_email}</span>}
-                        {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {selectedCall.pso_service_type}</span>}
+                        {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
                         {selectedCall.pso_billing_code && <span className="text-rmpg-200"><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</span>}
                         {selectedCall.pso_authorization && <span className="text-rmpg-200"><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</span>}
                         {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
@@ -4473,7 +4545,7 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.process_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Document:</span> {selectedCall.process_service_type.replace(/_/g, ' ')}</span>}
+                        {selectedCall.process_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Document:</span> {formatDocumentType(selectedCall.process_service_type)}</span>}
                         {selectedCall.process_served_to && <span className="text-rmpg-200"><span className="text-rmpg-400">Serve To:</span> {selectedCall.process_served_to}</span>}
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {selectedCall.process_served_at}</span>}
