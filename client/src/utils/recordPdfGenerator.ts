@@ -921,9 +921,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Mileage
+  // Mileage — keep entire section together (header + vehicle row + total row ≈ 40mm)
   if (data.starting_mileage || data.ending_mileage || data.responding_vehicle_id) {
-    y = checkPageBreak(doc, y, 25, prio);
+    y = checkPageBreak(doc, y, 40, prio);
     const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
     if (data.responding_vehicle_id) {
       y = addThreeColumnFields(doc, [
