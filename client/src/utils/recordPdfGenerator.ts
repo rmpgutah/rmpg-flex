@@ -751,8 +751,8 @@ function fmtDateTime(ts?: string | null): string {
   } catch { return ts; }
 }
 
-function fmtCurrency(val?: number): string {
-  if (val == null) return '';
+function fmtCurrency(val?: number | null): string {
+  if (val == null) return 'N/A';
   return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 }
 
@@ -1170,11 +1170,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: '# Victims', value: data.num_victims != null ? String(data.num_victims) : '' },
       { label: 'Direction of Travel', value: data.direction_of_travel || '' },
     ], y);
-    if (data.subject_description || data.vehicle_description) {
-      const yL = addFieldPair(doc, 'Subject Description', data.subject_description || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Vehicle Description', data.vehicle_description || '', rx, y, hfw);
-      y = Math.max(yL, yR);
-    }
+    { const yL = addFieldPair(doc, 'Subject Description', data.subject_description || 'N/A', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Vehicle Description', data.vehicle_description || 'N/A', rx, y, hfw);
+      y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -1291,7 +1289,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Description', data.damage_description || '', rx, y, hfw);
+      const yR = addFieldPair(doc, 'Description', data.damage_description || 'UNDETERMINED', rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1386,18 +1384,19 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc,
       [
         { label: 'DATE/TIME', x: LAYOUT.PAGE_MARGIN + 5 },
-        { label: 'AUTHOR', x: LAYOUT.PAGE_MARGIN + 58 },
-        { label: 'NOTE', x: LAYOUT.PAGE_MARGIN + 90 },
+        { label: 'AUTHOR', x: LAYOUT.PAGE_MARGIN + 48 },
+        { label: 'NOTE', x: LAYOUT.PAGE_MARGIN + 82 },
       ],
       noteRows,
       y,
-      [LAYOUT.PAGE_MARGIN + 5, LAYOUT.PAGE_MARGIN + 58, LAYOUT.PAGE_MARGIN + 90],
+      [LAYOUT.PAGE_MARGIN + 5, LAYOUT.PAGE_MARGIN + 48, LAYOUT.PAGE_MARGIN + 82],
       { lightHeader: true },
     );
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Narrative
+  // Narrative — add gap after notes table to prevent header overlap
+  y += SPACING.SM;
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, prio);
 
   // Attachments
