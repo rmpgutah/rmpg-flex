@@ -1135,8 +1135,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Incident Details — starts new page ──
-  y = checkPageBreak(doc, y, 999, prio); // force new page
+  // ── Incident Details — dynamic page break ──
+  y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
     y += SPACING.MD;
     doc.setFont('helvetica', 'bold');

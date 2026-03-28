@@ -1444,8 +1444,8 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header (clear of Courier ascenders at 8.5pt)
-    return contY + contH + 5;
+    // Content starts below continuation header — tight, matching section gap
+    return contY + contH + SPACING.SECTION_GAP;
   }
   return y;
 }
