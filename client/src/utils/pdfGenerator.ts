@@ -859,8 +859,8 @@ export function addStackedSignatures(
   const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
   const roleBarH = SPACING.SIGNATURE_ROLE_H;
-  const sigRowH = 8;
-  const infoRowH = 6;
+  const sigRowH = 25 - SPACING.SIGNATURE_ROLE_H - 7; // signature fills seal height minus role bar and info row
+  const infoRowH = 7;
   const totalH = roleBarH + sigRowH + infoRowH;
   const sealColW = 25; // ~1 inch square (notary stamp size)
   const sigW = cw - sealColW;
