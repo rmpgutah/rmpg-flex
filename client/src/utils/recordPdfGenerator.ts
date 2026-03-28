@@ -1373,34 +1373,31 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   if (data.notes && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
-    // Render notes: DATE/TIME on left, AUTHOR on right, content below — no separator lines
-    y += SPACING.MD;  // Space after sub-header
+    // Render notes: DATE/TIME on left, AUTHOR on right, content below — tight layout
+    y += 1;  // Minimal space after sub-header
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
-      y = checkPageBreak(doc, y, 10, prio);
-      // Reset all draw state before each note to prevent stray artifacts
+      y = checkPageBreak(doc, y, 8, prio);
       doc.setDrawColor(255, 255, 255);
       doc.setLineWidth(0);
-      // Date/time on far left, author on far right — same line, no underline
+      // Date/time on far left, author on far right — same line
       doc.setFont('courier', 'bold');
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       const tsText = fmtTimestamp(n.created_at).toUpperCase();
       doc.text(tsText, lx, y);
       const authorName = (n.author || 'System').toUpperCase();
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
       const authorW = doc.getTextWidth(authorName);
       doc.text(authorName, lx + ffw - authorW, y);
-      y += 3;
+      y += 2.5;
       // Note content
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
-      // Compact gap between notes entries
-      if (ni < data.notes.length - 1) y += SPACING.MD;
+      // Tight gap between entries
+      if (ni < data.notes.length - 1) y += 1;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
