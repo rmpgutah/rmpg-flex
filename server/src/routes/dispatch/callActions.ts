@@ -1664,4 +1664,86 @@ router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole(
   }
 });
 
+// PUT /api/dispatch/calls/:id/notes/:noteId — Edit a note (admin/manager only)
+router.put('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const { text } = req.body;
+    if (!text || typeof text !== 'string' || text.trim().length < 1) {
+      res.status(400).json({ error: 'text is required', code: 'TEXT_REQUIRED' });
+      return;
+    }
+
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+
+    const noteIdx = notes.findIndex((n: any) => String(n.id) === String(req.params.noteId));
+    if (noteIdx === -1) { res.status(404).json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    notes[noteIdx].text = text.trim();
+    notes[noteIdx].edited_at = now;
+    notes[noteIdx].edited_by = req.user?.username || 'admin';
+
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
+
+    auditLog(req, 'note_edited', 'call', call.id, null, `Edited note ${req.params.noteId} on call ${call.call_number}`);
+
+    const updated = db.prepare(`
+      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.id = ?
+    `).get(call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Edit note error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to edit note', code: 'EDIT_NOTE_ERROR' });
+  }
+});
+
+// DELETE /api/dispatch/calls/:id/notes/:noteId — Delete a note (admin/manager only)
+router.delete('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+
+    const noteIdx = notes.findIndex((n: any) => String(n.id) === String(req.params.noteId));
+    if (noteIdx === -1) { res.status(404).json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }); return; }
+
+    const deletedNote = notes.splice(noteIdx, 1)[0];
+    const now = localNow();
+
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
+
+    auditLog(req, 'note_deleted', 'call', call.id, null, `Deleted note "${(deletedNote.text || '').slice(0, 50)}..." from call ${call.call_number}`);
+
+    const updated = db.prepare(`
+      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.id = ?
+    `).get(call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Delete note error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to delete note', code: 'DELETE_NOTE_ERROR' });
+  }
+});
+
 export default router;

@@ -31,6 +31,7 @@ import {
   Thermometer,
   Undo2,
   Edit,
+  Pencil,
   Search,
   Building2,
   Terminal,
@@ -185,6 +186,8 @@ export default function DispatchPage() {
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1438,6 +1441,39 @@ export default function DispatchPage() {
     } catch (err) {
       console.error('Failed to add note:', err);
       addToast('Failed to save note', 'error');
+    }
+  };
+
+  const handleEditNote = async (noteId: string, text: string) => {
+    if (!selectedCall || !text.trim()) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ text: text.trim() }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      setEditingNoteId(null);
+      setEditingNoteText('');
+      addToast('Note updated', 'success');
+    } catch {
+      addToast('Failed to edit note', 'error');
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!selectedCall) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
+        method: 'DELETE',
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      addToast('Note deleted', 'success');
+    } catch {
+      addToast('Failed to delete note', 'error');
     }
   };
 
@@ -4773,10 +4809,28 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
                         <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
-                        <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}</span>
+                        {editingNoteId === note.id ? (
+                          <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <div className="flex gap-1">
+                              <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
+                              <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
+                            {isAdminOrManager && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#60a5fa] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                       ))
                     )}
