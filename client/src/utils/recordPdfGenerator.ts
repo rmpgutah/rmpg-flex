@@ -448,6 +448,14 @@ export interface WarrantPdfData {
   // Admin
   notes?: string;
   archived_at?: string;
+  // Source / Verification (for Utah search results)
+  county?: string;
+  case_number?: string;
+  filing_date?: string;
+  data_source?: string;
+  search_date?: string;
+  verified_by?: string;
+  verification_date?: string;
 }
 
 export interface EvidencePdfData {
@@ -2138,11 +2146,36 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     });
   }
 
+  // Source / Verification (conditional — present for Utah/scraped search results)
+  if (data.data_source || data.search_date || data.verified_by) {
+    y = drawFormSection(doc, {
+      sideTab: { label: 'SOURCE' },
+      topBanner: true,
+      onPageBreak: formSectionPageBreak,
+      rows: [
+        { cells: [
+          { label: '25. DATA SOURCE', value: data.data_source || '', ratio: 2 },
+          { label: '26. SEARCH DATE', value: data.search_date || '', ratio: 1 },
+        ]},
+        ...(data.county || data.case_number ? [{ cells: [
+          { label: '27. COUNTY', value: data.county || '', ratio: 1 },
+          { label: '28. CASE NUMBER', value: data.case_number || '', ratio: 1 },
+          { label: '29. FILING DATE', value: fmtDate(data.filing_date), ratio: 1 },
+        ]} as FormRow] : []),
+        ...(data.verified_by ? [{ cells: [
+          { label: '30. VERIFIED BY', value: data.verified_by || '', ratio: 1 },
+          { label: '31. VERIFICATION DATE', value: data.verification_date || '', ratio: 1 },
+        ]} as FormRow] : []),
+      ],
+      y,
+    });
+  }
+
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
   // Signature Block — full-width stacked
-  y = addStackedSignatures(doc, 'Serving Officer', '', y, getOfficerSig(), undefined, statusPrio);
+  y = addStackedSignatures(doc, 'Reporting Officer', '', y, getOfficerSig(), undefined, statusPrio);
 }
 
 // ── Evidence / Property Custody Report ───────────────────────
