@@ -1372,10 +1372,9 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
 
     // Auto-send to serve queue if applicable
     try {
-      const { createServeQueueFromCall } = require('../../utils/serveQueueLinker');
       const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId) as any;
       if (newCall) createServeQueueFromCall(db, newCall, req.user!.userId);
-    } catch { /* non-fatal */ }
+    } catch (e) { console.error('[Calls] Auto-send to serve queue error:', e instanceof Error ? e.message : e); }
 
     const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId) as any;
     // Collect full chain for response

@@ -1930,18 +1930,21 @@ router.get('/evidence/:id/linked-records', (req: Request, res: Response) => {
       SELECT fc.id, fc.lab_number, fc.title, fc.status, fc.case_type
       FROM forensic_cases fc
       WHERE fc.linked_incident_id = ? OR fc.linked_case_id IN (
-        SELECT id FROM cases WHERE incident_id = ?
+        SELECT id FROM cases WHERE linked_incidents LIKE ?
       )
       LIMIT 20
-    `).all(evidence.incident_id || 0, evidence.incident_id || 0);
+    `).all(evidence.incident_id || 0, `%${evidence.incident_id || 0}%`);
     links.forensic_cases = forensicLinks;
 
-    // Find cases linked to same incident
+    // Find cases linked to same incident (cases use linked_incidents JSON, not incident_id)
     if (evidence.incident_id) {
-      const cases = db.prepare(`
-        SELECT id, case_number, case_type, status FROM cases WHERE incident_id = ? LIMIT 20
-      `).all(evidence.incident_id);
-      links.cases = cases;
+      try {
+        const cases = db.prepare(`
+          SELECT id, case_number, case_type, status FROM cases
+          WHERE linked_incidents LIKE ? LIMIT 20
+        `).all(`%${evidence.incident_id}%`);
+        links.cases = cases;
+      } catch (e) { console.error('[Evidence] Cases link query error:', e instanceof Error ? e.message : e); }
     }
 
     res.json({ data: links });
