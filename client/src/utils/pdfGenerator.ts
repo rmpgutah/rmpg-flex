@@ -940,17 +940,17 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Accent bar at footer top (thin primary color line)
-  const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - SPACING.SM;
+  // Accent bar at footer top (thin primary color line) — pushed up from edge for print margin safety
+  const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 3;
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, 0.4, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, 0.5, 'F');
 
-  const textY = barY + 4;
+  const textY = barY + 4.5;
 
-  // Left: Form # + INTERNAL USE ONLY
-  doc.setFont('courier', 'normal');
+  // Left: Form # + INTERNAL USE ONLY — bold, readable
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
-  doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
   doc.text(leftParts.join('  |  '), LAYOUT.PAGE_MARGIN, textY);
 

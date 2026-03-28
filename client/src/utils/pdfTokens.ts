@@ -128,7 +128,7 @@ export const SPACING = {
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
   HEADER_HEIGHT:     16,     // Header bar
-  FOOTER_HEIGHT:     7,      // Footer with breathing room
+  FOOTER_HEIGHT:     10,     // Footer with print margin safety
   HEADER_TOP:        5,      // Y-start of header bar
   CLASSIF_BAR_H:     4.5,    // Classification bar height
   SEAL_SIZE:         13,     // Compact logo
