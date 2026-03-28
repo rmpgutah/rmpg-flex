@@ -189,14 +189,22 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  // @ts-expect-error jsPDF GState — light watermark
-  doc.setGState(new doc.GState({ opacity: 0.12 }));
+  // @ts-expect-error jsPDF GState — visible on both white and dark backgrounds
+  doc.setGState(new doc.GState({ opacity: 0.06 }));
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
-  doc.setTextColor(200, 200, 200);
 
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
+
+  // Dark gray text — visible on white paper
+  doc.setTextColor(80, 80, 80);
+  doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
+
+  // White text slightly offset — visible over dark section headers
+  doc.setTextColor(255, 255, 255);
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 0.15 }));
   doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
 
   // Reset opacity to full
