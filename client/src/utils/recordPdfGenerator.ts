@@ -3119,7 +3119,16 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     setActiveOfficerSignature(undefined); // clear after generation
     const id = identifier || 'record';
     const filename = `${id}_${recordType}.pdf`;
-    doc.save(filename);
+    // Explicit blob download — works on Safari (doc.save uses window.open which strips filename)
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (err) {
     setActiveOfficerSignature(undefined);
     console.error('Record PDF generation failed:', err);
