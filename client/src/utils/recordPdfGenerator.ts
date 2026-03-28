@@ -778,6 +778,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     formTitle: 'CALL FOR SERVICE REPORT',
     formNumber: 'FORM PS-201',
     caseNumber: data.call_number,
+    caseNumberLabel: 'CALL FOR SERVICE',
     reportDate: fmtTimestamp(data.created_at || ''),
   });
 

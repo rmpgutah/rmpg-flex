@@ -495,6 +495,7 @@ export function drawNibrsHeader(
     formTitle: string;            // e.g. "UNIFORM INCIDENT REPORT"
     formNumber?: string;          // e.g. "FORM PS-101"
     caseNumber?: string;          // e.g. "INC-2026-001234"
+    caseNumberLabel?: string;     // e.g. "CALL FOR SERVICE" — defaults to "CASE NUMBER"
     reportDate?: string;          // e.g. "03/02/2026"
     sealBase64?: string | null;   // Agency seal image
     logoBase64?: string | null;   // Agency logo image
@@ -554,11 +555,11 @@ export function drawNibrsHeader(
     doc.setLineWidth(0.5);
     doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
 
-    // "CASE NUMBER" label
+    // Case number label — configurable per report type
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text('CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
+    doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
 
     // Case number value
     doc.setFont('courier', 'bold');
