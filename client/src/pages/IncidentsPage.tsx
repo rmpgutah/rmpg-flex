@@ -1479,11 +1479,14 @@ export default function IncidentsPage() {
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
-                      {flags.map((f, i) => (
-                        <span key={`${f}-${i}`} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
-                          {f}
-                        </span>
-                      ))}
+                      {flags.map((f, i) => {
+                        const flagText = typeof f === 'object' && f !== null ? (f as any).type || JSON.stringify(f) : String(f);
+                        return (
+                          <span key={`${flagText}-${i}`} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                            {flagText}
+                          </span>
+                        );
+                      })}
                     </div>
                     {['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) && (
                       <button type="button"
