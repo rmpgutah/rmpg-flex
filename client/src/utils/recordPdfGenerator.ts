@@ -801,38 +801,43 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const cw = getContentWidth(doc);
     const barY = y;
     const hasContract = data.contract_id && data.incident_type === 'pso_client_request';
-    const barH = hasContract ? 13 : 8;
+    const barH = 9;
     doc.setFillColor(20, 25, 30);
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
 
-    const colW = cw / (hasContract ? 6 : 5);
-    const fields = [
+    // Row 1: Section | Zone | Beat | Area | Code (5 columns)
+    const colW = cw / 5;
+    const row1 = [
       { label: 'SECTION', value: data.section_name || '' },
       { label: 'ZONE', value: data.zone_name || '' },
       { label: 'BEAT', value: data.beat_name || '' },
       { label: 'AREA', value: data.beat_descriptor || '' },
       { label: 'CODE', value: data.dispatch_code || '' },
-      ...(hasContract ? [{ label: 'CONTRACT', value: data.contract_id || '' }] : []),
     ];
-    fields.forEach((f, i) => {
-      const fx = LAYOUT.PAGE_MARGIN + (i * colW) + 2;
-      const maxW = colW - 4;
+    row1.forEach((f, i) => {
+      const fx = LAYOUT.PAGE_MARGIN + (i * colW) + 3;
+      const maxW = colW - 6;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(4.5);
-      doc.setTextColor(150, 150, 155);
+      doc.setTextColor(160, 160, 165);
       doc.text(f.label, fx, barY + 3);
       doc.setFont('courier', 'bold');
-      doc.setFontSize(6);
+      doc.setFontSize(6.5);
       doc.setTextColor(255, 255, 255);
       let val = sanitizePdfText(f.value || '--');
       if (doc.getTextWidth(val) > maxW) {
         while (val.length > 0 && doc.getTextWidth(val + '...') > maxW) val = val.slice(0, -1);
         val = val + '...';
       }
-      doc.text(val, fx, barY + 6.5);
+      doc.text(val, fx, barY + 7);
     });
 
-    y = barY + barH + 1.5;
+    y = barY + barH + 1;
+
+    // Contract ID as field pair below bar (if PSO)
+    if (hasContract) {
+      y = addFieldPair(doc, 'Contract ID', data.contract_id || '', lx, y, ffw / 3);
+    }
   }
 
   // Classification
