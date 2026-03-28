@@ -1264,9 +1264,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Resolution Details — always starts on a new page (final page) ──
-  // Force page break so Resolution + Narrative + Signature are on the last page(s)
-  y = checkPageBreak(doc, y, 999, prio); // forces new page
+  // ── Resolution Details — dynamic page break (stays on current page if room) ──
+  // Needs header (5) + officer/disp row (7) + action taken row (7+) + pad (1) ≈ 20mm min
+  y = checkPageBreak(doc, y, 20, prio);
 
   { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
