@@ -3557,6 +3557,388 @@ router.get('/:id/mileage-history', (req: Request, res: Response) => {
   }
 });
 
+// ── Health Scores: 0-100 composite score per vehicle ────────────────
+router.get('/health-scores', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const nowISO = localNow();
+
+    const vehicles = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, current_mileage, status,
+             next_service_due, last_service_date
+      FROM fleet_vehicles
+      WHERE status != 'retired' AND archived_at IS NULL
+    `).all() as any[];
+
+    // Batch-load cost per mile
+    const costRows = db.prepare(`
+      SELECT fv.id,
+        (COALESCE(m.mc, 0) + COALESCE(f.fc, 0)) AS total_cost,
+        fv.current_mileage
+      FROM fleet_vehicles fv
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS mc FROM fleet_maintenance WHERE cost IS NOT NULL GROUP BY vehicle_id) m ON m.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS fc FROM fleet_fuel_logs WHERE total_cost IS NOT NULL GROUP BY vehicle_id) f ON f.vehicle_id = fv.id
+      WHERE fv.status != 'retired' AND fv.archived_at IS NULL
+    `).all() as any[];
+    const costMap: Record<number, number> = {};
+    for (const r of costRows) {
+      costMap[r.id] = r.current_mileage > 0 ? r.total_cost / r.current_mileage : 0;
+    }
+
+    // Batch-load latest inspection result per vehicle
+    const inspRows = db.prepare(`
+      SELECT vehicle_id, overall_result FROM fleet_inspections
+      WHERE id IN (
+        SELECT MAX(id) FROM fleet_inspections GROUP BY vehicle_id
+      )
+    `).all() as any[];
+    const inspMap: Record<number, string> = {};
+    for (const r of inspRows) {
+      inspMap[r.vehicle_id] = r.overall_result;
+    }
+
+    const currentYear = new Date().getFullYear();
+    const nowDate = new Date(nowISO);
+
+    const results = vehicles.map((v: any) => {
+      // Age factor (20%): 100 for <2 years, -10 per year over 2, min 0
+      const age = v.year ? currentYear - v.year : 5;
+      const ageFactor = Math.max(0, Math.min(100, 100 - Math.max(0, age - 2) * 10));
+
+      // Mileage factor (20%): 100 for <25k, scales to 0 at 200k
+      const miles = v.current_mileage || 0;
+      let mileageFactor = 100;
+      if (miles >= 200000) mileageFactor = 0;
+      else if (miles > 25000) mileageFactor = Math.round(100 - ((miles - 25000) / (200000 - 25000)) * 100);
+
+      // Service compliance (25%): 100 if up to date, 0 if >90 days overdue, linear
+      let serviceFactor = 100;
+      if (v.next_service_due) {
+        const dueDate = new Date(v.next_service_due);
+        const daysOverdue = Math.floor((nowDate.getTime() - dueDate.getTime()) / 86400000);
+        if (daysOverdue > 0) {
+          serviceFactor = Math.max(0, Math.round(100 - (daysOverdue / 90) * 100));
+        }
+      }
+
+      // Inspection factor (20%): pass=100, needs_attention=50, fail=0
+      const inspResult = inspMap[v.id];
+      let inspectionFactor = 100; // default if no inspections
+      if (inspResult === 'pass') inspectionFactor = 100;
+      else if (inspResult === 'needs_attention') inspectionFactor = 50;
+      else if (inspResult === 'fail') inspectionFactor = 0;
+
+      // Cost factor (15%): 100 if <$0.10/mi, 0 if >$0.50/mi
+      const cpm = costMap[v.id] || 0;
+      let costFactor = 100;
+      if (cpm >= 0.50) costFactor = 0;
+      else if (cpm > 0.10) costFactor = Math.round(100 - ((cpm - 0.10) / (0.50 - 0.10)) * 100);
+
+      const healthScore = Math.round(
+        ageFactor * 0.20 +
+        mileageFactor * 0.20 +
+        serviceFactor * 0.25 +
+        inspectionFactor * 0.20 +
+        costFactor * 0.15
+      );
+
+      let statusLabel: string;
+      if (healthScore >= 80) statusLabel = 'Excellent';
+      else if (healthScore >= 60) statusLabel = 'Good';
+      else if (healthScore >= 40) statusLabel = 'Fair';
+      else if (healthScore >= 20) statusLabel = 'Poor';
+      else statusLabel = 'Critical';
+
+      return {
+        vehicle_id: v.id,
+        vehicle_number: v.vehicle_number,
+        make: v.make,
+        model: v.model,
+        year: v.year,
+        health_score: healthScore,
+        factors: {
+          age: ageFactor,
+          mileage: mileageFactor,
+          service: serviceFactor,
+          inspection: inspectionFactor,
+          cost: costFactor,
+        },
+        status_label: statusLabel,
+      };
+    });
+
+    res.json({ health_scores: results });
+  } catch (error: any) {
+    console.error('Error computing health scores:', error);
+    res.status(500).json({ error: 'Failed to compute health scores', code: 'HEALTH_SCORES_ERROR' });
+  }
+});
+
+// ── Maintenance Schedule: upcoming maintenance for all vehicles ─────
+router.get('/maintenance-schedule', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const nowDate = new Date(today);
+
+    const vehicles = db.prepare(`
+      SELECT v.id, v.vehicle_number, v.current_mileage,
+             v.next_service_due, v.next_service_mileage, v.next_service_type,
+             CASE WHEN julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)) > 0
+               THEN (MAX(f.odometer_reading) - MIN(f.odometer_reading)) / (julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)))
+               ELSE 0 END as avg_daily_miles
+      FROM fleet_vehicles v
+      LEFT JOIN fleet_fuel_logs f ON v.id = f.vehicle_id AND f.odometer_reading IS NOT NULL
+      WHERE v.status != 'retired' AND v.archived_at IS NULL
+        AND (v.next_service_due IS NOT NULL OR v.next_service_mileage IS NOT NULL)
+      GROUP BY v.id
+    `).all() as any[];
+
+    const schedule = vehicles.map((v: any) => {
+      let daysUntil: number | null = null;
+      let milesUntil: number | null = null;
+      let dueDate: string | null = v.next_service_due || null;
+      let dueMileage: number | null = v.next_service_mileage || null;
+
+      if (v.next_service_due) {
+        daysUntil = Math.floor((new Date(v.next_service_due).getTime() - nowDate.getTime()) / 86400000);
+      }
+      if (v.next_service_mileage && v.current_mileage) {
+        milesUntil = v.next_service_mileage - v.current_mileage;
+      }
+
+      // Determine urgency based on whichever comes first
+      let urgency: string = 'ok';
+      const effectiveDays = daysUntil ?? 9999;
+      const effectiveMiles = milesUntil ?? 999999;
+
+      if (effectiveDays < 0 || effectiveMiles < 0) urgency = 'overdue';
+      else if (effectiveDays <= 7 || effectiveMiles <= 500) urgency = 'critical';
+      else if (effectiveDays <= 30 || effectiveMiles <= 2000) urgency = 'upcoming';
+
+      return {
+        vehicle_id: v.id,
+        vehicle_number: v.vehicle_number,
+        service_type: v.next_service_type || 'Scheduled Service',
+        due_date: dueDate,
+        due_mileage: dueMileage,
+        days_until: daysUntil,
+        miles_until: milesUntil,
+        urgency,
+      };
+    }).sort((a: any, b: any) => {
+      const urgencyOrder: Record<string, number> = { overdue: 0, critical: 1, upcoming: 2, ok: 3 };
+      return (urgencyOrder[a.urgency] ?? 4) - (urgencyOrder[b.urgency] ?? 4);
+    });
+
+    res.json({ schedule });
+  } catch (error: any) {
+    console.error('Error fetching maintenance schedule:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance schedule', code: 'MAINT_SCHEDULE_ERROR' });
+  }
+});
+
+// ── Maintenance Templates ───────────────────────────────────────────
+router.post('/maintenance-templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS fleet_maintenance_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        service_type TEXT NOT NULL,
+        interval_months INTEGER,
+        interval_miles INTEGER,
+        estimated_cost REAL,
+        checklist TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime'))
+      )
+    `).run();
+
+    const { name, service_type, interval_months, interval_miles, estimated_cost, checklist } = req.body;
+    if (!name || !service_type) {
+      return res.status(400).json({ error: 'name and service_type are required' });
+    }
+
+    const result = db.prepare(`
+      INSERT INTO fleet_maintenance_templates (name, service_type, interval_months, interval_miles, estimated_cost, checklist)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, service_type, interval_months || null, interval_miles || null, estimated_cost || null, JSON.stringify(checklist || []));
+
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Error creating maintenance template:', error);
+    res.status(500).json({ error: 'Failed to create maintenance template', code: 'MAINT_TEMPLATE_ERROR' });
+  }
+});
+
+router.get('/maintenance-templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS fleet_maintenance_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        service_type TEXT NOT NULL,
+        interval_months INTEGER,
+        interval_miles INTEGER,
+        estimated_cost REAL,
+        checklist TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime'))
+      )
+    `).run();
+
+    const templates = db.prepare('SELECT * FROM fleet_maintenance_templates WHERE is_active = 1 ORDER BY name').all() as any[];
+    const parsed = templates.map((t: any) => ({ ...t, checklist: safeParseJson(t.checklist, []) }));
+    res.json({ templates: parsed });
+  } catch (error: any) {
+    console.error('Error fetching maintenance templates:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance templates', code: 'MAINT_TEMPLATES_ERROR' });
+  }
+});
+
+// ── Driver / Officer Performance (last 30 days) ────────────────────
+router.get('/driver-performance', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Get GPS breadcrumb stats per call_sign (last 30 days)
+    let gpsStats: any[] = [];
+    try {
+      gpsStats = db.prepare(`
+        SELECT call_sign, officer_name,
+          COUNT(*) AS total_pings,
+          SUM(CASE WHEN speed > 0 THEN 1 ELSE 0 END) AS moving_pings,
+          AVG(CASE WHEN speed > 0 THEN speed ELSE NULL END) AS avg_speed,
+          MAX(speed) AS max_speed,
+          MIN(recorded_at) AS first_ping,
+          MAX(recorded_at) AS last_ping
+        FROM gps_breadcrumbs
+        WHERE recorded_at >= datetime('now', 'localtime', '-30 days')
+          AND call_sign IS NOT NULL AND call_sign != ''
+        GROUP BY call_sign
+      `).all() as any[];
+    } catch { /* table may not exist */ }
+
+    if (gpsStats.length === 0) {
+      return res.json({ drivers: [] });
+    }
+
+    // Get fuel efficiency per assigned officer/unit
+    const fuelByUnit: Record<string, { totalMiles: number; totalGallons: number }> = {};
+    try {
+      const fuelRows = db.prepare(`
+        SELECT u.call_sign,
+          SUM(COALESCE(fl.distance, 0)) AS total_miles,
+          SUM(fl.gallons) AS total_gallons
+        FROM fleet_fuel_logs fl
+        JOIN fleet_vehicles fv ON fl.vehicle_id = fv.id
+        JOIN units u ON fv.assigned_unit_id = u.id
+        WHERE fl.fuel_date >= date('now', 'localtime', '-30 days') AND fl.gallons > 0
+        GROUP BY u.call_sign
+      `).all() as any[];
+      for (const r of fuelRows) {
+        fuelByUnit[r.call_sign] = { totalMiles: r.total_miles || 0, totalGallons: r.total_gallons || 0 };
+      }
+    } catch { /* graceful */ }
+
+    // Get inspection scores per officer (inspector_name match)
+    const inspByOfficer: Record<string, { total: number; passed: number }> = {};
+    try {
+      const inspRows = db.prepare(`
+        SELECT inspector_name, COUNT(*) AS total,
+          SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) AS passed
+        FROM fleet_inspections
+        WHERE inspection_date >= date('now', 'localtime', '-30 days')
+        GROUP BY inspector_name
+      `).all() as any[];
+      for (const r of inspRows) {
+        inspByOfficer[r.inspector_name] = { total: r.total, passed: r.passed };
+      }
+    } catch { /* graceful */ }
+
+    // Get damage counts per unit
+    const damageByUnit: Record<string, number> = {};
+    try {
+      const dmgRows = db.prepare(`
+        SELECT u.call_sign, COUNT(*) AS damage_count
+        FROM fleet_damage_reports dr
+        JOIN fleet_vehicles fv ON dr.vehicle_id = fv.id
+        JOIN units u ON fv.assigned_unit_id = u.id
+        WHERE dr.damage_date >= date('now', 'localtime', '-30 days')
+        GROUP BY u.call_sign
+      `).all() as any[];
+      for (const r of dmgRows) {
+        damageByUnit[r.call_sign] = r.damage_count;
+      }
+    } catch { /* graceful */ }
+
+    const drivers = gpsStats.map((g: any) => {
+      const totalPings = g.total_pings || 1;
+      const movingPings = g.moving_pings || 0;
+      const idlePct = Math.round(((totalPings - movingPings) / totalPings) * 100);
+
+      // Estimate total hours from first/last ping
+      let totalHours = 0;
+      if (g.first_ping && g.last_ping) {
+        totalHours = Math.round((new Date(g.last_ping).getTime() - new Date(g.first_ping).getTime()) / 3600000);
+      }
+
+      // Estimate total miles: avg_speed (mph) * hours_moving
+      const movingHours = totalHours * (movingPings / totalPings);
+      const totalMiles = Math.round((g.avg_speed || 0) * movingHours);
+
+      // Fuel efficiency
+      const fuel = fuelByUnit[g.call_sign];
+      const avgMpg = fuel && fuel.totalGallons > 0 ? Math.round((fuel.totalMiles / fuel.totalGallons) * 10) / 10 : null;
+
+      // Inspection score
+      const insp = inspByOfficer[g.officer_name || ''];
+      const inspectionScore = insp && insp.total > 0 ? Math.round((insp.passed / insp.total) * 100) : 100;
+
+      // Damage count
+      const damageCount = damageByUnit[g.call_sign] || 0;
+
+      // Overall score: fuel 30%, idle 20%, speed 20%, inspection 20%, damage 10%
+      const fuelScore = avgMpg != null ? Math.min(100, Math.round((avgMpg / 25) * 100)) : 50;
+      const idleScore = Math.max(0, 100 - idlePct); // lower idle = better
+      const speedScore = (g.max_speed || 0) <= 80 ? 100 : Math.max(0, 100 - ((g.max_speed - 80) * 5));
+      const damageScore = damageCount === 0 ? 100 : Math.max(0, 100 - damageCount * 25);
+
+      const overallScore = Math.round(
+        fuelScore * 0.30 +
+        idleScore * 0.20 +
+        speedScore * 0.20 +
+        inspectionScore * 0.20 +
+        damageScore * 0.10
+      );
+
+      return {
+        officer_name: g.officer_name || g.call_sign,
+        call_sign: g.call_sign,
+        total_miles: totalMiles,
+        total_hours: totalHours,
+        idle_pct: idlePct,
+        avg_speed: Math.round((g.avg_speed || 0) * 10) / 10,
+        max_speed: Math.round((g.max_speed || 0) * 10) / 10,
+        avg_mpg: avgMpg,
+        inspection_score: inspectionScore,
+        damage_count: damageCount,
+        overall_score: overallScore,
+      };
+    }).sort((a: any, b: any) => b.overall_score - a.overall_score);
+
+    res.json({ drivers });
+  } catch (error: any) {
+    console.error('Error computing driver performance:', error);
+    res.status(500).json({ error: 'Failed to compute driver performance', code: 'DRIVER_PERF_ERROR' });
+  }
+});
+
 // ── U11: Fleet Notifications ────────────────────────────────────────
 router.get('/notifications', (req: Request, res: Response) => {
   try {

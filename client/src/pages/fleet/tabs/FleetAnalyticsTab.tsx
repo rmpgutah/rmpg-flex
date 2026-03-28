@@ -6,7 +6,7 @@ import {
 import {
   BarChart3, Car, Fuel, Wrench, DollarSign, AlertTriangle,
   Gauge, CheckCircle, ShieldAlert, TrendingUp, Calendar, Activity,
-  Info, ChevronDown, ChevronUp, Search, X,
+  Info, ChevronDown, ChevronUp, Search, X, Heart, Clock, User,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
@@ -113,6 +113,42 @@ interface FleetVehicleOption {
   model: string;
 }
 
+interface HealthScoreItem {
+  vehicle_id: number;
+  vehicle_number: string;
+  make: string;
+  model: string;
+  year: number;
+  health_score: number;
+  factors: { age: number; mileage: number; service: number; inspection: number; cost: number };
+  status_label: string;
+}
+
+interface MaintenanceScheduleItem {
+  vehicle_id: number;
+  vehicle_number: string;
+  service_type: string;
+  due_date: string | null;
+  due_mileage: number | null;
+  days_until: number | null;
+  miles_until: number | null;
+  urgency: string;
+}
+
+interface DriverPerformanceItem {
+  officer_name: string;
+  call_sign: string;
+  total_miles: number;
+  total_hours: number;
+  idle_pct: number;
+  avg_speed: number;
+  max_speed: number;
+  avg_mpg: number | null;
+  inspection_score: number;
+  damage_count: number;
+  overall_score: number;
+}
+
 interface Props {
   analytics: FleetAnalytics | null;
   loading?: boolean;
@@ -162,6 +198,50 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [comparisonResults, setComparisonResults] = useState<ComparisonVehicle[]>([]);
   const [compareLoading, setCompareLoading] = useState(false);
+
+  // Health scores state
+  const [healthScores, setHealthScores] = useState<HealthScoreItem[]>([]);
+  const [healthSort, setHealthSort] = useState<'score' | 'number' | 'age'>('score');
+
+  // Maintenance schedule state
+  const [maintSchedule, setMaintSchedule] = useState<MaintenanceScheduleItem[]>([]);
+
+  // Driver performance state
+  const [driverPerf, setDriverPerf] = useState<DriverPerformanceItem[]>([]);
+
+  // Fetch health scores
+  useEffect(() => {
+    apiFetch<{ health_scores: HealthScoreItem[] }>('/fleet/health-scores')
+      .then((d) => d?.health_scores && setHealthScores(d.health_scores))
+      .catch(() => {});
+  }, []);
+
+  // Fetch maintenance schedule
+  useEffect(() => {
+    apiFetch<{ schedule: MaintenanceScheduleItem[] }>('/fleet/maintenance-schedule')
+      .then((d) => d?.schedule && setMaintSchedule(d.schedule))
+      .catch(() => {});
+  }, []);
+
+  // Fetch driver performance
+  useEffect(() => {
+    apiFetch<{ drivers: DriverPerformanceItem[] }>('/fleet/driver-performance')
+      .then((d) => d?.drivers && setDriverPerf(d.drivers))
+      .catch(() => {});
+  }, []);
+
+  // Sorted health scores
+  const sortedHealthScores = useMemo(() => {
+    const arr = [...healthScores];
+    if (healthSort === 'score') arr.sort((a, b) => a.health_score - b.health_score);
+    else if (healthSort === 'number') arr.sort((a, b) => a.vehicle_number.localeCompare(b.vehicle_number));
+    else if (healthSort === 'age') arr.sort((a, b) => (a.year || 9999) - (b.year || 9999));
+    return arr;
+  }, [healthScores, healthSort]);
+
+  const overdueCount = useMemo(() =>
+    maintSchedule.filter((m) => m.urgency === 'overdue' || m.urgency === 'critical').length,
+  [maintSchedule]);
 
   useEffect(() => {
     apiFetch<{ all_alerts: FleetServiceAlert[] }>('/fleet/service-alerts')
@@ -989,6 +1069,207 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               </div>
             )}
           </div>
+        )}
+      </div>
+
+      {/* ROW 10: Vehicle Health Dashboard */}
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+            <Heart className="w-3 h-3" /> Vehicle Health Scores
+          </h4>
+          <select
+            value={healthSort}
+            onChange={(e) => setHealthSort(e.target.value as 'score' | 'number' | 'age')}
+            className="text-[9px] bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-rmpg-300 px-2 py-1 font-mono"
+          >
+            <option value="score">Sort: Worst First</option>
+            <option value="number">Sort: Vehicle #</option>
+            <option value="age">Sort: Oldest First</option>
+          </select>
+        </div>
+        {sortedHealthScores.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {sortedHealthScores.map((v) => {
+              const scoreColor = v.health_score >= 80 ? '#22c55e' : v.health_score >= 40 ? '#f59e0b' : '#ef4444';
+              const circumference = 2 * Math.PI * 28;
+              const strokeDash = (v.health_score / 100) * circumference;
+              const badgeColors: Record<string, string> = {
+                Excellent: 'text-green-400 bg-green-900/20 border-green-800/40',
+                Good: 'text-blue-400 bg-blue-900/20 border-blue-800/40',
+                Fair: 'text-amber-400 bg-amber-900/20 border-amber-800/40',
+                Poor: 'text-orange-400 bg-orange-900/20 border-orange-800/40',
+                Critical: 'text-red-400 bg-red-900/20 border-red-800/40',
+              };
+              const factorLabels = ['age', 'mileage', 'service', 'inspection', 'cost'] as const;
+              return (
+                <div key={v.vehicle_id} className="bg-[#0d1520] border border-[#1e3048] rounded-[2px] p-2.5">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="text-[11px] font-mono font-bold text-white">{v.vehicle_number}</div>
+                      <div className="text-[8px] text-rmpg-400">{v.make} {v.model}</div>
+                    </div>
+                    <div className="relative w-16 h-16 flex-shrink-0">
+                      <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="#1e3048" strokeWidth="4" />
+                        <circle
+                          cx="32" cy="32" r="28" fill="none"
+                          stroke={scoreColor} strokeWidth="4" strokeLinecap="round"
+                          strokeDasharray={`${strokeDash} ${circumference}`}
+                          className="transition-all duration-150"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[14px] font-mono font-bold tabular-nums" style={{ color: scoreColor }}>
+                          {v.health_score}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-0.5 mb-1.5">
+                    {factorLabels.map((f) => (
+                      <div key={f} className="flex-1" title={`${f}: ${v.factors[f]}`}>
+                        <div className="h-1 bg-[#1e3048] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-150"
+                            style={{
+                              width: `${v.factors[f]}%`,
+                              backgroundColor: v.factors[f] >= 80 ? '#22c55e' : v.factors[f] >= 40 ? '#f59e0b' : '#ef4444',
+                            }}
+                          />
+                        </div>
+                        <div className="text-[6px] text-rmpg-500 text-center mt-0.5 uppercase">{f.substring(0, 3)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <span className={`inline-block text-[7px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-[2px] border ${badgeColors[v.status_label] || ''}`}>
+                    {v.status_label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="h-[100px] flex items-center justify-center text-[10px] text-rmpg-500">No health score data available</div>
+        )}
+      </div>
+
+      {/* ROW 11: Maintenance Schedule */}
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="flex items-center gap-2 mb-3">
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+            <Wrench className="w-3 h-3" /> Maintenance Schedule
+          </h4>
+          {overdueCount > 0 && (
+            <span className="text-[8px] font-bold font-mono tabular-nums px-1.5 py-0.5 rounded-[2px] bg-red-900/20 border border-red-800/40 text-red-400">
+              {overdueCount} urgent
+            </span>
+          )}
+        </div>
+        {maintSchedule.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                  <th className="text-left py-1.5 pr-3 font-bold">Vehicle#</th>
+                  <th className="text-left py-1.5 pr-3 font-bold">Service Type</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Due Date</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Due Miles</th>
+                  <th className="text-center py-1.5 px-2 font-bold">Status</th>
+                  <th className="text-right py-1.5 pl-2 font-bold">Urgency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {maintSchedule.map((m) => {
+                  const urgencyColors: Record<string, { dot: string; text: string }> = {
+                    overdue: { dot: '#ef4444', text: 'text-red-400' },
+                    critical: { dot: '#f59e0b', text: 'text-amber-400' },
+                    upcoming: { dot: '#3b82f6', text: 'text-blue-400' },
+                    ok: { dot: '#22c55e', text: 'text-green-400' },
+                  };
+                  const uc = urgencyColors[m.urgency] || urgencyColors.ok;
+                  return (
+                    <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                      <td className="py-1.5 pr-3 font-mono font-bold text-white">{m.vehicle_number}</td>
+                      <td className="py-1.5 pr-3 text-rmpg-300">{m.service_type}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
+                        {m.due_date || '--'}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
+                        {m.due_mileage != null ? m.due_mileage.toLocaleString() : '--'}
+                      </td>
+                      <td className="py-1.5 px-2 text-center">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: uc.dot, boxShadow: `0 0 4px ${uc.dot}` }}
+                        />
+                      </td>
+                      <td className={`py-1.5 pl-2 text-right font-mono font-bold uppercase text-[8px] tracking-wider ${uc.text}`}>
+                        {m.urgency}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="h-[80px] flex items-center justify-center text-[10px] text-rmpg-500">No scheduled maintenance data</div>
+        )}
+      </div>
+
+      {/* ROW 12: Driver Performance */}
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5 mb-3">
+          <User className="w-3 h-3" /> Driver Performance
+        </h4>
+        {driverPerf.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                  <th className="text-left py-1.5 pr-3 font-bold">Officer</th>
+                  <th className="text-left py-1.5 pr-2 font-bold">Call Sign</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Miles</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Hours</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Idle%</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Avg Spd</th>
+                  <th className="text-right py-1.5 px-2 font-bold">MPG</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Insp%</th>
+                  <th className="text-right py-1.5 px-2 font-bold">Dmg</th>
+                  <th className="text-right py-1.5 pl-2 font-bold">Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {driverPerf.map((d) => {
+                  const scoreColor = d.overall_score >= 80 ? 'text-green-400' : d.overall_score >= 40 ? 'text-amber-400' : 'text-red-400';
+                  return (
+                    <tr key={d.call_sign} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                      <td className="py-1.5 pr-3 text-rmpg-300 truncate max-w-[120px]">{d.officer_name}</td>
+                      <td className="py-1.5 pr-2 font-mono font-bold text-white">{d.call_sign}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_miles.toLocaleString()}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_hours}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="inline-block w-8 h-1 bg-[#1e3048] rounded-full overflow-hidden">
+                            <span className="block h-full rounded-full" style={{ width: `${d.idle_pct}%`, backgroundColor: d.idle_pct > 60 ? '#ef4444' : d.idle_pct > 30 ? '#f59e0b' : '#22c55e' }} />
+                          </span>
+                          {d.idle_pct}%
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.avg_speed}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.avg_mpg != null ? d.avg_mpg : '--'}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.inspection_score}%</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.damage_count}</td>
+                      <td className={`py-1.5 pl-2 text-right font-mono font-bold tabular-nums ${scoreColor}`}>{d.overall_score}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="h-[80px] flex items-center justify-center text-[10px] text-rmpg-500">No driver performance data available</div>
         )}
       </div>
     </div>
