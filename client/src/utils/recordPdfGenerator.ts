@@ -800,23 +800,24 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   {
     const cw = getContentWidth(doc);
     const barY = y;
-    const hasContract = data.contract_id && data.incident_type === 'pso_client_request';
+    const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
+    const numCols = hasContract ? 6 : 5;
     const barH = 9;
     doc.setFillColor(20, 25, 30);
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
 
-    // Row 1: Section | Zone | Beat | Area | Code (5 columns)
-    const colW = cw / 5;
-    const row1 = [
+    const distFields = [
       { label: 'SECTION', value: data.section_name || '' },
       { label: 'ZONE', value: data.zone_name || '' },
       { label: 'BEAT', value: data.beat_id || '' },
       { label: 'AREA', value: data.beat_descriptor || '' },
       { label: 'CODE', value: data.dispatch_code || '' },
+      ...(hasContract ? [{ label: 'CONTRACT', value: data.contract_id || '' }] : []),
     ];
-    row1.forEach((f, i) => {
-      const fx = LAYOUT.PAGE_MARGIN + (i * colW) + 3;
-      const maxW = colW - 6;
+    const dColW = cw / numCols;
+    distFields.forEach((f, i) => {
+      const fx = LAYOUT.PAGE_MARGIN + (i * dColW) + 2;
+      const maxW = dColW - 4;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(4.5);
       doc.setTextColor(160, 160, 165);
@@ -832,12 +833,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.text(val, fx, barY + 7);
     });
 
-    y = barY + barH + 1;
-
-    // Contract ID as field pair below bar (if PSO)
-    if (hasContract) {
-      y = addFieldPair(doc, 'Contract ID', data.contract_id || '', lx, y, ffw / 3);
-    }
+    y = barY + barH + 1.5;
   }
 
   // Classification

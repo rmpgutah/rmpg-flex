@@ -528,8 +528,8 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   y = checkPageBreak(doc, y, totalFieldH);
 
   // Value box with border (positioned below the label)
-  // Inset box slightly so adjacent columns don't overlap borders
-  const boxInset = 0.5;
+  // Inset box so edges don't overlap section borders or adjacent columns
+  const boxInset = 1;
   const boxY = y + labelH;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
