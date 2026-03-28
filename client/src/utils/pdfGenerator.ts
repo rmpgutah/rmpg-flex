@@ -189,19 +189,17 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  doc.saveGraphicsState();
-  // @ts-expect-error jsPDF GState — more visible watermark (0.08 opacity)
-  doc.setGState(new doc.GState({ opacity: 0.08 }));
+  // @ts-expect-error jsPDF GState — light watermark
+  doc.setGState(new doc.GState({ opacity: 0.12 }));
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...COLOR.WATERMARK);
+  doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
+  doc.setTextColor(200, 200, 200);
 
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
-  doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
   doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
-  doc.restoreGraphicsState();
 
-  // Explicitly reset opacity to full after watermark (jsPDF GState safety)
+  // Reset opacity to full
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 }
