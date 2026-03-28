@@ -965,32 +965,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Incident Details
-  y = checkPageBreak(doc, y, 25, prio);
-  { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
-    y += SPACING.MD;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('DESCRIPTION', lx, y);
-    y += 3.5;
-    doc.setFont('helvetica', 'normal');
-    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw);
-    y += SPACING.MD;
-    y = addThreeColumnFields(doc, [
-      { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
-      { label: '# Victims', value: data.num_victims != null ? String(data.num_victims) : '' },
-      { label: 'Direction of Travel', value: data.direction_of_travel || '' },
-    ], y);
-    if (data.subject_description) {
-      y = addFieldPair(doc, 'Subject Description', data.subject_description, lx, y, ffw);
-    }
-    if (data.vehicle_description) {
-      y = addFieldPair(doc, 'Vehicle Description', data.vehicle_description, lx, y, ffw);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
   // Linked Persons — field-pair box rows (matches Assigned Units style)
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
@@ -1038,6 +1012,32 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     ]);
     y = addTableWithShading(doc, vehHeaders, vehRows, y,
       [lx, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 80, LAYOUT.PAGE_MARGIN + 105, LAYOUT.PAGE_MARGIN + 140]);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Incident Details — starts new page ──
+  y = checkPageBreak(doc, y, 999, prio); // force new page
+  { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
+    y += SPACING.MD;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('DESCRIPTION', lx, y);
+    y += 3.5;
+    doc.setFont('helvetica', 'normal');
+    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw);
+    y += SPACING.MD;
+    y = addThreeColumnFields(doc, [
+      { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
+      { label: '# Victims', value: data.num_victims != null ? String(data.num_victims) : '' },
+      { label: 'Direction of Travel', value: data.direction_of_travel || '' },
+    ], y);
+    if (data.subject_description) {
+      y = addFieldPair(doc, 'Subject Description', data.subject_description, lx, y, ffw);
+    }
+    if (data.vehicle_description) {
+      y = addFieldPair(doc, 'Vehicle Description', data.vehicle_description, lx, y, ffw);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
