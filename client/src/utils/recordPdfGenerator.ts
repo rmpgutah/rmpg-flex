@@ -1118,7 +1118,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (data.process_served_address) {
         y = addFieldPair(doc, 'Service Address', data.process_served_address, lx, y, ffw);
       }
-      { const yL = addFieldPair(doc, 'Served At', data.process_served_at || '', lx, y, hfw);
+      { const yL = addFieldPair(doc, 'Served At', fmtTimestamp(data.process_served_at), lx, y, hfw);
         const yR = addFieldPair(doc, 'Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
         y = Math.max(yL, yR); }
       y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
