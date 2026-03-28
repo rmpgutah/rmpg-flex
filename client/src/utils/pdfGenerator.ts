@@ -1150,11 +1150,12 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
 export function addNarrativeSection(
   doc: jsPDF,
   title: string,
-  text: string,
+  rawText: string,
   y: number,
   priority?: string,
 ): number {
-  if (!text) return y;
+  if (!rawText) return y;
+  const text = sanitizePdfText(rawText).toUpperCase();
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
   y = sec.contentY;
