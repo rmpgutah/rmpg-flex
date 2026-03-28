@@ -884,6 +884,44 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // PSO Client Request Details — right after Caller Information
+  if (data.incident_type === 'pso_client_request') {
+    y = checkPageBreak(doc, y, 12, prio);
+    const attemptNum = data.pso_attempt_number || 1;
+    const attemptLabel = attemptNum > 1
+      ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
+      : '';
+    const psoSec = openAutoSection(doc, `PSO Client Request Details${attemptLabel}`, y); y = psoSec.contentY;
+    y = addThreeColumnFields(doc, [
+      { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
+      { label: 'Authorization / PO#', value: data.pso_authorization || '' },
+      { label: 'Billing Code', value: data.pso_billing_code || '' },
+    ], y);
+    y = addThreeColumnFields(doc, [
+      { label: 'Requestor Name', value: data.pso_requestor_name || '' },
+      { label: 'Requestor Phone', value: data.pso_requestor_phone || '' },
+      { label: 'Requestor Email', value: data.pso_requestor_email || '' },
+    ], y);
+    y = closeAutoSection(doc, psoSec.sectionY, y, undefined, psoSec.sectionPage);
+
+    // Process Service sub-section
+    if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
+      y = checkPageBreak(doc, y, 12, prio);
+      const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
+      y = addThreeColumnFields(doc, [
+        { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
+        { label: 'Serve To', value: data.process_served_to || '' },
+        { label: 'Attempts', value: String(data.process_attempts || 0) },
+      ], y);
+      y = addThreeColumnFields(doc, [
+        { label: 'Service Address', value: data.process_served_address || '' },
+        { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
+        { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
+      ], y);
+      y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
+    }
+  }
+
   // Location
   y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
@@ -919,7 +957,55 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Scene Conditions — right after Incident Location (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
+  // Flags — before Scene Conditions
+  y = checkPageBreak(doc, y, 15, prio);
+  { const flagSec = openAutoSection(doc, 'Flags', y); y = flagSec.contentY;
+    y += SPACING.MD;
+    const flagCols = 6;
+    const flagColW = ffw / flagCols;
+    const flagRowH = 4;
+    const flagGrid2: { label: string; checked: boolean }[][] = [
+      [
+        { label: 'Injuries', checked: !!data.injuries_reported },
+        { label: 'Alcohol', checked: !!data.alcohol_involved },
+        { label: 'Drugs', checked: !!data.drugs_involved },
+        { label: 'DV', checked: !!data.domestic_violence },
+        { label: 'Mental Health', checked: !!data.mental_health_crisis },
+        { label: 'Juvenile', checked: !!data.juvenile_involved },
+      ],
+      [
+        { label: 'Felony IP', checked: !!data.felony_in_progress },
+        { label: 'Ofc Safety', checked: !!data.officer_safety_caution },
+        { label: 'Gang', checked: !!data.gang_related },
+        { label: 'HAZMAT', checked: !!data.hazmat },
+        { label: 'Veh Pursuit', checked: !!data.vehicle_pursuit },
+        { label: 'Foot Pursuit', checked: !!data.foot_pursuit },
+      ],
+      [
+        { label: 'K9 Req', checked: !!data.k9_requested },
+        { label: 'EMS Req', checked: !!data.ems_requested },
+        { label: 'Fire Req', checked: !!data.fire_requested },
+        { label: 'Evidence', checked: !!data.evidence_collected },
+        { label: 'BWC Active', checked: !!data.body_camera_active },
+        { label: 'Photos', checked: !!data.photos_taken },
+      ],
+      [
+        { label: 'Supvr Notified', checked: !!data.supervisor_notified },
+        { label: 'LE Notified', checked: !!data.le_notified },
+        { label: 'Trespass', checked: !!data.trespass_issued },
+      ],
+    ];
+    for (const row of flagGrid2) {
+      for (let c = 0; c < row.length; c++) {
+        addCheckboxField(doc, row[c].label, row[c].checked, lx + c * flagColW, y);
+      }
+      y += flagRowH;
+    }
+    y += SPACING.SM;
+    y = closeAutoSection(doc, flagSec.sectionY, y, undefined, flagSec.sectionPage);
+  }
+
+  // Scene Conditions (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
   y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     // All 4 fields in one row
@@ -939,7 +1025,39 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Mileage — single row: Vehicle ID | Starting | Ending | Total (header 5.5 + row 10 + pad 1.5 = 17mm)
+  // Assigned Units — after Scene Conditions
+  { const unitDetail2 = data.assigned_units_detail;
+    const unitCount2 = unitDetail2?.length || data.assigned_units?.length || 0;
+    if (unitCount2 > 0) {
+      y = checkPageBreak(doc, y, 12, prio);
+      const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.contentY;
+      if (unitDetail2 && unitDetail2.length > 0) {
+        const UNIT_ROLES2 = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
+        const uqw = ffw / 4;
+        for (let idx = 0; idx < unitDetail2.length; idx++) {
+          const u = unitDetail2[idx];
+          y = checkPageBreak(doc, y, 12);
+          const uFields = [
+            { label: 'Call Sign', value: u.call_sign || '--' },
+            { label: 'Officer', value: u.officer_name || '--' },
+            { label: 'Badge #', value: u.badge_number || '--' },
+            { label: 'Role', value: UNIT_ROLES2[idx] || `Officer #${idx + 1}` },
+          ];
+          let maxUY = y + SPACING.FIELD_ROW_ADVANCE;
+          for (let i = 0; i < 4; i++) {
+            const fy = addFieldPair(doc, uFields[i].label, uFields[i].value, lx + i * uqw, y, uqw);
+            if (fy > maxUY) maxUY = fy;
+          }
+          y = maxUY;
+        }
+      } else if (data.assigned_units && data.assigned_units.length > 0) {
+        y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
+      }
+      y = closeAutoSection(doc, uSec.sectionY, y, undefined, uSec.sectionPage);
+    }
+  }
+
+  // Mileage — single row: Vehicle ID | Starting | Ending | Total
   if (data.starting_mileage != null || data.ending_mileage != null || data.responding_vehicle_id) {
     y = checkPageBreak(doc, y, 12, prio);
     const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
@@ -1043,53 +1161,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Flags — clean 6-column checkbox grid
-  y = checkPageBreak(doc, y, 15, prio);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    y += SPACING.MD;
-    const cols = 6;
-    const colW = ffw / cols;
-    const rowH = 4;
-    const flagGrid: { label: string; checked: boolean }[][] = [
-      [
-        { label: 'Injuries', checked: !!data.injuries_reported },
-        { label: 'Alcohol', checked: !!data.alcohol_involved },
-        { label: 'Drugs', checked: !!data.drugs_involved },
-        { label: 'DV', checked: !!data.domestic_violence },
-        { label: 'Mental Health', checked: !!data.mental_health_crisis },
-        { label: 'Juvenile', checked: !!data.juvenile_involved },
-      ],
-      [
-        { label: 'Felony IP', checked: !!data.felony_in_progress },
-        { label: 'Ofc Safety', checked: !!data.officer_safety_caution },
-        { label: 'Gang', checked: !!data.gang_related },
-        { label: 'HAZMAT', checked: !!data.hazmat },
-        { label: 'Veh Pursuit', checked: !!data.vehicle_pursuit },
-        { label: 'Foot Pursuit', checked: !!data.foot_pursuit },
-      ],
-      [
-        { label: 'K9 Req', checked: !!data.k9_requested },
-        { label: 'EMS Req', checked: !!data.ems_requested },
-        { label: 'Fire Req', checked: !!data.fire_requested },
-        { label: 'Evidence', checked: !!data.evidence_collected },
-        { label: 'BWC Active', checked: !!data.body_camera_active },
-        { label: 'Photos', checked: !!data.photos_taken },
-      ],
-      [
-        { label: 'Supvr Notified', checked: !!data.supervisor_notified },
-        { label: 'LE Notified', checked: !!data.le_notified },
-        { label: 'Trespass', checked: !!data.trespass_issued },
-      ],
-    ];
-    for (const row of flagGrid) {
-      for (let c = 0; c < row.length; c++) {
-        addCheckboxField(doc, row[c].label, row[c].checked, lx + c * colW, y);
-      }
-      y += rowH;
-    }
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // Flags — already rendered above (before Scene Conditions)
 
   // LE Coordination
   if (data.le_agency || data.le_case_number) {
@@ -1101,44 +1173,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // PSO Client Request (conditional)
-  if (data.incident_type === 'pso_client_request') {
-    y = checkPageBreak(doc, y, 12, prio);
-    const attemptNum = data.pso_attempt_number || 1;
-    const attemptLabel = attemptNum > 1
-      ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
-      : '';
-    const sec = openAutoSection(doc, `PSO Client Request Details${attemptLabel}`, y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
-      { label: 'Authorization / PO#', value: data.pso_authorization || '' },
-      { label: 'Billing Code', value: data.pso_billing_code || '' },
-    ], y);
-    y = addThreeColumnFields(doc, [
-      { label: 'Requestor Name', value: data.pso_requestor_name || '' },
-      { label: 'Requestor Phone', value: data.pso_requestor_phone || '' },
-      { label: 'Requestor Email', value: data.pso_requestor_email || '' },
-    ], y);
-
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-
-    // Process Service sub-section — separate section to avoid page break issues
-    if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
-      y = checkPageBreak(doc, y, 25, prio);
-      const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
-      y = addThreeColumnFields(doc, [
-        { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
-        { label: 'Serve To', value: data.process_served_to || '' },
-        { label: 'Attempts', value: String(data.process_attempts || 0) },
-      ], y);
-      y = addThreeColumnFields(doc, [
-        { label: 'Service Address', value: data.process_served_address || '' },
-        { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
-        { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
-      ], y);
-      y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
-    }
-  }
+  // PSO Client Request Details — already rendered after Caller Information above
 
   // Visit History Timeline (PSO calls with return visits)
   if (data.incident_type === 'pso_client_request' && data.visit_history && data.visit_history.length > 0) {
@@ -1232,36 +1267,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Assigned Units — after Process Service Details
-  const unitDetail = data.assigned_units_detail;
-  const unitCount = unitDetail?.length || data.assigned_units?.length || 0;
-  if (unitCount > 0) {
-    y = checkPageBreak(doc, y, 12, prio);
-    const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
-    if (unitDetail && unitDetail.length > 0) {
-      const UNIT_ROLES = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
-      const qw = ffw / 4;
-      for (let idx = 0; idx < unitDetail.length; idx++) {
-        const u = unitDetail[idx];
-        y = checkPageBreak(doc, y, 12);
-        const unitFields = [
-          { label: 'Call Sign', value: u.call_sign || '--' },
-          { label: 'Officer', value: u.officer_name || '--' },
-          { label: 'Badge #', value: u.badge_number || '--' },
-          { label: 'Role', value: UNIT_ROLES[idx] || `Officer #${idx + 1}` },
-        ];
-        let maxY = y + SPACING.FIELD_ROW_ADVANCE;
-        for (let i = 0; i < 4; i++) {
-          const fy = addFieldPair(doc, unitFields[i].label, unitFields[i].value, lx + i * qw, y, qw);
-          if (fy > maxY) maxY = fy;
-        }
-        y = maxY;
-      }
-    } else if (data.assigned_units && data.assigned_units.length > 0) {
-      y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // Assigned Units — already rendered above (after Scene Conditions)
 
   // Damage Assessment (conditional)
   if (data.damage_estimate || data.damage_description) {
