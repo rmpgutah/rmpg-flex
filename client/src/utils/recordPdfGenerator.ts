@@ -1042,7 +1042,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y += SPACING.MD;
     const cols = 6;
     const colW = ffw / cols;
-    const rowH = 5;
+    const rowH = 4;
     const flagGrid: { label: string; checked: boolean }[][] = [
       [
         { label: 'Injuries', checked: !!data.injuries_reported },

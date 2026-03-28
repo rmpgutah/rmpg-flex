@@ -105,14 +105,14 @@ export const SPACING = {
   LG:                 3,     // Line height
   XL:                 3.5,   // Generous gap
 
-  CONTENT_INSET:      1.2,   // Left/right padding inside sections
+  CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height
-  SECTION_GAP:        1,     // Gap between sections (minimal)
-  SECTION_CONTENT_PAD: 1.5,  // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  0.8,  // Padding inside section before bottom border
+  SECTION_GAP:        0.8,   // Gap between sections
+  SECTION_CONTENT_PAD: 1,    // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   5.5,   // Height of field box (compact)
-  FIELD_ROW_ADVANCE:  6,     // Y-advance after field row (tight)
+  FIELD_ROW_HEIGHT:   4,     // Value area height (no box, just label+value)
+  FIELD_ROW_ADVANCE:  4.5,   // Y-advance after field row
 
   SIGNATURE_BOX_H:    25,    // Signature block total height
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
