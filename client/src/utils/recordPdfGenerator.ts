@@ -790,11 +790,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const barY = y;
     const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
     const numCols = hasContract ? 6 : 5;
-    const barH = 9;
-    // White background with thin border (matches field box style)
-    doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(BORDER.FIELD);
-    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH);
+    const barH = 8;
+    // Black background with white text
+    doc.setFillColor(0, 0, 0);
+    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
 
     const distFields = [
       { label: 'SECTION', value: data.section_name || '--' },
@@ -806,8 +805,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     ];
 
     // Dynamic column widths — measure all values, no truncation
-    const dValSize = 6; // smaller font for district bar values to fit everything
-    const dPad = 3;
+    const dValSize = 6; // compact font for district bar
+    const dPad = 2; // tight padding — columns close together
     doc.setFont('courier', 'normal');
     doc.setFontSize(dValSize);
     // Measure each column's natural width
@@ -829,13 +828,13 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const fw = finalWidths[i];
       const fx = colX + 1.5;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text(f.label, fx, barY + 3);
-      doc.setFont('courier', 'normal');
+      doc.setFontSize(4.5);
+      doc.setTextColor(180, 180, 185);
+      doc.text(f.label, fx, barY + 2.8);
+      doc.setFont('courier', 'bold');
       doc.setFontSize(dValSize);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(sanitizePdfText(f.value), fx, barY + 7);
+      doc.setTextColor(255, 255, 255);
+      doc.text(sanitizePdfText(f.value), fx, barY + 6.5);
       colX += fw;
     });
 
