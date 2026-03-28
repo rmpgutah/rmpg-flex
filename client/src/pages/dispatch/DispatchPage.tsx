@@ -2347,8 +2347,9 @@ export default function DispatchPage() {
                           <div className="flex items-center gap-1">
                             <input
                               type="datetime-local"
-                              className="input-dark text-[10px] font-mono px-1 py-0.5 w-[155px]"
-                              defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                              step="1"
+                              className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
+                              defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
                               autoFocus
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
@@ -3222,7 +3223,7 @@ export default function DispatchPage() {
                         })),
                         // Build narrative from notes for PDF
                         narrative: selectedCall?.notes?.map((n: any) =>
-                          `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+                          `[${n.timestamp ? formatTime(n.timestamp) : ''}] ${n.author || 'System'}: ${n.text || ''}`
                         ).join('\n') || '',
                       }}
                       identifier={selectedCall?.call_number}
@@ -4511,7 +4512,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Served At</label>
-                            <input type="datetime-local" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
+                            <input type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Service Result</label>
