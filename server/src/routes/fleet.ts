@@ -398,6 +398,13 @@ router.get('/analytics', (req: Request, res: Response) => {
       FROM fleet_fuel_logs WHERE odometer_reading IS NOT NULL
     `).get() as any;
 
+    // ── Top 5 most common maintenance issues ──
+    const topIssues = db.prepare(`
+      SELECT type, COUNT(*) as count, SUM(cost) as total_cost
+      FROM fleet_maintenance WHERE archived_at IS NULL AND type IS NOT NULL
+      GROUP BY type ORDER BY count DESC LIMIT 5
+    `).all() as any[];
+
     res.json({
       maintenance_cost_trend: maintenanceCostTrend,
       mileage_distribution: mileageBuckets.map(b => ({ range: b.range, count: b.count })),
@@ -421,10 +428,171 @@ router.get('/analytics', (req: Request, res: Response) => {
       maintenance_forecast: maintenanceForecast,
       oldest_vehicle_year: oldestVehicle?.oldest_year || null,
       avg_daily_miles: avgDailyMilesRow?.avg_daily_miles || 0,
+      top_issues: topIssues,
     });
   } catch (error: any) {
     console.error('Error fetching fleet analytics:', error);
     res.status(500).json({ error: 'Failed to fetch fleet analytics', code: 'FAILED_TO_FETCH_FLEET' });
+  }
+});
+
+// ─── GET /api/fleet/vehicle-comparison ─ Compare 2-5 vehicles side by side ────
+router.get('/vehicle-comparison', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const idsParam = req.query.ids as string;
+    if (!idsParam) { res.status(400).json({ error: 'ids query parameter required' }); return; }
+
+    const ids = idsParam.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+    if (ids.length < 2 || ids.length > 5) {
+      res.status(400).json({ error: 'Provide 2-5 vehicle IDs' }); return;
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage, fv.status,
+        COALESCE(m.total_maintenance_cost, 0) AS total_maintenance_cost,
+        COALESCE(f.total_fuel_cost, 0) AS total_fuel_cost,
+        (COALESCE(m.total_maintenance_cost, 0) + COALESCE(f.total_fuel_cost, 0)) AS total_cost,
+        CASE WHEN fv.current_mileage > 0
+          THEN ROUND((COALESCE(m.total_maintenance_cost, 0) + COALESCE(f.total_fuel_cost, 0)) * 1.0 / fv.current_mileage, 4)
+          ELSE NULL END AS cost_per_mile,
+        f.avg_mpg,
+        COALESCE(insp.inspection_count, 0) AS inspection_count,
+        CASE WHEN COALESCE(insp.inspection_count, 0) > 0
+          THEN ROUND(COALESCE(insp.passed_count, 0) * 100.0 / insp.inspection_count, 1)
+          ELSE NULL END AS inspection_pass_rate,
+        m.last_service_date,
+        CASE WHEN m.last_service_date IS NOT NULL
+          THEN CAST(julianday('now') - julianday(m.last_service_date) AS INTEGER)
+          ELSE NULL END AS days_since_last_service,
+        COALESCE(a.assignment_count, 0) AS assignment_count
+      FROM fleet_vehicles fv
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(cost) AS total_maintenance_cost, MAX(performed_at) AS last_service_date
+        FROM fleet_maintenance WHERE archived_at IS NULL AND cost IS NOT NULL
+        GROUP BY vehicle_id
+      ) m ON m.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(total_cost) AS total_fuel_cost,
+          ROUND(SUM(COALESCE(distance, 0)) * 1.0 / NULLIF(SUM(gallons), 0), 1) AS avg_mpg
+        FROM fleet_fuel_logs WHERE archived_at IS NULL AND gallons > 0
+        GROUP BY vehicle_id
+      ) f ON f.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT vehicle_id, COUNT(*) AS inspection_count,
+          SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) AS passed_count
+        FROM fleet_inspections GROUP BY vehicle_id
+      ) insp ON insp.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT assigned_unit_id, COUNT(*) AS assignment_count
+        FROM fleet_vehicles WHERE assigned_unit_id IS NOT NULL
+        GROUP BY assigned_unit_id
+      ) a ON a.assigned_unit_id = fv.assigned_unit_id
+      WHERE fv.id IN (${placeholders})
+    `).all(...ids) as any[];
+
+    res.json({ vehicles });
+  } catch (error: any) {
+    console.error('Error fetching vehicle comparison:', error);
+    res.status(500).json({ error: 'Failed to fetch vehicle comparison', code: 'VEHICLE_COMPARISON_ERROR' });
+  }
+});
+
+// ─── GET /api/fleet/cost-trends ─ Monthly cost breakdown (last 12 months) ────
+router.get('/cost-trends', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cutoff = new Date(Date.now() - 365 * 86400000).toISOString();
+
+    const maintByMonth = db.prepare(`
+      SELECT strftime('%Y-%m', performed_at) AS month, SUM(cost) AS maintenance_cost
+      FROM fleet_maintenance
+      WHERE performed_at >= ? AND cost IS NOT NULL AND archived_at IS NULL
+      GROUP BY month
+    `).all(cutoff) as any[];
+
+    const fuelByMonth = db.prepare(`
+      SELECT strftime('%Y-%m', fuel_date) AS month, SUM(total_cost) AS fuel_cost
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= ? AND total_cost IS NOT NULL AND archived_at IS NULL
+      GROUP BY month
+    `).all(cutoff) as any[];
+
+    const vehicleCount = (db.prepare(`SELECT COUNT(*) AS count FROM fleet_vehicles WHERE status != 'retired'`).get() as any).count;
+
+    // Merge into monthly totals
+    const monthMap: Record<string, { month: string; maintenance_cost: number; fuel_cost: number; total_cost: number; vehicle_count: number }> = {};
+    for (const r of maintByMonth) {
+      if (!monthMap[r.month]) monthMap[r.month] = { month: r.month, maintenance_cost: 0, fuel_cost: 0, total_cost: 0, vehicle_count: vehicleCount };
+      monthMap[r.month].maintenance_cost = r.maintenance_cost || 0;
+    }
+    for (const r of fuelByMonth) {
+      if (!monthMap[r.month]) monthMap[r.month] = { month: r.month, maintenance_cost: 0, fuel_cost: 0, total_cost: 0, vehicle_count: vehicleCount };
+      monthMap[r.month].fuel_cost = r.fuel_cost || 0;
+    }
+    for (const key of Object.keys(monthMap)) {
+      monthMap[key].total_cost = monthMap[key].maintenance_cost + monthMap[key].fuel_cost;
+    }
+
+    const trends = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
+    res.json({ cost_trends: trends });
+  } catch (error: any) {
+    console.error('Error fetching cost trends:', error);
+    res.status(500).json({ error: 'Failed to fetch cost trends', code: 'COST_TRENDS_ERROR' });
+  }
+});
+
+// ─── GET /api/fleet/vehicle-lifecycle ─ Vehicle lifecycle analysis ────
+router.get('/vehicle-lifecycle', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const currentYear = new Date().getFullYear();
+
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.year, fv.current_mileage, fv.status,
+        COALESCE(m.total_cost, 0) + COALESCE(f.total_cost, 0) AS total_lifetime_cost
+      FROM fleet_vehicles fv
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(cost) AS total_cost
+        FROM fleet_maintenance WHERE archived_at IS NULL AND cost IS NOT NULL
+        GROUP BY vehicle_id
+      ) m ON m.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(total_cost) AS total_cost
+        FROM fleet_fuel_logs WHERE archived_at IS NULL AND total_cost IS NOT NULL
+        GROUP BY vehicle_id
+      ) f ON f.vehicle_id = fv.id
+      WHERE fv.status != 'retired' AND fv.year IS NOT NULL
+    `).all() as any[];
+
+    const lifecycle = vehicles.map((v: any) => {
+      const ageYears = Math.max(currentYear - v.year, 1);
+      const currentMileage = v.current_mileage || 0;
+      const avgAnnualMileage = Math.round(currentMileage / ageYears);
+      const costPerYear = Math.round((v.total_lifetime_cost || 0) / ageYears);
+      const milesRemaining = Math.max(150000 - currentMileage, 0);
+      const estimatedRemainingLifeYears = avgAnnualMileage > 0
+        ? Math.round((milesRemaining / avgAnnualMileage) * 10) / 10
+        : null;
+      return {
+        id: v.id,
+        vehicle_number: v.vehicle_number,
+        year: v.year,
+        status: v.status,
+        age_years: ageYears,
+        current_mileage: currentMileage,
+        avg_annual_mileage: avgAnnualMileage,
+        total_lifetime_cost: v.total_lifetime_cost || 0,
+        cost_per_year: costPerYear,
+        estimated_remaining_life_years: estimatedRemainingLifeYears,
+      };
+    });
+
+    res.json({ lifecycle });
+  } catch (error: any) {
+    console.error('Error fetching vehicle lifecycle:', error);
+    res.status(500).json({ error: 'Failed to fetch vehicle lifecycle', code: 'VEHICLE_LIFECYCLE_ERROR' });
   }
 });
 

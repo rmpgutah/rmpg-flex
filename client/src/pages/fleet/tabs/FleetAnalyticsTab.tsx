@@ -1,11 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
+  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter,
 } from 'recharts';
 import {
   BarChart3, Car, Fuel, Wrench, DollarSign, AlertTriangle,
   Gauge, CheckCircle, ShieldAlert, TrendingUp, Calendar, Activity,
+  Info, ChevronDown, ChevronUp, Search, X,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
@@ -40,10 +41,105 @@ const PERIOD_OPTIONS = [
   { label: 'ALL', value: 'all' },
 ] as const;
 
+const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
+  oil_change: 'Oil Change',
+  tire_rotation: 'Tire Rotation',
+  brake_service: 'Brake Service',
+  inspection: 'Inspection',
+  repair: 'Repair',
+  other: 'Other',
+};
+
+const ISSUE_BAR_COLORS = ['#1a5a9e', '#2068b0', '#2b78c2', '#3888d4', '#d4a017'];
+
+const STATUS_DOT_COLORS: Record<string, string> = {
+  in_service: '#22c55e',
+  maintenance: '#f59e0b',
+  out_of_service: '#ef4444',
+};
+
+const KPI_TOOLTIPS: Record<string, string> = {
+  total_fleet_costs: 'Combined maintenance and fuel expenses for the selected period',
+  average_mpg: 'Fleet-wide fuel economy calculated from fuel log entries',
+  service_compliance: 'Percentage of vehicles with up-to-date service records',
+  inspection_pass_rate: 'Percentage of inspections that passed in the selected period',
+};
+
+interface CostTrendItem {
+  month: string;
+  maintenance_cost: number;
+  fuel_cost: number;
+  total_cost: number;
+  vehicle_count: number;
+}
+
+interface LifecycleItem {
+  id: number;
+  vehicle_number: string;
+  year: number;
+  status: string;
+  age_years: number;
+  current_mileage: number;
+  avg_annual_mileage: number;
+  total_lifetime_cost: number;
+  cost_per_year: number;
+  estimated_remaining_life_years: number | null;
+}
+
+interface ComparisonVehicle {
+  id: number;
+  vehicle_number: string;
+  make: string;
+  model: string;
+  year: number;
+  current_mileage: number;
+  status: string;
+  total_maintenance_cost: number;
+  total_fuel_cost: number;
+  total_cost: number;
+  cost_per_mile: number | null;
+  avg_mpg: number | null;
+  inspection_count: number;
+  inspection_pass_rate: number | null;
+  last_service_date: string | null;
+  days_since_last_service: number | null;
+  assignment_count: number;
+}
+
+interface FleetVehicleOption {
+  id: number;
+  vehicle_number: string;
+  make: string;
+  model: string;
+}
+
 interface Props {
   analytics: FleetAnalytics | null;
   loading?: boolean;
   onPeriodChange?: (period: string) => void;
+}
+
+function InfoTooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex ml-1">
+      <button
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onFocus={() => setShow(true)}
+        onBlur={() => setShow(false)}
+        className="text-rmpg-500 hover:text-rmpg-300 transition-colors duration-150 focus:outline-none"
+        aria-label="More info"
+      >
+        <Info className="w-2.5 h-2.5" />
+      </button>
+      {show && (
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 px-2 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-[8px] text-rmpg-300 font-normal normal-case tracking-normal shadow-lg pointer-events-none">
+          {text}
+        </div>
+      )}
+    </span>
+  );
 }
 
 export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }: Props) {
@@ -54,9 +150,45 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   // Service alerts from dedicated endpoint
   const [serviceAlerts, setServiceAlerts] = useState<FleetServiceAlert[]>([]);
 
+  // Cost trends data
+  const [costTrends, setCostTrends] = useState<CostTrendItem[]>([]);
+
+  // Vehicle lifecycle data
+  const [lifecycle, setLifecycle] = useState<LifecycleItem[]>([]);
+
+  // Vehicle comparison state
+  const [compareExpanded, setCompareExpanded] = useState(false);
+  const [allVehicles, setAllVehicles] = useState<FleetVehicleOption[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [comparisonResults, setComparisonResults] = useState<ComparisonVehicle[]>([]);
+  const [compareLoading, setCompareLoading] = useState(false);
+
   useEffect(() => {
     apiFetch<{ all_alerts: FleetServiceAlert[] }>('/fleet/service-alerts')
       .then((d) => d?.all_alerts && setServiceAlerts(d.all_alerts))
+      .catch(() => {});
+  }, []);
+
+  // Fetch cost trends
+  useEffect(() => {
+    apiFetch<{ cost_trends: CostTrendItem[] }>('/fleet/cost-trends')
+      .then((d) => d?.cost_trends && setCostTrends(d.cost_trends))
+      .catch(() => {});
+  }, []);
+
+  // Fetch vehicle lifecycle
+  useEffect(() => {
+    apiFetch<{ lifecycle: LifecycleItem[] }>('/fleet/vehicle-lifecycle')
+      .then((d) => d?.lifecycle && setLifecycle(d.lifecycle))
+      .catch(() => {});
+  }, []);
+
+  // Fetch all vehicles list for comparison selector
+  useEffect(() => {
+    apiFetch<{ vehicles: FleetVehicleOption[] }>('/fleet?limit=500&fields=id,vehicle_number,make,model')
+      .then((d) => {
+        if (d?.vehicles) setAllVehicles(d.vehicles);
+      })
       .catch(() => {});
   }, []);
 
@@ -64,6 +196,31 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
     setPeriod(newPeriod);
     onPeriodChange?.(newPeriod);
   }, [onPeriodChange]);
+
+  const handleCompare = useCallback(() => {
+    if (selectedIds.length < 2 || selectedIds.length > 5) return;
+    setCompareLoading(true);
+    apiFetch<{ vehicles: ComparisonVehicle[] }>(`/fleet/vehicle-comparison?ids=${selectedIds.join(',')}`)
+      .then((d) => d?.vehicles && setComparisonResults(d.vehicles))
+      .catch(() => {})
+      .finally(() => setCompareLoading(false));
+  }, [selectedIds]);
+
+  const toggleVehicleSelection = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((v) => v !== id);
+      if (prev.length >= 5) return prev;
+      return [...prev, id];
+    });
+  }, []);
+
+  // Format cost trends for chart display
+  const costTrendChartData = useMemo(() =>
+    costTrends.map((t) => ({
+      ...t,
+      month: t.month.substring(5), // Show MM only
+    })),
+  [costTrends]);
 
   if (loading || !analytics) {
     return (
@@ -81,16 +238,25 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
     fuel_economy_trend, fleet_summary, cost_per_mile_ranking,
     service_compliance, inspection_pass_rate, utilization,
     daily_usage, maintenance_forecast, oldest_vehicle_year, avg_daily_miles,
+    top_issues,
   } = analytics;
 
   const totalCosts = (fleet_summary.total_maintenance_cost || 0) + (fleet_summary.total_fuel_cost || 0);
   const complianceRate = service_compliance?.rate ?? 100;
   const inspPassRate = inspection_pass_rate?.rate ?? 100;
 
+  // Find best values in comparison for highlighting
+  const getBestValue = (field: keyof ComparisonVehicle, lower = true) => {
+    if (comparisonResults.length === 0) return null;
+    const vals = comparisonResults.map((v) => v[field] as number | null).filter((v): v is number => v != null);
+    if (vals.length === 0) return null;
+    return lower ? Math.min(...vals) : Math.max(...vals);
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
-      {/* ═══ Period Filter ═══ */}
+      {/* Period Filter */}
       <div className="flex items-center gap-1.5">
         <Calendar className="w-3 h-3 text-[#d4a017]" />
         <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider mr-2">Period</span>
@@ -109,13 +275,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         ))}
       </div>
 
-      {/* ═══ ROW 1: KPI Cards ═══ */}
+      {/* ROW 1: KPI Cards with Tooltips */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Total Fleet Costs */}
         <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <DollarSign className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Fleet Costs</span>
+            <InfoTooltip text={KPI_TOOLTIPS.total_fleet_costs} />
           </div>
           <div className="text-xl font-bold font-mono text-white tabular-nums">
             ${totalCosts >= 1000 ? `${(totalCosts / 1000).toFixed(1)}k` : totalCosts.toFixed(0)}
@@ -131,6 +298,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="flex items-center gap-1.5 mb-1">
             <Fuel className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Average MPG</span>
+            <InfoTooltip text={KPI_TOOLTIPS.average_mpg} />
           </div>
           <div className="text-xl font-bold font-mono text-white tabular-nums">
             {fleet_summary.avg_mpg != null ? fleet_summary.avg_mpg.toFixed(1) : '--'}
@@ -143,6 +311,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="flex items-center gap-1.5 mb-1">
             <Wrench className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Service Compliance</span>
+            <InfoTooltip text={KPI_TOOLTIPS.service_compliance} />
           </div>
           <div className={`text-xl font-bold font-mono tabular-nums ${complianceRate >= 80 ? 'text-green-400' : complianceRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
             {complianceRate.toFixed(1)}%
@@ -157,6 +326,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="flex items-center gap-1.5 mb-1">
             <CheckCircle className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Inspection Pass Rate</span>
+            <InfoTooltip text={KPI_TOOLTIPS.inspection_pass_rate} />
           </div>
           <div className={`text-xl font-bold font-mono tabular-nums ${inspPassRate >= 80 ? 'text-green-400' : inspPassRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
             {inspPassRate.toFixed(1)}%
@@ -167,7 +337,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
       </div>
 
-      {/* ═══ ROW 2: Maintenance Cost Trend + Fuel Economy Trend ═══ */}
+      {/* ROW 2: Maintenance Cost Trend + Fuel Economy Trend */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Maintenance Cost Trend (Bar Chart) */}
         <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
@@ -212,7 +382,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
       </div>
 
-      {/* ═══ ROW 3: Top Vehicles by Cost + Service Alerts ═══ */}
+      {/* ROW 3: Top Vehicles by Cost + Service Alerts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Vehicles by Cost */}
         <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
@@ -286,7 +456,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
       </div>
 
-      {/* ═══ ROW 4: Mileage Distribution + Fleet Status ═══ */}
+      {/* ROW 4: Mileage Distribution + Fleet Status */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Mileage Distribution (Bar Chart) */}
         <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
@@ -357,7 +527,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
       </div>
 
-      {/* ═══ ROW 5: Daily Fleet Utilization + Maintenance Forecast ═══ */}
+      {/* ROW 5: Daily Fleet Utilization + Maintenance Forecast */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Fleet Utilization (Area Chart) */}
         <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
@@ -459,7 +629,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
       </div>
 
-      {/* ═══ ROW 6: Quick Stats Grid ═══ */}
+      {/* ROW 6: Quick Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Avg Daily Miles */}
         <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
@@ -523,6 +693,303 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             </div>
           )}
         </div>
+      </div>
+
+      {/* ROW 7: Combined Cost Trend (Full Width) */}
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <TrendingUp className="w-3 h-3" /> Combined Cost Trend (12 Months)
+        </h4>
+        {costTrendChartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={costTrendChartData}>
+              <defs>
+                <linearGradient id="maintGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.6} />
+                  <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="fuelGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6} />
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+              <XAxis dataKey="month" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }} />
+              <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }}
+                tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+              <Tooltip
+                {...CHART_TOOLTIP_STYLE}
+                formatter={(value: any, name: string) => {
+                  const label = name === 'maintenance_cost' ? 'Maintenance' : name === 'fuel_cost' ? 'Fuel' : name;
+                  return [`$${Number(value).toFixed(0)}`, label];
+                }}
+              />
+              <Area type="monotone" dataKey="maintenance_cost" stackId="1" stroke="#1a5a9e" strokeWidth={2} fill="url(#maintGradient)" />
+              <Area type="monotone" dataKey="fuel_cost" stackId="1" stroke="#22c55e" strokeWidth={2} fill="url(#fuelGradient)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[220px] flex items-center justify-center text-[10px] text-rmpg-500">No cost trend data available</div>
+        )}
+        <div className="flex items-center gap-4 mt-2">
+          <div className="flex items-center gap-1.5 text-[8px]">
+            <div className="w-3 h-1.5 bg-[#1a5a9e] rounded-[1px]" />
+            <span className="text-rmpg-400">Maintenance</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[8px]">
+            <div className="w-3 h-1.5 bg-[#22c55e] rounded-[1px]" />
+            <span className="text-rmpg-400">Fuel</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ROW 8: Top Maintenance Issues + Vehicle Lifecycle */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Top Maintenance Issues (Horizontal Bar Chart) */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Wrench className="w-3 h-3" /> Top Maintenance Issues
+          </h4>
+          {top_issues && top_issues.length > 0 ? (
+            <div className="space-y-2">
+              {top_issues.map((issue, idx) => {
+                const maxCount = top_issues[0].count;
+                const pct = maxCount > 0 ? (issue.count / maxCount) * 100 : 0;
+                return (
+                  <div key={issue.type} className="space-y-0.5">
+                    <div className="flex items-center justify-between text-[9px]">
+                      <span className="text-rmpg-300">{MAINTENANCE_TYPE_LABELS[issue.type] || issue.type}</span>
+                      <span className="font-mono tabular-nums text-rmpg-400">
+                        {issue.count}x &middot; ${issue.total_cost >= 1000 ? `${(issue.total_cost / 1000).toFixed(1)}k` : (issue.total_cost || 0).toFixed(0)}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-[#0d1520] rounded-[1px] overflow-hidden">
+                      <div
+                        className="h-full rounded-[1px] transition-all duration-150"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: ISSUE_BAR_COLORS[idx] || '#1a5a9e',
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="h-[160px] flex items-center justify-center text-[10px] text-rmpg-500">No maintenance type data</div>
+          )}
+        </div>
+
+        {/* Vehicle Lifecycle Table */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Activity className="w-3 h-3" /> Vehicle Lifecycle
+          </h4>
+          {lifecycle.length > 0 ? (
+            <div className="overflow-x-auto max-h-[200px] overflow-y-auto">
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048] sticky top-0 bg-[#141e2b]">
+                    <th className="text-left py-1 pr-1">Vehicle</th>
+                    <th className="text-right py-1 pr-1 font-mono">Age</th>
+                    <th className="text-right py-1 pr-1 font-mono">Miles</th>
+                    <th className="text-right py-1 pr-1 font-mono">$/Year</th>
+                    <th className="text-right py-1 font-mono">Est. Life</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lifecycle.map((v) => {
+                    const lifeColor = v.estimated_remaining_life_years == null ? 'text-rmpg-400'
+                      : v.estimated_remaining_life_years < 1 ? 'text-red-400'
+                      : v.estimated_remaining_life_years < 3 ? 'text-amber-400'
+                      : 'text-green-400';
+                    return (
+                      <tr key={v.id} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                        <td className="py-1 pr-1">
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || '#6b7280' }} />
+                            <span className="font-mono font-bold text-white">{v.vehicle_number}</span>
+                          </div>
+                        </td>
+                        <td className="py-1 pr-1 text-right font-mono tabular-nums text-rmpg-300">{v.age_years}y</td>
+                        <td className="py-1 pr-1 text-right font-mono tabular-nums text-rmpg-300">
+                          {v.current_mileage > 0 ? `${(v.current_mileage / 1000).toFixed(0)}k` : '--'}
+                        </td>
+                        <td className="py-1 pr-1 text-right font-mono tabular-nums text-cyan-400">
+                          ${v.cost_per_year >= 1000 ? `${(v.cost_per_year / 1000).toFixed(1)}k` : v.cost_per_year}
+                        </td>
+                        <td className={`py-1 text-right font-mono font-bold tabular-nums ${lifeColor}`}>
+                          {v.estimated_remaining_life_years != null ? `${v.estimated_remaining_life_years}y` : '--'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="h-[160px] flex items-center justify-center text-[10px] text-rmpg-500">No lifecycle data available</div>
+          )}
+        </div>
+      </div>
+
+      {/* ROW 9: Vehicle Comparison Tool (Collapsible) */}
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px]">
+        <button
+          onClick={() => setCompareExpanded(!compareExpanded)}
+          className="w-full flex items-center justify-between p-3 hover:bg-[#0d1520] transition-colors duration-150"
+        >
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+            <Search className="w-3 h-3" /> Compare Vehicles
+          </h4>
+          {compareExpanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-rmpg-400" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-rmpg-400" />
+          )}
+        </button>
+        {compareExpanded && (
+          <div className="px-3 pb-3 space-y-3">
+            {/* Vehicle selector */}
+            <div>
+              <div className="text-[8px] text-rmpg-400 uppercase tracking-wider mb-1.5">
+                Select 2-5 vehicles to compare ({selectedIds.length} selected)
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {allVehicles.map((v) => {
+                  const isSelected = selectedIds.includes(v.id);
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => toggleVehicleSelection(v.id)}
+                      className={`px-2 py-1 text-[9px] font-mono rounded-[2px] border transition-colors duration-150
+                        ${isSelected
+                          ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white'
+                          : 'bg-[#0d1520] border-[#1e3048] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
+                        }`}
+                    >
+                      {v.vehicle_number}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={handleCompare}
+                  disabled={selectedIds.length < 2 || selectedIds.length > 5 || compareLoading}
+                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#1a5a9e] text-white border border-[#1a5a9e] hover:bg-[#2068b0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                >
+                  {compareLoading ? 'Loading...' : 'Compare'}
+                </button>
+                {selectedIds.length > 0 && (
+                  <button
+                    onClick={() => { setSelectedIds([]); setComparisonResults([]); }}
+                    className="px-2 py-1.5 text-[9px] text-rmpg-400 hover:text-white transition-colors duration-150"
+                  >
+                    <X className="w-3 h-3 inline mr-0.5" /> Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Comparison Results Table */}
+            {comparisonResults.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                      <th className="text-left py-1.5 pr-3 font-bold">Metric</th>
+                      {comparisonResults.map((v) => (
+                        <th key={v.id} className="text-right py-1.5 px-2 font-mono font-bold text-white">{v.vehicle_number}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Make/Model */}
+                    <tr className="border-b border-[#1e3048]/50">
+                      <td className="py-1.5 pr-3 text-rmpg-400">Make/Model</td>
+                      {comparisonResults.map((v) => (
+                        <td key={v.id} className="py-1.5 px-2 text-right text-rmpg-300">{v.make} {v.model} ({v.year})</td>
+                      ))}
+                    </tr>
+                    {/* Total Cost */}
+                    <tr className="border-b border-[#1e3048]/50">
+                      <td className="py-1.5 pr-3 text-rmpg-400">Total Cost</td>
+                      {comparisonResults.map((v) => {
+                        const best = getBestValue('total_cost', true);
+                        return (
+                          <td key={v.id} className={`py-1.5 px-2 text-right font-mono tabular-nums ${v.total_cost === best ? 'text-green-400 font-bold' : 'text-rmpg-300'}`}>
+                            ${v.total_cost >= 1000 ? `${(v.total_cost / 1000).toFixed(1)}k` : v.total_cost.toFixed(0)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {/* Cost/Mile */}
+                    <tr className="border-b border-[#1e3048]/50">
+                      <td className="py-1.5 pr-3 text-rmpg-400">Cost/Mile</td>
+                      {comparisonResults.map((v) => {
+                        const best = getBestValue('cost_per_mile', true);
+                        return (
+                          <td key={v.id} className={`py-1.5 px-2 text-right font-mono tabular-nums ${v.cost_per_mile === best ? 'text-green-400 font-bold' : 'text-rmpg-300'}`}>
+                            {v.cost_per_mile != null ? `$${v.cost_per_mile.toFixed(3)}` : '--'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {/* Avg MPG */}
+                    <tr className="border-b border-[#1e3048]/50">
+                      <td className="py-1.5 pr-3 text-rmpg-400">Avg MPG</td>
+                      {comparisonResults.map((v) => {
+                        const best = getBestValue('avg_mpg', false);
+                        return (
+                          <td key={v.id} className={`py-1.5 px-2 text-right font-mono tabular-nums ${v.avg_mpg === best ? 'text-green-400 font-bold' : 'text-rmpg-300'}`}>
+                            {v.avg_mpg != null ? v.avg_mpg.toFixed(1) : '--'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {/* Mileage */}
+                    <tr className="border-b border-[#1e3048]/50">
+                      <td className="py-1.5 pr-3 text-rmpg-400">Mileage</td>
+                      {comparisonResults.map((v) => (
+                        <td key={v.id} className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
+                          {v.current_mileage ? v.current_mileage.toLocaleString() : '--'}
+                        </td>
+                      ))}
+                    </tr>
+                    {/* Inspections */}
+                    <tr className="border-b border-[#1e3048]/50">
+                      <td className="py-1.5 pr-3 text-rmpg-400">Inspections</td>
+                      {comparisonResults.map((v) => {
+                        const best = getBestValue('inspection_pass_rate', false);
+                        return (
+                          <td key={v.id} className={`py-1.5 px-2 text-right font-mono tabular-nums ${v.inspection_pass_rate === best ? 'text-green-400 font-bold' : 'text-rmpg-300'}`}>
+                            {v.inspection_count > 0
+                              ? `${v.inspection_pass_rate?.toFixed(0) ?? '--'}% (${v.inspection_count})`
+                              : '--'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {/* Days Since Last Service */}
+                    <tr className="border-b border-[#1e3048]/50">
+                      <td className="py-1.5 pr-3 text-rmpg-400">Days Since Service</td>
+                      {comparisonResults.map((v) => {
+                        const best = getBestValue('days_since_last_service', true);
+                        return (
+                          <td key={v.id} className={`py-1.5 px-2 text-right font-mono tabular-nums ${v.days_since_last_service === best ? 'text-green-400 font-bold' : 'text-rmpg-300'}`}>
+                            {v.days_since_last_service != null ? `${v.days_since_last_service}d` : '--'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

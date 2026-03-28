@@ -1437,6 +1437,7 @@ export interface FleetAnalytics {
   }>;
   oldest_vehicle_year?: number | null;
   avg_daily_miles?: number;
+  top_issues?: Array<{ type: string; count: number; total_cost: number }>;
 }
 
 export interface FleetServiceAlert {
