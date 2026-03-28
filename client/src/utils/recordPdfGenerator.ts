@@ -975,7 +975,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.text('DESCRIPTION', lx, y);
     y += 3.5;
     doc.setFont('helvetica', 'normal');
-    y = addFormattedText(doc, data.description || '', lx, y, ffw);
+    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw);
     y += SPACING.MD;
     y = addThreeColumnFields(doc, [
       { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
