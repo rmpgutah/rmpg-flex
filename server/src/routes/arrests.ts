@@ -25,6 +25,8 @@ import {
   getCountyRecordCounts,
   discoverUtahSources,
   UTAH_COUNTY_DEFAULTS,
+  scheduleArrestSync,
+  stopArrestSync,
 } from '../utils/arrestScraper';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
@@ -540,7 +542,6 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
 // ── POST /poller/restart — Restart the arrest sync poller ────
 router.post('/poller/restart', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try {
-    const { stopArrestSync, scheduleArrestSync } = require('../utils/arrestScraper');
     stopArrestSync();
     scheduleArrestSync();
     res.json({ success: true, message: 'Arrest sync poller restarted' });
@@ -553,7 +554,6 @@ router.post('/poller/restart', requireRole('admin', 'manager'), (_req: Request, 
 // ── POST /poller/stop — Stop the arrest sync poller ────
 router.post('/poller/stop', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try {
-    const { stopArrestSync } = require('../utils/arrestScraper');
     stopArrestSync();
     res.json({ success: true, message: 'Arrest sync poller stopped' });
   } catch (err: any) {

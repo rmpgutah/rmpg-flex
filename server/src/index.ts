@@ -21,6 +21,7 @@ import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
+import { scheduleArrestSync } from './utils/arrestScraper';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -592,7 +593,6 @@ try {
 
     // Start arrest records auto-sync (JailBase API, hourly with exponential backoff)
     try {
-      const { scheduleArrestSync } = require('./utils/arrestScraper');
       scheduleArrestSync();
       console.log('[Arrests] Auto-sync scheduler started');
     } catch (err: any) {
