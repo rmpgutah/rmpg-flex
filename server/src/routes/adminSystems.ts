@@ -269,7 +269,7 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let processCount: number | null = null;
     try {
       const psOutput = execSync("ps aux --no-heading 2>/dev/null | wc -l || ps aux | wc -l", { encoding: 'utf-8', timeout: 3000 });
-      processCount = parseInt(psOutput.trim(), 10) || null;
+      const pid = parseInt(psOutput.trim(), 10); processCount = isNaN(pid) ? null : pid;
     } catch { /* ignore */ }
 
     // Read version from changelog

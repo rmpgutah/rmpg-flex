@@ -49,7 +49,7 @@ const bodycamStorage = multer.diskStorage({
     cb(null, subDir);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
+    const ext = path.extname(file.originalname || '').toLowerCase();
     cb(null, `${crypto.randomUUID()}${ext}`);
   },
 });

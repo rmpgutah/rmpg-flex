@@ -659,7 +659,7 @@ router.get('/imports', (req: Request, res: Response) => {
 
 function mapIpedTypeToExhibitType(ipedType: string): string {
   if (!ipedType) return 'other';
-  const t = ipedType.toLowerCase();
+  const t = (ipedType || '').toLowerCase();
   if (t.includes('image') || t.includes('photo') || t.includes('video') || t.includes('audio')) return 'digital';
   if (t.includes('document') || t.includes('pdf') || t.includes('text') || t.includes('office')) return 'document';
   if (t.includes('executable') || t.includes('application') || t.includes('database')) return 'digital';

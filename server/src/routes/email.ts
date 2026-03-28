@@ -65,7 +65,7 @@ function textToEmailHtml(text: string, signature?: string): string {
   escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
   escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, (_match, linkText, url) => {
     // Only allow safe URL schemes — block javascript:, data:, vbscript: etc.
-    const trimmedUrl = url.trim().toLowerCase();
+    const trimmedUrl = (url || '').trim().toLowerCase();
     if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('mailto:')) {
       // Escape URL for safe insertion into href attribute — prevents attribute injection
       const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -1000,7 +1000,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // De-duplicate by email
     const seen = new Set<string>();
     const unique = results.filter(r => {
-      const key = r.email.toLowerCase();
+      const key = (r.email || '').toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

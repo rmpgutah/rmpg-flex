@@ -152,7 +152,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
       
         LIMIT 1000
       `).all(shift_date, officer_id);
-    } catch (e) { console.warn('DAR auto-populate field_interviews query failed:', (e as Error).message); }
+    } catch (e) { console.error('DAR auto-populate field_interviews query failed:', (e as Error).message); }
 
     // ── Build auto-generated narrative ──
     const narrativeParts: string[] = [];

@@ -60,7 +60,7 @@ const storage = multer.diskStorage({
   },
   filename: (_req, file, cb) => {
     // Generate a unique filename while preserving extension
-    const ext = path.extname(file.originalname).toLowerCase();
+    const ext = path.extname(file.originalname || '').toLowerCase();
     const uniqueName = `${crypto.randomUUID()}${ext}`;
     cb(null, uniqueName);
   },

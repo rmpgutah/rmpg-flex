@@ -261,7 +261,7 @@ export function mountDownloadFileRoute(app: any) {
     const { filename } = req.params;
 
     // Security: only allow specific file extensions
-    const ext = path.extname(filename).toLowerCase();
+    const ext = path.extname(filename || '').toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       res.status(403).json({ error: 'Forbidden file type', code: 'FORBIDDEN_FILE_TYPE' });
       return;

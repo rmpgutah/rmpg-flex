@@ -80,7 +80,7 @@ function validateBearerToken(req: Request, res: Response): ApiKeyRow | null {
   }
 
   if (!row.is_active) {
-    res.status(403).json({ error: 'API key has been revoked.', code: 'API_KEY_HAS_BEEN' });
+    res.status(403).json({ error: 'API key has been revoked.', code: 'API_KEY_REVOKED' });
     return null;
   }
 
@@ -93,7 +93,7 @@ function validateBearerToken(req: Request, res: Response): ApiKeyRow | null {
   }
 
   if (!scopes.includes('service_request')) {
-    res.status(403).json({ error: 'API key does not have the required scope: service_request', code: 'API_KEY_DOES_NOT' });
+    res.status(403).json({ error: 'API key does not have the required scope: service_request', code: 'API_KEY_INSUFFICIENT_SCOPE' });
     return null;
   }
 

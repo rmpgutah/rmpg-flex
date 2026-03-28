@@ -321,7 +321,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     }
 
     // Fix 51: Normalize incident_type for consistent heatmap grouping (trim, lowercase)
-    const normalizedIncidentType = String(incident_type).trim().toLowerCase().replace(/\s+/g, '_');
+    const normalizedIncidentType = String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_');
 
     // Generate call number: YY-CFS#####
     const callNumber = generateCallNumber(db);
