@@ -887,30 +887,31 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Location
   y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
+    // Row 1: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
-    { const yL = addFieldPair(doc, 'Latitude', data.latitude != null ? String(data.latitude) : '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Longitude', data.longitude != null ? String(data.longitude) : '', rx, y, hfw);
-      y = Math.max(yL, yR); }
+    // Row 2: Latitude | Longitude | Dispatch Code (3 columns)
+    y = addThreeColumnFields(doc, [
+      { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
+      { label: 'Longitude', value: data.longitude != null ? String(data.longitude) : '' },
+      { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '' },
+    ], y);
+    // Row 3: Cross Street | Property (2 columns)
     { const yL = addFieldPair(doc, 'Cross Street', data.cross_street || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Property', data.property_name || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addThreeColumnFields(doc, [
-      { label: 'Building', value: data.location_building || '' },
-      { label: 'Floor', value: data.location_floor || '' },
-      { label: 'Suite/Room', value: data.location_room || '' },
-    ], y);
-    // Dispatch Code | Section ID | Zone ID | Beat ID — single row, 4 columns
-    if (data.dispatch_code || data.section_id || data.zone_id || data.beat_id) {
-      const qw = ffw / 4;
-      let maxY = y + SPACING.FIELD_ROW_ADVANCE;
-      const distFields = [
-        { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '--' },
-        { label: 'Section ID', value: data.section_id || '--' },
-        { label: 'Zone ID', value: data.zone_id || '--' },
-        { label: 'Beat ID', value: data.beat_id || '--' },
+    // Row 4: Building | Floor | Suite/Room | Section ID | Zone ID | Beat ID (6 columns)
+    { const sixW = ffw / 6;
+      const r4Fields = [
+        { label: 'Building', value: data.location_building || '' },
+        { label: 'Floor', value: data.location_floor || '' },
+        { label: 'Suite/Room', value: data.location_room || '' },
+        { label: 'Section ID', value: data.section_id || '' },
+        { label: 'Zone ID', value: data.zone_id || '' },
+        { label: 'Beat ID', value: data.beat_id || '' },
       ];
-      for (let i = 0; i < 4; i++) {
-        const fy = addFieldPair(doc, distFields[i].label, distFields[i].value, lx + i * qw, y, qw);
+      let maxY = y + SPACING.FIELD_ROW_ADVANCE;
+      for (let i = 0; i < 6; i++) {
+        const fy = addFieldPair(doc, r4Fields[i].label, r4Fields[i].value, lx + i * sixW, y, sixW);
         if (fy > maxY) maxY = fy;
       }
       y = maxY;

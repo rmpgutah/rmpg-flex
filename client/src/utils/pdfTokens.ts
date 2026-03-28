@@ -50,7 +50,7 @@ export const COLOR = {
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
-  SIZE_FIELD_VALUE:       8,     // Courier values inside field boxes
+  SIZE_FIELD_VALUE:       8.5,   // Courier values (slightly larger without box borders)
   SIZE_FIELD_LABEL:       5.5,   // Helvetica Bold labels above field boxes
   SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
