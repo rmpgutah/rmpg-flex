@@ -710,15 +710,13 @@ function callPriorityLabel(p: string): string {
 
 /** Format: MM/DD/YYYY @ HH:MM:SS AM/PM */
 /** Convert a date to Mountain Time components */
-function toMountain(d: Date): { mm: string; dd: string; yyyy: number; h: number; min: string; sec: string; ampm: string } {
+function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string; min: string; sec: string } {
   const mt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Denver' }));
   const mm = String(mt.getMonth() + 1).padStart(2, '0');
   const dd = String(mt.getDate()).padStart(2, '0');
   const yyyy = mt.getFullYear();
-  let h = mt.getHours();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return { mm, dd, yyyy, h, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0'), ampm };
+  const hh = String(mt.getHours()).padStart(2, '0');
+  return { mm, dd, yyyy, hh, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0') };
 }
 
 function fmtTimestamp(ts?: string): string {
@@ -726,8 +724,8 @@ function fmtTimestamp(ts?: string): string {
   try {
     const d = new Date(ts);
     if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy, h, min, sec, ampm } = toMountain(d);
-    return `${mm}/${dd}/${yyyy} @ ${String(h).padStart(2, '0')}:${min}:${sec} ${ampm}`;
+    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
+    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
   } catch { return ts; }
 }
 
@@ -742,14 +740,14 @@ function fmtDate(ts?: string | null): string {
   } catch { return ts; }
 }
 
-/** Format: MM/DD/YYYY @ HH:MM AM/PM */
+/** Format: MM/DD/YYYY @ HH:MM:SS (military time) */
 function fmtDateTime(ts?: string | null): string {
   if (!ts) return '';
   try {
     const d = new Date(ts);
     if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy, h, min, ampm } = toMountain(d);
-    return `${mm}/${dd}/${yyyy} @ ${String(h).padStart(2, '0')}:${min} ${ampm}`;
+    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
+    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
   } catch { return ts; }
 }
 
@@ -783,18 +781,18 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     reportDate: fmtTimestamp(data.created_at || ''),
   });
 
-  // Show linked incident number below header if attached
+  // Show linked incident number below header if attached — slim inline bar
   if (data.incident_number) {
     const cw = getContentWidth(doc);
     doc.setFillColor(15, 20, 28);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 6, 'F');
+    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 4.5, 'F');
     doc.setFont('courier', 'bold');
-    doc.setFontSize(6);
+    doc.setFontSize(5.5);
     doc.setTextColor(212, 160, 23);
-    doc.text('INCIDENT REPORT:', LAYOUT.PAGE_MARGIN + 2, y + 4);
+    doc.text('INCIDENT REPORT:', LAYOUT.PAGE_MARGIN + 2, y + 3);
     doc.setTextColor(255, 255, 255);
-    doc.text(sanitizePdfText(data.incident_number), LAYOUT.PAGE_MARGIN + 28, y + 4);
-    y += 7;
+    doc.text(sanitizePdfText(data.incident_number), LAYOUT.PAGE_MARGIN + 25, y + 3);
+    y += 5.5;
   }
 
   // ── Dispatch District Info Bar (gold columns — below header) ──
@@ -802,58 +800,38 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const cw = getContentWidth(doc);
     const barY = y;
     const hasContract = data.contract_id && data.incident_type === 'pso_client_request';
-    const barH = hasContract ? 18 : 10;
+    const barH = hasContract ? 13 : 8;
     doc.setFillColor(20, 25, 30);
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
-    doc.setDrawColor(212, 160, 23);
-    doc.setLineWidth(0.3);
-    doc.line(LAYOUT.PAGE_MARGIN, barY, LAYOUT.PAGE_MARGIN + cw, barY);
 
-    const colW = cw / 5;
+    const colW = cw / (hasContract ? 6 : 5);
     const fields = [
       { label: 'SECTION', value: data.section_name || '' },
       { label: 'ZONE', value: data.zone_name || '' },
       { label: 'BEAT', value: data.beat_name || '' },
       { label: 'AREA', value: data.beat_descriptor || '' },
       { label: 'CODE', value: data.dispatch_code || '' },
+      ...(hasContract ? [{ label: 'CONTRACT', value: data.contract_id || '' }] : []),
     ];
     fields.forEach((f, i) => {
-      const fx = LAYOUT.PAGE_MARGIN + (i * colW) + 3;
-      const maxW = colW - 5; // clip to column width minus padding
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(190, 190, 195);
-      doc.text(f.label, fx, barY + 3.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
+      const fx = LAYOUT.PAGE_MARGIN + (i * colW) + 2;
+      const maxW = colW - 4;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(4.5);
+      doc.setTextColor(150, 150, 155);
+      doc.text(f.label, fx, barY + 3);
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(6);
       doc.setTextColor(255, 255, 255);
-      // Clip text to fit within column width
-      const val = sanitizePdfText(f.value || '--');
-      // Clip to column width using word-aware measurement (avoid mid-word breaks)
-      let clipped = val;
+      let val = sanitizePdfText(f.value || '--');
       if (doc.getTextWidth(val) > maxW) {
-        // Truncate character-by-character until it fits, then add ellipsis
-        let truncated = val;
-        while (truncated.length > 0 && doc.getTextWidth(truncated + '...') > maxW) {
-          truncated = truncated.slice(0, -1);
-        }
-        clipped = truncated.length < val.length ? truncated + '...' : val;
+        while (val.length > 0 && doc.getTextWidth(val + '...') > maxW) val = val.slice(0, -1);
+        val = val + '...';
       }
-      doc.text(clipped, fx, barY + 7.5);
+      doc.text(val, fx, barY + 6.5);
     });
 
-    if (hasContract) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(140, 140, 140);
-      doc.text('CONTRACT ID', LAYOUT.PAGE_MARGIN + 3, barY + 12);
-      doc.setFont('courier', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(255, 255, 255);
-      doc.text(sanitizePdfText(data.contract_id || ''), LAYOUT.PAGE_MARGIN + 3, barY + 16);
-    }
-
-    y = barY + barH + 2;
+    y = barY + barH + 1.5;
   }
 
   // Classification
@@ -1260,22 +1238,25 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 10 + (unitCount * 6), prio);
     const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
     if (unitDetail && unitDetail.length > 0) {
-      const colPositions = [lx, lx + 25, lx + 70, lx + 110];
-      const tableHeaders = [
-        { label: 'CALL SIGN', x: colPositions[0] },
-        { label: 'OFFICER', x: colPositions[1] },
-        { label: 'BADGE #', x: colPositions[2] },
-        { label: 'ROLE', x: colPositions[3] },
-      ];
       // Assign role based on order added to call
       const UNIT_ROLES = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
-      const tableRows = unitDetail.map((u, idx) => [
-        u.call_sign || '',
-        u.officer_name || '',
-        u.badge_number || '',
-        (UNIT_ROLES[idx] || `Officer #${idx + 1}`).toUpperCase(),
-      ]);
-      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+      const qw = getContentWidth(doc) / 4;
+      for (let idx = 0; idx < unitDetail.length; idx++) {
+        const u = unitDetail[idx];
+        y = checkPageBreak(doc, y, 12);
+        const unitFields = [
+          { label: 'Call Sign', value: u.call_sign || '--' },
+          { label: 'Officer', value: u.officer_name || '--' },
+          { label: 'Badge #', value: u.badge_number || '--' },
+          { label: 'Role', value: UNIT_ROLES[idx] || `Officer #${idx + 1}` },
+        ];
+        let maxY = y + SPACING.FIELD_ROW_ADVANCE;
+        for (let i = 0; i < 4; i++) {
+          const fy = addFieldPair(doc, unitFields[i].label, unitFields[i].value, lx + i * qw, y, qw);
+          if (fy > maxY) maxY = fy;
+        }
+        y = maxY;
+      }
     } else if (data.assigned_units && data.assigned_units.length > 0) {
       y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
     }
@@ -3120,12 +3101,16 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const anyData = data as any;
     const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
-    const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    // Use call closed/cleared date if available, otherwise now — always include time with seconds
+    const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
+    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const _p2 = (n: number) => String(n).padStart(2, '0');
+    const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
       signatureImage: anyData._officerSignature || null,
       printedName: officerName,
       badgeNumber: badgeNum,
-      date: today,
+      date: sigDateStr,
     });
 
     const doc = generateRecordPdf(recordType, data);
@@ -3154,12 +3139,16 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const anyData = data as any;
     const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
-    const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    // Use call closed/cleared date if available, otherwise now — always include time with seconds
+    const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
+    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const _p2 = (n: number) => String(n).padStart(2, '0');
+    const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
       signatureImage: anyData._officerSignature || null,
       printedName: officerName,
       badgeNumber: badgeNum,
-      date: today,
+      date: sigDateStr,
     });
 
     const doc = generateRecordPdf(recordType, data);
