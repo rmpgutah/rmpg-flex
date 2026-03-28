@@ -107,8 +107,8 @@ export const SPACING = {
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height
-  SECTION_GAP:        0.8,   // Gap between sections
-  SECTION_CONTENT_PAD: 1,    // Gap from header bar to first content
+  SECTION_GAP:        1.5,   // Gap between sections
+  SECTION_CONTENT_PAD: 3.5,  // Gap from header bar to first content (consistent 2mm visual gap)
   SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   4,     // Value area height (no box, just label+value)
@@ -128,7 +128,7 @@ export const SPACING = {
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
   HEADER_HEIGHT:     16,     // Header bar
-  FOOTER_HEIGHT:     10,     // Footer with print margin safety
+  FOOTER_HEIGHT:     12,     // Footer with print margin safety (7mm minimum content + padding)
   HEADER_TOP:        5,      // Y-start of header bar
   CLASSIF_BAR_H:     4.5,    // Classification bar height
   SEAL_SIZE:         13,     // Compact logo

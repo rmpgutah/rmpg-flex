@@ -478,7 +478,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const baseBoxH = 4;        // Minimum value area height (no box, compact)
   const innerPad = 1;        // Horizontal padding
   const maxW = width - 2 * innerPad;
-  const lineStep = 2.8;      // Y-step per extra line of value text
+  const lineStep = FONT.SIZE_FIELD_VALUE * 0.38 + 0.3; // Y-step per extra line — matches addFormattedText
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
@@ -495,7 +495,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
-  const displayText = isEmpty ? '--' : sanitized.toUpperCase();
+  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
@@ -919,17 +919,22 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const primaryRgb = hexToRgb(brand.primary_color);
 
   // Footer text position — pushed up from edge for print margin safety
-  const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 3;
-  const textY = barY + 4.5;
+  const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 2;
+  const textY = barY + 5;
+
+  // Thin accent line above footer
+  doc.setDrawColor(...COLOR.BORDER_TABLE);
+  doc.setLineWidth(BORDER.ACCENT_FOOTER);
+  doc.line(LAYOUT.PAGE_MARGIN, barY, LAYOUT.PAGE_MARGIN + cw, barY);
 
   // Left: Form # + INTERNAL USE ONLY — bold, readable
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
+  doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
   doc.text(leftParts.join('  |  '), LAYOUT.PAGE_MARGIN, textY);
 
-  // Right: Page X of Y
+  // Right: Page X of Y — bold
   doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - LAYOUT.PAGE_MARGIN, textY, { align: 'right' });
 }
 
@@ -946,7 +951,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = fontSize * 0.38 + 0.6;
+  const lineH = fontSize * 0.38 + 0.3;
   const paragraphGap = SPACING.MD;
 
   const paragraphs = text.split(/\n\n+/);
@@ -997,7 +1002,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
   const text = sanitizePdfText(rawText);
-  const lineH = 2.8; // Match addFieldPair lineStep for consistent line spacing
+  const lineH = fontSize * 0.38 + 0.3; // Consistent line spacing across all text renderers
   const paragraphGap = SPACING.MD;
   // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
   const safeMaxWidth = maxWidth - 2;
@@ -1157,7 +1162,7 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = 2.8; // Match addFieldPair/addFormattedText lineStep
+  const lineH = fontSize * 0.38 + 0.3; // Match addFormattedText lineStep
   const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
@@ -1391,7 +1396,7 @@ export function addAttachmentsSection(
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
   const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 3) {
+  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 5) {
     doc.addPage();
     addConfidentialWatermark(doc);
 
@@ -1933,13 +1938,13 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         onPageBreak: formSectionPageBreak,
         rows: [
           { cells: [
-            { label: 'SCENE SAFETY', value: data.scene_safety || '--', ratio: 1 },
-            { label: 'WEATHER', value: data.weather_conditions || '--', ratio: 1 },
-            { label: 'LIGHTING', value: data.lighting_conditions || '--', ratio: 1 },
+            { label: 'SCENE SAFETY', value: data.scene_safety || 'N/A', ratio: 1 },
+            { label: 'WEATHER', value: data.weather_conditions || 'N/A', ratio: 1 },
+            { label: 'LIGHTING', value: data.lighting_conditions || 'N/A', ratio: 1 },
           ]},
           { cells: [
             { label: 'WEAPONS INVOLVED', value: data.weapons_involved || 'None', ratio: 1 },
-            { label: 'DIRECTION OF TRAVEL', value: data.direction_of_travel || '--', ratio: 1 },
+            { label: 'DIRECTION OF TRAVEL', value: data.direction_of_travel || 'N/A', ratio: 1 },
           ]},
         ],
         y,
@@ -1961,7 +1966,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
           { label: 'INJURY DESCRIPTION', value: data.injury_description || '', ratio: 2 },
         ]},
         { cells: [
-          { label: 'DAMAGE ESTIMATE', value: data.damage_estimate ? '$' + data.damage_estimate : '--', ratio: 1 },
+          { label: 'DAMAGE ESTIMATE', value: data.damage_estimate ? '$' + data.damage_estimate : 'N/A', ratio: 1 },
           { label: 'DAMAGE DESCRIPTION', value: data.damage_description || '', ratio: 2 },
         ]},
       ],

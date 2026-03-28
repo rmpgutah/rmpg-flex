@@ -796,17 +796,17 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
 
     const distFields = [
-      { label: 'SECTION', value: data.section_name || '--' },
-      { label: 'ZONE', value: data.zone_name || '--' },
-      { label: 'BEAT', value: data.beat_id || '--' },
-      { label: 'AREA', value: data.beat_descriptor || '--' },
-      { label: 'CODE', value: data.dispatch_code || '--' },
-      ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || '--' }] : []),
+      { label: 'SECTION', value: data.section_name || 'N/A' },
+      { label: 'ZONE', value: data.zone_name || 'N/A' },
+      { label: 'BEAT', value: data.beat_id || 'N/A' },
+      { label: 'AREA', value: data.beat_descriptor || 'N/A' },
+      { label: 'CODE', value: data.dispatch_code || 'N/A' },
+      ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
     ];
 
     // Dynamic column widths — measure all values, no truncation
     const dValSize = 6; // compact font for district bar
-    const dPad = 2; // tight padding — columns close together
+    const dPad = 3; // padding between columns — enough to prevent truncation
     doc.setFont('courier', 'normal');
     doc.setFontSize(dValSize);
     // Measure each column's natural width
@@ -1038,9 +1038,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
           const u = unitDetail2[idx];
           y = checkPageBreak(doc, y, 12);
           const uFields = [
-            { label: 'Call Sign', value: u.call_sign || '--' },
-            { label: 'Officer', value: u.officer_name || '--' },
-            { label: 'Badge #', value: u.badge_number || '--' },
+            { label: 'Call Sign', value: u.call_sign || 'N/A' },
+            { label: 'Officer', value: u.officer_name || 'N/A' },
+            { label: 'Badge #', value: u.badge_number || 'N/A' },
             { label: 'Role', value: UNIT_ROLES2[idx] || `Officer #${idx + 1}` },
           ];
           let maxUY = y + SPACING.FIELD_ROW_ADVANCE;
@@ -1057,9 +1057,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
   }
 
-  // Mileage — single row: Vehicle ID | Starting | Ending | Total
+  // Mileage — single row: Vehicle ID | Starting | Ending | Total (keep on current page if possible)
   if (data.starting_mileage != null || data.ending_mileage != null || data.responding_vehicle_id) {
-    y = checkPageBreak(doc, y, 12, prio);
+    y = checkPageBreak(doc, y, 10, prio);
     const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
     const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
       ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
@@ -1067,10 +1067,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const qw = ffw / 4;
     let maxY = y + SPACING.FIELD_ROW_ADVANCE;
     const mileFields = [
-      { label: 'Vehicle ID', value: data.responding_vehicle_id || '--' },
-      { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : '--' },
-      { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : '--' },
-      { label: 'Total Miles', value: totalMiles || '--' },
+      { label: 'Vehicle ID', value: data.responding_vehicle_id || 'N/A' },
+      { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : 'N/A' },
+      { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : 'N/A' },
+      { label: 'Total Miles', value: totalMiles || 'N/A' },
     ];
     for (let i = 0; i < 4; i++) {
       const fy = addFieldPair(doc, mileFields[i].label, mileFields[i].value, lx + i * qw, y, qw);
@@ -1200,12 +1200,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const visit = data.visit_history[vi];
       // Ensure each visit entry has page break checking (need ~14mm per entry)
       y = checkPageBreak(doc, y, 16, prio);
-      // Consistent spacing between visit entries with separator line
+      // Compact spacing between visit entries with subtle separator line
       if (vi > 0) {
         doc.setDrawColor(...COLOR.BORDER_TABLE);
         doc.setLineWidth(BORDER.TABLE_ROW);
         doc.line(lx, y, lx + ffw, y);
-        y += SPACING.SECTION_GAP;
+        y += SPACING.SM;
       }
 
       // Visit header line
@@ -1233,7 +1233,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const unitsW = doc.getTextWidth(unitsText);
         doc.text(unitsText, lx + ffw - unitsW, y);
       }
-      y += SPACING.SM + 1;
+      y += SPACING.SM;
 
       // Timestamps row
       const timeFields: string[] = [];
@@ -1248,7 +1248,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.SM + 0.5;
+        y += SPACING.SM;
       }
 
       // Mileage row (if present)
@@ -1265,7 +1265,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.SM + 0.5;
+        y += SPACING.SM;
       }
 
       // Disposition
@@ -1274,10 +1274,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
-        y += SPACING.SM + 0.5;
+        y += SPACING.SM;
       }
-
-      y += SPACING.XS;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1302,7 +1300,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Action Taken', data.action_taken || '--', lx, y, ffw);
+    y = addFieldPair(doc, 'Action Taken', data.action_taken || 'N/A', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -1376,16 +1374,17 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
     // Render notes: DATE/TIME on left, AUTHOR on right, content below — no separator lines
-    y += SPACING.LG;  // Space after sub-header
+    y += SPACING.MD;  // Space after sub-header
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
       y = checkPageBreak(doc, y, 10, prio);
+      // Reset all draw state before each note to prevent stray artifacts
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0);
       // Date/time on far left, author on far right — same line, no underline
       doc.setFont('courier', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.setDrawColor(255, 255, 255); // Reset draw color to prevent stray lines
-      doc.setLineWidth(0);
       const tsText = fmtTimestamp(n.created_at).toUpperCase();
       doc.text(tsText, lx, y);
       const authorName = (n.author || 'System').toUpperCase();
@@ -1398,7 +1397,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
+      // Compact gap between notes entries
+      if (ni < data.notes.length - 1) y += SPACING.MD;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1637,10 +1639,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const warrantRows = data.warrants.map(w => [
-      w.warrant_number || '--',
+      w.warrant_number || 'N/A',
       titleCase(w.type || ''),
       titleCase(w.status || ''),
-      w.charge_description || '--',
+      w.charge_description || 'N/A',
       titleCase(w.offense_level || ''),
       fmtDate(w.date_issued),
     ]);
@@ -1671,7 +1673,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const incidentRows = data.incidents.map(inc => [
-      inc.incident_number || '--',
+      inc.incident_number || 'N/A',
       titleCase((inc.incident_type || '').replace(/_/g, ' ')),
       titleCase(inc.role || ''),
       titleCase(inc.status || ''),
@@ -1703,10 +1705,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const citationRows = data.citations.map(c => [
-      c.citation_number || '--',
+      c.citation_number || 'N/A',
       titleCase(c.type || ''),
       titleCase(c.status || ''),
-      c.violation_description || c.statute_citation || '--',
+      c.violation_description || c.statute_citation || 'N/A',
       fmtDate(c.violation_date),
     ]);
     y = addTableWithShading(
@@ -1735,10 +1737,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
     });
     const callRows = data.calls.map(c => [
-      c.call_number || '--',
+      c.call_number || 'N/A',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
       (c.status || '').toUpperCase(),
-      c.location || '--',
+      c.location || 'N/A',
       fmtDate(c.created_at),
     ]);
     y = addTableWithShading(
@@ -1773,10 +1775,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const crCw = getContentWidth(doc);
     const crRows = data.criminal_records.map(r => [
       (r.record_type || '').replace(/_/g, ' ').toUpperCase(),
-      r.offense || '--',
-      (r.offense_level || '').toUpperCase() || '--',
-      r.case_number || '--',
-      r.disposition || '--',
+      r.offense || 'N/A',
+      (r.offense_level || '').toUpperCase() || 'N/A',
+      r.case_number || 'N/A',
+      r.disposition || 'N/A',
       fmtDate(r.offense_date),
     ]);
     y = addTableWithShading(
@@ -1818,18 +1820,18 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       cy += 7;
 
       // Row 1: Offense + Level
-      { const yL = addFieldPair(doc, 'Offense', r.offense || '--', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Offense Level', (r.offense_level || '--').toUpperCase(), rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Offense', r.offense || 'N/A', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Offense Level', (r.offense_level || 'N/A').toUpperCase(), rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       // Row 2: Statute + Case Number
-      { const yL = addFieldPair(doc, 'Statute', r.statute || '--', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Case Number', r.case_number || '--', rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Statute', r.statute || 'N/A', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Case Number', r.case_number || 'N/A', rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       // Row 3: Agency + Jurisdiction
-      { const yL = addFieldPair(doc, 'Agency', r.agency || '--', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Jurisdiction', r.jurisdiction || '--', rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Agency', r.agency || 'N/A', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Jurisdiction', r.jurisdiction || 'N/A', rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       // Row 4: Offense Date + Disposition Date
@@ -1838,8 +1840,8 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
         cy = Math.max(yL, yR); }
 
       // Row 5: Disposition + Sentence
-      { const yL = addFieldPair(doc, 'Disposition', r.disposition || '--', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Sentence', r.sentence || '--', rx, cy, hfw);
+      { const yL = addFieldPair(doc, 'Disposition', r.disposition || 'N/A', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Sentence', r.sentence || 'N/A', rx, cy, hfw);
         cy = Math.max(yL, yR); }
 
       return cy;
