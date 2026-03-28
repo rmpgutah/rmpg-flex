@@ -578,9 +578,9 @@ export function drawNibrsHeader(
   // Sub-header row: Form number (left) + Report date (right)
   y += 1;
   if (config.formNumber || config.reportDate) {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
-    doc.setTextColor(...COLOR.TEXT_MUTED);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
     if (config.formNumber) {
       doc.text(config.formNumber, margin + 2, y + 3);
     }

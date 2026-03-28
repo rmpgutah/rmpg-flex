@@ -791,8 +791,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
     const numCols = hasContract ? 6 : 5;
     const barH = 9;
-    doc.setFillColor(20, 25, 30);
-    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
+    // White background with thin border (matches field box style)
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.setLineWidth(BORDER.FIELD);
+    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH);
 
     const distFields = [
       { label: 'SECTION', value: data.section_name || '--' },
@@ -804,16 +806,16 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     ];
 
     // Dynamic column widths — tight fit, Area gets remaining space
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(6.5);
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     const dPad = 4; // left+right padding per column
     // Measure natural width needed for each field (value or label, whichever wider)
     const naturalWidths = distFields.map((f, idx) => {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(4.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       const labelW = doc.getTextWidth(f.label);
-      doc.setFont('courier', 'bold');
-      doc.setFontSize(6.5);
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       const valW = doc.getTextWidth(sanitizePdfText(f.value));
       // For AREA (index 3), don't cap — let it take remaining space
       if (idx === 3) return 999; // placeholder, will be computed below
@@ -830,13 +832,13 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const fw = finalWidths[i];
       const fx = colX + 2;
       const maxW = fw - 4;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(4.5);
-      doc.setTextColor(160, 160, 165);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(f.label, fx, barY + 3);
-      doc.setFont('courier', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(255, 255, 255);
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       let val = sanitizePdfText(f.value);
       if (doc.getTextWidth(val) > maxW) {
         while (val.length > 0 && doc.getTextWidth(val + '...') > maxW) val = val.slice(0, -1);
