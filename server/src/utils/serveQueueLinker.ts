@@ -114,18 +114,13 @@ export function createServeQueueFromCall(db: any, call: any, userId?: number): n
 
   const serveJobId = Number(info.lastInsertRowid);
 
-  // 9. Update the call's activity log
+  // 9. Log to activity_log table (not a column on calls_for_service)
   try {
-    const activities = JSON.parse(call.activity_log || '[]');
-    activities.push({
-      action: 'sent_to_serve_queue',
-      timestamp: now,
-      user_id: userId ?? null,
-      details: `Auto-sent to serve queue (ID: ${serveJobId})`,
-    });
-    db.prepare('UPDATE calls_for_service SET activity_log = ? WHERE id = ?').run(JSON.stringify(activities), call.id);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'sent_to_serve_queue', 'call', ?, ?, 'system')`).run(
+      userId ?? null, call.id, `Auto-sent to serve queue (ID: ${serveJobId})`);
   } catch (logErr) {
-    console.error('[ServeQueueLinker] Failed to update activity_log:', logErr instanceof Error ? logErr.message : logErr);
+    console.error('[ServeQueueLinker] Failed to insert activity_log:', logErr instanceof Error ? logErr.message : logErr);
   }
 
   // 10. Notify portal of new serve entry (fire-and-forget)

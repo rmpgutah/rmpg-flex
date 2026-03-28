@@ -946,7 +946,7 @@ export default function DispatchPage() {
       }
       try {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
-        if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings : []);
+        if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings.filter((w: any) => typeof w?.label === 'string') : []);
       } catch { if (!cancelled) setCallWarnings([]); }
       // Fetch serve queue link for PSO calls
       if (selectedCall.incident_type === 'pso_client_request') {
