@@ -90,17 +90,14 @@ export function drawFormCell(
   // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
   if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
-  // Cell border
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, w, h);
+  // No cell border — clean borderless style matching CFS report
 
-  // Label (tiny, Helvetica, gray — inside cell top-left)
+  // Label (Helvetica Bold, dark gray — above value)
   const labelBaseY = y + pad + 1.2;
   if (cell.label) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(cell.label.toUpperCase(), x + pad, labelBaseY);
   }
 
@@ -140,12 +137,13 @@ export function drawFormCell(
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
     const maxW = w - 2 * pad;
 
+    const displayVal = cell.value.toUpperCase();
     if (cell.align === 'center') {
-      doc.text(cell.value, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
+      doc.text(displayVal, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
     } else if (cell.align === 'right') {
-      doc.text(cell.value, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
+      doc.text(displayVal, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
     } else {
-      doc.text(cell.value, x + pad, valueY, { maxWidth: maxW });
+      doc.text(displayVal, x + pad, valueY, { maxWidth: maxW });
     }
   }
 }
@@ -197,12 +195,7 @@ export function drawFormGrid(
     curY = drawFormRow(doc, row.cells, x, curY, totalW, h);
   }
 
-  // Bold outer border around entire grid
-  if (opts?.outerBorder !== false) {
-    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-    doc.setLineWidth(BORDER.FORM_GRID_OUTER);
-    doc.rect(x, startY, totalW, curY - startY);
-  }
+  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
@@ -464,9 +457,7 @@ export function drawFormSection(
   if (useBanner) {
     // Enclosing section border around entire section (banner + grid + afterGrid)
     const totalH = curY - sectionStartY;
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(gridX, sectionStartY, gridW, totalH);
+    // No enclosing section border — clean borderless style
   } else {
     // Draw sidebar tab spanning the full section height (legacy mode)
     const sectionH = curY - sectionStartY;
