@@ -2476,13 +2476,13 @@ export default function EmailPage() {
                 <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (
                 <iframe ref={iframeRef} onLoad={handleIframeLoad}
-                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
+                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none';"><style>
                     body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0d1520; margin: 16px; line-height: 1.6; word-wrap: break-word; }
                     a { color: #3b82f6; text-decoration: underline; } a:hover { color: #60a5fa; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
                     td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #1e3048; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
                     pre { background: #141e2b; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #1e3048; margin: 16px 0; }
-                  </style></head><body>${fullMessage.bodyHtml}</body></html>`}
-                  sandbox="allow-popups allow-popups-to-navigate allow-same-origin" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
+                  </style></head><body>${fullMessage.bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/on\w+\s*=/gi, 'data-blocked=')}</body></html>`}
+                  className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
               ) : (
                 <div className="p-4 text-xs text-rmpg-400 whitespace-pre-wrap font-mono">{fullMessage.bodyPreview}</div>
               )}
