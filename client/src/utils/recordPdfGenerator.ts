@@ -1375,29 +1375,33 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   if (data.notes && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
-    const noteRows = data.notes.map(n => [
-      fmtTimestamp(n.created_at),
-      n.author || '',
-      n.content || '',
-    ]);
-    y = addTableWithShading(
-      doc,
-      [
-        { label: 'DATE/TIME', x: LAYOUT.PAGE_MARGIN + 5 },
-        { label: 'AUTHOR', x: LAYOUT.PAGE_MARGIN + 48 },
-        { label: 'NOTE', x: LAYOUT.PAGE_MARGIN + 82 },
-      ],
-      noteRows,
-      y,
-      [LAYOUT.PAGE_MARGIN + 5, LAYOUT.PAGE_MARGIN + 48, LAYOUT.PAGE_MARGIN + 82],
-      { lightHeader: true },
-    );
+    // Render notes as borderless field-pair rows matching the rest of the document
+    for (let ni = 0; ni < data.notes.length; ni++) {
+      const n = data.notes[ni];
+      y = checkPageBreak(doc, y, 10, prio);
+      // Separator line between entries (not before the first)
+      if (ni > 0) {
+        doc.setDrawColor(...COLOR.BORDER_FIELD);
+        doc.setLineWidth(0.15);
+        doc.line(lx, y, lx + ffw, y);
+        y += SPACING.SM;
+      }
+      // Timestamp + author on one line
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      const authorText = `${fmtTimestamp(n.created_at)}  |  ${(n.author || 'System').toUpperCase()}`;
+      doc.text(authorText, lx, y);
+      y += 3;
+      // Note content
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
+      y += SPACING.SM;
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
-
-  // Narrative — add gap after notes table to prevent header overlap
-  y += SPACING.SM;
-  y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, prio);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
