@@ -122,11 +122,11 @@ export function mapDbCall(row: any): CallForService {
     process_service_type: row.process_service_type || undefined,
     process_served_to: row.process_served_to || undefined,
     process_served_address: row.process_served_address || undefined,
-    process_attempts: row.process_attempts || undefined,
+    process_attempts: row.process_attempts ?? undefined,
     process_served_at: row.process_served_at || undefined,
     process_service_result: row.process_service_result || undefined,
     // Damage
-    damage_estimate: row.damage_estimate || undefined,
+    damage_estimate: row.damage_estimate ?? undefined,
     damage_description: row.damage_description || undefined,
     // Resolution
     action_taken: row.action_taken || undefined,
