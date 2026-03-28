@@ -50,8 +50,8 @@ export const COLOR = {
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
-  SIZE_FIELD_VALUE:       8.5,   // Courier values (slightly larger without box borders)
-  SIZE_FIELD_LABEL:       5.5,   // Helvetica Bold labels above field boxes
+  SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
+  SIZE_FIELD_LABEL:       5,     // Helvetica Bold labels above field boxes
   SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
   SIZE_FOOTER_PRIMARY:    6,     // Footer form #, page #
@@ -99,20 +99,20 @@ export const BORDER = {
 // ── Spacing Tokens (tighter throughout) ──────────────────────
 
 export const SPACING = {
-  XS:                 0.2,   // Micro padding
-  SM:                 0.8,   // Small gap
-  MD:                 1.5,   // Base unit
-  LG:                 3,     // Line height
-  XL:                 3.5,   // Generous gap
+  XS:                 0.1,   // Micro padding
+  SM:                 0.5,   // Small gap
+  MD:                 1,     // Base unit
+  LG:                 2,     // Line height
+  XL:                 2.5,   // Generous gap
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height
-  SECTION_GAP:        1.5,   // Gap between sections
-  SECTION_CONTENT_PAD: 3.5,  // Gap from header bar to first content (consistent 2mm visual gap)
-  SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border
+  SECTION_GAP:        0.8,   // Gap between sections (tight)
+  SECTION_CONTENT_PAD: 2,    // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  0.3,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   4,     // Value area height (no box, just label+value)
-  FIELD_ROW_ADVANCE:  4.5,   // Y-advance after field row
+  FIELD_ROW_HEIGHT:   3.5,   // Value area height (no box, just label+value)
+  FIELD_ROW_ADVANCE:  3.8,   // Y-advance after field row
 
   SIGNATURE_BOX_H:    25,    // Signature block total height
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
@@ -128,7 +128,7 @@ export const SPACING = {
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
   HEADER_HEIGHT:     16,     // Header bar
-  FOOTER_HEIGHT:     12,     // Footer with print margin safety (7mm minimum content + padding)
+  FOOTER_HEIGHT:     9,      // Footer with print margin safety
   HEADER_TOP:        5,      // Y-start of header bar
   CLASSIF_BAR_H:     4.5,    // Classification bar height
   SEAL_SIZE:         13,     // Compact logo
