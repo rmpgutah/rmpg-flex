@@ -922,14 +922,20 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Scene Conditions — right after Incident Location (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
   y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
+    // All 4 fields in one row
+    const scW = ffw / 4;
+    const scFields = [
       { label: 'Weather', value: data.weather_conditions || '' },
       { label: 'Lighting', value: data.lighting_conditions || '' },
-      { label: 'Weapons Involved', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'None' : data.weapons_involved },
-    ], y);
-    if (data.scene_safety) {
-      y = addFieldPair(doc, 'Scene Safety / Hazards', data.scene_safety, lx, y, ffw);
+      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'None' : data.weapons_involved },
+      { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
+    ];
+    let maxScY = y + SPACING.FIELD_ROW_ADVANCE;
+    for (let i = 0; i < 4; i++) {
+      const fy = addFieldPair(doc, scFields[i].label, scFields[i].value, lx + i * scW, y, scW);
+      if (fy > maxScY) maxScY = fy;
     }
+    y = maxScY;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
