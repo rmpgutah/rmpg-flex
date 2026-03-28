@@ -1097,6 +1097,7 @@ body.fx-noise::after {
   }
 
   .panic-overlay {
+    -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
   }
 
@@ -1425,6 +1426,7 @@ body.fx-noise::after {
   inset: 0;
   z-index: 9998;
   background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -1593,7 +1595,8 @@ body.fx-noise::after {
   top: 48px; /* below mobile header */
   left: 0;
   width: 20px;
-  height: calc(100vh - 48px);
+  height: calc(100dvh - 48px);
+  height: calc(100vh - 48px); /* fallback for older browsers */
   z-index: 35;
   touch-action: pan-y;
 }
@@ -3159,4 +3162,91 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
 @keyframes strobe {
   0%, 100% { opacity: 0; }
   50% { opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   iOS Safari Fixes
+   Addresses: 100vh URL bar overlap, backdrop-filter prefix,
+   fixed element rendering, safe-area insets, touch callout,
+   rubber-banding, and input zoom prevention.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Safe area inset CSS custom properties (for notched iPhones) */
+:root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+}
+
+/* iOS-specific overrides (detects iOS Safari via -webkit-touch-callout) */
+@supports (-webkit-touch-callout: none) {
+  /* Fix min-h-screen: iOS Safari 100vh includes the URL bar */
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+
+  /* Prevent rubber-banding on fixed-position elements */
+  .fixed {
+    -webkit-transform: translateZ(0);
+  }
+
+  /* Prevent iOS text size adjust on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Prevent long-press callout on interactive elements */
+  button, a, [role="button"] {
+    -webkit-touch-callout: none;
+  }
+
+  /* Ensure momentum scrolling on overflow containers */
+  .overflow-y-auto,
+  .overflow-auto,
+  .overflow-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent iOS auto-zoom on input focus (font-size < 16px triggers zoom) */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="number"],
+  input[type="date"],
+  input[type="datetime-local"],
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+
+  /* Ensure backdrop-filter works with -webkit- prefix (Tailwind classes) */
+  .backdrop-blur-sm {
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .backdrop-blur-md,
+  .backdrop-blur {
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .backdrop-blur-lg {
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .backdrop-blur-xl {
+    -webkit-backdrop-filter: blur(24px);
+  }
+}
+
+/* Desktop-only hover effects — prevent sticky hover on touch devices */
+@media (hover: hover) and (pointer: fine) {
+  .panel-hover-glow:hover {
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+}
+@media (hover: none) {
+  .panel-hover-glow:hover {
+    box-shadow: none;
+  }
 }

@@ -547,6 +547,7 @@ export default function OfflineMapFallback({
           background: 'rgba(6, 12, 20, 0.95)',
           border: '1px solid #f59e0b40',
           borderRadius: 2,
+          WebkitBackdropFilter: 'blur(4px)',
           backdropFilter: 'blur(4px)',
         }}
       >

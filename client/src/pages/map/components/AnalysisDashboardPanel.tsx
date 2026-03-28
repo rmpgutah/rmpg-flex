@@ -100,7 +100,7 @@ export default function AnalysisDashboardPanel({
       className="panel-beveled rounded-sm flex flex-col overflow-hidden transition-all duration-200 ease-out shadow-lg backdrop-blur-sm"
       style={{
         width: 320,
-        maxHeight: 'calc(100vh - 160px)',
+        maxHeight: 'calc(100dvh - 160px)',
         background: '#141e2b',
         border: '1px solid #1e2a3a',
       }}

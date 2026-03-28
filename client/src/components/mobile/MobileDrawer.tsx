@@ -339,7 +339,7 @@ export default function MobileDrawer({
         </div>
 
         {/* ── Navigation Groups ── */}
-        <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+        <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100dvh - 200px)' }}>
           {NAV_GROUPS.map((group) => {
             const isClientViewer = user?.role === 'client_viewer';
             const visibleItems = group.items.filter((item) => {
