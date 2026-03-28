@@ -1412,11 +1412,44 @@ export interface FleetAnalytics {
   fleet_summary: {
     total_vehicles: number;
     avg_mileage: number;
+    avg_mpg: number | null;
     total_maintenance_cost: number;
     total_fuel_cost: number;
     vehicles_needing_service: number;
     inspections_failing: number;
   };
+  cost_per_mile_ranking?: Array<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    current_mileage: number; maintenance_cost: number; fuel_cost: number;
+    total_cost: number; cost_per_mile: number | null;
+  }>;
+  service_compliance?: { compliant: number; overdue: number; rate: number };
+  inspection_pass_rate?: { total: number; passed: number; failed: number; rate: number };
+  fuel_economy_ranking?: Array<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    avg_mpg: number; total_gallons: number; total_miles: number;
+  }>;
+  utilization?: { assigned: number; unassigned: number; rate: number };
+}
+
+export interface FleetServiceAlert {
+  vehicle_id: number;
+  vehicle_number: string;
+  make: string;
+  model: string;
+  year: number;
+  issue: string;
+  due_date: string;
+  severity: 'critical' | 'warning';
+}
+
+export interface FleetServiceAlerts {
+  overdue_service: FleetServiceAlert[];
+  upcoming_service: FleetServiceAlert[];
+  expired_registration: FleetServiceAlert[];
+  expired_insurance: FleetServiceAlert[];
+  failed_inspections: FleetServiceAlert[];
+  all_alerts: FleetServiceAlert[];
 }
 
 // --- Record Alerts ---

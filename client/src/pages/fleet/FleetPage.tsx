@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
-  Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2,
+  Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2, DollarSign, Fuel,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
@@ -788,28 +788,41 @@ export default function FleetPage() {
           <div className="h-8 w-px bg-rmpg-600 flex-shrink-0" />
 
           {/* Quick Stats */}
-          <div className="flex items-center gap-3 text-[10px] font-mono">
-            <div className="flex items-center gap-1.5" title="Due for Service">
+          <div className="flex items-center gap-3 text-[10px] font-mono flex-wrap">
+            <div className="flex items-center gap-1.5" title="In Service / Total">
+              <Car className="w-3.5 h-3.5 text-green-400" />
+              <span className="text-rmpg-400">Fleet:</span>
+              <span className="font-bold text-green-400">{statusCounts['in_service'] || 0}</span>
+              <span className="text-rmpg-500">/ {vehicles.length}</span>
+            </div>
+            <div className="flex items-center gap-1.5" title="Average Fleet MPG">
+              <Fuel className="w-3.5 h-3.5 text-green-400" />
+              <span className="text-rmpg-400">MPG:</span>
+              <span className="font-bold text-green-400">{fleetAnalytics?.fleet_summary?.avg_mpg != null ? fleetAnalytics.fleet_summary.avg_mpg.toFixed(1) : '--'}</span>
+            </div>
+            <div className="flex items-center gap-1.5" title="Vehicles Needing Service">
               {needsService > 0 ? <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> : <CheckCircle className="w-3.5 h-3.5 text-green-400" />}
               <span className="text-rmpg-400">Service:</span>
               <span className="font-bold" style={{ color: needsService > 0 ? '#f59e0b' : '#22c55e' }}>{needsService}</span>
             </div>
-            <div className="flex items-center gap-1.5" title="Expiring Registration/Insurance">
-              <Shield className="w-3.5 h-3.5 text-red-400" />
-              <span className="text-rmpg-400">Expiring:</span>
-              <span className="font-bold" style={{ color: (registrationExpiring + insuranceExpiring) > 0 ? '#ef4444' : '#22c55e' }}>
-                {registrationExpiring + insuranceExpiring}
+            <div className="flex items-center gap-1.5" title="Monthly Costs (Maintenance + Fuel)">
+              <DollarSign className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-rmpg-400">Costs:</span>
+              <span className="font-bold text-cyan-400">
+                {fleetAnalytics ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5" title="Inspections Failing">
+              <CheckCircle className="w-3.5 h-3.5" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+              <span className="text-rmpg-400">Insp:</span>
+              <span className="font-bold" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+                {fleetAnalytics?.fleet_summary?.inspections_failing ?? '-'}
               </span>
             </div>
             <div className="flex items-center gap-1.5" title="Average Mileage">
               <Gauge className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-rmpg-400">Avg:</span>
               <span className="font-bold text-brand-400">{avgMileage > 0 ? avgMileage.toLocaleString() : '-'}</span>
-            </div>
-            <div className="flex items-center gap-1.5" title="Total Fleet Mileage">
-              <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-rmpg-400">Total:</span>
-              <span className="font-bold text-cyan-400">{totalMileage > 0 ? `${(totalMileage / 1000).toFixed(0)}k mi` : '-'}</span>
             </div>
           </div>
 

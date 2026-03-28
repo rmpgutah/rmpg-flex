@@ -257,6 +257,84 @@ router.get('/analytics', (req: Request, res: Response) => {
       SELECT COUNT(*) AS count FROM fleet_inspections WHERE overall_result = 'fail' AND inspection_date >= ?
     `).get(dateCutoff) as any;
 
+    // ── Enhanced analytics: cost_per_mile_ranking ──
+    const costPerMileRanking = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage,
+        COALESCE(m.maint_cost, 0) AS maintenance_cost,
+        COALESCE(f.fuel_cost, 0) AS fuel_cost,
+        (COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) AS total_cost,
+        CASE WHEN fv.current_mileage > 0
+          THEN ROUND((COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) * 1.0 / fv.current_mileage, 4)
+          ELSE NULL END AS cost_per_mile
+      FROM fleet_vehicles fv
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS maint_cost FROM fleet_maintenance WHERE cost IS NOT NULL GROUP BY vehicle_id) m ON m.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS fuel_cost FROM fleet_fuel_logs WHERE total_cost IS NOT NULL GROUP BY vehicle_id) f ON f.vehicle_id = fv.id
+      WHERE fv.current_mileage > 0
+      ORDER BY cost_per_mile DESC
+      LIMIT 10
+    `).all() as any[];
+
+    // ── Enhanced analytics: service_compliance ──
+    const nowISO = localNow();
+    const serviceCompliant = db.prepare(`
+      SELECT COUNT(*) AS count FROM fleet_vehicles
+      WHERE status != 'retired' AND (next_service_due IS NULL OR next_service_due > ?)
+    `).get(nowISO) as any;
+    const serviceOverdue = db.prepare(`
+      SELECT COUNT(*) AS count FROM fleet_vehicles
+      WHERE status != 'retired' AND next_service_due IS NOT NULL AND next_service_due <= ?
+    `).get(nowISO) as any;
+    const serviceTotal = (serviceCompliant.count || 0) + (serviceOverdue.count || 0);
+    const serviceCompliance = {
+      compliant: serviceCompliant.count || 0,
+      overdue: serviceOverdue.count || 0,
+      rate: serviceTotal > 0 ? Math.round(((serviceCompliant.count || 0) / serviceTotal) * 1000) / 10 : 100,
+    };
+
+    // ── Enhanced analytics: inspection_pass_rate ──
+    const inspTotal = db.prepare(`
+      SELECT COUNT(*) AS total,
+        SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) AS passed,
+        SUM(CASE WHEN overall_result = 'fail' THEN 1 ELSE 0 END) AS failed
+      FROM fleet_inspections WHERE inspection_date >= ?
+    `).get(dateCutoff) as any;
+    const inspectionPassRate = {
+      total: inspTotal.total || 0,
+      passed: inspTotal.passed || 0,
+      failed: inspTotal.failed || 0,
+      rate: (inspTotal.total || 0) > 0 ? Math.round(((inspTotal.passed || 0) / inspTotal.total) * 1000) / 10 : 100,
+    };
+
+    // ── Enhanced analytics: fuel_economy_ranking (top 10 by avg MPG) ──
+    const fuelEconomyRanking = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year,
+        ROUND(SUM(fl.miles_driven) * 1.0 / SUM(fl.gallons), 1) AS avg_mpg,
+        SUM(fl.gallons) AS total_gallons, SUM(fl.miles_driven) AS total_miles
+      FROM fleet_vehicles fv
+      INNER JOIN fleet_fuel_logs fl ON fl.vehicle_id = fv.id
+      WHERE fl.gallons > 0 AND fl.miles_driven > 0
+      GROUP BY fv.id
+      HAVING total_gallons > 0
+      ORDER BY avg_mpg DESC
+      LIMIT 10
+    `).all() as any[];
+
+    // ── Enhanced analytics: utilization ──
+    const assignedCount = db.prepare(`SELECT COUNT(*) AS count FROM fleet_vehicles WHERE assigned_unit_id IS NOT NULL AND status != 'retired'`).get() as any;
+    const unassignedCount = db.prepare(`SELECT COUNT(*) AS count FROM fleet_vehicles WHERE assigned_unit_id IS NULL AND status != 'retired'`).get() as any;
+    const utilizationTotal = (assignedCount.count || 0) + (unassignedCount.count || 0);
+    const utilization = {
+      assigned: assignedCount.count || 0,
+      unassigned: unassignedCount.count || 0,
+      rate: utilizationTotal > 0 ? Math.round(((assignedCount.count || 0) / utilizationTotal) * 1000) / 10 : 0,
+    };
+
+    // ── Compute fleet-wide average MPG ──
+    const allMpg = Object.values(mpgByMonth);
+    const fleetTotalMiles = allMpg.reduce((s, m) => s + m.total_miles, 0);
+    const fleetTotalGallons = allMpg.reduce((s, m) => s + m.total_gallons, 0);
+    const avgMpg = fleetTotalGallons > 0 ? Math.round((fleetTotalMiles / fleetTotalGallons) * 10) / 10 : null;
+
     res.json({
       maintenance_cost_trend: maintenanceCostTrend,
       mileage_distribution: mileageBuckets.map(b => ({ range: b.range, count: b.count })),
@@ -265,15 +343,114 @@ router.get('/analytics', (req: Request, res: Response) => {
       fleet_summary: {
         total_vehicles: totalVehicles.count,
         avg_mileage: Math.round(avgMileage.avg || 0),
+        avg_mpg: avgMpg,
         total_maintenance_cost: totalMaintCost.total || 0,
         total_fuel_cost: totalFuelCost.total || 0,
         vehicles_needing_service: vehiclesNeedingService.count,
         inspections_failing: inspectionsFailing.count,
       },
+      cost_per_mile_ranking: costPerMileRanking,
+      service_compliance: serviceCompliance,
+      inspection_pass_rate: inspectionPassRate,
+      fuel_economy_ranking: fuelEconomyRanking,
+      utilization,
     });
   } catch (error: any) {
     console.error('Error fetching fleet analytics:', error);
     res.status(500).json({ error: 'Failed to fetch fleet analytics', code: 'FAILED_TO_FETCH_FLEET' });
+  }
+});
+
+// ─── GET /api/fleet/service-alerts ─ Service & compliance alerts ────
+router.get('/service-alerts', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const nowISO = localNow();
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 86400000).toISOString();
+
+    // Overdue service
+    const overdueService = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, next_service_due AS due_date
+      FROM fleet_vehicles
+      WHERE next_service_due IS NOT NULL AND next_service_due < ? AND status != 'retired'
+      ORDER BY next_service_due ASC
+    `).all(nowISO).map((v: any) => ({ ...v, issue: 'Overdue service', severity: 'critical' }));
+
+    // Upcoming service (within 30 days)
+    const upcomingService = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, next_service_due AS due_date
+      FROM fleet_vehicles
+      WHERE next_service_due IS NOT NULL AND next_service_due >= ? AND next_service_due <= ? AND status != 'retired'
+      ORDER BY next_service_due ASC
+    `).all(nowISO, thirtyDaysFromNow).map((v: any) => ({ ...v, issue: 'Service due soon', severity: 'warning' }));
+
+    // Expired registration
+    const expiredRegistration = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, registration_expiry AS due_date
+      FROM fleet_vehicles
+      WHERE registration_expiry IS NOT NULL AND registration_expiry < ? AND status != 'retired'
+      ORDER BY registration_expiry ASC
+    `).all(nowISO).map((v: any) => ({ ...v, issue: 'Expired registration', severity: 'critical' }));
+
+    // Expired insurance
+    const expiredInsurance = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, insurance_expiry AS due_date
+      FROM fleet_vehicles
+      WHERE insurance_expiry IS NOT NULL AND insurance_expiry < ? AND status != 'retired'
+      ORDER BY insurance_expiry ASC
+    `).all(nowISO).map((v: any) => ({ ...v, issue: 'Expired insurance', severity: 'critical' }));
+
+    // Failed inspections (most recent inspection per vehicle = fail)
+    const failedInspections = db.prepare(`
+      SELECT fv.id AS vehicle_id, fv.vehicle_number, fv.make, fv.model, fv.year,
+        fi.inspection_date AS due_date
+      FROM fleet_vehicles fv
+      INNER JOIN fleet_inspections fi ON fi.vehicle_id = fv.id
+      WHERE fi.id = (
+        SELECT fi2.id FROM fleet_inspections fi2
+        WHERE fi2.vehicle_id = fv.id ORDER BY fi2.inspection_date DESC LIMIT 1
+      ) AND fi.overall_result = 'fail' AND fv.status != 'retired'
+      ORDER BY fi.inspection_date DESC
+    `).all().map((v: any) => ({ ...v, issue: 'Failed inspection', severity: 'critical' }));
+
+    res.json({
+      overdue_service: overdueService,
+      upcoming_service: upcomingService,
+      expired_registration: expiredRegistration,
+      expired_insurance: expiredInsurance,
+      failed_inspections: failedInspections,
+      all_alerts: [...overdueService, ...expiredRegistration, ...expiredInsurance, ...failedInspections, ...upcomingService],
+    });
+  } catch (error: any) {
+    console.error('Error fetching service alerts:', error);
+    res.status(500).json({ error: 'Failed to fetch service alerts' });
+  }
+});
+
+// ─── GET /api/fleet/cost-breakdown ─ Per-vehicle cost breakdown ────
+router.get('/cost-breakdown', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const costBreakdown = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage,
+        COALESCE(m.maint_cost, 0) AS maintenance_cost,
+        COALESCE(f.fuel_cost, 0) AS fuel_cost,
+        (COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) AS total_cost,
+        CASE WHEN fv.current_mileage > 0
+          THEN ROUND((COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) * 1.0 / fv.current_mileage, 4)
+          ELSE NULL END AS cost_per_mile
+      FROM fleet_vehicles fv
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS maint_cost FROM fleet_maintenance WHERE cost IS NOT NULL GROUP BY vehicle_id) m ON m.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS fuel_cost FROM fleet_fuel_logs WHERE total_cost IS NOT NULL GROUP BY vehicle_id) f ON f.vehicle_id = fv.id
+      WHERE fv.status != 'retired'
+      ORDER BY total_cost DESC
+    `).all();
+
+    res.json({ vehicles: costBreakdown });
+  } catch (error: any) {
+    console.error('Error fetching cost breakdown:', error);
+    res.status(500).json({ error: 'Failed to fetch cost breakdown' });
   }
 });
 
