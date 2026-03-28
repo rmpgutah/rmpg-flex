@@ -16,7 +16,7 @@ function parseDevice(ua: string): string {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const mins = Math.floor(diff / 60000);

@@ -62,7 +62,7 @@ function formatResponseTime(minutes: number | null): string {
 function formatTimestamp(iso: string | null): string {
   if (!iso) return '-';
   try {
-    const d = new Date(iso);
+    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',

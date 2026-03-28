@@ -94,7 +94,7 @@ function getFileIcon(mime: string) {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('en-US', {
+  return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

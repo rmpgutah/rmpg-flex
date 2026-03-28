@@ -39,7 +39,7 @@ import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 // ── Date helpers ───────────────────────────────────────────
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 

@@ -27,7 +27,7 @@ const FOLDER_ICONS: Record<string, React.ElementType> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());

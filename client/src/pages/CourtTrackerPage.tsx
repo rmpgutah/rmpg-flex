@@ -24,7 +24,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidDate } from '../utils/validate';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, localToday } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
@@ -512,7 +512,7 @@ export default function CourtTrackerPage() {
               {calendarDays.map((day, idx) => {
                 const dateStr = day ? `${calendarYear}-${String(calendarMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
                 const dayEvents = dateStr ? (calendarData[dateStr] || []) : [];
-                const isToday = dateStr === new Date().toISOString().split('T')[0];
+                const isToday = dateStr === localToday();
                 return (
                   <div
                     key={idx}

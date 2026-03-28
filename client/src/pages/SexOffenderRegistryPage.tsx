@@ -69,7 +69,7 @@ function parseJson<T>(raw: string | undefined | null, fallback: T[]): T[] {
 function formatDate(d?: string | null): string {
   if (!d) return '—';
   try {
-    const dt = new Date(d);
+    const dt = new Date(d.includes('T') ? d : d + 'T00:00:00');
     return dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   } catch { return d; }
 }

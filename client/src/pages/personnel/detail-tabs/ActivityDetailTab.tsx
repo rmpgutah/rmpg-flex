@@ -37,7 +37,7 @@ function borderColor(action: string): string {
 
 function formatTimestamp(dateStr: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString('en-US', {
+  return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

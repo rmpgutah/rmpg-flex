@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertOctagon, Plus, CheckCircle, Calendar, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { localToday } from '../../../utils/dateUtils';
 
 interface Recall {
   id: number;
@@ -63,7 +64,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
 
   const updateStatus = async (id: number, status: string) => {
     const body: any = { status };
-    if (status === 'completed') body.completed_date = new Date().toISOString().slice(0, 10);
+    if (status === 'completed') body.completed_date = localToday();
     try { await apiFetch<any[]>(`/fleet/recalls/${id}`, { method: 'PUT', body: JSON.stringify(body) }); addToast('Recall updated', 'success'); load(); } catch { addToast('Failed to update recall', 'error'); }
   };
 

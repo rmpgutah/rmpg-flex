@@ -746,7 +746,7 @@ function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string
 function fmtTimestamp(ts?: string): string {
   if (!ts) return '';
   try {
-    const d = new Date(ts);
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
     if (isNaN(d.getTime())) return ts;
     const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
     return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
@@ -757,7 +757,7 @@ function fmtTimestamp(ts?: string): string {
 function fmtDate(ts?: string | null): string {
   if (!ts) return '';
   try {
-    const d = new Date(ts);
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
     if (isNaN(d.getTime())) return ts;
     const { mm, dd, yyyy } = toMountain(d);
     return `${mm}/${dd}/${yyyy}`;
@@ -768,7 +768,7 @@ function fmtDate(ts?: string | null): string {
 function fmtDateTime(ts?: string | null): string {
   if (!ts) return '';
   try {
-    const d = new Date(ts);
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
     if (isNaN(d.getTime())) return ts;
     const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
     return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;

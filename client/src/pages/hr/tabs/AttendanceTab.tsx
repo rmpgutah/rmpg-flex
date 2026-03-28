@@ -3,6 +3,7 @@ import { ClipboardCheck, Plus, AlertTriangle, Loader2, Search } from 'lucide-rea
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { localToday } from '../../../utils/dateUtils';
 
 interface AttendanceRecord {
   id: number;
@@ -41,7 +42,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
   const [officers, setOfficers] = useState<any[]>([]);
   const [selectedOfficer, setSelectedOfficer] = useState<number | null>(null);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
-  const [form, setForm] = useState({ officer_id: '', date: new Date().toISOString().slice(0, 10), type: 'absent', minutes_late: 0, reason: '', excused: false });
+  const [form, setForm] = useState({ officer_id: '', date: localToday(), type: 'absent', minutes_late: 0, reason: '', excused: false });
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 

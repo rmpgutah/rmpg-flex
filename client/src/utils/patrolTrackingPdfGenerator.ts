@@ -10,6 +10,7 @@ import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark } from './pdfGenerator';
 import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
+import { localToday } from './dateUtils';
 
 // ── Types matching the server patrol-tracking response ──────
 
@@ -86,7 +87,7 @@ export interface PatrolTrackingReportData {
 
 function formatDateTime(isoStr: string): string {
   try {
-    const d = new Date(isoStr);
+    const d = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' '
       + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch { return isoStr; }
@@ -94,14 +95,14 @@ function formatDateTime(isoStr: string): string {
 
 function formatTime(isoStr: string): string {
   try {
-    return new Date(isoStr).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch { return isoStr; }
 }
 
 function formatDate(isoStr: string | null): string {
   if (!isoStr) return '-';
   try {
-    return new Date(isoStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return isoStr; }
 }
 
@@ -615,7 +616,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   }
 
   // ── Save the PDF ─────────────────────────────────────
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const dateStr = localToday().replace(/-/g, '');
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);

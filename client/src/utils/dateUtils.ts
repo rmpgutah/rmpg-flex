@@ -71,7 +71,14 @@ export function parseTimestamp(dateStr: string | null | undefined): Date {
     return new Date(dateStr.replace(' ', 'T') + '-07:00');
   }
 
-  // Date-only "YYYY-MM-DD" or other formats — let the browser handle it
+  // Date-only "YYYY-MM-DD" — append T00:00:00 to force LOCAL timezone parsing
+  // Without this, `new Date('2026-03-28')` is parsed as UTC midnight, which
+  // in Mountain Time (UTC-7) becomes 2026-03-27T17:00:00 — the PREVIOUS day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'T00:00:00');
+  }
+
+  // Other formats — let the browser handle it
   const result = new Date(dateStr);
   return isNaN(result.getTime()) ? new Date() : result;
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, Download, Search, Filter } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { localToday } from '../../utils/dateUtils';
 
 // ============================================================
 // Types
@@ -69,7 +70,7 @@ export default function AdminAuditTab({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `audit-log-${localToday()}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch { /* silent */ }

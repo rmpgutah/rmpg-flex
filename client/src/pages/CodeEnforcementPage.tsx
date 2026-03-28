@@ -21,6 +21,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidVIN, isValidPlate } from '../utils/validate';
+import { localToday } from '../utils/dateUtils';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -505,7 +506,7 @@ export default function CodeEnforcementPage() {
                       type="date"
                       value={reinspectionDate}
                       onChange={e => setReinspectionDate(e.target.value)}
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={localToday()}
                       className="input-dark text-[10px] px-2 py-1 flex-1 min-h-[36px]"
                     />
                     <button type="button"
