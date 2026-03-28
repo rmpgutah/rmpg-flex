@@ -862,9 +862,9 @@ export function addStackedSignatures(
   const sigRowH = 8;
   const infoRowH = 6;
   const totalH = roleBarH + sigRowH + infoRowH;
-  const sealColW = totalH; // Square: width = height
+  const sealColW = 42; // 42mm square seal box
   const sigW = cw - sealColW;
-  y = checkPageBreak(doc, y, totalH, priority);
+  y = checkPageBreak(doc, y, Math.max(totalH, sealColW), priority);
 
   // ── Reporting Officer signature block (left side) ──
   addSignatureBlock(doc, role1, mx, y, sigW, sig1);
@@ -872,10 +872,10 @@ export function addStackedSignatures(
   // ── Company Seal (right column, square) ──
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(mx + sigW, y, sealColW, totalH);
+  doc.rect(mx + sigW, y, sealColW, sealColW); // 42x42 square
 
-  // Dashed circle centered in seal column — fill available height
-  const sealH = totalH;
+  // Dashed circle centered in seal column
+  const sealH = sealColW;
   const circleR = Math.min(sealColW, sealH) / 2 - 2;
   const cx = mx + sigW + sealColW / 2;
   const cy = y + sealH / 2;
@@ -899,7 +899,7 @@ export function addStackedSignatures(
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + totalH + SPACING.SM;
+  return y + Math.max(totalH, sealColW) + SPACING.SM;
 }
 
 /**
