@@ -2276,15 +2276,10 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  // Signatures — 3 blocks
+  // Signatures
   y = checkPageBreak(doc, y, 80, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    y = addSignatureBlock(doc, 'Subject (Acknowledgment of Receipt)', lx, y, ffw);
-    { const yL = addSignatureBlock(doc, 'Issuing Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Witness', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = addSignatureBlock(doc, 'Subject (Acknowledgment of Receipt)', lx, y, ffw);
+  y = addStackedSignatures(doc, 'Issuing Officer', '', y, getOfficerSig());
 
   // Distribution
   y += SPACING.LG;
@@ -2434,12 +2429,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    { const yL = addSignatureBlock(doc, 'Investigating Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = addStackedSignatures(doc, 'Investigating Officer', '', y, getOfficerSig());
 }
 
 function generateMedicalReport(doc: jsPDF, data: IncidentData) {
@@ -2506,13 +2496,8 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   }
 
   y = checkPageBreak(doc, y, 75, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    { const yL = addSignatureBlock(doc, 'Responding Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = addSignatureBlock(doc, 'Patient Refusal (if applicable)', lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = addSignatureBlock(doc, 'Patient Refusal (if applicable)', lx, y, ffw);
+  y = addStackedSignatures(doc, 'Responding Officer', '', y, getOfficerSig());
 }
 
 function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
@@ -2604,7 +2589,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, data.priority);
+  y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
 }
 
 function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
@@ -2708,12 +2693,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    { const yL = addSignatureBlock(doc, 'Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = addStackedSignatures(doc, 'Reporting Officer', '', y, getOfficerSig());
 }
 
 function generateArrestReport(doc: jsPDF, data: IncidentData) {
@@ -2920,12 +2900,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    { const yL = addSignatureBlock(doc, 'Arresting Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Transport Officer', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = addStackedSignatures(doc, 'Arresting Officer', '', y, getOfficerSig());
 }
 
 // ── Process Service Report ────────────────────────────────────
@@ -3063,12 +3038,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
   // Signatures
   y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    { const yL = addSignatureBlock(doc, 'Process Server / Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Supervisor', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = addStackedSignatures(doc, 'Process Server / Officer', '', y, getOfficerSig());
 }
 
 // ── Public API ───────────────────────────────────────────────
