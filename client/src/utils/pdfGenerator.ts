@@ -878,25 +878,26 @@ export function addStackedSignatures(
 ): number {
   const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
-  const totalNeeded = 42; // officer block full-width + seal below
-  y = checkPageBreak(doc, y, totalNeeded, priority);
+  const sealColW = 30; // right column for company seal
+  const sigW = cw - sealColW; // left columns for signature block
+  const roleBarH = SPACING.SIGNATURE_ROLE_H;
+  const sigRowH = 12;
+  const infoRowH = 8;
+  const totalH = roleBarH + sigRowH + infoRowH;
+  y = checkPageBreak(doc, y, totalH + 2, priority);
 
-  // ── Reporting Officer — full width (margin to margin) ──
-  const officerEndY = addSignatureBlock(doc, role1, mx, y, cw, sig1);
+  // ── Reporting Officer signature block (left side) ──
+  addSignatureBlock(doc, role1, mx, y, sigW, sig1);
 
-  // ── Company Seal — centered below officer block ──
-  const sealBoxH = 16;
-  const sealBoxW = cw;
-  const sealBoxY = officerEndY;
-
+  // ── Company Seal (right column, spanning full height) ──
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(mx, sealBoxY, sealBoxW, sealBoxH);
+  doc.rect(mx + sigW, y, sealColW, totalH);
 
-  // Dashed circle (centered in the seal box)
-  const circleR = (sealBoxH - 4) / 2;
-  const cx = mx + sealBoxW / 2;
-  const cy = sealBoxY + sealBoxH / 2;
+  // Dashed circle centered in seal column
+  const circleR = Math.min(sealColW, totalH - 6) / 2 - 1;
+  const cx = mx + sigW + sealColW / 2;
+  const cy = y + totalH / 2;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(0.3);
   const segs = 36;
@@ -910,13 +911,14 @@ export function addStackedSignatures(
   }
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+  doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('COMPANY SEAL', cx, cy + 1, { align: 'center' });
+  doc.text('COMPANY', cx, cy - 1, { align: 'center' });
+  doc.text('SEAL', cx, cy + 2.5, { align: 'center' });
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return sealBoxY + sealBoxH + SPACING.SM;
+  return y + totalH + SPACING.SM;
 }
 
 /**
