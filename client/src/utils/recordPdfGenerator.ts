@@ -1380,12 +1380,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
       y = checkPageBreak(doc, y, 10, prio);
-      // Date/time on far left
+      // Date/time on far left, author on far right — same line, no underline
       doc.setFont('courier', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text(fmtTimestamp(n.created_at).toUpperCase(), lx, y);
-      // Author name on far right
+      doc.setDrawColor(255, 255, 255); // Reset draw color to prevent stray lines
+      doc.setLineWidth(0);
+      const tsText = fmtTimestamp(n.created_at).toUpperCase();
+      doc.text(tsText, lx, y);
       const authorName = (n.author || 'System').toUpperCase();
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
