@@ -2974,26 +2974,27 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Officer / Location — all on one row with section/zone/beat
+  // Officer / Location — single row, 5 columns
   y = checkPageBreak(doc, y, 18, data.priority);
   { const sec = openAutoSection(doc, 'Officer / Location', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Officer', data.officer_name, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Location', data.location, rx, y, hfw);
-      y = Math.max(yL, yR); }
-    if (data.section_id || data.zone_id || data.beat_id) {
-      const thW = ffw / 3;
-      let maxTY = y + SPACING.FIELD_ROW_ADVANCE;
-      const tFields = [
-        { label: 'Section ID', value: data.section_id || '' },
-        { label: 'Zone ID', value: data.zone_id || '' },
-        { label: 'Beat ID', value: data.beat_id || '' },
-      ];
-      for (let i = 0; i < 3; i++) {
-        const fy = addFieldPair(doc, tFields[i].label, tFields[i].value, lx + i * thW, y, thW);
-        if (fy > maxTY) maxTY = fy;
-      }
-      y = maxTY;
+    const olFields = [
+      { label: 'Officer', value: data.officer_name || '' },
+      { label: 'Location', value: data.location || '' },
+      { label: 'Section ID', value: data.section_id || '' },
+      { label: 'Zone ID', value: data.zone_id || '' },
+      { label: 'Beat ID', value: data.beat_id || '' },
+    ];
+    const olRatios = [2, 3, 1, 1, 1]; // Officer wider, Location widest, IDs narrow
+    const olTotal = olRatios.reduce((a, b) => a + b, 0);
+    let maxOLY = y + SPACING.FIELD_ROW_ADVANCE;
+    let olX = lx;
+    for (let i = 0; i < 5; i++) {
+      const colW = (ffw * olRatios[i]) / olTotal;
+      const fy = addFieldPair(doc, olFields[i].label, olFields[i].value, olX, y, colW);
+      if (fy > maxOLY) maxOLY = fy;
+      olX += colW;
     }
+    y = maxOLY;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
