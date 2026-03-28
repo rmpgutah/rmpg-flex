@@ -949,7 +949,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = fontSize * 0.35 + 0.2;
+  const lineH = fontSize * 0.35 + 0.05;
   const paragraphGap = SPACING.MD;
 
   const paragraphs = text.split(/\n\n+/);
@@ -1000,7 +1000,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
   const text = sanitizePdfText(rawText);
-  const lineH = fontSize * 0.35 + 0.2; // Consistent line spacing across all text renderers
+  const lineH = fontSize * 0.35 + 0.05; // Consistent line spacing across all text renderers
   const paragraphGap = SPACING.MD;
   // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
   const safeMaxWidth = maxWidth - 2;
@@ -1164,7 +1164,7 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = fontSize * 0.35 + 0.2; // Match addFormattedText lineStep
+  const lineH = fontSize * 0.35 + 0.05; // Match addFormattedText lineStep
   const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)

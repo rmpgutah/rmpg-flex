@@ -106,21 +106,21 @@ export const SPACING = {
   XL:                 2.5,   // Generous gap
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
-  SECTION_HEADER_H:   4,     // Section header bar height (compact)
-  SECTION_GAP:        0.8,   // Gap between sections (tight)
-  SECTION_CONTENT_PAD: 2,    // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  0.3,  // Padding inside section before bottom border
+  SECTION_HEADER_H:   3.8,   // Section header bar height (compact)
+  SECTION_GAP:        0.5,   // Gap between sections (minimal)
+  SECTION_CONTENT_PAD: 1.2,  // Gap from header bar to first content (tight)
+  SECTION_BOTTOM_PAD:  0.2,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   3,     // Value area height (no box, just label+value)
-  FIELD_ROW_ADVANCE:  3.2,   // Y-advance after field row
+  FIELD_ROW_HEIGHT:   2.8,   // Value area height (no box, just label+value)
+  FIELD_ROW_ADVANCE:  2.8,   // Y-advance after field row (tight)
 
   SIGNATURE_BOX_H:    20,    // Signature block total height (compact)
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
   SIGNATURE_SUB_GAP:  4,     // Gap between sig line and sub-fields
 
-  FORM_CELL_PAD:      0.8,   // Padding inside form cells
-  FORM_CELL_LABEL_H:  2.5,   // Form cell label strip height
-  FORM_CELL_H:        8.5,   // Form cell total height (label + value + 2mm gap + padding)
+  FORM_CELL_PAD:      0.5,   // Padding inside form cells (tight)
+  FORM_CELL_LABEL_H:  2,     // Form cell label strip height (compact)
+  FORM_CELL_H:        7,     // Form cell total height (compact)
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
@@ -128,13 +128,13 @@ export const SPACING = {
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
   HEADER_HEIGHT:     16,     // Header bar
-  FOOTER_HEIGHT:     9,      // Footer with print margin safety
+  FOOTER_HEIGHT:     7,      // Footer (compact, closer to content)
   HEADER_TOP:        5,      // Y-start of header bar
   CLASSIF_BAR_H:     4.5,    // Classification bar height
   SEAL_SIZE:         13,     // Compact logo
   ACCENT_STRIP_H:    0.8,   // Thin accent strip below header
   CASE_BOX_W:        42,     // Case number box width
-  LINE_HEIGHT:       3.2,    // Base line height for wrapped text
+  LINE_HEIGHT:       2.8,    // Base line height for wrapped text (compact)
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
 } as const;

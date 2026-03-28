@@ -104,7 +104,7 @@ export function drawFormCell(
   }
 
   // Value area starts below label strip — 2mm gap between label and value
-  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.8; // Extra gap for breathing room
+  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.3; // Tight gap
   const valueAreaTop = y + labelStripH + pad;
   const valueAreaH = h - labelStripH - pad;
 
@@ -407,7 +407,7 @@ export function drawFormSection(
 
   // Calculate total section height (include banner if applicable)
   // Banner: 5mm dark header bar matching CFS openAutoSection style
-  const bannerH = useBanner ? 5 : 0;
+  const bannerH = useBanner ? 4 : 0;
   let totalH = bannerH;
   for (const row of config.rows) {
     totalH += row.height || SPACING.FORM_CELL_H;
@@ -443,7 +443,7 @@ export function drawFormSection(
     const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textY = curY + (bannerH + bannerCapH) / 2;
     doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
-    curY += bannerH + 2; // 2mm gap between banner and first grid row
+    curY += bannerH + 1; // 1mm gap between banner and first grid row (tight)
   }
 
   // Draw grid rows
