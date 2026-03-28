@@ -1316,6 +1316,13 @@ export interface FleetFuelLog {
   notes?: string;
   created_by?: string;
   created_at: string;
+  distance?: number;
+  efficiency?: number;
+  // Computed efficiency fields from backend
+  mpg?: number | null;
+  calc_distance?: number | null;
+  cost_per_mile?: number | null;
+  running_avg_mpg?: number | null;
 }
 
 export interface FleetFuelSummary {
@@ -1324,6 +1331,11 @@ export interface FleetFuelSummary {
   avg_mpg: number | null;
   avg_cost_per_gallon: number;
   log_count: number;
+  best_mpg?: number | null;
+  worst_mpg?: number | null;
+  total_distance?: number | null;
+  cost_per_mile?: number | null;
+  fuel_cost_per_day?: number | null;
 }
 
 // --- Fleet Inspections ---

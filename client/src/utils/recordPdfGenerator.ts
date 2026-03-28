@@ -505,6 +505,10 @@ export interface FleetFuelLogEntry {
   fuel_type?: string;
   distance?: number;
   efficiency?: number;
+  mpg?: number | null;
+  calc_distance?: number | null;
+  cost_per_mile?: number | null;
+  running_avg_mpg?: number | null;
 }
 
 export interface FleetMaintenanceEntry {
@@ -544,6 +548,18 @@ export interface FleetPdfData {
   report_type?: FleetReportType;
   fuel_logs?: FleetFuelLogEntry[];
   maintenance_logs?: FleetMaintenanceEntry[];
+  // Fuel summary stats (passed from frontend)
+  fuel_summary?: {
+    total_gallons?: number;
+    total_cost?: number;
+    avg_mpg?: number | null;
+    avg_cost_per_gallon?: number;
+    best_mpg?: number | null;
+    worst_mpg?: number | null;
+    total_distance?: number | null;
+    cost_per_mile?: number | null;
+    fuel_cost_per_day?: number | null;
+  };
 }
 
 export interface PersonnelCredentialEntry {
@@ -2335,13 +2351,21 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
 
   // ── FUEL LOG REPORT ──
   if (reportType === 'fuel_logs' && data.fuel_logs && data.fuel_logs.length > 0) {
-    // Summary row
-    const totalGal = data.fuel_logs.reduce((sum, f) => sum + (f.gallons || 0), 0);
-    const totalCost = data.fuel_logs.reduce((sum, f) => sum + (f.total_cost || 0), 0);
-    const efficiencyLogs = data.fuel_logs.filter(f => f.efficiency);
-    const avgEfficiency = efficiencyLogs.length > 0
-      ? efficiencyLogs.reduce((sum, f) => sum + (f.efficiency || 0), 0) / efficiencyLogs.length
-      : 0;
+    // Use fuel_summary from backend if available, otherwise compute locally
+    const fs = data.fuel_summary;
+    const totalGal = fs?.total_gallons ?? data.fuel_logs.reduce((sum, f) => sum + (f.gallons || 0), 0);
+    const totalCost = fs?.total_cost ?? data.fuel_logs.reduce((sum, f) => sum + (f.total_cost || 0), 0);
+    const avgMpg = fs?.avg_mpg ?? (() => {
+      const eff = data.fuel_logs!.filter(f => f.mpg != null && f.mpg! > 0);
+      return eff.length > 0 ? eff.reduce((s, f) => s + f.mpg!, 0) / eff.length : null;
+    })();
+    const bestMpg = fs?.best_mpg ?? null;
+    const worstMpg = fs?.worst_mpg ?? null;
+    const totalDist = fs?.total_distance ?? null;
+    const costPerMile = fs?.cost_per_mile ?? null;
+    const fuelCostPerDay = fs?.fuel_cost_per_day ?? null;
+
+    // Summary section — row 1: core stats
     y = drawFormSection(doc, {
       sideTab: { label: 'FUEL' },
       topBanner: true,
@@ -2350,26 +2374,47 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         { cells: [
           { label: 'TOTAL GALLONS', value: totalGal.toFixed(2), ratio: 1, align: 'center' },
           { label: 'TOTAL COST', value: `$${totalCost.toFixed(2)}`, ratio: 1, align: 'center' },
-          { label: 'AVG EFFICIENCY', value: avgEfficiency > 0 ? `${avgEfficiency.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
+          { label: 'AVG MPG', value: avgMpg != null ? `${avgMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
+        ]},
+        { cells: [
+          { label: 'BEST MPG', value: bestMpg != null ? `${bestMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
+          { label: 'WORST MPG', value: worstMpg != null ? `${worstMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
+          { label: 'TOTAL DISTANCE', value: totalDist != null ? `${totalDist.toLocaleString(undefined, { maximumFractionDigits: 1 })} MI` : 'N/A', ratio: 1, align: 'center' },
+        ]},
+        { cells: [
+          { label: 'COST/MILE', value: costPerMile != null ? `$${costPerMile.toFixed(3)}` : 'N/A', ratio: 1, align: 'center' },
+          { label: 'FUEL $/DAY', value: fuelCostPerDay != null ? `$${fuelCostPerDay.toFixed(2)}` : 'N/A', ratio: 1, align: 'center' },
+          { label: 'FILL COUNT', value: String(data.fuel_logs!.length), ratio: 1, align: 'center' },
         ]},
       ],
       y,
     });
 
-    // Fuel logs table — standardised via addTableWithShading
-    const fuelColW = [22, 18, 24, 22, 28, cw - 114];
+    // Fuel logs table — columns: Date, Station, Gallons, $/Gal, Cost, Odometer, Distance, MPG, $/Mile
+    const fuelColW = [18, cw - 148, 14, 14, 18, 22, 16, 14, 16];
+    // Ensure cols fit: Date(18) + Station(remainder) + Gal(14) + $/Gal(14) + Cost(18) + Odo(22) + Dist(16) + MPG(14) + $/Mi(16)
+    // Total non-station = 18+14+14+18+22+16+14+16 = 132, station = cw - 132
+    const adjFuelColW = [18, cw - 132, 14, 14, 18, 22, 16, 14, 16];
     const fuelColPos: number[] = [];
-    { let cx = lx; for (const w of fuelColW) { fuelColPos.push(cx); cx += w; } }
-    const fuelHeaders = ['Date', 'Gallons', 'Cost', 'Odometer', 'Efficiency', 'Station']
+    { let cx = lx; for (const w of adjFuelColW) { fuelColPos.push(cx); cx += w; } }
+    const fuelHeaders = ['Date', 'Station', 'Gal', '$/Gal', 'Cost', 'Odometer', 'Dist', 'MPG', '$/Mi']
       .map((label, i) => ({ label, x: fuelColPos[i] }));
-    const fuelRows = data.fuel_logs.map(f => [
-      fmtDate(f.fuel_date),
-      f.gallons?.toFixed(2) || '',
-      f.total_cost ? `$${f.total_cost.toFixed(2)}` : '',
-      f.odometer_reading ? Number(f.odometer_reading).toLocaleString() : '',
-      f.efficiency ? `${f.efficiency.toFixed(1)} MPG` : '',
-      (f.station || '').substring(0, 30),
-    ]);
+    const fuelRows = data.fuel_logs.map(f => {
+      const dist = f.calc_distance ?? f.distance ?? null;
+      const mpg = f.mpg ?? f.efficiency ?? null;
+      const cpm = f.cost_per_mile ?? null;
+      return [
+        fmtDate(f.fuel_date),
+        (f.station || '').substring(0, 22),
+        f.gallons?.toFixed(2) || '',
+        f.cost_per_gallon ? `$${f.cost_per_gallon.toFixed(2)}` : '',
+        f.total_cost ? `$${f.total_cost.toFixed(2)}` : '',
+        f.odometer_reading ? Number(f.odometer_reading).toLocaleString() : '',
+        dist != null && dist > 0 ? dist.toFixed(0) : '',
+        mpg != null && mpg > 0 ? mpg.toFixed(1) : '',
+        cpm != null ? `$${cpm.toFixed(3)}` : '',
+      ];
+    });
     y = addTableWithShading(doc, fuelHeaders, fuelRows, y, fuelColPos);
   }
 

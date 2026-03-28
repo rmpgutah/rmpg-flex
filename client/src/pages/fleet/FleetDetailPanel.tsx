@@ -96,10 +96,11 @@ interface Props {
 }
 
 // ── Fleet Print Menu (dropdown to select report type) ──
-function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
+function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
   detail: FleetVehicle;
   fuelLogs: FleetFuelLog[];
   maintenance: FleetMaintenance[];
+  fuelSummary?: FleetFuelSummary | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -133,7 +134,22 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
       fuel_type: f.fuel_type,
       distance: f.distance,
       efficiency: f.efficiency,
+      mpg: f.mpg,
+      calc_distance: f.calc_distance,
+      cost_per_mile: f.cost_per_mile,
+      running_avg_mpg: f.running_avg_mpg,
     })),
+    fuel_summary: fuelSummary ? {
+      total_gallons: fuelSummary.total_gallons,
+      total_cost: fuelSummary.total_cost,
+      avg_mpg: fuelSummary.avg_mpg,
+      avg_cost_per_gallon: fuelSummary.avg_cost_per_gallon,
+      best_mpg: fuelSummary.best_mpg,
+      worst_mpg: fuelSummary.worst_mpg,
+      total_distance: fuelSummary.total_distance,
+      cost_per_mile: fuelSummary.cost_per_mile,
+      fuel_cost_per_day: fuelSummary.fuel_cost_per_day,
+    } : undefined,
     maintenance_logs: maintenance.map((m: any) => ({
       service_date: m.service_date,
       service_type: m.service_type,
@@ -254,7 +270,7 @@ export default function FleetDetailPanel({
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5">
-          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} />
+          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} fuelSummary={fuelSummary} />
           {!isArchived && (
             <>
               <button type="button" className="toolbar-btn" onClick={onEditVehicle}>

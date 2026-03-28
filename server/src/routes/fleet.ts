@@ -1418,7 +1418,7 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
   }
 });
 
-// ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary ─────────────
+// ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary + efficiency ─────────────
 router.get('/:id/fuel', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -1450,37 +1450,111 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
         COALESCE(SUM(gallons), 0) AS total_gallons,
         COALESCE(SUM(total_cost), 0) AS total_cost,
         AVG(cost_per_gallon) AS avg_cost_per_gallon,
-        COUNT(*) AS log_count
+        COUNT(*) AS log_count,
+        MIN(fuel_date) AS first_date,
+        MAX(fuel_date) AS last_date
       FROM fleet_fuel_logs WHERE vehicle_id = ?
     `).get(id) as any;
 
-    // Compute average MPG from consecutive odometer readings
-    const odoLogs = db.prepare(`
-      SELECT gallons, odometer_reading FROM fleet_fuel_logs
-      WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
+    // Fetch ALL fuel logs in chronological order for efficiency calculations
+    const allLogs = db.prepare(`
+      SELECT id, fuel_date, gallons, odometer_reading, total_cost, distance
+      FROM fleet_fuel_logs
+      WHERE vehicle_id = ?
       ORDER BY fuel_date ASC, id ASC
-    
-      LIMIT 1000
+      LIMIT 5000
     `).all(id) as any[];
 
-    let totalMiles = 0;
-    let totalGallonsForMpg = 0;
-    for (let i = 1; i < odoLogs.length; i++) {
-      if (odoLogs[i].odometer_reading > odoLogs[i - 1].odometer_reading) {
-        totalMiles += odoLogs[i].odometer_reading - odoLogs[i - 1].odometer_reading;
-        totalGallonsForMpg += odoLogs[i].gallons;
+    // Compute per-entry efficiency: mpg, distance, cost_per_mile, running_avg_mpg
+    const efficiencyMap: Record<number, { mpg: number | null; distance: number | null; cost_per_mile: number | null; running_avg_mpg: number | null }> = {};
+    let cumulativeMiles = 0;
+    let cumulativeGallons = 0;
+    let bestMpg: number | null = null;
+    let worstMpg: number | null = null;
+    let totalDistance = 0;
+
+    for (let i = 0; i < allLogs.length; i++) {
+      const curr = allLogs[i];
+      let dist: number | null = null;
+      let mpg: number | null = null;
+      let costPerMile: number | null = null;
+
+      // Use distance column if available, otherwise compute from consecutive odometer readings
+      if (curr.distance != null && curr.distance > 0) {
+        dist = curr.distance;
+      } else if (i > 0 && curr.odometer_reading != null) {
+        // Find previous log with odometer
+        for (let j = i - 1; j >= 0; j--) {
+          if (allLogs[j].odometer_reading != null && curr.odometer_reading > allLogs[j].odometer_reading) {
+            dist = curr.odometer_reading - allLogs[j].odometer_reading;
+            break;
+          }
+        }
       }
+
+      if (dist != null && dist > 0 && curr.gallons > 0) {
+        mpg = Math.round((dist / curr.gallons) * 10) / 10;
+        cumulativeMiles += dist;
+        cumulativeGallons += curr.gallons;
+        totalDistance += dist;
+
+        if (bestMpg === null || mpg > bestMpg) bestMpg = mpg;
+        if (worstMpg === null || mpg < worstMpg) worstMpg = mpg;
+      }
+
+      if (dist != null && dist > 0 && curr.total_cost != null && curr.total_cost > 0) {
+        costPerMile = Math.round((curr.total_cost / dist) * 1000) / 1000;
+      }
+
+      const runningAvgMpg = cumulativeGallons > 0
+        ? Math.round((cumulativeMiles / cumulativeGallons) * 10) / 10
+        : null;
+
+      efficiencyMap[curr.id] = { mpg, distance: dist, cost_per_mile: costPerMile, running_avg_mpg: runningAvgMpg };
     }
-    const avgMpg = totalGallonsForMpg > 0 ? Math.round((totalMiles / totalGallonsForMpg) * 10) / 10 : null;
+
+    // Compute average MPG from cumulative
+    const avgMpg = cumulativeGallons > 0 ? Math.round((cumulativeMiles / cumulativeGallons) * 10) / 10 : null;
+
+    // Cost per mile overall
+    const overallCostPerMile = totalDistance > 0 && summaryRow.total_cost > 0
+      ? Math.round((summaryRow.total_cost / totalDistance) * 1000) / 1000
+      : null;
+
+    // Fuel cost per day
+    let fuelCostPerDay: number | null = null;
+    if (summaryRow.first_date && summaryRow.last_date && summaryRow.total_cost > 0) {
+      const firstMs = new Date(summaryRow.first_date).getTime();
+      const lastMs = new Date(summaryRow.last_date).getTime();
+      const days = Math.max(1, (lastMs - firstMs) / (1000 * 60 * 60 * 24));
+      fuelCostPerDay = Math.round((summaryRow.total_cost / days) * 100) / 100;
+    }
+
+    // Attach efficiency data to paginated logs
+    const enrichedLogs = logs.map((log: any) => {
+      const eff = efficiencyMap[log.id];
+      return {
+        ...log,
+        mpg: eff?.mpg ?? null,
+        calc_distance: eff?.distance ?? null,
+        cost_per_mile: eff?.cost_per_mile ?? null,
+        running_avg_mpg: eff?.running_avg_mpg ?? null,
+      };
+    });
 
     res.json({
-      data: logs,
+      data: enrichedLogs,
       summary: {
         total_gallons: summaryRow.total_gallons,
         total_cost: summaryRow.total_cost,
         avg_mpg: avgMpg,
         avg_cost_per_gallon: summaryRow.avg_cost_per_gallon ? Math.round(summaryRow.avg_cost_per_gallon * 1000) / 1000 : 0,
         log_count: summaryRow.log_count,
+        best_mpg: bestMpg,
+        worst_mpg: worstMpg,
+        total_distance: totalDistance > 0 ? Math.round(totalDistance * 10) / 10 : null,
+        cost_per_mile: overallCostPerMile,
+        fuel_cost_per_day: fuelCostPerDay,
       },
       pagination: {
         page: pageNum,
