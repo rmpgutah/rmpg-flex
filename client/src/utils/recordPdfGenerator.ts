@@ -867,7 +867,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Caller Information
-  y = checkPageBreak(doc, y, 22, prio);
+  y = checkPageBreak(doc, y, 25, prio);
   { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
@@ -880,7 +880,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Location
-  y = checkPageBreak(doc, y, 22, prio);
+  y = checkPageBreak(doc, y, 25, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     { const yL = addFieldPair(doc, 'Latitude', data.latitude != null ? String(data.latitude) : '', lx, y, hfw);
@@ -1009,7 +1009,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Scene Conditions
-  y = checkPageBreak(doc, y, 22, prio);
+  y = checkPageBreak(doc, y, 25, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Weather', value: data.weather_conditions || '' },
@@ -1022,25 +1022,27 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Flags — evenly distributed grid (6 columns × 4 rows)
-  y = checkPageBreak(doc, y, 30, prio);
+  // Flags — clean 4-column checkbox grid
+  y = checkPageBreak(doc, y, 35, prio);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
     y += SPACING.SM; // Gap between header bar and first checkbox row
-    const cols = 6;
+    const cols = 4;
     const colW = ffw / cols;
-    const rowH = 4.8;
+    const rowH = 5;
     const flagGrid: { label: string; checked: boolean }[][] = [
       [
         { label: 'Injuries', checked: !!data.injuries_reported },
         { label: 'Alcohol', checked: !!data.alcohol_involved },
         { label: 'Drugs', checked: !!data.drugs_involved },
         { label: 'DV', checked: !!data.domestic_violence },
-        { label: 'Mental Health', checked: !!data.mental_health_crisis },
-        { label: 'Juvenile', checked: !!data.juvenile_involved },
       ],
       [
+        { label: 'Mental Health', checked: !!data.mental_health_crisis },
+        { label: 'Juvenile', checked: !!data.juvenile_involved },
         { label: 'Felony IP', checked: !!data.felony_in_progress },
         { label: 'Ofc Safety', checked: !!data.officer_safety_caution },
+      ],
+      [
         { label: 'Gang', checked: !!data.gang_related },
         { label: 'HAZMAT', checked: !!data.hazmat },
         { label: 'Veh Pursuit', checked: !!data.vehicle_pursuit },
@@ -1051,12 +1053,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'EMS Req', checked: !!data.ems_requested },
         { label: 'Fire Req', checked: !!data.fire_requested },
         { label: 'Evidence', checked: !!data.evidence_collected },
-        { label: 'BWC Active', checked: !!data.body_camera_active },
-        { label: 'Photos', checked: !!data.photos_taken },
       ],
       [
+        { label: 'BWC Active', checked: !!data.body_camera_active },
+        { label: 'Photos', checked: !!data.photos_taken },
         { label: 'Supvr Notified', checked: !!data.supervisor_notified },
         { label: 'LE Notified', checked: !!data.le_notified },
+      ],
+      [
         { label: 'Trespass', checked: !!data.trespass_issued },
       ],
     ];
@@ -1104,7 +1108,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
     // Process Service sub-section — separate section to avoid page break issues
     if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
-      y = checkPageBreak(doc, y, 22, prio);
+      y = checkPageBreak(doc, y, 25, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
         { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
@@ -1215,7 +1219,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Damage Assessment (conditional)
   if (data.damage_estimate || data.damage_description) {
-    y = checkPageBreak(doc, y, 22, prio);
+    y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
       const yR = addFieldPair(doc, 'Description', data.damage_description || '', rx, y, hfw);
@@ -1349,6 +1353,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       noteRows,
       y,
       [LAYOUT.PAGE_MARGIN + 5, LAYOUT.PAGE_MARGIN + 58, LAYOUT.PAGE_MARGIN + 90],
+      { lightHeader: true },
     );
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }

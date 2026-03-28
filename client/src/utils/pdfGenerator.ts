@@ -837,7 +837,7 @@ export function addSignatureBlock(
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text('PRINTED NAME', x + SPACING.MD, row2Y + 2.2);
   doc.text('BADGE NUMBER', x + colW + SPACING.MD, row2Y + 2.2);
-  doc.text('DATE', x + colW * 2 + SPACING.MD, row2Y + 2.2);
+  doc.text('DATE/TIME', x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
@@ -1475,6 +1475,7 @@ export function addTableWithShading(
   rows: string[][],
   startY: number,
   colPositions: number[],
+  opts?: { lightHeader?: boolean },
 ): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -1492,23 +1493,36 @@ export function addTableWithShading(
     colWidths.push(nextX - colPositions[c] - cellPad);
   }
 
-  // Helper to draw header row — dark blocky style
+  // Helper to draw header row — dark blocky style (or light field-pair style)
   // atY = top of header rect; text is vertically centered within
+  const lightHdr = opts?.lightHeader === true;
   const headerRowH = 5;
   const drawHeaders = (atY: number): number => {
-    // Dark table header (police report style)
-    doc.setFillColor(...COLOR.BG_TABLE_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
-    // Bold border around header
-    doc.setDrawColor(...COLOR.BORDER_OUTER);
-    doc.setLineWidth(BORDER.TABLE_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+    if (lightHdr) {
+      // Light header: white background, thin border, uppercase label (field-pair style)
+      doc.setFillColor(255, 255, 255);
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.setDrawColor(...COLOR.BORDER_FIELD);
+      doc.setLineWidth(BORDER.FIELD);
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    } else {
+      // Dark table header (police report style)
+      doc.setFillColor(...COLOR.BG_TABLE_HDR);
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.setDrawColor(...COLOR.BORDER_OUTER);
+      doc.setLineWidth(BORDER.TABLE_OUTER);
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+    }
 
     // Text vertically centered: baseline = top + half height + half cap-height
-    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const capH = FONT.SIZE_TABLE_HEADER * 0.35;  // approximate cap-height in mm
+    const fontSize = lightHdr ? FONT.SIZE_FIELD_LABEL : FONT.SIZE_TABLE_HEADER;
+    const capH = fontSize * 0.35;  // approximate cap-height in mm
     const textY = atY + (headerRowH + capH) / 2;
     for (const h of headers) {
       doc.text(sanitizePdfText(h.label), h.x, textY);

@@ -13,13 +13,13 @@ export type RGBColor = readonly [number, number, number];
 export const COLOR = {
   // Text hierarchy
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
-  TEXT_SECONDARY:  [50, 50, 50]     as const,  // Helvetica labels (darker)
+  TEXT_SECONDARY:  [74, 85, 104]    as const,  // Helvetica labels (#4a5568)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
   // Borders — clean, professional lines
-  BORDER_FIELD:    [160, 160, 165]  as const,  // Field box borders
+  BORDER_FIELD:    [113, 128, 150]  as const,  // Field box borders (#718096)
   BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
   BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
   BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
@@ -27,7 +27,7 @@ export const COLOR = {
 
   // Backgrounds — lighter, modern government-form style
   BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [55, 60, 72]     as const,  // Section header bar (dark slate, not black)
+  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#2d3748 dark blue-gray)
   BG_TABLE_HDR:    [70, 75, 88]     as const,  // Table column header (slate)
 
   // Financial
@@ -49,9 +49,9 @@ export const COLOR = {
 
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
-  SIZE_SECTION_TITLE:     8,     // Section header bar text (all-caps)
-  SIZE_FIELD_VALUE:       8.5,   // Courier values inside field boxes
-  SIZE_FIELD_LABEL:       6,     // Helvetica labels above field boxes
+  SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
+  SIZE_FIELD_VALUE:       8,     // Courier values inside field boxes
+  SIZE_FIELD_LABEL:       5,     // Helvetica labels above field boxes (5pt, tight)
   SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
   SIZE_FOOTER_PRIMARY:    5,     // Footer form #, page #
@@ -79,7 +79,7 @@ export const FONT = {
 
 export const BORDER = {
   SECTION_OUTER:    0.5,   // Border around sections (clean)
-  FIELD:            0.25,  // Field box borders (subtle grid)
+  FIELD:            0.3,   // Field box borders (0.3pt, clean grid)
   TABLE_OUTER:      0.5,   // Outer border of tables
   TABLE_ROW:        0.15,  // Row separators (subtle)
   TABLE_COLUMN:     0.15,  // Column separators (subtle)
@@ -106,10 +106,10 @@ export const SPACING = {
   XL:                 3.5,   // Generous gap
 
   CONTENT_INSET:      1.5,   // Left/right padding inside sections
-  SECTION_HEADER_H:   4.5,   // Section header bar height
-  SECTION_GAP:        1.5,   // Gap between sections
-  SECTION_CONTENT_PAD: 3.5,  // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  2.0,  // Padding inside section before bottom border
+  SECTION_HEADER_H:   5.5,   // Section header bar height (consistent 5.5mm)
+  SECTION_GAP:        2,     // Gap between sections (2mm)
+  SECTION_CONTENT_PAD: 2,    // Gap from header bar to first content (2mm)
+  SECTION_BOTTOM_PAD:  1.5,  // Padding inside section before bottom border (1.5mm)
 
   FIELD_ROW_HEIGHT:   7,     // Height of field box
   FIELD_ROW_ADVANCE:  7.5,   // Y-advance after field row
