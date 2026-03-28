@@ -1375,34 +1375,28 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   if (data.notes && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
-    // Render notes as readable entries with clear timestamp/author and note text
-    y += SPACING.LG;  // More space after sub-header
+    // Render notes: DATE/TIME on left, AUTHOR on right, content below — no separator lines
+    y += SPACING.LG;  // Space after sub-header
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
-      y = checkPageBreak(doc, y, 12, prio);
-      // Separator line between entries (not before the first)
-      if (ni > 0) {
-        doc.setDrawColor(...COLOR.BORDER_FIELD);
-        doc.setLineWidth(0.2);
-        doc.line(lx, y, lx + ffw, y);
-        y += SPACING.SM;  // Tighter gap between notes
-      }
-      // Timestamp and author as separate readable labels
+      y = checkPageBreak(doc, y, 10, prio);
+      // Date/time on far left
       doc.setFont('courier', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(fmtTimestamp(n.created_at).toUpperCase(), lx, y);
-      const tsWidth = doc.getTextWidth(fmtTimestamp(n.created_at).toUpperCase());
+      // Author name on far right
+      const authorName = (n.author || 'System').toUpperCase();
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      doc.text((n.author || 'System').toUpperCase(), lx + tsWidth + 8, y);
-      y += 3.5;
-      // Note content — full size, readable
+      const authorW = doc.getTextWidth(authorName);
+      doc.text(authorName, lx + ffw - authorW, y);
+      y += 3;
+      // Note content
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
-      y += SPACING.XS;  // Minimal gap before next note
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
