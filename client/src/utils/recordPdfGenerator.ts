@@ -1039,7 +1039,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Flags — clean 6-column checkbox grid
   y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    y += SPACING.SM;
+    y += SPACING.MD;
     const cols = 6;
     const colW = ffw / cols;
     const rowH = 5;
