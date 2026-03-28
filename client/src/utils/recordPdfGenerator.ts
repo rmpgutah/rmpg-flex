@@ -1265,13 +1265,15 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'CALL SIGN', x: colPositions[0] },
         { label: 'OFFICER', x: colPositions[1] },
         { label: 'BADGE #', x: colPositions[2] },
-        { label: 'STATUS', x: colPositions[3] },
+        { label: 'ROLE', x: colPositions[3] },
       ];
-      const tableRows = unitDetail.map(u => [
+      // Assign role based on order added to call
+      const UNIT_ROLES = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
+      const tableRows = unitDetail.map((u, idx) => [
         u.call_sign || '',
         u.officer_name || '',
         u.badge_number || '',
-        (u.status || '').toUpperCase(),
+        (UNIT_ROLES[idx] || `Officer #${idx + 1}`).toUpperCase(),
       ]);
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else if (data.assigned_units && data.assigned_units.length > 0) {
