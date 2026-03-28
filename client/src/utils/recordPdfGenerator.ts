@@ -911,7 +911,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     ], y);
     // Dispatch Code | Section ID | Zone ID | Beat ID — single row, 4 columns
     if (data.dispatch_code || data.section_id || data.zone_id || data.beat_id) {
-      const qw = getContentWidth(doc) / 4;
+      const qw = ffw / 4;
       let maxY = y + SPACING.FIELD_ROW_ADVANCE;
       const distFields = [
         { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '--' },
@@ -949,7 +949,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
       ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
       : '';
-    const qw = getContentWidth(doc) / 4;
+    const qw = ffw / 4;
     let maxY = y + SPACING.FIELD_ROW_ADVANCE;
     const mileFields = [
       { label: 'Vehicle ID', value: data.responding_vehicle_id || '--' },
@@ -991,26 +991,31 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Persons
+  // Linked Persons — field-pair box rows (matches Assigned Units style)
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
-    const personHeaders = [
-      { label: 'NAME', x: lx },
-      { label: 'ROLE', x: LAYOUT.PAGE_MARGIN + 50 },
-      { label: 'DOB', x: LAYOUT.PAGE_MARGIN + 80 },
-      { label: 'RACE/SEX', x: LAYOUT.PAGE_MARGIN + 110 },
-      { label: 'PHONE', x: LAYOUT.PAGE_MARGIN + 140 },
-    ];
-    const personRows = data.linked_persons.map(p => [
-      `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, ''),
-      titleCase((p.role || '').replace(/_/g, ' ')),
-      p.dob || '',
-      [p.race, p.gender].filter(Boolean).join('/'),
-      p.phone || '',
-    ]);
-    y = addTableWithShading(doc, personHeaders, personRows, y,
-      [lx, LAYOUT.PAGE_MARGIN + 50, LAYOUT.PAGE_MARGIN + 80, LAYOUT.PAGE_MARGIN + 110, LAYOUT.PAGE_MARGIN + 140]);
+    const pCw = getContentWidth(doc);
+    // 5 columns: Name (wider) | Role | DOB | Race/Sex (wider) | Phone
+    const pColW = [pCw * 0.25, pCw * 0.15, pCw * 0.15, pCw * 0.22, pCw * 0.23];
+    for (const p of data.linked_persons) {
+      y = checkPageBreak(doc, y, 12);
+      const pFields = [
+        { label: 'Name', value: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '--' },
+        { label: 'Role', value: titleCase((p.role || '').replace(/_/g, ' ')) || '--' },
+        { label: 'DOB', value: p.dob || '--' },
+        { label: 'Race/Sex', value: [p.race, p.gender].filter(Boolean).join('/') || '--' },
+        { label: 'Phone', value: p.phone || '--' },
+      ];
+      let maxPY = y + SPACING.FIELD_ROW_ADVANCE;
+      let pX = lx;
+      for (let i = 0; i < 5; i++) {
+        const fy = addFieldPair(doc, pFields[i].label, pFields[i].value, pX, y, pColW[i]);
+        if (fy > maxPY) maxPY = fy;
+        pX += pColW[i];
+      }
+      y = maxPY;
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -1240,7 +1245,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
     if (unitDetail && unitDetail.length > 0) {
       const UNIT_ROLES = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
-      const qw = getContentWidth(doc) / 4;
+      const qw = ffw / 4;
       for (let idx = 0; idx < unitDetail.length; idx++) {
         const u = unitDetail[idx];
         y = checkPageBreak(doc, y, 12);
