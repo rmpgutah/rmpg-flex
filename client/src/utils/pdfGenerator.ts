@@ -859,11 +859,11 @@ export function addStackedSignatures(
   const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
   const roleBarH = SPACING.SIGNATURE_ROLE_H;
-  const sigRowH = 10;
+  const sigRowH = 8;
   const infoRowH = 6;
   const totalH = roleBarH + sigRowH + infoRowH;
-  const sealColW = totalH; // square: width = height
-  const sigW = cw - sealColW; // left columns for signature block
+  const sealColW = 25; // Company seal column width
+  const sigW = cw - sealColW;
   y = checkPageBreak(doc, y, totalH, priority);
 
   // ── Reporting Officer signature block (left side) ──
@@ -874,12 +874,13 @@ export function addStackedSignatures(
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(mx + sigW, y, sealColW, totalH);
 
-  // Dashed circle centered in seal column
-  const circleR = (sealColW - 6) / 2;
+  // Dashed circle centered in seal column — fill available height
+  const sealH = totalH;
+  const circleR = Math.min(sealColW, sealH) / 2 - 2;
   const cx = mx + sigW + sealColW / 2;
-  const cy = y + totalH / 2;
+  const cy = y + sealH / 2;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
-  doc.setLineWidth(0.3);
+  doc.setLineWidth(0.4);
   const segs = 36;
   for (let i = 0; i < segs; i++) {
     if (i % 2 === 0) {
@@ -890,10 +891,10 @@ export function addStackedSignatures(
     }
   }
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('COMPANY', cx, cy - 1, { align: 'center' });
+  doc.text('COMPANY', cx, cy - 1.5, { align: 'center' });
   doc.text('SEAL', cx, cy + 2.5, { align: 'center' });
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
