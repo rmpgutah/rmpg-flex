@@ -859,12 +859,12 @@ export function addStackedSignatures(
   const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
   const roleBarH = SPACING.SIGNATURE_ROLE_H;
-  const sigRowH = 12;
-  const infoRowH = 8;
+  const sigRowH = 10;
+  const infoRowH = 6;
   const totalH = roleBarH + sigRowH + infoRowH;
   const sealColW = totalH; // square: width = height
   const sigW = cw - sealColW; // left columns for signature block
-  y = checkPageBreak(doc, y, totalH + 2, priority);
+  y = checkPageBreak(doc, y, totalH, priority);
 
   // ── Reporting Officer signature block (left side) ──
   addSignatureBlock(doc, role1, mx, y, sigW, sig1);
