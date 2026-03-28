@@ -474,11 +474,11 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 2;          // Height reserved for label above value
-  const baseBoxH = 4;        // Minimum value area height (no box, compact)
-  const innerPad = 1;        // Horizontal padding
+  const labelH = 1.5;        // Height reserved for label above value (tight)
+  const baseBoxH = 3;        // Minimum value area height (compact)
+  const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
-  const lineStep = FONT.SIZE_FIELD_VALUE * 0.38 + 0.3; // Y-step per extra line — matches addFormattedText
+  const lineStep = FONT.SIZE_FIELD_VALUE * 0.35 + 0.2; // Y-step per extra line (tighter)
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
@@ -527,7 +527,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 1; // label + box + gap between rows
+  return y + labelH + boxH + 0.3; // label + box + minimal gap
 }
 
 /**
@@ -951,7 +951,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = fontSize * 0.38 + 0.3;
+  const lineH = fontSize * 0.35 + 0.2;
   const paragraphGap = SPACING.MD;
 
   const paragraphs = text.split(/\n\n+/);
@@ -1002,7 +1002,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
   const text = sanitizePdfText(rawText);
-  const lineH = fontSize * 0.38 + 0.3; // Consistent line spacing across all text renderers
+  const lineH = fontSize * 0.35 + 0.2; // Consistent line spacing across all text renderers
   const paragraphGap = SPACING.MD;
   // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
   const safeMaxWidth = maxWidth - 2;
@@ -1162,7 +1162,7 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = fontSize * 0.38 + 0.3; // Match addFormattedText lineStep
+  const lineH = fontSize * 0.35 + 0.2; // Match addFormattedText lineStep
   const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)

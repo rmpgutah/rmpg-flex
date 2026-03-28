@@ -960,10 +960,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Flags — before Scene Conditions
   y = checkPageBreak(doc, y, 15, prio);
   { const flagSec = openAutoSection(doc, 'Flags', y); y = flagSec.contentY;
-    y += SPACING.MD;
+    y += 0.5;
     const flagCols = 6;
     const flagColW = ffw / flagCols;
-    const flagRowH = 4;
+    const flagRowH = 3.5;
     const flagGrid2: { label: string; checked: boolean }[][] = [
       [
         { label: 'Injuries', checked: !!data.injuries_reported },
@@ -1143,7 +1143,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('DESCRIPTION', lx, y);
-    y += 3.5;
+    y += 2;
     doc.setFont('helvetica', 'normal');
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
@@ -1198,14 +1198,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
     for (let vi = 0; vi < data.visit_history.length; vi++) {
       const visit = data.visit_history[vi];
-      // Ensure each visit entry has page break checking (need ~14mm per entry)
-      y = checkPageBreak(doc, y, 16, prio);
-      // Compact spacing between visit entries with subtle separator line
+      y = checkPageBreak(doc, y, 12, prio);
       if (vi > 0) {
         doc.setDrawColor(...COLOR.BORDER_TABLE);
         doc.setLineWidth(BORDER.TABLE_ROW);
         doc.line(lx, y, lx + ffw, y);
-        y += SPACING.SM;
+        y += 0.3;
       }
 
       // Visit header line
@@ -1374,30 +1372,30 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
     // Render notes: DATE/TIME on left, AUTHOR on right, content below — tight layout
-    y += 1;  // Minimal space after sub-header
+    y += 0.5;  // Tight space after sub-header
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
-      y = checkPageBreak(doc, y, 8, prio);
+      y = checkPageBreak(doc, y, 6, prio);
       doc.setDrawColor(255, 255, 255);
       doc.setLineWidth(0);
       // Date/time on far left, author on far right — same line
       doc.setFont('courier', 'bold');
-      doc.setFontSize(6.5);
+      doc.setFontSize(6);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       const tsText = fmtTimestamp(n.created_at).toUpperCase();
       doc.text(tsText, lx, y);
       const authorName = (n.author || 'System').toUpperCase();
       const authorW = doc.getTextWidth(authorName);
       doc.text(authorName, lx + ffw - authorW, y);
-      y += 2.5;
+      y += 2;
       // Note content
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
-      // Tight gap between entries
-      if (ni < data.notes.length - 1) y += 1;
+      // Minimal gap between entries
+      if (ni < data.notes.length - 1) y += 0.5;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1599,10 +1597,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('ACTIVE FLAGS', lx + 1.5, y + 2);
-    y += 4;
+    doc.text('ACTIVE FLAGS', lx + 1.5, y + 1.5);
+    y += 2.5;
     y = addFlagBadges(doc, data.flags, lx, y, ffw, prio);
-    y += 1;
+    y += 0.5;
   }
 
   // Caution block — amber warning styling for officer safety (kept as-is)
