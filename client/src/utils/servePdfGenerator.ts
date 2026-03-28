@@ -102,12 +102,12 @@ export interface ServiceLogData {
 
 // ── Helper: Centered bold title ──────────────────────────────
 
-function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = 14): number {
+function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = FONT.SIZE_HEADER_TITLE): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text(title, pageWidth / 2, y, { align: 'center' });
+  doc.text(title.toUpperCase(), pageWidth / 2, y, { align: 'center' });
   return y + fontSize * 0.5 + SPACING.LG;
 }
 
@@ -498,11 +498,11 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     ];
     const rows = data.attempts.map(a => [
       String(a.number),
-      a.date,
-      a.time,
+      (a.date || '').toUpperCase(),
+      (a.time || '').toUpperCase(),
       `${a.gpsLat.toFixed(4)}, ${a.gpsLng.toFixed(4)}`,
-      a.result,
-      a.notes,
+      (a.result || '').toUpperCase(),
+      (a.notes || '').toUpperCase(),
     ]);
 
     y = addTableWithShading(doc, headers, rows, y, cols);
@@ -707,14 +707,14 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const rows: string[][] = [];
     Array.from(clientGroups.entries()).forEach(([clientName, jobs]) => {
       // Group header row (bold client name spanning first column, rest empty)
-      rows.push([`[${clientName}]`, '', '', '', '']);
+      rows.push([`[${clientName.toUpperCase()}]`, '', '', '', '']);
       for (const job of jobs) {
         rows.push([
-          job.recipientName,
-          job.address,
-          job.documentType,
+          (job.recipientName || '').toUpperCase(),
+          (job.address || '').toUpperCase(),
+          (job.documentType || '').toUpperCase(),
           String(job.attempts),
-          job.result,
+          (job.result || '').toUpperCase(),
         ]);
       }
     });

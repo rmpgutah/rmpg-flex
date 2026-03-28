@@ -92,7 +92,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   await loadPdfAssets();
   setActiveFormKey('invoice');
   setActiveCaseNumber(data.invoice_number);
-  setGenerationTimestamp(new Date().toLocaleString());
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -222,7 +225,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         const item = items[i];
 
         // Dynamic row height for multi-line descriptions
-        const descLines = doc.splitTextToSize(sanitizePdfText(item.description || ''), cols[0].w - 2);
+        const descLines = doc.splitTextToSize(sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height
@@ -231,16 +234,16 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 3, cw - 2, rowHeight, 'F');
         }
 
-        doc.setTextColor(30, 30, 30);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(descLines, cols[0].x, y);
         doc.text(String(item.quantity ?? 0), cols[1].x + cols[1].w, y, { align: 'right' });
         doc.text(fmt(item.unit_price ?? 0), cols[2].x + cols[2].w, y, { align: 'right' });
 
         // Unified credit/debit colors from tokens
-        const amtColor: [number, number, number] = (item.amount ?? 0) < 0 ? [...COLOR.AMOUNT_CREDIT] : [30, 30, 30];
+        const amtColor: [number, number, number] = (item.amount ?? 0) < 0 ? [...COLOR.AMOUNT_CREDIT] : [...COLOR.TEXT_PRIMARY];
         doc.setTextColor(amtColor[0], amtColor[1], amtColor[2]);
         doc.text(fmt(item.amount ?? 0), cols[3].x + cols[3].w, y, { align: 'right' });
-        doc.setTextColor(30, 30, 30);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
         y += rowHeight;
 
@@ -253,19 +256,12 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       // Update final segment bottom
       if (tableSegments.length > 0) tableSegments[tableSegments.length - 1].bottom = y + 1;
 
-      // Outer table border — draw per page segment
-      const currentPage = doc.getNumberOfPages();
-      for (const seg of tableSegments) {
-        doc.setPage(seg.page);
-        doc.setDrawColor(...COLOR.BORDER_OUTER);
-        doc.setLineWidth(BORDER.TABLE_OUTER);
-        doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, seg.bottom - seg.top + 3);
-      }
-      doc.setPage(currentPage);
+      // Table segments tracked for page continuity (no outer border — clean CFS style)
+      void tableSegments;
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('No line items', lx, y);
+      doc.text('NO LINE ITEMS', lx, y);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       y += SPACING.XL;
     }
@@ -285,7 +281,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
-    doc.setTextColor(color ? color[0] : 30, color ? color[1] : 30, color ? color[2] : 30);
+    const valColor = color || COLOR.TEXT_PRIMARY;
+    doc.setTextColor(valColor[0], valColor[1], valColor[2]);
     doc.text(value, totVX, y, { align: 'right' });
     y += bold ? 6 : LAYOUT.LINE_HEIGHT;
   };
@@ -333,10 +330,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       { label: 'REFERENCE', x: payColPositions[3] },
     ];
     const payRows = payments.map(p => [
-      p.payment_date?.substring(0, 10) || '',
-      fmt(p.amount),
-      p.payment_method || '',
-      p.reference_number || '',
+      (p.payment_date?.substring(0, 10) || '').toUpperCase(),
+      fmt(p.amount).toUpperCase(),
+      (p.payment_method || '').toUpperCase(),
+      (p.reference_number || '').toUpperCase(),
     ]);
     y = addTableWithShading(doc, payHeaders, payRows, y, payColPositions);
 
@@ -348,8 +345,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = checkPageBreak(doc, y, 20);
     const sec = openAutoSection(doc, 'Notes', y);
     y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    y = addWrappedText(doc, data.notes, lx, y, ffw, 9);
+    doc.setFont('courier', 'normal');
+    y = addWrappedText(doc, data.notes.toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE);
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
