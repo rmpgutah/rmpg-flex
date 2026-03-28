@@ -1188,15 +1188,23 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
     };
     y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
-    y += SPACING.MD;
+    y += SPACING.SM;
+    // Pack remaining fields tightly — check page break before each group
+    y = checkPageBreak(doc, y, 10, prio);
     y = addThreeColumnFields(doc, [
       { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
       { label: '# Victims', value: data.num_victims != null ? String(data.num_victims) : '' },
       { label: 'Direction of Travel', value: data.direction_of_travel || '' },
     ], y);
-    { const yL = addFieldPair(doc, 'Subject Description', data.subject_description || 'N/A', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Vehicle Description', data.vehicle_description || 'N/A', rx, y, hfw);
-      y = Math.max(yL, yR); }
+    // Subject + Vehicle on same line — only show if non-empty
+    const hasSubjDesc = data.subject_description && data.subject_description.trim() && data.subject_description.trim() !== '--';
+    const hasVehDesc = data.vehicle_description && data.vehicle_description.trim() && data.vehicle_description.trim() !== '--';
+    if (hasSubjDesc || hasVehDesc) {
+      y = checkPageBreak(doc, y, 8, prio);
+      const yL = addFieldPair(doc, 'Subject Description', hasSubjDesc ? data.subject_description!.trim() : 'N/A', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Vehicle Description', hasVehDesc ? data.vehicle_description!.trim() : 'N/A', rx, y, hfw);
+      y = Math.max(yL, yR);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
