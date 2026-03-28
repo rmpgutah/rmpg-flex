@@ -1152,11 +1152,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: '# Victims', value: data.num_victims != null ? String(data.num_victims) : '' },
       { label: 'Direction of Travel', value: data.direction_of_travel || '' },
     ], y);
-    if (data.subject_description) {
-      y = addFieldPair(doc, 'Subject Description', data.subject_description, lx, y, ffw);
-    }
-    if (data.vehicle_description) {
-      y = addFieldPair(doc, 'Vehicle Description', data.vehicle_description, lx, y, ffw);
+    if (data.subject_description || data.vehicle_description) {
+      const yL = addFieldPair(doc, 'Subject Description', data.subject_description || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Vehicle Description', data.vehicle_description || '', rx, y, hfw);
+      y = Math.max(yL, yR);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
