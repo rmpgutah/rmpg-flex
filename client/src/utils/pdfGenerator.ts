@@ -198,7 +198,7 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
   doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
-  doc.text('CONFIDENTIAL', cx, cy, { align: 'center', angle: 45 });
+  doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
   doc.restoreGraphicsState();
 
   // Explicitly reset opacity to full after watermark (jsPDF GState safety)
