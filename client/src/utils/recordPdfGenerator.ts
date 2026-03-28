@@ -913,11 +913,23 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Building', value: data.location_building || '' },
       { label: 'Floor', value: data.location_floor || '' },
       { label: 'Room', value: data.location_room || '' },
-      { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '' },
-      { label: 'Section ID', value: data.section_id || '' },
-      { label: 'Zone ID', value: data.zone_id || '' },
-      { label: 'Beat ID', value: data.beat_id || '' },
     ], y);
+    // Dispatch Code | Section ID | Zone ID | Beat ID — single row, 4 columns
+    if (data.dispatch_code || data.section_id || data.zone_id || data.beat_id) {
+      const qw = getContentWidth(doc) / 4;
+      let maxY = y + SPACING.FIELD_ROW_ADVANCE;
+      const distFields = [
+        { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '--' },
+        { label: 'Section ID', value: data.section_id || '--' },
+        { label: 'Zone ID', value: data.zone_id || '--' },
+        { label: 'Beat ID', value: data.beat_id || '--' },
+      ];
+      for (let i = 0; i < 4; i++) {
+        const fy = addFieldPair(doc, distFields[i].label, distFields[i].value, lx + i * qw, y, qw);
+        if (fy > maxY) maxY = fy;
+      }
+      y = maxY;
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
