@@ -815,24 +815,27 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || '--' }] : []),
     ];
 
-    // Dynamic column widths: measure each value, give AREA the most room
+    // Dynamic column widths — tight fit, Area gets remaining space
     doc.setFont('courier', 'bold');
     doc.setFontSize(6.5);
-    const pad = 3; // padding per column
-    // Measure natural width of each value
-    const naturalWidths = distFields.map(f => {
-      const labelW = doc.getTextWidth(f.label) * (4.5 / 6.5); // label is smaller font
+    const dPad = 4; // left+right padding per column
+    // Measure natural width needed for each field (value or label, whichever wider)
+    const naturalWidths = distFields.map((f, idx) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(4.5);
+      const labelW = doc.getTextWidth(f.label);
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(6.5);
       const valW = doc.getTextWidth(sanitizePdfText(f.value));
-      return Math.max(labelW, valW) + pad * 2;
+      // For AREA (index 3), don't cap — let it take remaining space
+      if (idx === 3) return 999; // placeholder, will be computed below
+      return Math.max(labelW, valW) + dPad;
     });
-    const totalNatural = naturalWidths.reduce((a, b) => a + b, 0);
-    // Scale proportionally to fill content width, but give minimum 12mm per column
-    const minColW = 12;
-    const colWidths = naturalWidths.map(w => Math.max(minColW, (w / totalNatural) * cw));
-    // Normalize to exactly fill cw
-    const totalCols = colWidths.reduce((a, b) => a + b, 0);
-    const scale = cw / totalCols;
-    const finalWidths = colWidths.map(w => w * scale);
+    // Fixed columns = all except AREA
+    const fixedTotal = naturalWidths.reduce((a, w, i) => i === 3 ? a : a + w, 0);
+    // AREA gets whatever space remains
+    naturalWidths[3] = Math.max(25, cw - fixedTotal);
+    const finalWidths = naturalWidths;
 
     let colX = LAYOUT.PAGE_MARGIN;
     distFields.forEach((f, i) => {
