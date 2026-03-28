@@ -1155,7 +1155,24 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       VALUES (?, 'call_updated', 'call', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Updated call ${call.call_number}: ${changedFields.join(', ')} (${changedFields.length} field(s))`, req.ip || 'unknown');
 
-    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    // Return the full enriched row (same JOINs as GET /calls/:id) so the client gets
+    // computed fields like property_name, client_name, dispatcher_name, incident_number
+    const updated = db.prepare(`
+      SELECT c.*, p.name as property_name, p.address as property_address,
+        u.full_name as dispatcher_name,
+        cl.name as client_name,
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number,
+        (SELECT COUNT(*) FROM call_persons cp
+          JOIN persons per ON cp.person_id = per.id
+          WHERE cp.call_id = c.id
+            AND per.flags IS NOT NULL
+            AND per.flags LIKE '%ACTIVE_WARRANT%') as has_active_warrant
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.id = ?
+    `).get(req.params.id) as any;
 
     // If location changed but no coordinates provided, geocode asynchronously
     if (location_address && latitude == null && longitude == null) {
