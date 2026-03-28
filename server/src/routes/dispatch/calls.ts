@@ -1310,42 +1310,96 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
       timestamp: now,
     }]);
 
-    // Create the NEW call linked to parent
+    // Create the NEW call linked to parent — copy ALL relevant fields
     const result = db.prepare(`
       INSERT INTO calls_for_service (
         call_number, incident_type, priority, status, source,
         caller_name, caller_phone, caller_relationship, caller_address,
         location_address, property_id, client_id, latitude, longitude,
+        cross_street, location_building, location_floor, location_room,
         description, notes, parent_call_id, pso_attempt_number,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
         pso_service_windows,
         process_service_type, process_served_to, process_served_address,
-        dispatcher_id, created_at, updated_at
+        dispatch_code, section_id, section_name, zone_id, zone_name,
+        beat_id, beat_name, beat_descriptor, contract_id,
+        num_subjects, num_victims, direction_of_travel,
+        subject_description, vehicle_description,
+        scene_safety, weather_conditions, lighting_conditions,
+        injuries_reported, alcohol_involved, domestic_violence, drugs_involved,
+        weapons_involved, mental_health_crisis, juvenile_involved,
+        felony_in_progress, officer_safety_caution, gang_related,
+        k9_requested, ems_requested, fire_requested, hazmat,
+        case_number, le_agency, le_case_number, le_notified,
+        secondary_type, contact_method, tags,
+        dispatcher_id, created_at, updated_at, received_at
       ) VALUES (
         ?, ?, ?, 'pending', ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
         ?,
         ?, ?, ?,
-        ?, ?, ?
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?
       )
     `).run(
       newCallNumber, parentCall.incident_type, parentCall.priority, parentCall.source || 'dispatch',
       parentCall.caller_name, parentCall.caller_phone, parentCall.caller_relationship, parentCall.caller_address,
       parentCall.location_address, parentCall.property_id, parentCall.client_id, parentCall.latitude, parentCall.longitude,
+      parentCall.cross_street, parentCall.location_building, parentCall.location_floor, parentCall.location_room,
       parentCall.description, initialNotes, rootCallId, newAttempt,
       parentCall.pso_requestor_name, parentCall.pso_requestor_phone, parentCall.pso_requestor_email,
       parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
       parentCall.pso_service_windows,
       parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
-      req.user!.userId, now, now
+      parentCall.dispatch_code, parentCall.section_id, parentCall.section_name, parentCall.zone_id, parentCall.zone_name,
+      parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
+      parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
+      parentCall.subject_description, parentCall.vehicle_description,
+      parentCall.scene_safety, parentCall.weather_conditions, parentCall.lighting_conditions,
+      parentCall.injuries_reported, parentCall.alcohol_involved, parentCall.domestic_violence, parentCall.drugs_involved,
+      parentCall.weapons_involved, parentCall.mental_health_crisis, parentCall.juvenile_involved,
+      parentCall.felony_in_progress, parentCall.officer_safety_caution, parentCall.gang_related,
+      parentCall.k9_requested, parentCall.ems_requested, parentCall.fire_requested, parentCall.hazmat,
+      parentCall.case_number, parentCall.le_agency, parentCall.le_case_number, parentCall.le_notified,
+      parentCall.secondary_type, parentCall.contact_method, parentCall.tags,
+      req.user!.userId, now, now, now
     );
 
     const newCallId = result.lastInsertRowid;
+
+    // Copy linked persons from parent call
+    try {
+      const parentPersons = db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(parentCall.id) as any[];
+      const insertPerson = db.prepare('INSERT INTO call_persons (call_id, person_id, role, notes) VALUES (?, ?, ?, ?)');
+      for (const p of parentPersons) {
+        try { insertPerson.run(newCallId, p.person_id, p.role, p.notes); } catch { /* skip duplicates */ }
+      }
+    } catch (e) { console.error('[Calls] Copy linked persons for redispatch:', e instanceof Error ? e.message : e); }
+
+    // Copy linked vehicles from parent call
+    try {
+      const parentVehicles = db.prepare('SELECT vehicle_id, role, notes FROM call_vehicles WHERE call_id = ?').all(parentCall.id) as any[];
+      const insertVehicle = db.prepare('INSERT INTO call_vehicles (call_id, vehicle_id, role, notes) VALUES (?, ?, ?, ?)');
+      for (const v of parentVehicles) {
+        try { insertVehicle.run(newCallId, v.vehicle_id, v.role, v.notes); } catch { /* skip duplicates */ }
+      }
+    } catch (e) { console.error('[Calls] Copy linked vehicles for redispatch:', e instanceof Error ? e.message : e); }
 
     // Mark parent call with a back-link note
     let parentNotes: any[] = [];
