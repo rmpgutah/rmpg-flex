@@ -926,8 +926,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Scene Conditions — right after Incident Location
-  y = checkPageBreak(doc, y, 20, prio);
+  // Scene Conditions — right after Incident Location (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
+  y = checkPageBreak(doc, y, 17, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Weather', value: data.weather_conditions || '' },
@@ -940,9 +940,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Mileage — single row: Vehicle ID | Starting | Ending | Total
+  // Mileage — single row: Vehicle ID | Starting | Ending | Total (header 5.5 + row 10 + pad 1.5 = 17mm)
   if (data.starting_mileage != null || data.ending_mileage != null || data.responding_vehicle_id) {
-    y = checkPageBreak(doc, y, 25, prio);
+    y = checkPageBreak(doc, y, 17, prio);
     const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
     const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
       ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
