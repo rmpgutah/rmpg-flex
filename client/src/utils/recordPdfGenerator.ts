@@ -810,7 +810,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const row1 = [
       { label: 'SECTION', value: data.section_name || '' },
       { label: 'ZONE', value: data.zone_name || '' },
-      { label: 'BEAT', value: data.beat_name || '' },
+      { label: 'BEAT', value: data.beat_id || '' },
       { label: 'AREA', value: data.beat_descriptor || '' },
       { label: 'CODE', value: data.dispatch_code || '' },
     ];
