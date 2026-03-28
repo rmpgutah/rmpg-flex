@@ -828,8 +828,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const fw = finalWidths[i];
       const fx = colX + 1.5;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(4.5);
-      doc.setTextColor(180, 180, 185);
+      doc.setFontSize(5);
+      doc.setTextColor(255, 255, 255);
       doc.text(f.label, fx, barY + 2.8);
       doc.setFont('courier', 'bold');
       doc.setFontSize(dValSize);

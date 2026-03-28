@@ -433,35 +433,11 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   const startPage = sectionPage ?? currentPage;
 
   if (startPage === currentPage) {
-    // Same page — simple single border
+    // Same page — no outline box (clean borderless style)
     const totalHeight = (contentEndY - sectionY) + padding;
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, Math.max(totalHeight, 12));
+    void totalHeight; // used for Y calculation below
   } else {
-    // Multi-page section — draw border segments per page
-    const pageH = doc.internal.pageSize.getHeight();
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-
-    for (let p = startPage; p <= currentPage; p++) {
-      doc.setPage(p);
-      if (p === startPage) {
-        // First page: from sectionY to page bottom (leave room for footer)
-        const bottomY = pageH - LAYOUT.FOOTER_HEIGHT - 2;
-        doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, bottomY - sectionY);
-      } else if (p === currentPage) {
-        // Last page: from below continuation header to contentEndY
-        const topY = 13.5; // Just below continuation header (contY=4 + contH=4.5 + 5mm gap)
-        doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, Math.max((contentEndY + padding) - topY, 12));
-      } else {
-        // Middle pages: full page border
-        const topY = 13.5;
-        const bottomY = pageH - LAYOUT.FOOTER_HEIGHT - 2;
-        doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, bottomY - topY);
-      }
-    }
-    // Restore to last page
+    // Multi-page section — just ensure we're on the last page
     doc.setPage(currentPage);
   }
 
@@ -781,9 +757,9 @@ export function addSignatureBlock(
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(x, y, width, roleBarH, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  const roleCapH = FONT.SIZE_FIELD_LABEL * 0.35;
+  const roleCapH = FONT.SIZE_SECTION_TITLE * 0.35;
   const roleTextY = y + (roleBarH + roleCapH) / 2;
   doc.text(sanitizePdfText(roleLabel.toUpperCase()), x + SPACING.CONTENT_INSET, roleTextY);
 
