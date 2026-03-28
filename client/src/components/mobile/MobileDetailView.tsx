@@ -179,7 +179,7 @@ export default function MobileDetailView({
           <div className="flex items-center gap-1 min-w-0 flex-1">
             <button type="button"
               onClick={onClose}
-              className="flex items-center justify-center w-10 h-10"
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
               style={{ color: '#b0bcc8' }}
               aria-label="Go back"
             >
@@ -203,7 +203,7 @@ export default function MobileDetailView({
             <div className="relative">
               <button type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center justify-center w-10 h-10"
+                className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
                 style={{ color: '#b0bcc8' }}
                 aria-label="More actions"
               >

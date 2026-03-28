@@ -140,7 +140,7 @@ export default function MobileBottomSheet({
       <div
         className="flex-shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing"
         style={{
-          height: 28,
+          height: 44,
           touchAction: 'none',
         }}
         onTouchStart={handleTouchStart}

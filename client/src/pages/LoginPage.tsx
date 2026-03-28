@@ -484,7 +484,7 @@ export default function LoginPage() {
                     ref={usernameRef}
                     id="username"
                     type="text"
-                    className="input-dark login-input-glow h-9"
+                    className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter your username"
                     aria-required="true"
                     value={loginUsername}
@@ -502,7 +502,7 @@ export default function LoginPage() {
                       ref={passwordRef}
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      className="input-dark login-input-glow h-9 pr-8"
+                      className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 pr-8"
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -513,21 +513,21 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11"
                       style={{ color: '#5a6e80' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       tabIndex={0}
                     >
-                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
                 <button
                   type="submit"
                   disabled={loginBusy || !loginUsername.trim() || !password}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -574,7 +574,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || totpCode.replace(/\s/g, '').length < 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -591,12 +591,12 @@ export default function LoginPage() {
                 </button>
 
                 {/* Trust this device checkbox */}
-                <label className="flex items-center gap-2 cursor-pointer select-none py-1 group">
+                <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
                   <input
                     type="checkbox"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded-sm accent-[#1a5a9e] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                    className="w-4 h-4 rounded-sm accent-[#1a5a9e] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                     style={{ accentColor: '#1a5a9e' }}
                     aria-label="Trust this device for 30 days"
                   />
@@ -663,7 +663,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleSecurityKeyAuth}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                   aria-label={webauthnError ? 'Retry security key authentication' : 'Activate security key'}
                 >
@@ -706,7 +706,7 @@ export default function LoginPage() {
 
                 <input
                   type="text"
-                  className="input-dark login-input-glow h-9 text-center font-mono tracking-widest uppercase"
+                  className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-center font-mono tracking-widest uppercase"
                   placeholder="XXXX-XXXX"
                   value={backupCode}
                   onChange={(e) => setBackupCode(e.target.value)}
@@ -720,7 +720,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !backupCode.trim()}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -775,7 +775,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleStartSetup}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -844,7 +844,7 @@ export default function LoginPage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={6}
-                    className="input-dark h-10 text-center text-lg tracking-[0.5em] font-mono login-input-glow"
+                    className="input-dark h-10 sm:h-10 min-h-[44px] text-center text-lg tracking-[0.5em] font-mono login-input-glow"
                     placeholder="000000"
                     value={setupCode}
                     onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -857,7 +857,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || setupCode.length !== 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -908,7 +908,7 @@ export default function LoginPage() {
                   <input
                     id="new-pw"
                     type="password"
-                    className="input-dark login-input-glow h-9"
+                    className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter new password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -927,7 +927,7 @@ export default function LoginPage() {
                   <input
                     id="confirm-pw"
                     type="password"
-                    className="input-dark login-input-glow h-9"
+                    className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Confirm new password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -943,7 +943,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !newPassword || newPassword !== confirmPassword}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (

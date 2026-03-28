@@ -1286,8 +1286,8 @@ body.fx-noise::after {
 
   /* Buttons: larger touch targets (44px min) */
   .toolbar-btn {
-    min-height: 36px;
-    min-width: 36px;
+    min-height: 44px;
+    min-width: 44px;
     padding: 6px 8px;
     font-size: 11px;
   }
@@ -1295,8 +1295,9 @@ body.fx-noise::after {
   .btn-primary,
   .btn-secondary,
   .btn-danger,
-  .btn-success {
-    min-height: 40px;
+  .btn-success,
+  .toolbar-btn-primary {
+    min-height: 44px;
     padding: 8px 14px;
     font-size: 12px;
   }
@@ -1305,7 +1306,7 @@ body.fx-noise::after {
   .input-dark,
   .select-dark,
   .textarea-dark {
-    min-height: 40px;
+    min-height: 44px;
     font-size: 14px;
     padding: 8px 12px;
   }
@@ -1329,13 +1330,14 @@ body.fx-noise::after {
   .menu-item {
     padding: 10px 12px;
     font-size: 13px;
-    min-height: 40px;
+    min-height: 44px;
   }
 
   /* PANIC button: larger on mobile */
   .panic-btn {
     padding: 8px 16px;
     font-size: 12px;
+    min-height: 44px;
   }
 
   /* Cards: full width */
