@@ -120,7 +120,7 @@ export const SPACING = {
 
   FORM_CELL_PAD:      0.8,   // Padding inside form cells
   FORM_CELL_LABEL_H:  2.5,   // Form cell label strip height
-  FORM_CELL_H:        7.5,   // Form cell total height (label + value + padding)
+  FORM_CELL_H:        8.5,   // Form cell total height (label + value + 2mm gap + padding)
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────

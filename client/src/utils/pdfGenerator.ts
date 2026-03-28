@@ -1272,7 +1272,30 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
         // Render narrative below the grid cells (enough gap to clear cell value text)
         if (sup.narrative) {
           const narY = gridEndY + SPACING.LG;
-          const endY = addFormattedText(doc, sup.narrative, lx, narY, ffw);
+          const pageH = doc.internal.pageSize.getHeight();
+          const fontSize = FONT.SIZE_FIELD_VALUE;
+          // Page break callback for supplement narrative continuation
+          const contTitle = supTitle.toUpperCase() + ' -- CONTINUED';
+          const supPageBreak = (newY: number): number => {
+            const cw = getContentWidth(doc);
+            doc.setFillColor(...COLOR.BG_SECTION_HDR);
+            doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
+            doc.setDrawColor(...COLOR.BORDER_SECTION);
+            doc.setLineWidth(BORDER.SECTION_OUTER);
+            doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+            doc.setTextColor(...COLOR.TEXT_INVERTED);
+            const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+            const textYpos = newY + (SPACING.SECTION_HEADER_H + capH) / 2;
+            doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+            const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+            doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.setFont('courier', 'normal');
+            doc.setFontSize(fontSize);
+            return contentStartY;
+          };
+          const endY = addFormattedText(doc, sup.narrative, lx, narY, ffw, fontSize, supPageBreak);
           return endY + SPACING.MD;
         }
         return gridEndY;
@@ -1867,42 +1890,41 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   });
 
   // ═══════════════════════════════════════════════════════════
-  // SECTION 1 — ADMINISTRATIVE DATA (dense NIBRS grid)
-  // ═══════════════════════════════════════════════════════════
+  // SECTION 1 — ADMINISTRATIVE DATA
+  // ═════���═════════════════════════════════════════════════════
   y = drawFormSection(doc, {
     sideTab: { label: 'ADMINISTRATIVE' },
     topBanner: true,
     onPageBreak: formSectionPageBreak,
     rows: [
       { cells: [
-        { label: '1. INCIDENT TYPE', value: formatIncidentType(data.incident_type), ratio: 3, valueBold: true },
-        { label: '2. TYPE CODE', value: getTypeCode(data.incident_type), ratio: 1, align: 'center' },
-        { label: '3. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
-        { label: '4. STATUS', value: data.status?.toUpperCase() || '', ratio: 1, align: 'center' },
+        { label: 'INCIDENT TYPE', value: formatIncidentType(data.incident_type), ratio: 3, valueBold: true },
+        { label: 'TYPE CODE', value: getTypeCode(data.incident_type), ratio: 1, align: 'center' },
+        { label: 'INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
+        { label: 'STATUS', value: data.status?.toUpperCase() || '', ratio: 1, align: 'center' },
       ]},
       { cells: [
-        { label: '5. OCCURRED DATE', value: data.occurred_date || '', ratio: 1 },
-        { label: '6. TIME', value: data.occurred_time || '', ratio: 1, align: 'center' },
-        { label: '7. END DATE', value: data.end_date || '', ratio: 1 },
-        { label: '8. END TIME', value: data.end_time || '', ratio: 1, align: 'center' },
-        { label: '9. PRIORITY', value: data.priority || '', ratio: 1, align: 'center', valueBold: true },
-        { label: '10. DISPOSITION', value: data.disposition || '', ratio: 1 },
+        { label: 'OCCURRED DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: 'TIME', value: data.occurred_time || '', ratio: 1, align: 'center' },
+        { label: 'END DATE', value: data.end_date || '', ratio: 1 },
+        { label: 'TIME', value: data.end_time || '', ratio: 1, align: 'center' },
+        { label: 'PRIORITY', value: data.priority || '', ratio: 1, align: 'center', valueBold: true },
+        { label: 'DISPOSITION', value: data.disposition || '', ratio: 1 },
       ]},
       { cells: [
-        { label: '11. REPORTING OFFICER', value: data.officer_name || '', ratio: 3, valueBold: true },
-        { label: '12. BADGE #', value: data.badge_number || '', ratio: 1, align: 'center' },
-        { label: '13. SOURCE', value: data.source || '', ratio: 1 },
+        { label: 'REPORTING OFFICER', value: data.officer_name || '', ratio: 3, valueBold: true },
+        { label: 'BADGE #', value: data.badge_number || '', ratio: 1, align: 'center' },
       ]},
       { cells: [
-        { label: '14. LOCATION OF INCIDENT', value: data.location || '', ratio: 1, valueBold: true },
+        { label: 'ADDRESS', value: data.location || '', ratio: 1, valueBold: true },
       ]},
       { cells: [
-        { label: '15. DISPATCH CODE', value: data.dispatch_code || '', ratio: 1, align: 'center', valueBold: true },
-        { label: '16. SECTION', value: data.section_id || '', ratio: 1, align: 'center' },
-        { label: '17. ZONE', value: data.zone_id || '', ratio: 1, align: 'center' },
-        { label: '18. BEAT', value: data.beat_id || '', ratio: 1, align: 'center' },
-        { label: '19. RESPONDING AGENCY', value: data.responding_le_agency || '', ratio: 2 },
-        { label: '20. LE CASE #', value: data.le_case_number || '', ratio: 1 },
+        { label: 'DISPATCH CODE', value: data.dispatch_code || '', ratio: 1, align: 'center', valueBold: true },
+        { label: 'SECTION', value: data.section_id || '', ratio: 1, align: 'center' },
+        { label: 'ZONE', value: data.zone_id || '', ratio: 1, align: 'center' },
+        { label: 'BEAT', value: data.beat_id || '', ratio: 1, align: 'center' },
+        { label: 'RESPONDING AGENCY', value: data.responding_le_agency || '', ratio: 2 },
+        { label: 'LE CASE #', value: data.le_case_number || '', ratio: 1 },
       ]},
     ],
     y,

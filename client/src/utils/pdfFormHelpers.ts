@@ -96,14 +96,17 @@ export function drawFormCell(
   const labelBaseY = y + pad + 1.2;
   if (cell.label) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setFontSize(5.5); // 5.5pt labels matching CFS addFieldPair style
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(cell.label.toUpperCase(), x + pad, labelBaseY);
+    // Strip numbered prefix patterns like "1. ", "12. " from labels
+    const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
+    doc.text(cleanLabel, x + pad, labelBaseY);
   }
 
-  // Value area starts below label strip
-  const valueAreaTop = y + SPACING.FORM_CELL_LABEL_H + pad;
-  const valueAreaH = h - SPACING.FORM_CELL_LABEL_H - pad;
+  // Value area starts below label strip — 2mm gap between label and value
+  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.8; // Extra gap for breathing room
+  const valueAreaTop = y + labelStripH + pad;
+  const valueAreaH = h - labelStripH - pad;
 
   // Value (Courier, black — centered in value area)
   if (cell.checkbox) {
@@ -306,10 +309,7 @@ export function drawCheckboxGrid(
   // Account for last row
   curY += rowH;
 
-  // Outer border around checkbox grid
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, totalW, curY - y);
+  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
@@ -369,10 +369,7 @@ export function drawCodeReferenceTable(
 
   curY += rowH;
 
-  // Outer border
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, totalW, curY - y);
+  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
@@ -409,7 +406,8 @@ export function drawFormSection(
     : getGridContentWidth(doc);
 
   // Calculate total section height (include banner if applicable)
-  const bannerH = useBanner ? SPACING.SECTION_HEADER_H : 0;
+  // Banner: 5mm dark header bar matching CFS openAutoSection style
+  const bannerH = useBanner ? 5 : 0;
   let totalH = bannerH;
   for (const row of config.rows) {
     totalH += row.height || SPACING.FORM_CELL_H;
@@ -430,6 +428,7 @@ export function drawFormSection(
 
   if (useBanner) {
     // ── Draw horizontal banner (matches openAutoSection header style) ──
+    // Dark fill (#2a3e58 equivalent) matching CFS section headers
     const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
     doc.setFillColor(...bgColor);
     doc.rect(gridX, curY, gridW, bannerH, 'F');
@@ -444,7 +443,7 @@ export function drawFormSection(
     const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textY = curY + (bannerH + bannerCapH) / 2;
     doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
-    curY += bannerH + 1.5; // 1.5mm gap between banner and first grid row
+    curY += bannerH + 2; // 2mm gap between banner and first grid row
   }
 
   // Draw grid rows
