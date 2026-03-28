@@ -921,29 +921,26 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Mileage — keep entire section together (header + vehicle row + total row ≈ 40mm)
-  if (data.starting_mileage || data.ending_mileage || data.responding_vehicle_id) {
-    y = checkPageBreak(doc, y, 40, prio);
+  // Mileage — single row: Vehicle ID | Starting | Ending | Total
+  if (data.starting_mileage != null || data.ending_mileage != null || data.responding_vehicle_id) {
+    y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
-    if (data.responding_vehicle_id) {
-      y = addThreeColumnFields(doc, [
-        { label: 'Vehicle ID', value: data.responding_vehicle_id },
-        { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : '' },
-        { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : '' },
-      ], y);
-    }
     const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
       ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
       : '';
-    if (totalMiles || (!data.responding_vehicle_id && (data.starting_mileage || data.ending_mileage))) {
-      y = addThreeColumnFields(doc, [
-        ...(!data.responding_vehicle_id ? [
-          { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : '' },
-          { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : '' },
-        ] : []),
-        ...(totalMiles ? [{ label: 'Total Miles', value: totalMiles }] : []),
-      ] as { label: string; value: string }[], y);
+    const qw = getContentWidth(doc) / 4;
+    let maxY = y + SPACING.FIELD_ROW_ADVANCE;
+    const mileFields = [
+      { label: 'Vehicle ID', value: data.responding_vehicle_id || '--' },
+      { label: 'Starting Mileage', value: data.starting_mileage != null ? Number(data.starting_mileage).toLocaleString() : '--' },
+      { label: 'Ending Mileage', value: data.ending_mileage != null ? Number(data.ending_mileage).toLocaleString() : '--' },
+      { label: 'Total Miles', value: totalMiles || '--' },
+    ];
+    for (let i = 0; i < 4; i++) {
+      const fy = addFieldPair(doc, mileFields[i].label, mileFields[i].value, lx + i * qw, y, qw);
+      if (fy > maxY) maxY = fy;
     }
+    y = maxY;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
