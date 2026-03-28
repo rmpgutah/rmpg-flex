@@ -528,10 +528,12 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   y = checkPageBreak(doc, y, totalFieldH);
 
   // Value box with border (positioned below the label)
+  // Inset box slightly so adjacent columns don't overlap borders
+  const boxInset = 0.5;
   const boxY = y + labelH;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
-  doc.rect(x, boxY, width, boxH);
+  doc.rect(x + boxInset, boxY, width - boxInset * 2, boxH);
 
   // Value text — vertically centered in box
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
