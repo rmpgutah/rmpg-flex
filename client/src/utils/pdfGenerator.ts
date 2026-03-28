@@ -3065,9 +3065,8 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / SERVICE DOCUMENTS', data.priority);
   }
 
-  // Signatures
-  y = checkPageBreak(doc, y, 40, data.priority);
-  y = addStackedSignatures(doc, 'Process Server / Officer', '', y, getOfficerSig());
+  // Signatures — addStackedSignatures has its own checkPageBreak internally
+  y = addStackedSignatures(doc, 'Process Server / Officer', '', y, getOfficerSig(), undefined, data.priority);
 }
 
 // ── Public API ───────────────────────────────────────────────
