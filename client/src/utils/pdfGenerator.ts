@@ -996,7 +996,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
   const text = sanitizePdfText(rawText);
-  const lineH = fontSize * 0.38 + 0.6;
+  const lineH = 2.8; // Match addFieldPair lineStep for consistent line spacing
   const paragraphGap = SPACING.MD;
   // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
   const safeMaxWidth = maxWidth - 2;
@@ -1156,7 +1156,7 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = fontSize * 0.38 + 0.6;
+  const lineH = 2.8; // Match addFieldPair/addFormattedText lineStep
   const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
