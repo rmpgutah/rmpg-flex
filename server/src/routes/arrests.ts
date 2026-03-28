@@ -537,6 +537,31 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
   }
 });
 
+// ── POST /poller/restart — Restart the arrest sync poller ────
+router.post('/poller/restart', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const { stopArrestSync, scheduleArrestSync } = require('../utils/arrestScraper');
+    stopArrestSync();
+    scheduleArrestSync();
+    res.json({ success: true, message: 'Arrest sync poller restarted' });
+  } catch (err: any) {
+    console.error('[Arrests] Failed to restart poller:', err?.message || err);
+    res.status(500).json({ error: 'Failed to restart poller', code: 'POLLER_RESTART_ERROR' });
+  }
+});
+
+// ── POST /poller/stop — Stop the arrest sync poller ────
+router.post('/poller/stop', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const { stopArrestSync } = require('../utils/arrestScraper');
+    stopArrestSync();
+    res.json({ success: true, message: 'Arrest sync poller stopped' });
+  } catch (err: any) {
+    console.error('[Arrests] Failed to stop poller:', err?.message || err);
+    res.status(500).json({ error: 'Failed to stop poller', code: 'POLLER_STOP_ERROR' });
+  }
+});
+
 // ── POST /test — Test API connectivity ──────────────────────
 router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res: Response) => {
   try {

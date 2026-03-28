@@ -590,6 +590,15 @@ try {
       console.warn('[Utah Warrants] Failed to start scheduler:', err?.message || err);
     }
 
+    // Start arrest records auto-sync (JailBase API, hourly with exponential backoff)
+    try {
+      const { scheduleArrestSync } = require('./utils/arrestScraper');
+      scheduleArrestSync();
+      console.log('[Arrests] Auto-sync scheduler started');
+    } catch (err: any) {
+      console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+    }
+
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)
     setTimeout(() => {
