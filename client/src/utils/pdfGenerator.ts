@@ -940,11 +940,8 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Accent bar at footer top (thin primary color line) — pushed up from edge for print margin safety
+  // Footer text position — pushed up from edge for print margin safety
   const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 3;
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, 0.5, 'F');
-
   const textY = barY + 4.5;
 
   // Left: Form # + INTERNAL USE ONLY — bold, readable
