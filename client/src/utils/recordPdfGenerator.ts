@@ -1108,12 +1108,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Authorization / PO#', value: data.pso_authorization || '' },
       { label: 'Billing Code', value: data.pso_billing_code || '' },
     ], y);
-    { const yL = addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    if (data.pso_requestor_email) {
-      y = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email, lx, y, ffw);
-    }
+    y = addThreeColumnFields(doc, [
+      { label: 'Requestor Name', value: data.pso_requestor_name || '' },
+      { label: 'Requestor Phone', value: data.pso_requestor_phone || '' },
+      { label: 'Requestor Email', value: data.pso_requestor_email || '' },
+    ], y);
 
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
 
@@ -1126,12 +1125,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Serve To', value: data.process_served_to || '' },
         { label: 'Attempts', value: String(data.process_attempts || 0) },
       ], y);
-      if (data.process_served_address) {
-        y = addFieldPair(doc, 'Service Address', data.process_served_address, lx, y, ffw);
-      }
-      { const yL = addFieldPair(doc, 'Served At', fmtTimestamp(data.process_served_at), lx, y, hfw);
-        const yR = addFieldPair(doc, 'Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
-        y = Math.max(yL, yR); }
+      y = addThreeColumnFields(doc, [
+        { label: 'Service Address', value: data.process_served_address || '' },
+        { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
+        { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
+      ], y);
       y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
     }
   }
