@@ -14,7 +14,9 @@ import {
   Eye,
   ZoomIn,
 } from 'lucide-react';
-import { apiUploadFiles, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
+import { apiUploadFilesWithProgress, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
+import type { UploadProgress } from '../hooks/useApi';
+import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
 
 interface Attachment {
@@ -116,6 +118,10 @@ export default function FileAttachments({
   const [dragOver, setDragOver] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [totalUploadFiles, setTotalUploadFiles] = useState(0);
+  const [currentFileName, setCurrentFileName] = useState<string | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = useCallback(async () => {
@@ -140,13 +146,30 @@ export default function FileAttachments({
 
     setUploading(true);
     setError(null);
+    setTotalUploadFiles(fileArray.length);
+    setCurrentFileIndex(0);
+    setCurrentFileName(fileArray[0]?.name);
+    setUploadProgress(null);
+
     try {
-      await apiUploadFiles(fileArray, entityType, entityId);
+      await apiUploadFilesWithProgress(
+        fileArray,
+        entityType,
+        entityId,
+        (progress, fileIndex, totalFiles) => {
+          setUploadProgress(progress);
+          setCurrentFileIndex(fileIndex);
+          setTotalUploadFiles(totalFiles);
+          setCurrentFileName(fileArray[fileIndex]?.name);
+        },
+      );
       await fetchFiles();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
+      setCurrentFileName(undefined);
     }
   };
 
@@ -241,9 +264,13 @@ export default function FileAttachments({
             accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.mp4,.mov,.avi,.mp3,.wav,.ogg"
           />
           {uploading ? (
-            <div className="flex items-center justify-center gap-2 text-brand-400 text-xs">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
+            <div className="py-1">
+              <UploadProgressBar
+                progress={uploadProgress}
+                fileName={currentFileName}
+                fileCount={currentFileIndex + 1}
+                totalFiles={totalUploadFiles}
+              />
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2 text-rmpg-300 text-xs">

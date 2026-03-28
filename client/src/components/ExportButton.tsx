@@ -4,7 +4,8 @@
 // ============================================================
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Printer, ChevronDown, Loader2 } from 'lucide-react';
+import { Download, Printer, ChevronDown, Loader2, Check } from 'lucide-react';
+import ProgressBar from './ui/ProgressBar';
 
 interface ExportButtonProps {
   exportUrl: string;        // e.g. '/dispatch/calls/export?format=csv'
@@ -19,6 +20,7 @@ export default function ExportButton({
 }: ExportButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportPhase, setExportPhase] = useState<'idle' | 'fetching' | 'ready'>('idle');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -53,6 +55,7 @@ export default function ExportButton({
 
   async function handleExportCSV() {
     setIsExporting(true);
+    setExportPhase('fetching');
     setIsOpen(false);
 
     try {
@@ -70,6 +73,8 @@ export default function ExportButton({
       }
 
       const blob = await res.blob();
+      setExportPhase('ready');
+
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
@@ -78,10 +83,14 @@ export default function ExportButton({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
+
+      // Show "Download ready" briefly before resetting
+      await new Promise(r => setTimeout(r, 1200));
     } catch (err) {
       console.error('[ExportButton] CSV export failed:', err);
     } finally {
       setIsExporting(false);
+      setExportPhase('idle');
     }
   }
 
@@ -108,14 +117,32 @@ export default function ExportButton({
         aria-expanded={isOpen}
         aria-haspopup="true"
       >
-        {/* 45: Loading spinner during export instead of text-only indicator */}
-        {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-        <span>{isExporting ? 'Exporting...' : 'Export'}</span>
+        {/* 45: Loading spinner / phase indicator during export */}
+        {isExporting
+          ? exportPhase === 'ready'
+            ? <Check className="w-3.5 h-3.5 text-[#d4a017]" />
+            : <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          : <Download className="w-3.5 h-3.5" />
+        }
+        <span>
+          {isExporting
+            ? exportPhase === 'ready'
+              ? 'Download ready'
+              : 'Preparing export...'
+            : 'Export'}
+        </span>
         <ChevronDown
           className="w-3 h-3 ml-0.5 transition-transform"
           style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
         />
       </button>
+
+      {/* Export progress bar (indeterminate while fetching) */}
+      {isExporting && exportPhase === 'fetching' && (
+        <div className="absolute left-0 right-0" style={{ top: '100%', zIndex: 51 }}>
+          <ProgressBar color="#1a5a9e" height={2} showPercent={false} />
+        </div>
+      )}
 
       {/* Dropdown menu */}
       {isOpen && (
