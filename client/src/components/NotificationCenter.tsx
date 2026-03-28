@@ -484,7 +484,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         lineHeight: '14px',
                       }}
                     >
-                      {notification.title}
+                      {typeof notification.title === 'string' ? notification.title : JSON.stringify(notification.title)}
                     </div>
                     {notification.body && (
                       <div
@@ -495,7 +495,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                           marginTop: '1px',
                         }}
                       >
-                        {notification.body}
+                        {typeof notification.body === 'string' ? notification.body : JSON.stringify(notification.body)}
                       </div>
                     )}
                     <div

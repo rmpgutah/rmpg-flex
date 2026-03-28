@@ -1430,6 +1430,13 @@ export interface FleetAnalytics {
     avg_mpg: number; total_gallons: number; total_miles: number;
   }>;
   utilization?: { assigned: number; unassigned: number; rate: number };
+  daily_usage?: Array<{ date: string; active_vehicles: number; total_pings: number; moving_pings: number }>;
+  maintenance_forecast?: Array<{
+    id: number; vehicle_number: string; current_mileage: number; next_service_due: number;
+    avg_daily_miles: number; miles_until_service: number; est_days_until_service: number | null;
+  }>;
+  oldest_vehicle_year?: number | null;
+  avg_daily_miles?: number;
 }
 
 export interface FleetServiceAlert {

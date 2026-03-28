@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell,
+  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
 } from 'recharts';
 import {
   BarChart3, Car, Fuel, Wrench, DollarSign, AlertTriangle,
-  Gauge, CheckCircle, ShieldAlert, TrendingUp,
+  Gauge, CheckCircle, ShieldAlert, TrendingUp, Calendar, Activity,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
@@ -33,13 +33,23 @@ const SEVERITY_COLORS: Record<string, { bg: string; border: string; text: string
   warning: { bg: 'bg-amber-900/20', border: 'border-amber-800/40', text: 'text-amber-400' },
 };
 
+const PERIOD_OPTIONS = [
+  { label: '30D', value: '30d' },
+  { label: '90D', value: '90d' },
+  { label: '1Y', value: '1y' },
+  { label: 'ALL', value: 'all' },
+] as const;
+
 interface Props {
   analytics: FleetAnalytics | null;
   loading?: boolean;
+  onPeriodChange?: (period: string) => void;
 }
 
-export default function FleetAnalyticsTab({ analytics, loading }: Props) {
+export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }: Props) {
   useEffect(() => { document.title = 'Fleet - Analytics \u2014 RMPG Flex'; }, []);
+
+  const [period, setPeriod] = useState('90d');
 
   // Service alerts from dedicated endpoint
   const [serviceAlerts, setServiceAlerts] = useState<FleetServiceAlert[]>([]);
@@ -49,6 +59,11 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
       .then((d) => d?.all_alerts && setServiceAlerts(d.all_alerts))
       .catch(() => {});
   }, []);
+
+  const handlePeriodChange = useCallback((newPeriod: string) => {
+    setPeriod(newPeriod);
+    onPeriodChange?.(newPeriod);
+  }, [onPeriodChange]);
 
   if (loading || !analytics) {
     return (
@@ -65,6 +80,7 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
     maintenance_cost_trend, mileage_distribution, status_breakdown,
     fuel_economy_trend, fleet_summary, cost_per_mile_ranking,
     service_compliance, inspection_pass_rate, utilization,
+    daily_usage, maintenance_forecast, oldest_vehicle_year, avg_daily_miles,
   } = analytics;
 
   const totalCosts = (fleet_summary.total_maintenance_cost || 0) + (fleet_summary.total_fuel_cost || 0);
@@ -73,6 +89,25 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
+
+      {/* ═══ Period Filter ═══ */}
+      <div className="flex items-center gap-1.5">
+        <Calendar className="w-3 h-3 text-[#d4a017]" />
+        <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider mr-2">Period</span>
+        {PERIOD_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => handlePeriodChange(opt.value)}
+            className={`px-2.5 py-1 text-[9px] font-mono font-bold tracking-wider rounded-[2px] border transition-colors duration-150
+              ${period === opt.value
+                ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white'
+                : 'bg-[#0d1520] border-[#1e3048] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
+              }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
 
       {/* ═══ ROW 1: KPI Cards ═══ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -318,6 +353,174 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
             </div>
           ) : (
             <div className="h-[180px] flex items-center justify-center text-[10px] text-rmpg-500">No data</div>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ ROW 5: Daily Fleet Utilization + Maintenance Forecast ═══ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Daily Fleet Utilization (Area Chart) */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Activity className="w-3 h-3" /> Daily Fleet Utilization
+          </h4>
+          {daily_usage && daily_usage.length > 0 ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={daily_usage}>
+                <defs>
+                  <linearGradient id="utilGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.6} />
+                    <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: '#5a6e80', fontSize: 8 }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#1e3048' }}
+                  tickFormatter={(v) => {
+                    const d = new Date(v + 'T00:00:00');
+                    return `${d.getMonth() + 1}/${d.getDate()}`;
+                  }}
+                />
+                <YAxis
+                  tick={{ fill: '#5a6e80', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#1e3048' }}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  {...CHART_TOOLTIP_STYLE}
+                  formatter={(value: any, name: string) => [value, name === 'active_vehicles' ? 'Active Vehicles' : name]}
+                  labelFormatter={(label) => {
+                    const d = new Date(label + 'T00:00:00');
+                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="active_vehicles"
+                  stroke="#1a5a9e"
+                  strokeWidth={2}
+                  fill="url(#utilGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[180px] flex items-center justify-center text-[10px] text-rmpg-500">No GPS usage data</div>
+          )}
+        </div>
+
+        {/* Maintenance Forecast */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Wrench className="w-3 h-3" /> Maintenance Forecast
+          </h4>
+          {maintenance_forecast && maintenance_forecast.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                    <th className="text-left py-1 pr-2">Vehicle #</th>
+                    <th className="text-right py-1 pr-2 font-mono">Current Mi</th>
+                    <th className="text-right py-1 pr-2 font-mono">Next Svc</th>
+                    <th className="text-right py-1 font-mono">Est. Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {maintenance_forecast.map((v) => {
+                    const days = v.est_days_until_service;
+                    const dayColor = days == null ? 'text-rmpg-400'
+                      : days < 7 ? 'text-red-400'
+                      : days < 30 ? 'text-amber-400'
+                      : 'text-green-400';
+                    return (
+                      <tr key={v.id} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                        <td className="py-1 pr-2 font-mono font-bold text-white">{v.vehicle_number}</td>
+                        <td className="py-1 pr-2 text-right font-mono tabular-nums text-rmpg-300">
+                          {v.current_mileage != null ? v.current_mileage.toLocaleString() : '--'}
+                        </td>
+                        <td className="py-1 pr-2 text-right font-mono tabular-nums text-rmpg-300">
+                          {v.next_service_due != null ? v.next_service_due.toLocaleString() : '--'}
+                        </td>
+                        <td className={`py-1 text-right font-mono font-bold tabular-nums ${dayColor}`}>
+                          {days != null ? (days <= 0 ? 'OVERDUE' : `${days}d`) : '--'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="h-[120px] flex items-center justify-center text-[10px] text-rmpg-500">No forecast data available</div>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ ROW 6: Quick Stats Grid ═══ */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {/* Avg Daily Miles */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Gauge className="w-3 h-3 text-[#d4a017]" />
+            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Avg Daily Miles</span>
+          </div>
+          <div className="text-lg font-bold font-mono text-white tabular-nums">
+            {avg_daily_miles != null && avg_daily_miles > 0 ? avg_daily_miles.toFixed(1) : '--'}
+          </div>
+          <div className="text-[8px] text-rmpg-400 mt-1">Fleet avg from fuel logs</div>
+        </div>
+
+        {/* Total Vehicles */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Car className="w-3 h-3 text-[#d4a017]" />
+            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Vehicles</span>
+          </div>
+          <div className="text-lg font-bold font-mono text-white tabular-nums">
+            {fleet_summary.total_vehicles}
+          </div>
+          <div className="text-[8px] text-rmpg-400 mt-1">Registered in fleet</div>
+        </div>
+
+        {/* Oldest Vehicle */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Calendar className="w-3 h-3 text-[#d4a017]" />
+            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Oldest Vehicle</span>
+          </div>
+          <div className="text-lg font-bold font-mono text-white tabular-nums">
+            {oldest_vehicle_year ?? '--'}
+          </div>
+          <div className="text-[8px] text-rmpg-400 mt-1">Model year (non-retired)</div>
+        </div>
+
+        {/* Fleet Utilization */}
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Activity className="w-3 h-3 text-[#d4a017]" />
+            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Fleet Utilization</span>
+          </div>
+          <div className="text-lg font-bold font-mono tabular-nums text-[#d4a017]">
+            {utilization ? `${utilization.rate}%` : '--'}
+          </div>
+          {utilization && (
+            <div className="mt-1.5">
+              <div className="h-1.5 bg-[#0d1520] rounded-[1px] overflow-hidden">
+                <div
+                  className="h-full rounded-[1px] transition-all duration-150"
+                  style={{
+                    width: `${Math.min(utilization.rate, 100)}%`,
+                    backgroundColor: utilization.rate >= 80 ? '#22c55e' : utilization.rate >= 50 ? '#f59e0b' : '#ef4444',
+                  }}
+                />
+              </div>
+              <div className="text-[7px] text-rmpg-500 mt-0.5 font-mono tabular-nums">
+                {utilization.assigned} / {utilization.assigned + utilization.unassigned} assigned
+              </div>
+            </div>
           )}
         </div>
       </div>

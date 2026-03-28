@@ -273,10 +273,11 @@ export default function FleetPage() {
     finally { setPersonnelLoading(false); }
   };
 
-  const fetchFleetAnalytics = async () => {
+  const fetchFleetAnalytics = async (period?: string) => {
     setFleetAnalyticsLoading(true);
     try {
-      const data = await apiFetch<FleetAnalytics>('/fleet/analytics');
+      const q = period ? `?period=${period}` : '';
+      const data = await apiFetch<FleetAnalytics>(`/fleet/analytics${q}`);
       setFleetAnalytics(data);
     } catch { /* silent - fleet analytics is optional */ }
     finally { setFleetAnalyticsLoading(false); }
@@ -1009,7 +1010,7 @@ export default function FleetPage() {
               <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
               {fleetAnalytics ? (
                 <div className="px-3 pb-3">
-                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} />
+                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
                 </div>
               ) : (
                 <div className="flex items-center justify-center py-8">

@@ -308,13 +308,13 @@ router.get('/analytics', (req: Request, res: Response) => {
     // ── Enhanced analytics: fuel_economy_ranking (top 10 by avg MPG) ──
     const fuelEconomyRanking = db.prepare(`
       SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year,
-        ROUND(SUM(fl.miles_driven) * 1.0 / SUM(fl.gallons), 1) AS avg_mpg,
-        SUM(fl.gallons) AS total_gallons, SUM(fl.miles_driven) AS total_miles
+        ROUND(SUM(COALESCE(fl.distance, 0)) * 1.0 / NULLIF(SUM(fl.gallons), 0), 1) AS avg_mpg,
+        SUM(fl.gallons) AS total_gallons, SUM(COALESCE(fl.distance, 0)) AS total_miles
       FROM fleet_vehicles fv
       INNER JOIN fleet_fuel_logs fl ON fl.vehicle_id = fv.id
-      WHERE fl.gallons > 0 AND fl.miles_driven > 0
+      WHERE fl.gallons > 0 AND fl.archived_at IS NULL
       GROUP BY fv.id
-      HAVING total_gallons > 0
+      HAVING total_gallons > 0 AND avg_mpg IS NOT NULL
       ORDER BY avg_mpg DESC
       LIMIT 10
     `).all() as any[];
@@ -335,6 +335,69 @@ router.get('/analytics', (req: Request, res: Response) => {
     const fleetTotalGallons = allMpg.reduce((s, m) => s + m.total_gallons, 0);
     const avgMpg = fleetTotalGallons > 0 ? Math.round((fleetTotalMiles / fleetTotalGallons) * 10) / 10 : null;
 
+    // ── Daily fleet usage from GPS breadcrumbs (last 30 days) ──
+    let dailyUsage: any[] = [];
+    try {
+      dailyUsage = db.prepare(`
+        SELECT DATE(recorded_at) as date, COUNT(DISTINCT call_sign) as active_vehicles,
+               COUNT(*) as total_pings,
+               SUM(CASE WHEN speed > 0 THEN 1 ELSE 0 END) as moving_pings
+        FROM gps_breadcrumbs
+        WHERE recorded_at >= datetime('now', '-30 days')
+        GROUP BY DATE(recorded_at) ORDER BY date
+      `).all() as any[];
+    } catch { /* gps_breadcrumbs table may not exist */ }
+
+    // ── Maintenance forecast: top 5 vehicles closest to needing service ──
+    let maintenanceForecast: any[] = [];
+    try {
+      const forecastRows = db.prepare(`
+        SELECT v.id, v.vehicle_number, v.current_mileage, v.next_service_due, v.next_service_mileage,
+          CASE WHEN julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)) > 0
+            THEN (MAX(f.odometer_reading) - MIN(f.odometer_reading)) / (julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)))
+            ELSE 0 END as avg_daily_miles
+        FROM fleet_vehicles v LEFT JOIN fleet_fuel_logs f ON v.id = f.vehicle_id
+        WHERE v.status != 'retired'
+        GROUP BY v.id
+      `).all() as any[];
+
+      maintenanceForecast = forecastRows
+        .filter((r: any) => (r.next_service_mileage != null || r.next_service_due != null) && r.current_mileage != null)
+        .map((r: any) => {
+          // Calculate by mileage if threshold exists, otherwise by date
+          let estDays: number | null = null;
+          let milesUntilService: number | null = null;
+          if (r.next_service_mileage != null && r.current_mileage != null) {
+            milesUntilService = r.next_service_mileage - r.current_mileage;
+            estDays = r.avg_daily_miles > 0 ? Math.round(milesUntilService / r.avg_daily_miles) : null;
+          } else if (r.next_service_due) {
+            const dueDate = new Date(r.next_service_due);
+            const now = new Date();
+            estDays = Math.round((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          }
+          return { ...r, miles_until_service: milesUntilService, est_days_until_service: estDays };
+        })
+        .sort((a: any, b: any) => {
+          const aDays = a.est_days_until_service ?? 9999;
+          const bDays = b.est_days_until_service ?? 9999;
+          return aDays - bDays;
+        })
+        .slice(0, 5);
+    } catch { /* graceful fallback */ }
+
+    // ── Oldest vehicle year ──
+    const oldestVehicle = db.prepare(`
+      SELECT MIN(year) as oldest_year FROM fleet_vehicles WHERE status != 'retired' AND year IS NOT NULL
+    `).get() as any;
+
+    // ── Average daily miles from fuel logs ──
+    const avgDailyMilesRow = db.prepare(`
+      SELECT CASE WHEN julianday(MAX(fuel_date)) - julianday(MIN(fuel_date)) > 0
+        THEN ROUND((MAX(odometer_reading) - MIN(odometer_reading)) * 1.0 / (julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))), 1)
+        ELSE 0 END as avg_daily_miles
+      FROM fleet_fuel_logs WHERE odometer_reading IS NOT NULL
+    `).get() as any;
+
     res.json({
       maintenance_cost_trend: maintenanceCostTrend,
       mileage_distribution: mileageBuckets.map(b => ({ range: b.range, count: b.count })),
@@ -354,10 +417,63 @@ router.get('/analytics', (req: Request, res: Response) => {
       inspection_pass_rate: inspectionPassRate,
       fuel_economy_ranking: fuelEconomyRanking,
       utilization,
+      daily_usage: dailyUsage,
+      maintenance_forecast: maintenanceForecast,
+      oldest_vehicle_year: oldestVehicle?.oldest_year || null,
+      avg_daily_miles: avgDailyMilesRow?.avg_daily_miles || 0,
     });
   } catch (error: any) {
     console.error('Error fetching fleet analytics:', error);
     res.status(500).json({ error: 'Failed to fetch fleet analytics', code: 'FAILED_TO_FETCH_FLEET' });
+  }
+});
+
+// ─── GET /api/fleet/daily-costs ─ Daily cost breakdown (maintenance + fuel) ────
+router.get('/daily-costs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { period = '90d' } = req.query;
+
+    let days = 90;
+    switch (period) {
+      case '30d': days = 30; break;
+      case '90d': days = 90; break;
+      case '1y': days = 365; break;
+      case 'all': days = 3650; break;
+    }
+
+    const maintCosts = db.prepare(`
+      SELECT DATE(performed_at) as date, SUM(cost) as cost, 'maintenance' as type
+      FROM fleet_maintenance
+      WHERE performed_at >= date('now', '-' || ? || ' days') AND cost IS NOT NULL
+      GROUP BY DATE(performed_at)
+    `).all(days) as any[];
+
+    const fuelCosts = db.prepare(`
+      SELECT DATE(fuel_date) as date, SUM(total_cost) as cost, 'fuel' as type
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= date('now', '-' || ? || ' days') AND total_cost IS NOT NULL
+      GROUP BY DATE(fuel_date)
+    `).all(days) as any[];
+
+    // Merge into daily totals
+    const dailyMap: Record<string, { date: string; maintenance_cost: number; fuel_cost: number }> = {};
+    for (const r of maintCosts) {
+      if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, maintenance_cost: 0, fuel_cost: 0 };
+      dailyMap[r.date].maintenance_cost += r.cost || 0;
+    }
+    for (const r of fuelCosts) {
+      if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, maintenance_cost: 0, fuel_cost: 0 };
+      dailyMap[r.date].fuel_cost += r.cost || 0;
+    }
+
+    const dailyCosts = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    res.set('Cache-Control', 'private, max-age=300');
+    res.json({ daily_costs: dailyCosts });
+  } catch (error: any) {
+    console.error('Error fetching daily costs:', error);
+    res.status(500).json({ error: 'Failed to fetch daily costs', code: 'DAILY_COSTS_ERROR' });
   }
 });
 
