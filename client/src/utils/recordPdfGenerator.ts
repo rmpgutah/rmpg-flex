@@ -1375,30 +1375,35 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   if (data.notes && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
-    // Render notes as borderless field-pair rows matching the rest of the document
+    // Render notes as readable entries with clear timestamp/author and note text
+    y += SPACING.SM;
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
-      y = checkPageBreak(doc, y, 10, prio);
+      y = checkPageBreak(doc, y, 12, prio);
       // Separator line between entries (not before the first)
       if (ni > 0) {
         doc.setDrawColor(...COLOR.BORDER_FIELD);
-        doc.setLineWidth(0.15);
+        doc.setLineWidth(0.2);
         doc.line(lx, y, lx + ffw, y);
-        y += SPACING.SM;
+        y += SPACING.MD;
       }
-      // Timestamp + author on one line
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      // Timestamp and author as separate readable labels
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      const authorText = `${fmtTimestamp(n.created_at)}  |  ${(n.author || 'System').toUpperCase()}`;
-      doc.text(authorText, lx, y);
-      y += 3;
-      // Note content
+      doc.text(fmtTimestamp(n.created_at).toUpperCase(), lx, y);
+      // Author right-aligned or after timestamp
+      const tsWidth = doc.getTextWidth(fmtTimestamp(n.created_at).toUpperCase());
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.text((n.author || 'System').toUpperCase(), lx + tsWidth + 8, y);
+      y += 4;
+      // Note content — full size, readable
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
-      y += SPACING.SM;
+      y += SPACING.MD;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
