@@ -807,17 +807,38 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
 
     const distFields = [
-      { label: 'SECTION', value: data.section_name || '' },
-      { label: 'ZONE', value: data.zone_name || '' },
-      { label: 'BEAT', value: data.beat_id || '' },
-      { label: 'AREA', value: data.beat_descriptor || '' },
-      { label: 'CODE', value: data.dispatch_code || '' },
-      ...(hasContract ? [{ label: 'CONTRACT', value: data.contract_id || '' }] : []),
+      { label: 'SECTION', value: data.section_name || '--' },
+      { label: 'ZONE', value: data.zone_name || '--' },
+      { label: 'BEAT', value: data.beat_id || '--' },
+      { label: 'AREA', value: data.beat_descriptor || '--' },
+      { label: 'CODE', value: data.dispatch_code || '--' },
+      ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || '--' }] : []),
     ];
-    const dColW = cw / numCols;
+
+    // Dynamic column widths: measure each value, give AREA the most room
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(6.5);
+    const pad = 3; // padding per column
+    // Measure natural width of each value
+    const naturalWidths = distFields.map(f => {
+      const labelW = doc.getTextWidth(f.label) * (4.5 / 6.5); // label is smaller font
+      const valW = doc.getTextWidth(sanitizePdfText(f.value));
+      return Math.max(labelW, valW) + pad * 2;
+    });
+    const totalNatural = naturalWidths.reduce((a, b) => a + b, 0);
+    // Scale proportionally to fill content width, but give minimum 12mm per column
+    const minColW = 12;
+    const colWidths = naturalWidths.map(w => Math.max(minColW, (w / totalNatural) * cw));
+    // Normalize to exactly fill cw
+    const totalCols = colWidths.reduce((a, b) => a + b, 0);
+    const scale = cw / totalCols;
+    const finalWidths = colWidths.map(w => w * scale);
+
+    let colX = LAYOUT.PAGE_MARGIN;
     distFields.forEach((f, i) => {
-      const fx = LAYOUT.PAGE_MARGIN + (i * dColW) + 2;
-      const maxW = dColW - 4;
+      const fw = finalWidths[i];
+      const fx = colX + 2;
+      const maxW = fw - 4;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(4.5);
       doc.setTextColor(160, 160, 165);
@@ -825,12 +846,13 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('courier', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(255, 255, 255);
-      let val = sanitizePdfText(f.value || '--');
+      let val = sanitizePdfText(f.value);
       if (doc.getTextWidth(val) > maxW) {
         while (val.length > 0 && doc.getTextWidth(val + '...') > maxW) val = val.slice(0, -1);
         val = val + '...';
       }
       doc.text(val, fx, barY + 7);
+      colX += fw;
     });
 
     y = barY + barH + 1.5;
