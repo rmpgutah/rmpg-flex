@@ -782,19 +782,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     reportDate: fmtTimestamp(data.created_at || ''),
   });
 
-  // Show linked incident number below header if attached — slim inline bar
-  if (data.incident_number) {
-    const cw = getContentWidth(doc);
-    doc.setFillColor(15, 20, 28);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 4.5, 'F');
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(5.5);
-    doc.setTextColor(212, 160, 23);
-    doc.text('INCIDENT REPORT:', LAYOUT.PAGE_MARGIN + 2, y + 3);
-    doc.setTextColor(255, 255, 255);
-    doc.text(sanitizePdfText(data.incident_number), LAYOUT.PAGE_MARGIN + 25, y + 3);
-    y += 5.5;
-  }
+  // Incident Report number is shown in Classification section — no separate banner needed
 
   // ── Dispatch District Info Bar (gold columns — below header) ──
   {
@@ -938,6 +926,20 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // Scene Conditions — right after Incident Location
+  y = checkPageBreak(doc, y, 20, prio);
+  { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
+    y = addThreeColumnFields(doc, [
+      { label: 'Weather', value: data.weather_conditions || '' },
+      { label: 'Lighting', value: data.lighting_conditions || '' },
+      { label: 'Weapons Involved', value: data.weapons_involved || '' },
+    ], y);
+    if (data.scene_safety) {
+      y = addFieldPair(doc, 'Scene Safety / Hazards', data.scene_safety, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // Mileage — single row: Vehicle ID | Starting | Ending | Total
   if (data.starting_mileage != null || data.ending_mileage != null || data.responding_vehicle_id) {
     y = checkPageBreak(doc, y, 25, prio);
@@ -1030,20 +1032,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     ]);
     y = addTableWithShading(doc, vehHeaders, vehRows, y,
       [lx, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 80, LAYOUT.PAGE_MARGIN + 105, LAYOUT.PAGE_MARGIN + 140]);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Scene Conditions
-  y = checkPageBreak(doc, y, 25, prio);
-  { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Weather', value: data.weather_conditions || '' },
-      { label: 'Lighting', value: data.lighting_conditions || '' },
-      { label: 'Weapons Involved', value: data.weapons_involved || '' },
-    ], y);
-    if (data.scene_safety) {
-      y = addFieldPair(doc, 'Scene Safety / Hazards', data.scene_safety, lx, y, ffw);
-    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
