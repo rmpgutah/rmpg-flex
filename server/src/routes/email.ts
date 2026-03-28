@@ -587,7 +587,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     const client = await getGraphClient();
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
-      .select('id,name,contentType,size,isInline,contentId')
+      .select('id,name,contentType,size,isInline')
       .get();
 
     res.json((result.value || []).map((a: any) => ({
@@ -596,7 +596,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
       contentType: a.contentType,
       size: a.size,
       isInline: a.isInline || false,
-      contentId: a.contentId,
+      contentId: a.contentId || a.id,
     })));
   } catch (err: any) {
     console.error('Email route error:', err.message);
