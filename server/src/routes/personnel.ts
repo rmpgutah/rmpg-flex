@@ -510,6 +510,20 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
   }
 });
 
+// POST /api/personnel/bodycam-videos/:videoId/reprocess — Queue overlay reprocessing
+router.post('/bodycam-videos/:videoId/reprocess', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videoId = parseInt(req.params.videoId, 10);
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    db.prepare("UPDATE body_camera_recordings SET overlay_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(videoId);
+    res.json({ success: true, message: 'Reprocessing queued' });
+  } catch (error: any) {
+    console.error('Bodycam reprocess error:', error);
+    res.status(500).json({ error: 'Failed to queue reprocessing', code: 'BODYCAM_REPROCESS_ERROR' });
+  }
+});
+
 // ─── SCHEDULES / TIME / CREDENTIALS ──────────────────
 // These routes are handled via mountScheduleRoutes() in index.ts
 // to avoid /:id route conflicts in this sub-router.

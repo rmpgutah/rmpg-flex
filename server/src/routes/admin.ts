@@ -1711,4 +1711,60 @@ router.get('/weather-summary', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// User Management Endpoints
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/admin/users - List all users
+router.get('/users', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const users = db.prepare("SELECT id, username, full_name, role, status, badge_number, email, phone FROM users ORDER BY full_name").all();
+    res.json(users);
+  } catch (error: any) {
+    console.error('Get users error:', error);
+    res.status(500).json({ error: 'Failed to get users', code: 'GET_USERS_ERROR' });
+  }
+});
+
+// POST /api/admin/users/:userId/reset-2fa
+router.post('/users/:userId/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
+  const db = getDb();
+  const userId = parseInt(req.params.userId, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
+  db.prepare(`UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_backup_codes = NULL, totp_pending_secret = NULL, totp_setup_required = 1, webauthn_enabled = 0 WHERE id = ?`).run(userId);
+  db.prepare(`DELETE FROM webauthn_credentials WHERE user_id = ?`).run(userId);
+  res.json({ message: '2FA reset successfully' });
+});
+
+// POST /api/admin/users/:userId/force-password-change
+router.post('/users/:userId/force-password-change', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const db = getDb();
+  const userId = parseInt(req.params.userId, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
+  db.prepare('UPDATE users SET force_password_change = 1 WHERE id = ?').run(userId);
+  res.json({ message: 'Password change required on next login' });
+});
+
+// POST /api/admin/users/:userId/revoke-sessions
+router.post('/users/:userId/revoke-sessions', requireRole('admin'), (req: Request, res: Response) => {
+  const db = getDb();
+  const userId = parseInt(req.params.userId, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
+  const result = db.prepare('UPDATE sessions SET is_active = 0, revoked_at = datetime(\'now\') WHERE user_id = ? AND is_active = 1').run(userId);
+  res.json({ message: 'Sessions revoked', count: result.changes });
+});
+
+// PUT /api/admin/users/:userId/role
+router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Response) => {
+  const db = getDb();
+  const userId = parseInt(req.params.userId, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
+  const { role } = req.body;
+  const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+  if (!validRoles.includes(role)) { res.status(400).json({ error: 'Invalid role' }); return; }
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
+  res.json({ message: 'Role updated' });
+});
+
 export default router;
