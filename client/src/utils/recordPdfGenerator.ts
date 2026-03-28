@@ -1230,34 +1230,13 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Damage Assessment (conditional)
-  if (data.damage_estimate || data.damage_description) {
-    y = checkPageBreak(doc, y, 25, prio);
-    const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Description', data.damage_description || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Resolution Details
-  y = checkPageBreak(doc, y, 30, prio);
-  { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Action Taken', data.action_taken || '--', lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Assigned Units
+  // Assigned Units — after Process Service Details
   const unitDetail = data.assigned_units_detail;
   const unitCount = unitDetail?.length || data.assigned_units?.length || 0;
   if (unitCount > 0) {
     y = checkPageBreak(doc, y, 10 + (unitCount * 6), prio);
     const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
     if (unitDetail && unitDetail.length > 0) {
-      // Assign role based on order added to call
       const UNIT_ROLES = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
       const qw = getContentWidth(doc) / 4;
       for (let idx = 0; idx < unitDetail.length; idx++) {
@@ -1279,6 +1258,28 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     } else if (data.assigned_units && data.assigned_units.length > 0) {
       y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
     }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Damage Assessment (conditional)
+  if (data.damage_estimate || data.damage_description) {
+    y = checkPageBreak(doc, y, 25, prio);
+    const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
+    { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Description', data.damage_description || '', rx, y, hfw);
+      y = Math.max(yL, yR); }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Resolution Details — always starts on a new page (final page) ──
+  // Force page break so Resolution + Narrative + Signature are on the last page(s)
+  y = checkPageBreak(doc, y, 999, prio); // forces new page
+
+  { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
+    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
+      y = Math.max(yL, yR); }
+    y = addFieldPair(doc, 'Action Taken', data.action_taken || '--', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

@@ -51,12 +51,12 @@ export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
   SIZE_FIELD_VALUE:       8,     // Courier values inside field boxes
-  SIZE_FIELD_LABEL:       5,     // Helvetica labels above field boxes (5pt, tight)
+  SIZE_FIELD_LABEL:       5.5,   // Helvetica Bold labels above field boxes
   SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
-  SIZE_FOOTER_PRIMARY:    5,     // Footer form #, page #
-  SIZE_FOOTER_SECONDARY:  4.5,   // Footer secondary info
-  SIZE_SMALL_META:        5,     // Form revision, report date
+  SIZE_FOOTER_PRIMARY:    6,     // Footer form #, page #
+  SIZE_FOOTER_SECONDARY:  5,     // Footer secondary info
+  SIZE_SMALL_META:        5.5,   // Form revision, report date
   SIZE_CHECKBOX_LABEL:    6.5,   // Checkbox labels
   SIZE_BANNER:            14,    // Large notice banners
   SIZE_BANNER_SMALL:      8,     // Mandatory report banner
