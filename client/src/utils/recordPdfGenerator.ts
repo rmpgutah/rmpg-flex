@@ -897,7 +897,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addThreeColumnFields(doc, [
       { label: 'Building', value: data.location_building || '' },
       { label: 'Floor', value: data.location_floor || '' },
-      { label: 'Room', value: data.location_room || '' },
+      { label: 'Suite/Room', value: data.location_room || '' },
     ], y);
     // Dispatch Code | Section ID | Zone ID | Beat ID — single row, 4 columns
     if (data.dispatch_code || data.section_id || data.zone_id || data.beat_id) {
