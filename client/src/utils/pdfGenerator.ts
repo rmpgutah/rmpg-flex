@@ -1036,10 +1036,13 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
     for (let hlIdx = 0; hlIdx < hardLines.length; hlIdx++) {
       const hardLine = hardLines[hlIdx];
       if (!hardLine.trim()) continue;
-      doc.setFont('courier', 'normal');
+      // Use bold font width for wrapping if line contains bold markers — bold Courier is wider
+      const hasBold = /\*\*/.test(hardLine);
+      doc.setFont('courier', hasBold ? 'bold' : 'normal');
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(hardLine);
       const wrappedLines: string[] = wordWrap(stripped, safeMaxWidth);
+      doc.setFont('courier', 'normal');
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];
