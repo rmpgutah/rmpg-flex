@@ -2974,44 +2974,64 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Officer / Location
-  y = checkPageBreak(doc, y, 25, data.priority);
+  // Officer / Location — all on one row with section/zone/beat
+  y = checkPageBreak(doc, y, 18, data.priority);
   { const sec = openAutoSection(doc, 'Officer / Location', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Officer', data.officer_name, lx, y, hfw);
       const yR = addFieldPair(doc, 'Location', data.location, rx, y, hfw);
       y = Math.max(yL, yR); }
     if (data.section_id || data.zone_id || data.beat_id) {
-      y = addThreeColumnFields(doc, [
+      const thW = ffw / 3;
+      let maxTY = y + SPACING.FIELD_ROW_ADVANCE;
+      const tFields = [
         { label: 'Section ID', value: data.section_id || '' },
         { label: 'Zone ID', value: data.zone_id || '' },
         { label: 'Beat ID', value: data.beat_id || '' },
-      ], y);
+      ];
+      for (let i = 0; i < 3; i++) {
+        const fy = addFieldPair(doc, tFields[i].label, tFields[i].value, lx + i * thW, y, thW);
+        if (fy > maxTY) maxTY = fy;
+      }
+      y = maxTY;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Date / Time
-  y = checkPageBreak(doc, y, 20, data.priority);
+  // Date / Time — all 4 fields on one row
+  y = checkPageBreak(doc, y, 18, data.priority);
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Occurred Date', data.occurred_date || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Occurred Time', data.occurred_time || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'End Date', data.end_date || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'End Time', data.end_time || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
+    const dtW = ffw / 4;
+    const dtFields = [
+      { label: 'Occurred Date', value: data.occurred_date || '' },
+      { label: 'Occurred Time', value: data.occurred_time || '' },
+      { label: 'End Date', value: data.end_date || '' },
+      { label: 'End Time', value: data.end_time || '' },
+    ];
+    let maxDTY = y + SPACING.FIELD_ROW_ADVANCE;
+    for (let i = 0; i < 4; i++) {
+      const fy = addFieldPair(doc, dtFields[i].label, dtFields[i].value, lx + i * dtW, y, dtW);
+      if (fy > maxDTY) maxDTY = fy;
+    }
+    y = maxDTY;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Flags
-  y = checkPageBreak(doc, y, 20, data.priority);
+  // Flags — evenly spaced across full width
+  y = checkPageBreak(doc, y, 18, data.priority);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX, y);
-    flagX = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
+    y += 1;
+    const flagItems = [
+      { label: 'Evidence', checked: !!data.evidence_collected },
+      { label: 'BWC Active', checked: !!data.body_camera_active },
+      { label: 'Photos', checked: !!data.photos_taken },
+      { label: 'LE Notified', checked: !!data.le_notified },
+      { label: 'Supvr Notified', checked: !!data.supervisor_notified },
+    ];
+    const flagColW = ffw / flagItems.length;
+    for (let i = 0; i < flagItems.length; i++) {
+      addCheckboxField(doc, flagItems[i].label, flagItems[i].checked, lx + i * flagColW, y);
+    }
+    y += 4;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
