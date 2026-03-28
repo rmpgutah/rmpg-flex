@@ -4023,4 +4023,226 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(500).json({ error: 'Failed to bulk publish schedules', code: 'BULK_PUBLISH_ERROR' });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════
+  //  TRAINING RECORDS CRUD
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/personnel/training — List all training records
+  router.get('/training', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const rows = db.prepare(`
+        SELECT t.*, u.full_name as officer_name, u.badge_number
+        FROM training_records t
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE t.archived_at IS NULL
+        ORDER BY t.completed_date DESC, t.created_at DESC
+        LIMIT 2000
+      `).all();
+      res.json(rows);
+    } catch (error: any) {
+      console.error('Get training records error:', error?.message);
+      res.status(500).json({ error: 'Failed to get training records', code: 'TRAINING_LIST_ERROR' });
+    }
+  });
+
+  // POST /api/personnel/training — Create training record
+  router.post('/training', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_id, course_name, category, provider, completed_date, expiry_date, score, hours, certificate_number, status, notes, training_type } = req.body;
+      if (!course_name || !officer_id) { res.status(400).json({ error: 'course_name and officer_id required', code: 'MISSING_FIELDS' }); return; }
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO training_records (officer_id, course_name, category, provider, completed_date, expiry_date, score, hours, certificate_number, status, notes, training_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(officer_id, course_name, category || 'other', provider || null, completed_date || null, expiry_date || null, score || null, hours || 0, certificate_number || null, status || 'scheduled', notes || null, training_type || null, now, now);
+      res.status(201).json({ success: true, id: result.lastInsertRowid });
+    } catch (error: any) {
+      console.error('Create training record error:', error?.message);
+      res.status(500).json({ error: 'Failed to create training record', code: 'TRAINING_CREATE_ERROR' });
+    }
+  });
+
+  // PUT /api/personnel/training/:id — Update training record
+  router.put('/training/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+      const { course_name, category, provider, completed_date, expiry_date, score, hours, certificate_number, status, notes, training_type, officer_id } = req.body;
+      const now = localNow();
+      db.prepare(`
+        UPDATE training_records SET course_name = COALESCE(?, course_name), category = COALESCE(?, category), provider = ?, completed_date = ?, expiry_date = ?, score = ?, hours = COALESCE(?, hours), certificate_number = ?, status = COALESCE(?, status), notes = ?, training_type = ?, officer_id = COALESCE(?, officer_id), updated_at = ? WHERE id = ?
+      `).run(course_name, category, provider ?? null, completed_date ?? null, expiry_date ?? null, score ?? null, hours, certificate_number ?? null, status, notes ?? null, training_type ?? null, officer_id, now, id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Update training record error:', error?.message);
+      res.status(500).json({ error: 'Failed to update training record', code: 'TRAINING_UPDATE_ERROR' });
+    }
+  });
+
+  // DELETE /api/personnel/training/:id — Soft-delete training record
+  router.delete('/training/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+      db.prepare('UPDATE training_records SET archived_at = ? WHERE id = ?').run(localNow(), id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete training record error:', error?.message);
+      res.status(500).json({ error: 'Failed to delete training record', code: 'TRAINING_DELETE_ERROR' });
+    }
+  });
+
+  // GET /api/personnel/training-requirements — List requirements
+  router.get('/training-requirements', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM training_requirements WHERE is_active = 1 ORDER BY course_name').all();
+      res.json(rows);
+    } catch (error: any) {
+      console.error('Get training requirements error:', error?.message);
+      res.status(500).json({ error: 'Failed to get training requirements', code: 'TRAINING_REQ_LIST_ERROR' });
+    }
+  });
+
+  // POST /api/personnel/training-requirements — Create requirement
+  router.post('/training-requirements', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description } = req.body;
+      if (!course_name) { res.status(400).json({ error: 'course_name required', code: 'MISSING_FIELDS' }); return; }
+      const result = db.prepare(`
+        INSERT INTO training_requirements (course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(course_name, category || 'other', JSON.stringify(required_for_roles || ['officer']), renewal_period_months || 12, minimum_hours || 1, is_mandatory ?? 1, description || null);
+      res.status(201).json({ success: true, id: result.lastInsertRowid });
+    } catch (error: any) {
+      console.error('Create training requirement error:', error?.message);
+      res.status(500).json({ error: 'Failed to create training requirement', code: 'TRAINING_REQ_CREATE_ERROR' });
+    }
+  });
+
+  // PUT /api/personnel/training-requirements/:id — Update requirement
+  router.put('/training-requirements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+      const { course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description } = req.body;
+      db.prepare(`
+        UPDATE training_requirements SET course_name = COALESCE(?, course_name), category = COALESCE(?, category), required_for_roles = COALESCE(?, required_for_roles), renewal_period_months = COALESCE(?, renewal_period_months), minimum_hours = COALESCE(?, minimum_hours), is_mandatory = COALESCE(?, is_mandatory), description = ? WHERE id = ?
+      `).run(course_name, category, required_for_roles ? JSON.stringify(required_for_roles) : null, renewal_period_months, minimum_hours, is_mandatory, description ?? null, id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Update training requirement error:', error?.message);
+      res.status(500).json({ error: 'Failed to update training requirement', code: 'TRAINING_REQ_UPDATE_ERROR' });
+    }
+  });
+
+  // DELETE /api/personnel/training-requirements/:id — Soft-delete requirement
+  router.delete('/training-requirements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+      db.prepare('UPDATE training_requirements SET is_active = 0 WHERE id = ?').run(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete training requirement error:', error?.message);
+      res.status(500).json({ error: 'Failed to delete training requirement', code: 'TRAINING_REQ_DELETE_ERROR' });
+    }
+  });
+
+  // GET /api/personnel/training-completion — Completion stats per officer
+  router.get('/training-completion', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const requirements = db.prepare('SELECT * FROM training_requirements WHERE is_active = 1').all() as any[];
+      const officers = db.prepare("SELECT id, full_name, badge_number, role FROM users WHERE status = 'active'").all() as any[];
+      const records = db.prepare('SELECT * FROM training_records WHERE archived_at IS NULL AND status = ?').all('completed') as any[];
+      const completionMap: Record<number, { officer_name: string; badge_number: string; completed: number; required: number; percentage: number }> = {};
+      for (const officer of officers) {
+        const officerRecords = records.filter((r: any) => r.officer_id === officer.id);
+        const requiredCourses = requirements.filter((req: any) => {
+          try { const roles = JSON.parse(req.required_for_roles || '[]'); return roles.includes(officer.role); } catch { return false; }
+        });
+        completionMap[officer.id] = {
+          officer_name: officer.full_name, badge_number: officer.badge_number,
+          completed: requiredCourses.filter((rc: any) => officerRecords.some((r: any) => r.course_name === rc.course_name)).length,
+          required: requiredCourses.length,
+          percentage: requiredCourses.length > 0 ? Math.round((requiredCourses.filter((rc: any) => officerRecords.some((r: any) => r.course_name === rc.course_name)).length / requiredCourses.length) * 100) : 100,
+        };
+      }
+      res.json(completionMap);
+    } catch (error: any) {
+      console.error('Get training completion error:', error?.message);
+      res.status(500).json({ error: 'Failed to get training completion', code: 'TRAINING_COMPLETION_ERROR' });
+    }
+  });
+
+  // POST /api/personnel/training-bulk-assign — Bulk assign training to multiple officers
+  router.post('/training-bulk-assign', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_ids, course_name, category, hours, due_date } = req.body;
+      if (!Array.isArray(officer_ids) || !course_name) { res.status(400).json({ error: 'officer_ids and course_name required', code: 'MISSING_FIELDS' }); return; }
+      const now = localNow();
+      const insert = db.prepare(`INSERT INTO training_records (officer_id, course_name, category, hours, expiry_date, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'scheduled', ?, ?)`);
+      const tx = db.transaction(() => {
+        for (const oid of officer_ids) { insert.run(oid, course_name, category || 'other', hours || 0, due_date || null, now, now); }
+      });
+      tx();
+      res.json({ success: true, assigned_count: officer_ids.length });
+    } catch (error: any) {
+      console.error('Bulk assign training error:', error?.message);
+      res.status(500).json({ error: 'Failed to bulk assign training', code: 'TRAINING_BULK_ASSIGN_ERROR' });
+    }
+  });
+
+  // GET /api/personnel/training-materials — List training materials/documents
+  router.get('/training-materials', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      // Check if training_materials table exists
+      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='training_materials'").get();
+      if (!tableExists) { res.json({ data: [] }); return; }
+      const rows = db.prepare('SELECT * FROM training_materials ORDER BY created_at DESC LIMIT 500').all();
+      res.json({ data: rows });
+    } catch (error: any) {
+      console.error('Get training materials error:', error?.message);
+      res.json({ data: [] }); // Graceful fallback
+    }
+  });
+
+  // GET /api/personnel/training-alerts — Training expiration alerts
+  router.get('/training-alerts', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const today = localToday();
+      // Find records expiring within 30 days or already expired
+      const alerts = db.prepare(`
+        SELECT t.*, u.full_name as officer_name, u.badge_number
+        FROM training_records t
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE t.archived_at IS NULL
+          AND t.expiry_date IS NOT NULL
+          AND t.expiry_date <= date(?, '+30 days')
+        ORDER BY t.expiry_date ASC
+        LIMIT 200
+      `).all(today) as any[];
+      const result = alerts.map((a: any) => ({
+        ...a,
+        is_expired: a.expiry_date < today,
+        days_until_expiry: Math.ceil((new Date(a.expiry_date + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86400000),
+      }));
+      res.json(result);
+    } catch (error: any) {
+      console.error('Get training alerts error:', error?.message);
+      res.json([]); // Graceful fallback
+    }
+  });
 }
