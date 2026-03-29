@@ -148,7 +148,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/skip-tracer', icon: Search, label: 'Skip Tracker' },
+    { path: '/microbilt', icon: Search, label: 'MicroBilt' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },

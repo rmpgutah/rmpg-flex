@@ -117,6 +117,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/evidence', icon: Package, label: 'Evidence / Property' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
       { path: '/dl-search', icon: IdCard, label: 'DL Search' },
+      { path: '/microbilt', icon: Crosshair, label: 'MicroBilt' },
     ],
   },
   {
@@ -130,7 +131,6 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
       { path: '/sex-offender-registry', icon: ShieldAlert, label: 'Sex Offender Registry' },
-      { path: '/skip-tracer', icon: Crosshair, label: 'Skip Tracker' },
     ],
   },
   {

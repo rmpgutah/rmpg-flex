@@ -52,6 +52,7 @@ const TrainingPage = lazy(() => import('./pages/TrainingPage'));
 const ForensicsPage = lazy(() => import('./pages/ForensicsPage'));
 const ForensicLabPage = lazy(() => import('./pages/ForensicLabPage'));
 const SkipTracerPage = lazy(() => import('./pages/SkipTracerPage'));
+const SkipTracerV2Page = lazy(() => import('./pages/skiptracer/SkipTracerV2Page'));
 const ArrestRecordsPage = lazy(() => import('./pages/ArrestRecordsPage'));
 const EmailPage = lazy(() => import('./pages/EmailPage'));
 const CrmPage = lazy(() => import('./pages/CrmPage'));
@@ -224,6 +225,7 @@ function AppRoutes() {
             <Route path="/forensics" element={<RouteErrorBoundary><ForensicsPage /></RouteErrorBoundary>} />
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
+            <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />
             <Route path="/arrest-records" element={<RouteErrorBoundary><ArrestRecordsPage /></RouteErrorBoundary>} />
             <Route path="/email" element={<RouteErrorBoundary><EmailPage /></RouteErrorBoundary>} />
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
