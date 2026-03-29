@@ -95,7 +95,7 @@ function buildSearchQuery(params: {
 
 router.get('/search', async (req: Request, res: Response) => {
   try {
-    const { q, name, firstName, lastName, phone, email, address, type, categories } = req.query as Record<string, string | undefined>;
+    const { q, name, firstName, lastName, phone, email, address, type, categories, engine: engineParam } = req.query as Record<string, string | undefined>;
 
     if (!q && !name && !firstName && !lastName && !phone && !email && !address) {
       res.status(400).json({ error: 'At least one search parameter is required (q, name, firstName, lastName, phone, email, or address)', code: 'AT_LEAST_ONE_SEARCH' });
@@ -110,6 +110,17 @@ router.get('/search', async (req: Request, res: Response) => {
       const allowed = categories.split(',').map(c => c.trim().toLowerCase());
       sources = sources.filter(s => allowed.includes(s.category));
     }
+
+    // Engine filtering — determines which paid source to use
+    const engine = (engineParam || 'microbilt').toLowerCase();
+    if (engine === 'microbilt') {
+      // Use MicroBilt + all free sources (exclude RapidAPI)
+      sources = sources.filter(s => s.name !== 'rapidapi');
+    } else if (engine === 'rapidapi') {
+      // Use RapidAPI + all free sources (exclude MicroBilt)
+      sources = sources.filter(s => s.name !== 'microbilt');
+    }
+    // engine === 'all' → keep all sources
     const searchId = randomUUID();
     const startTime = Date.now();
 
@@ -174,7 +185,7 @@ router.get('/search', async (req: Request, res: Response) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         searchType,
-        JSON.stringify(query),
+        JSON.stringify({ ...query, _engine: engine }),
         JSON.stringify(sourcesQueried),
         JSON.stringify(sourcesResponded),
         profiles.length,
@@ -187,7 +198,7 @@ router.get('/search', async (req: Request, res: Response) => {
       console.error('[Skip Tracker 3.5] Failed to persist search:', err);
     }
 
-    auditLog(req, 'skiptracer_search', 'skiptracer', searchId, `Skip Tracker 3.5 ${searchType} search: ${profiles.length} results from ${sourcesResponded.length}/${sourcesQueried.length} sources`);
+    auditLog(req, 'skiptracer_search', 'skiptracer', searchId, `Skip Tracker 3.5 ${searchType} search (engine=${engine}): ${profiles.length} results from ${sourcesResponded.length}/${sourcesQueried.length} sources`);
 
     res.json(result);
   } catch (err) {

@@ -2,9 +2,14 @@
 // Skip Tracker 3.5 — MicroBilt Full Search Adapter
 // ============================================================
 // Calls ALL available MicroBilt API endpoints in parallel:
-//   - /BPS/DLVerify       — Driver's License verification
-//   - /BPS/PersonSearch   — People/address/phone search
+//   - /BPS/DLVerify        — Driver's License verification
+//   - /BPS/PersonSearch    — People/address/phone search
 //   - /BPS/BackgroundCheck — Criminal + court records
+//   - /BPS/SSNTrace        — SSN-anchored address history
+//   - /BPS/PhoneSearch     — Reverse phone lookup
+//   - /BPS/EmailSearch     — Reverse email lookup
+//   - /BPS/PropertySearch  — Property records by address
+//   - /BPS/VehicleSearch   — Vehicle records by person
 //
 // Reads credentials from system_config using the legacy config
 // keys (microbilt_client_id, etc.).
@@ -174,34 +179,35 @@ export default class MicrobiltSource extends BaseDataSource {
     if (!this.isConfigured()) return [];
 
     const fullName = query.name || [query.firstName, query.lastName].filter(Boolean).join(' ');
-    if (!fullName) return [];
+    // Must have at least name, phone, email, or address
+    if (!fullName && !query.phone && !query.email && !query.address) return [];
 
     const token = await this.getAccessToken();
     if (!token) return [];
 
     const results: SourceResult[] = [];
 
-    // Call all endpoints in parallel — failures in one don't block others
-    const [dlResult, personResult, bgResult] = await Promise.allSettled([
-      this.searchDl(query, token),
-      this.searchPerson(query, token),
-      this.searchBackground(query, token),
+    // Call ALL endpoints in parallel — failures in one don't block others
+    const endpoints = await Promise.allSettled([
+      fullName ? this.searchDl(query, token) : Promise.resolve(null),
+      fullName ? this.searchPerson(query, token) : Promise.resolve(null),
+      fullName ? this.searchBackground(query, token) : Promise.resolve(null),
+      this.searchSsnTrace(query, token),
+      this.searchPhone(query, token),
+      this.searchEmail(query, token),
+      this.searchProperty(query, token),
+      fullName ? this.searchVehicle(query, token) : Promise.resolve(null),
     ]);
 
-    if (dlResult.status === 'fulfilled' && dlResult.value) results.push(dlResult.value);
-    if (personResult.status === 'fulfilled' && personResult.value) results.push(personResult.value);
-    if (bgResult.status === 'fulfilled' && bgResult.value) results.push(bgResult.value);
+    const endpointNames = ['DLVerify', 'PersonSearch', 'BackgroundCheck', 'SSNTrace', 'PhoneSearch', 'EmailSearch', 'PropertySearch', 'VehicleSearch'];
 
-    // Log any failures for debugging (but don't fail the whole search)
-    if (dlResult.status === 'rejected') {
-      console.error('[MicrobiltSource] DL search failed:', dlResult.reason);
-    }
-    if (personResult.status === 'rejected') {
-      console.error('[MicrobiltSource] Person search failed:', personResult.reason);
-    }
-    if (bgResult.status === 'rejected') {
-      console.error('[MicrobiltSource] Background check failed:', bgResult.reason);
-    }
+    endpoints.forEach((outcome, i) => {
+      if (outcome.status === 'fulfilled' && outcome.value) {
+        results.push(outcome.value);
+      } else if (outcome.status === 'rejected') {
+        console.error(`[MicrobiltSource] ${endpointNames[i]} failed:`, outcome.reason);
+      }
+    });
 
     return results;
   }
@@ -744,6 +750,406 @@ export default class MicrobiltSource extends BaseDataSource {
 
     if (courtRecords.length > 0) result.courtRecords = courtRecords;
 
+    return result;
+  }
+
+  // ============================================================
+  // 4. SSN Trace — /BPS/SSNTrace
+  // ============================================================
+
+  private async searchSsnTrace(query: SearchQuery, token: string): Promise<SourceResult | null> {
+    if (!query.ssn_last4 && !query.dob) return null;
+    const { firstName, lastName } = this.parseNameParts(query);
+    if (!firstName && !lastName) return null;
+    const baseUrl = this.getBaseUrl();
+
+    const requestBody: any = {
+      SubscriberCode: this.getSubscriberCode(),
+      PersonInfo: {
+        PersonName: { FirstName: firstName, LastName: lastName },
+        ...(query.ssn_last4 ? { TaxId: { SSNLast4: query.ssn_last4 } } : {}),
+        ...(query.dob ? { BirthDt: query.dob } : {}),
+      },
+    };
+
+    const res = await this.fetchWithRetry(`${baseUrl}/BPS/SSNTrace`, {
+      method: 'POST',
+      headers: this.buildHeaders(token),
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!res.ok) {
+      console.error(`[MicrobiltSource] SSNTrace error (${res.status})`);
+      return null;
+    }
+
+    const data = await res.json() as any;
+    return this.mapSsnTraceResponse(data);
+  }
+
+  private mapSsnTraceResponse(data: any): SourceResult {
+    const result: SourceResult = {
+      source: this.name,
+      sourceType: 'people',
+      confidence: 0.92,
+      fetchedAt: localNow(),
+      rawResultCount: 0,
+    };
+
+    const records = data?.SSNTraceInfo?.SSNTraceRecord || data?.Records || [];
+    const recordList = Array.isArray(records) ? records : records ? [records] : [];
+    result.rawResultCount = recordList.length;
+
+    const names: SourceResult['names'] = [];
+    const dobs: SourceResult['dobs'] = [];
+    const addresses: AddressRecord[] = [];
+
+    for (const rec of recordList) {
+      if (!rec) continue;
+      const pn = rec.PersonName || {};
+      if (pn.FirstName || pn.LastName) {
+        names.push({
+          source: this.name,
+          full: [pn.FirstName, pn.MiddleName, pn.LastName].filter(Boolean).join(' '),
+          first: pn.FirstName || undefined,
+          middle: pn.MiddleName || undefined,
+          last: pn.LastName || undefined,
+        });
+      }
+      const dob = rec.BirthDt || rec.DateOfBirth;
+      if (dob) dobs.push({ source: this.name, dob: String(dob) });
+
+      const addr = rec.ContactInfo?.PostAddr || rec.Address || {};
+      if (addr.Addr1 || addr.City) {
+        addresses.push({
+          source: this.name,
+          street: addr.Addr1 || addr.StreetAddress || '',
+          city: addr.City || '',
+          state: addr.StateProv || addr.State || '',
+          zip: addr.PostalCode || '',
+          firstSeen: addr.FirstReportedDt || undefined,
+          lastSeen: addr.LastReportedDt || undefined,
+        });
+      }
+    }
+
+    if (names.length) result.names = names;
+    if (dobs.length) result.dobs = dobs;
+    if (addresses.length) result.addresses = addresses;
+    return result;
+  }
+
+  // ============================================================
+  // 5. Phone Search — /BPS/PhoneSearch
+  // ============================================================
+
+  private async searchPhone(query: SearchQuery, token: string): Promise<SourceResult | null> {
+    if (!query.phone) return null;
+    const baseUrl = this.getBaseUrl();
+
+    const requestBody = {
+      SubscriberCode: this.getSubscriberCode(),
+      PhoneInfo: {
+        PhoneNum: { Phone: query.phone.replace(/\D/g, '') },
+      },
+    };
+
+    const res = await this.fetchWithRetry(`${baseUrl}/BPS/PhoneSearch`, {
+      method: 'POST',
+      headers: this.buildHeaders(token),
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    return this.mapPhoneResponse(data);
+  }
+
+  private mapPhoneResponse(data: any): SourceResult {
+    const result: SourceResult = {
+      source: this.name,
+      sourceType: 'people',
+      confidence: 0.88,
+      fetchedAt: localNow(),
+      rawResultCount: 0,
+    };
+
+    const records = data?.PhoneSearchInfo?.PhoneSearchRecord || data?.Records || [];
+    const recordList = Array.isArray(records) ? records : records ? [records] : [];
+    result.rawResultCount = recordList.length;
+
+    const names: SourceResult['names'] = [];
+    const phones: SourceResult['phones'] = [];
+    const addresses: AddressRecord[] = [];
+
+    for (const rec of recordList) {
+      if (!rec) continue;
+      const pn = rec.PersonName || rec.SubscriberName || {};
+      if (pn.FirstName || pn.LastName || pn.FullName) {
+        names.push({
+          source: this.name,
+          full: pn.FullName || [pn.FirstName, pn.LastName].filter(Boolean).join(' '),
+          first: pn.FirstName || undefined,
+          last: pn.LastName || undefined,
+        });
+      }
+
+      const phoneNum = rec.PhoneNum?.Phone || rec.Phone || rec.PhoneNumber;
+      if (phoneNum) {
+        phones.push({
+          source: this.name,
+          number: String(phoneNum),
+          type: rec.PhoneType === 'Mobile' ? 'mobile' : rec.PhoneType === 'Landline' ? 'landline' : 'unknown',
+          carrier: rec.Carrier || rec.PhoneCompany || undefined,
+          lineStatus: rec.Status === 'Active' ? 'active' : rec.Status === 'Inactive' ? 'inactive' : 'unknown',
+        });
+      }
+
+      const addr = rec.ContactInfo?.PostAddr || rec.Address || {};
+      if (addr.Addr1 || addr.City) {
+        addresses.push({
+          source: this.name,
+          street: addr.Addr1 || '',
+          city: addr.City || '',
+          state: addr.StateProv || '',
+          zip: addr.PostalCode || '',
+        });
+      }
+    }
+
+    if (names.length) result.names = names;
+    if (phones.length) result.phones = phones;
+    if (addresses.length) result.addresses = addresses;
+    return result;
+  }
+
+  // ============================================================
+  // 6. Email Search — /BPS/EmailSearch
+  // ============================================================
+
+  private async searchEmail(query: SearchQuery, token: string): Promise<SourceResult | null> {
+    if (!query.email) return null;
+    const baseUrl = this.getBaseUrl();
+
+    const requestBody = {
+      SubscriberCode: this.getSubscriberCode(),
+      EmailInfo: {
+        EmailAddress: query.email,
+      },
+    };
+
+    const res = await this.fetchWithRetry(`${baseUrl}/BPS/EmailSearch`, {
+      method: 'POST',
+      headers: this.buildHeaders(token),
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    return this.mapEmailResponse(data);
+  }
+
+  private mapEmailResponse(data: any): SourceResult {
+    const result: SourceResult = {
+      source: this.name,
+      sourceType: 'people',
+      confidence: 0.85,
+      fetchedAt: localNow(),
+      rawResultCount: 0,
+    };
+
+    const records = data?.EmailSearchInfo?.EmailSearchRecord || data?.Records || [];
+    const recordList = Array.isArray(records) ? records : records ? [records] : [];
+    result.rawResultCount = recordList.length;
+
+    const names: SourceResult['names'] = [];
+    const emails: SourceResult['emails'] = [];
+    const addresses: AddressRecord[] = [];
+
+    for (const rec of recordList) {
+      if (!rec) continue;
+      const pn = rec.PersonName || {};
+      if (pn.FirstName || pn.LastName || pn.FullName) {
+        names.push({
+          source: this.name,
+          full: pn.FullName || [pn.FirstName, pn.LastName].filter(Boolean).join(' '),
+          first: pn.FirstName || undefined,
+          last: pn.LastName || undefined,
+        });
+      }
+
+      const emailAddr = rec.EmailAddress || rec.Email;
+      if (emailAddr) {
+        emails.push({
+          source: this.name,
+          address: String(emailAddr),
+          type: rec.EmailType || undefined,
+        });
+      }
+
+      const addr = rec.ContactInfo?.PostAddr || {};
+      if (addr.Addr1 || addr.City) {
+        addresses.push({
+          source: this.name,
+          street: addr.Addr1 || '',
+          city: addr.City || '',
+          state: addr.StateProv || '',
+          zip: addr.PostalCode || '',
+        });
+      }
+    }
+
+    if (names.length) result.names = names;
+    if (emails.length) result.emails = emails;
+    if (addresses.length) result.addresses = addresses;
+    return result;
+  }
+
+  // ============================================================
+  // 7. Property Search — /BPS/PropertySearch
+  // ============================================================
+
+  private async searchProperty(query: SearchQuery, token: string): Promise<SourceResult | null> {
+    if (!query.address) return null;
+    const baseUrl = this.getBaseUrl();
+
+    const requestBody = {
+      SubscriberCode: this.getSubscriberCode(),
+      PropertyInfo: {
+        PostAddr: {
+          ...(query.address ? { Addr1: query.address } : {}),
+          ...(query.city ? { City: query.city } : {}),
+          ...(query.state ? { StateProv: query.state } : {}),
+          ...(query.zip ? { PostalCode: query.zip } : {}),
+        },
+      },
+    };
+
+    const res = await this.fetchWithRetry(`${baseUrl}/BPS/PropertySearch`, {
+      method: 'POST',
+      headers: this.buildHeaders(token),
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    return this.mapPropertyResponse(data);
+  }
+
+  private mapPropertyResponse(data: any): SourceResult {
+    const result: SourceResult = {
+      source: this.name,
+      sourceType: 'property',
+      confidence: 0.9,
+      fetchedAt: localNow(),
+      rawResultCount: 0,
+    };
+
+    const records = data?.PropertySearchInfo?.PropertySearchRecord || data?.Records || [];
+    const recordList = Array.isArray(records) ? records : records ? [records] : [];
+    result.rawResultCount = recordList.length;
+
+    const propertyRecords: SourceResult['propertyRecords'] = [];
+
+    for (const rec of recordList) {
+      if (!rec) continue;
+      const rawType = (rec.PropertyType || rec.LandUse || '').toLowerCase();
+      const propType: 'residential' | 'commercial' | 'land' | 'industrial' | 'unknown' =
+        rawType.includes('resid') ? 'residential'
+        : rawType.includes('commerc') ? 'commercial'
+        : rawType.includes('land') || rawType.includes('vacant') ? 'land'
+        : rawType.includes('industr') ? 'industrial'
+        : 'unknown';
+
+      propertyRecords!.push({
+        source: this.name,
+        address: rec.Address?.Addr1 || rec.PropertyAddress || '',
+        city: rec.Address?.City || '',
+        state: rec.Address?.StateProv || '',
+        zip: rec.Address?.PostalCode || '',
+        ownerName: rec.OwnerName || rec.Owner || undefined,
+        propertyType: propType,
+        assessedValue: rec.AssessedValue ? parseFloat(rec.AssessedValue) : undefined,
+        marketValue: rec.MarketValue ? parseFloat(rec.MarketValue) : undefined,
+        salePrice: rec.SalePrice ? parseFloat(rec.SalePrice) : undefined,
+        saleDate: rec.SaleDate || undefined,
+        yearBuilt: rec.YearBuilt ? parseInt(rec.YearBuilt) : undefined,
+        squareFeet: rec.SquareFeet ? parseInt(rec.SquareFeet) : undefined,
+      });
+    }
+
+    if (propertyRecords!.length) result.propertyRecords = propertyRecords;
+    return result;
+  }
+
+  // ============================================================
+  // 8. Vehicle Search — /BPS/VehicleSearch
+  // ============================================================
+
+  private async searchVehicle(query: SearchQuery, token: string): Promise<SourceResult | null> {
+    const { firstName, lastName } = this.parseNameParts(query);
+    if (!firstName && !lastName) return null;
+    const baseUrl = this.getBaseUrl();
+
+    const requestBody = {
+      SubscriberCode: this.getSubscriberCode(),
+      PersonInfo: {
+        PersonName: { FirstName: firstName, LastName: lastName },
+        ...(query.state ? { ContactInfo: { PostAddr: { StateProv: query.state } } } : {}),
+      },
+    };
+
+    const res = await this.fetchWithRetry(`${baseUrl}/BPS/VehicleSearch`, {
+      method: 'POST',
+      headers: this.buildHeaders(token),
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    return this.mapVehicleResponse(data);
+  }
+
+  private mapVehicleResponse(data: any): SourceResult {
+    const result: SourceResult = {
+      source: this.name,
+      sourceType: 'people',
+      confidence: 0.85,
+      fetchedAt: localNow(),
+      rawResultCount: 0,
+    };
+
+    const records = data?.VehicleSearchInfo?.VehicleRecord || data?.Vehicles || data?.Records || [];
+    const recordList = Array.isArray(records) ? records : records ? [records] : [];
+    result.rawResultCount = recordList.length;
+
+    const vehicles: SourceResult['vehicles'] = [];
+
+    for (const rec of recordList) {
+      if (!rec) continue;
+      const rawRegStatus = (rec.RegistrationStatus || '').toLowerCase();
+      const regStatus: 'active' | 'expired' | 'suspended' | 'unknown' =
+        rawRegStatus.includes('active') ? 'active'
+        : rawRegStatus.includes('expir') ? 'expired'
+        : rawRegStatus.includes('suspend') ? 'suspended'
+        : 'unknown';
+
+      const yearVal = rec.Year || rec.ModelYear;
+      vehicles!.push({
+        source: this.name,
+        vin: rec.VIN || rec.Vin || undefined,
+        plate: rec.PlateNumber || rec.LicensePlate || rec.TagNumber || undefined,
+        plateState: rec.PlateState || rec.RegistrationState || undefined,
+        year: yearVal ? parseInt(String(yearVal)) || undefined : undefined,
+        make: rec.Make || undefined,
+        model: rec.Model || undefined,
+        color: rec.Color || undefined,
+        registeredOwner: rec.RegisteredOwner || rec.OwnerName || undefined,
+        registrationStatus: regStatus,
+      });
+    }
+
+    if (vehicles!.length) result.vehicles = vehicles;
     return result;
   }
 

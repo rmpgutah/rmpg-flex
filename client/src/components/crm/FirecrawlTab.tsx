@@ -2572,7 +2572,7 @@ function ObserverPanel() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<ObserverWatch[]>('/firecrawl-tools/observer');
+      const data = await apiFetch<ObserverWatch[]>('/firecrawl-tools/observer/watches');
       setWatches(data);
     } catch {
       addToast('Failed to load watches', 'error');
@@ -2586,7 +2586,7 @@ function ObserverPanel() {
   const loadChanges = useCallback(async (watchId: number) => {
     setChangesLoading(true);
     try {
-      const data = await apiFetch<ObserverChange[]>(`/firecrawl-tools/observer/${watchId}/changes`);
+      const data = await apiFetch<ObserverChange[]>(`/firecrawl-tools/observer/watch/${watchId}/changes`);
       setChanges(data);
     } catch {
       addToast('Failed to load change history', 'error');
@@ -2609,7 +2609,7 @@ function ObserverPanel() {
     if (!formName.trim() || !formUrl.trim()) { addToast('Name and URL are required', 'warning'); return; }
     setSaving(true);
     try {
-      await apiFetch('/firecrawl-tools/observer', {
+      await apiFetch('/firecrawl-tools/observer/watch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2632,7 +2632,7 @@ function ObserverPanel() {
   const checkNow = async (id: number) => {
     setCheckingIds(prev => new Set(prev).add(id));
     try {
-      await apiFetch(`/firecrawl-tools/observer/${id}/check`, { method: 'POST' });
+      await apiFetch(`/firecrawl-tools/observer/watch/${id}/check`, { method: 'POST' });
       addToast('Check triggered', 'success');
       load();
       if (expandedId === id) loadChanges(id);
@@ -2646,7 +2646,7 @@ function ObserverPanel() {
   const deleteWatch = async (id: number) => {
     setDeletingIds(prev => new Set(prev).add(id));
     try {
-      await apiFetch(`/firecrawl-tools/observer/${id}`, { method: 'DELETE' });
+      await apiFetch(`/firecrawl-tools/observer/watch/${id}`, { method: 'DELETE' });
       addToast('Watch deleted', 'success');
       if (expandedId === id) { setExpandedId(null); setChanges([]); }
       load();
