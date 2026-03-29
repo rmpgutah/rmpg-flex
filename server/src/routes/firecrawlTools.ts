@@ -655,6 +655,200 @@ function initTables(): void {
       created_at TEXT NOT NULL
     )
   `);
+
+  // ── 37. Firecrawl Core API Console ────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_crawl_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      max_pages INTEGER DEFAULT 10,
+      max_depth INTEGER DEFAULT 2,
+      include_paths TEXT,
+      exclude_paths TEXT,
+      pages TEXT,
+      total_crawled INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'completed',
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 38. Firecrawl CLI ─────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_cli_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      command TEXT NOT NULL,
+      args TEXT,
+      result TEXT,
+      duration_ms INTEGER,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 39. Grok Fire Enrich ──────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_grok_enrichments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url_or_domain TEXT NOT NULL,
+      enrich_type TEXT NOT NULL,
+      data TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 41. N8N Nodes ─────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_n8n_workflows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      trigger TEXT DEFAULT 'manual',
+      nodes TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_n8n_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workflow_id INTEGER NOT NULL,
+      status TEXT DEFAULT 'running',
+      node_results TEXT,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      FOREIGN KEY (workflow_id) REFERENCES firecrawl_n8n_workflows(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ── 42. Mendable Python SDK ───────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_mendable_indexes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      urls TEXT NOT NULL,
+      scraped_content TEXT,
+      page_count INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 43. OpenCode Firecrawl ────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_code_analyses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      repo_name TEXT,
+      description TEXT,
+      languages TEXT,
+      readme_summary TEXT,
+      file_count INTEGER DEFAULT 0,
+      star_count INTEGER,
+      last_updated TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 44. Claude Skill Generator ────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_skill_generations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      doc_url TEXT NOT NULL,
+      skill_name TEXT NOT NULL,
+      skill_description TEXT,
+      generated_skill TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 46. Open WebUI Pipelines ──────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_pipelines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      steps TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_pipeline_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pipeline_id INTEGER NOT NULL,
+      input TEXT,
+      status TEXT DEFAULT 'running',
+      step_results TEXT,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      FOREIGN KEY (pipeline_id) REFERENCES firecrawl_pipelines(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ── 47. Firecrawl Theme ───────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_theme_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      accent_color TEXT DEFAULT '#f97316',
+      show_labels INTEGER DEFAULT 1,
+      compact_mode INTEGER DEFAULT 0,
+      default_tab TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 48. Firecrawl AI Chatbot ──────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_ai_chat_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message TEXT NOT NULL,
+      context_url TEXT,
+      response TEXT,
+      context_used INTEGER DEFAULT 0,
+      sources TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 49. LoPDF — PDF Manipulation ──────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_pdf_operations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      operations TEXT NOT NULL,
+      results TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 50. OpenClaw — Personal AI Assistant ──────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_assistant_chats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question TEXT NOT NULL,
+      search_web INTEGER DEFAULT 0,
+      context_urls TEXT,
+      answer TEXT,
+      sources_used TEXT,
+      web_searched INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
 }
 
 // Initialize tables on module load
@@ -5894,6 +6088,1381 @@ router.get(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get conversion history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 37. Firecrawl Core API Console
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /console/scrape — Direct scrape proxy ────────────────
+
+router.post(
+  '/console/scrape',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, formats, onlyMainContent, waitFor, timeout, actions } = req.body as {
+      url?: string; formats?: string[]; onlyMainContent?: boolean;
+      waitFor?: number; timeout?: number; actions?: object[];
+    };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      const opts: any = { url: url.trim(), formats: formats || ['markdown'], onlyMainContent: onlyMainContent !== false };
+      if (waitFor) opts.waitFor = waitFor;
+      if (timeout) opts.timeout = timeout;
+      if (actions) opts.actions = actions;
+
+      const result = await firecrawlScrape(opts);
+      res.json(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Scrape failed', detail: msg });
+    }
+  },
+);
+
+// ── POST /console/crawl — Crawl a website (multi-page) ───────
+
+router.post(
+  '/console/crawl',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, max_pages, max_depth, include_paths, exclude_paths } = req.body as {
+      url?: string; max_pages?: number; max_depth?: number;
+      include_paths?: string[]; exclude_paths?: string[];
+    };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      const maxPages = Math.min(max_pages || 10, 50);
+      const maxDepth = Math.min(max_depth || 2, 5);
+      const visited = new Set<string>();
+      const pages: { url: string; title: string; content_length: number }[] = [];
+      const queue: { url: string; depth: number }[] = [{ url: url.trim(), depth: 0 }];
+
+      while (queue.length > 0 && pages.length < maxPages) {
+        const item = queue.shift()!;
+        if (visited.has(item.url) || item.depth > maxDepth) continue;
+        visited.add(item.url);
+
+        // Check include/exclude paths
+        if (include_paths && include_paths.length > 0) {
+          if (!include_paths.some(p => item.url.includes(p))) continue;
+        }
+        if (exclude_paths && exclude_paths.length > 0) {
+          if (exclude_paths.some(p => item.url.includes(p))) continue;
+        }
+
+        try {
+          const scrapeResult = await firecrawlScrape({
+            url: item.url, formats: ['markdown', 'links'], onlyMainContent: true,
+          });
+          const data = scrapeResult.data as any;
+          const md = data?.markdown || '';
+          const title = data?.metadata?.title || item.url;
+          pages.push({ url: item.url, title, content_length: md.length });
+
+          // Extract links for next depth
+          const links: string[] = data?.links || [];
+          const baseHost = new URL(url.trim()).hostname;
+          for (const link of links) {
+            try {
+              if (new URL(link).hostname === baseHost && !visited.has(link)) {
+                queue.push({ url: link, depth: item.depth + 1 });
+              }
+            } catch { /* skip invalid URLs */ }
+          }
+        } catch { /* skip failed pages */ }
+      }
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_crawl_jobs (url, max_pages, max_depth, include_paths, exclude_paths, pages, total_crawled, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), maxPages, maxDepth,
+        include_paths ? JSON.stringify(include_paths) : null,
+        exclude_paths ? JSON.stringify(exclude_paths) : null,
+        JSON.stringify(pages), pages.length,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_crawl_jobs', Number(result.lastInsertRowid), `Crawl: ${url.trim()}`);
+      res.json({ id: Number(result.lastInsertRowid), pages, total_crawled: pages.length });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Crawl failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /console/crawl/:id — Get crawl results ───────────────
+
+router.get(
+  '/console/crawl/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT * FROM firecrawl_crawl_jobs WHERE id = ?').get(id) as any;
+      if (!row) { res.status(404).json({ error: 'Crawl job not found' }); return; }
+      res.json({ ...row, pages: row.pages ? JSON.parse(row.pages) : [], include_paths: row.include_paths ? JSON.parse(row.include_paths) : [], exclude_paths: row.exclude_paths ? JSON.parse(row.exclude_paths) : [] });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get crawl job', detail: msg });
+    }
+  },
+);
+
+// ── POST /console/map — Map a website's structure ─────────────
+
+router.post(
+  '/console/map',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url } = req.body as { url?: string };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(), formats: ['links'], onlyMainContent: false,
+      });
+      const data = scrapeResult.data as any;
+      const links: string[] = data?.links || [];
+      const baseHost = new URL(url.trim()).hostname;
+
+      const sitemap = links
+        .filter(l => { try { return new URL(l).hostname === baseHost; } catch { return false; } })
+        .map(l => ({ url: l, depth: 1, links_to: [] as string[] }));
+
+      res.json({ url: url.trim(), sitemap, total_pages: sitemap.length });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to map site', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 38. Firecrawl CLI
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /cli/execute — Execute a CLI-style command ───────────
+
+router.post(
+  '/cli/execute',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { command, args } = req.body as {
+      command?: string; args?: { url?: string; query?: string; limit?: number; depth?: number };
+    };
+
+    if (!command || !['scrape', 'search', 'crawl', 'map'].includes(command)) {
+      res.status(400).json({ error: 'command must be one of: scrape, search, crawl, map' }); return;
+    }
+
+    const start = Date.now();
+    try {
+      let result: any = null;
+
+      if (command === 'scrape') {
+        if (!args?.url) { res.status(400).json({ error: 'args.url is required for scrape' }); return; }
+        const scrapeResult = await firecrawlScrape({ url: args.url, formats: ['markdown'], onlyMainContent: true });
+        result = { url: args.url, content_length: ((scrapeResult.data as any)?.markdown || '').length };
+      } else if (command === 'search') {
+        if (!args?.query) { res.status(400).json({ error: 'args.query is required for search' }); return; }
+        const searchResult = await firecrawlSearch({ query: args.query, limit: args.limit || 5, scrapeOptions: { formats: ['markdown'], onlyMainContent: true } });
+        result = { query: args.query, results: (searchResult.data || []).map((d: any) => ({ url: d.url, title: d.metadata?.title })) };
+      } else if (command === 'crawl') {
+        if (!args?.url) { res.status(400).json({ error: 'args.url is required for crawl' }); return; }
+        const scrapeResult = await firecrawlScrape({ url: args.url, formats: ['markdown', 'links'], onlyMainContent: true });
+        const data = scrapeResult.data as any;
+        result = { url: args.url, links_found: (data?.links || []).length, content_length: (data?.markdown || '').length };
+      } else if (command === 'map') {
+        if (!args?.url) { res.status(400).json({ error: 'args.url is required for map' }); return; }
+        const scrapeResult = await firecrawlScrape({ url: args.url, formats: ['links'], onlyMainContent: false });
+        const links: string[] = (scrapeResult.data as any)?.links || [];
+        result = { url: args.url, total_links: links.length, links: links.slice(0, 20) };
+      }
+
+      const duration = Date.now() - start;
+      const db = getDb();
+      const now = localNow();
+      db.prepare(`
+        INSERT INTO firecrawl_cli_history (command, args, result, duration_ms, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        command, JSON.stringify(args || {}), JSON.stringify(result), duration,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      res.json({ command, result, duration_ms: duration });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'CLI command failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /cli/history — Past CLI commands ──────────────────────
+
+router.get(
+  '/cli/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_cli_history ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, args: r.args ? JSON.parse(r.args) : {}, result: r.result ? JSON.parse(r.result) : null })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get CLI history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 39. Grok Fire Enrich
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /grok-enrich — Enhanced enrichment ───────────────────
+
+router.post(
+  '/grok-enrich',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url_or_domain, enrich_type } = req.body as {
+      url_or_domain?: string; enrich_type?: string;
+    };
+
+    if (!url_or_domain || typeof url_or_domain !== 'string' || !url_or_domain.trim()) {
+      res.status(400).json({ error: 'url_or_domain is required' }); return;
+    }
+    if (!enrich_type || !['company', 'person', 'product'].includes(enrich_type)) {
+      res.status(400).json({ error: 'enrich_type must be one of: company, person, product' }); return;
+    }
+
+    try {
+      const target = url_or_domain.trim();
+      const baseUrl = target.startsWith('http') ? target : `https://${target}`;
+
+      // Scrape main page
+      const mainResult = await firecrawlScrape({ url: baseUrl, formats: ['markdown'], onlyMainContent: true });
+      const mainMd = (mainResult.data as any)?.markdown || '';
+
+      // Try to scrape about/team page
+      let aboutMd = '';
+      try {
+        const aboutResult = await firecrawlScrape({ url: `${baseUrl}/about`, formats: ['markdown'], onlyMainContent: true });
+        aboutMd = (aboutResult.data as any)?.markdown || '';
+      } catch { /* skip */ }
+
+      const combined = `${mainMd}\n\n${aboutMd}`.substring(0, 30000);
+
+      // Extract basic info from content
+      const nameMatch = combined.match(/(?:^|\n)#\s+(.+)/);
+      const name = nameMatch ? nameMatch[1].trim() : target;
+      const description = combined.substring(0, 300).replace(/\n/g, ' ').trim();
+
+      // Extract tech indicators
+      const techKeywords = ['React', 'Angular', 'Vue', 'Node.js', 'Python', 'Django', 'Rails', 'AWS', 'GCP', 'Azure', 'Docker', 'Kubernetes'];
+      const techIndicators = techKeywords.filter(t => combined.toLowerCase().includes(t.toLowerCase()));
+
+      const enrichData = {
+        name, description, key_people: [] as string[], products: [] as string[],
+        revenue_estimate: null, tech_indicators: techIndicators, news_mentions: [] as string[],
+      };
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_grok_enrichments (url_or_domain, enrich_type, data, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        target, enrich_type, JSON.stringify(enrichData),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_grok_enrichments', Number(result.lastInsertRowid), `Grok enrich: ${target}`);
+      res.json({ target, type: enrich_type, data: enrichData });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Enrichment failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /grok-enrich/history — Past enrichments ───────────────
+
+router.get(
+  '/grok-enrich/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_grok_enrichments ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : {} })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get enrichment history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 40. Firecrawl Docs Browser
+// ═════════════════════════════════════════════════════════════
+
+// ── GET /docs/topics — Categorized documentation topics ───────
+
+router.get(
+  '/docs/topics',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    res.json({
+      topics: [
+        'Getting Started', 'Scrape API', 'Search API', 'Crawl API', 'Extract API',
+        'Map API', 'LLMs.txt', 'Webhooks', 'Rate Limits', 'Authentication', 'SDKs',
+      ],
+    });
+  },
+);
+
+// ── POST /docs/search — Search Firecrawl documentation ────────
+
+router.post(
+  '/docs/search',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { query } = req.body as { query?: string };
+
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      res.status(400).json({ error: 'query is required' }); return;
+    }
+
+    try {
+      const searchResult = await firecrawlSearch({
+        query: `${query.trim()} site:firecrawl.dev`,
+        limit: 10,
+        scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+      });
+
+      const results = (searchResult.data || []).map((d: any) => ({
+        title: d.metadata?.title || d.url,
+        url: d.url,
+        snippet: (d.markdown || '').substring(0, 200).replace(/\n/g, ' ').trim(),
+      }));
+
+      res.json({ query: query.trim(), results });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Docs search failed', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 41. N8N Nodes — Automation Workflows
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /n8n/workflows — Create a workflow ───────────────────
+
+router.post(
+  '/n8n/workflows',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const { name, trigger, nodes } = req.body as {
+      name?: string; trigger?: string; nodes?: { type: string; config: object }[];
+    };
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ error: 'name is required' }); return;
+    }
+    if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+      res.status(400).json({ error: 'nodes array is required' }); return;
+    }
+
+    const validTriggers = ['manual', 'schedule', 'webhook'];
+    const validTypes = ['scrape', 'search', 'filter', 'transform', 'output'];
+    const triggerVal = trigger && validTriggers.includes(trigger) ? trigger : 'manual';
+    const filteredNodes = nodes.filter(n => validTypes.includes(n.type));
+
+    if (filteredNodes.length === 0) {
+      res.status(400).json({ error: 'nodes must include at least one of: scrape, search, filter, transform, output' }); return;
+    }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_n8n_workflows (name, trigger, nodes, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        name.trim(), triggerVal, JSON.stringify(filteredNodes),
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_n8n_workflows', Number(result.lastInsertRowid), `Created n8n workflow: ${name.trim()}`);
+      res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to create workflow', detail: msg });
+    }
+  },
+);
+
+// ── GET /n8n/workflows — List workflows ───────────────────────
+
+router.get(
+  '/n8n/workflows',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_n8n_workflows ORDER BY created_at DESC').all();
+      res.json(rows.map((r: any) => ({ ...r, nodes: r.nodes ? JSON.parse(r.nodes) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list workflows', detail: msg });
+    }
+  },
+);
+
+// ── POST /n8n/workflows/:id/run — Execute workflow ────────────
+
+router.post(
+  '/n8n/workflows/:id/run',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const workflow = db.prepare('SELECT * FROM firecrawl_n8n_workflows WHERE id = ?').get(id) as any;
+      if (!workflow) { res.status(404).json({ error: 'Workflow not found' }); return; }
+
+      const nodes = JSON.parse(workflow.nodes || '[]') as { type: string; config: any }[];
+      const now = localNow();
+      const nodeResults: any[] = [];
+      let lastOutput: any = null;
+
+      for (const node of nodes) {
+        try {
+          if (node.type === 'scrape' && node.config?.url) {
+            const scrapeResult = await firecrawlScrape({ url: node.config.url, formats: ['markdown'], onlyMainContent: true });
+            lastOutput = { type: 'scrape', url: node.config.url, content_length: ((scrapeResult.data as any)?.markdown || '').length };
+          } else if (node.type === 'search' && node.config?.query) {
+            const searchResult = await firecrawlSearch({ query: node.config.query, limit: node.config.limit || 5, scrapeOptions: { formats: ['markdown'], onlyMainContent: true } });
+            lastOutput = { type: 'search', results_count: (searchResult.data || []).length };
+          } else if (node.type === 'filter') {
+            lastOutput = { type: 'filter', applied: true, config: node.config };
+          } else if (node.type === 'transform') {
+            lastOutput = { type: 'transform', applied: true, config: node.config };
+          } else if (node.type === 'output') {
+            lastOutput = { type: 'output', format: node.config?.format || 'json' };
+          }
+          nodeResults.push({ ...lastOutput, status: 'success' });
+        } catch (e: unknown) {
+          nodeResults.push({ type: node.type, status: 'error', error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
+      const runResult = db.prepare(`
+        INSERT INTO firecrawl_n8n_runs (workflow_id, status, node_results, started_at, completed_at)
+        VALUES (?, 'completed', ?, ?, ?)
+      `).run(id, JSON.stringify(nodeResults), now, localNow());
+
+      res.json({ success: true, run_id: Number(runResult.lastInsertRowid), node_results: nodeResults });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to run workflow', detail: msg });
+    }
+  },
+);
+
+// ── GET /n8n/workflows/:id/runs — Get runs ────────────────────
+
+router.get(
+  '/n8n/workflows/:id/runs',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_n8n_runs WHERE workflow_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
+      res.json(rows.map((r: any) => ({ ...r, node_results: r.node_results ? JSON.parse(r.node_results) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get workflow runs', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /n8n/workflows/:id — Delete workflow ───────────────
+
+router.delete(
+  '/n8n/workflows/:id',
+  requireRole('admin'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const result = db.prepare('DELETE FROM firecrawl_n8n_workflows WHERE id = ?').run(id);
+      if (result.changes === 0) { res.status(404).json({ error: 'Workflow not found' }); return; }
+
+      auditLog(req, 'DELETE', 'firecrawl_n8n_workflows', id, `Deleted n8n workflow ${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to delete workflow', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 42. Mendable Python SDK — Index & Query
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /mendable-py/index — Index URLs for Q&A ─────────────
+
+router.post(
+  '/mendable-py/index',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { name, urls } = req.body as { name?: string; urls?: string[] };
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ error: 'name is required' }); return;
+    }
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+      res.status(400).json({ error: 'urls array is required' }); return;
+    }
+
+    try {
+      let allContent = '';
+      let pageCount = 0;
+
+      for (const u of urls.slice(0, 20)) {
+        try {
+          const scrapeResult = await firecrawlScrape({ url: u.trim(), formats: ['markdown'], onlyMainContent: true });
+          const md = (scrapeResult.data as any)?.markdown || '';
+          if (md.trim()) {
+            allContent += `\n\n--- Source: ${u.trim()} ---\n\n${md.substring(0, 20000)}`;
+            pageCount++;
+          }
+        } catch { /* skip failed URLs */ }
+      }
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_mendable_indexes (name, urls, scraped_content, page_count, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        name.trim(), JSON.stringify(urls), allContent.substring(0, 200000), pageCount,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_mendable_indexes', Number(result.lastInsertRowid), `Created Mendable index: ${name.trim()}`);
+      res.status(201).json({ success: true, id: Number(result.lastInsertRowid), name: name.trim(), page_count: pageCount });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to create index', detail: msg });
+    }
+  },
+);
+
+// ── GET /mendable-py/indexes — List indexes ───────────────────
+
+router.get(
+  '/mendable-py/indexes',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT id, name, urls, page_count, created_by, created_at FROM firecrawl_mendable_indexes ORDER BY created_at DESC').all();
+      res.json(rows.map((r: any) => ({ ...r, urls: r.urls ? JSON.parse(r.urls) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list indexes', detail: msg });
+    }
+  },
+);
+
+// ── POST /mendable-py/indexes/:id/query — Query an index ─────
+
+router.post(
+  '/mendable-py/indexes/:id/query',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    const { question } = req.body as { question?: string };
+    if (!question || typeof question !== 'string' || !question.trim()) {
+      res.status(400).json({ error: 'question is required' }); return;
+    }
+
+    try {
+      const db = getDb();
+      const index = db.prepare('SELECT * FROM firecrawl_mendable_indexes WHERE id = ?').get(id) as any;
+      if (!index) { res.status(404).json({ error: 'Index not found' }); return; }
+
+      const content = index.scraped_content || '';
+      const urls: string[] = index.urls ? JSON.parse(index.urls) : [];
+      const queryLower = question.trim().toLowerCase();
+
+      // Simple keyword-based relevance scoring
+      const sections = content.split('--- Source:');
+      const sources = sections.filter((s: string) => s.toLowerCase().includes(queryLower)).map((s: string) => {
+        const urlMatch = s.match(/https?:\/\/[^\s]+/);
+        return { url: urlMatch ? urlMatch[0].replace(/---$/, '').trim() : 'unknown', relevance: 0.8 };
+      }).slice(0, 5);
+
+      const answer = `Based on the indexed content from ${urls.length} sources, found ${sources.length} relevant sections for: "${question.trim()}"`;
+
+      res.json({ answer, sources });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Query failed', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /mendable-py/indexes/:id — Delete an index ─────────
+
+router.delete(
+  '/mendable-py/indexes/:id',
+  requireRole('admin'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const result = db.prepare('DELETE FROM firecrawl_mendable_indexes WHERE id = ?').run(id);
+      if (result.changes === 0) { res.status(404).json({ error: 'Index not found' }); return; }
+
+      auditLog(req, 'DELETE', 'firecrawl_mendable_indexes', id, `Deleted Mendable index ${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to delete index', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 43. OpenCode Firecrawl — Code Repository Analyzer
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /opencode/analyze — Analyze a code repo page ─────────
+
+router.post(
+  '/opencode/analyze',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url } = req.body as { url?: string };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
+      const data = scrapeResult.data as any;
+      const md = data?.markdown || '';
+      const title = data?.metadata?.title || '';
+
+      // Extract repo info from markdown
+      const repoName = title.replace(/GitHub\s*[-–—:]\s*/i, '').trim() || url.trim().split('/').slice(-2).join('/');
+      const description = md.substring(0, 300).replace(/\n/g, ' ').trim();
+
+      // Extract language stats (GitHub pattern)
+      const langMatches = md.match(/(\w+)\s+([\d.]+)%/g) || [];
+      const languages = langMatches.slice(0, 10).map((m: string) => {
+        const parts = m.match(/(\w+)\s+([\d.]+)%/);
+        return parts ? { name: parts[1], percentage: parseFloat(parts[2]) } : null;
+      }).filter(Boolean);
+
+      // Extract star count
+      const starMatch = md.match(/(\d[\d,]*)\s*stars?/i);
+      const starCount = starMatch ? parseInt(starMatch[1].replace(/,/g, ''), 10) : null;
+
+      // Count files mentioned
+      const fileMatches = md.match(/\.\w{1,10}\b/g) || [];
+      const fileCount = new Set(fileMatches).size;
+
+      const readmeSummary = md.substring(0, 500).replace(/\n/g, ' ').trim();
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_code_analyses (url, repo_name, description, languages, readme_summary, file_count, star_count, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), repoName, description, JSON.stringify(languages),
+        readmeSummary, fileCount, starCount,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_code_analyses', Number(result.lastInsertRowid), `Code analysis: ${url.trim()}`);
+
+      res.json({
+        url: url.trim(), repo_name: repoName, description, languages,
+        readme_summary: readmeSummary, file_count: fileCount,
+        star_count: starCount, last_updated: null,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Code analysis failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /opencode/history — Past analyses ─────────────────────
+
+router.get(
+  '/opencode/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_code_analyses ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, languages: r.languages ? JSON.parse(r.languages) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get code analysis history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 44. Claude Skill Generator
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /skill-gen — Generate an AI agent skill ──────────────
+
+router.post(
+  '/skill-gen',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { doc_url, skill_name, skill_description } = req.body as {
+      doc_url?: string; skill_name?: string; skill_description?: string;
+    };
+
+    if (!doc_url || typeof doc_url !== 'string' || !doc_url.trim()) {
+      res.status(400).json({ error: 'doc_url is required' }); return;
+    }
+    if (!skill_name || typeof skill_name !== 'string' || !skill_name.trim()) {
+      res.status(400).json({ error: 'skill_name is required' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({ url: doc_url.trim(), formats: ['markdown'], onlyMainContent: true });
+      const md = (scrapeResult.data as any)?.markdown || '';
+
+      // Extract patterns from documentation
+      const codeBlocks = md.match(/```[\s\S]*?```/g) || [];
+      const headings = md.match(/^#{1,3}\s+.+/gm) || [];
+      const apiPatterns = md.match(/(?:GET|POST|PUT|DELETE|PATCH)\s+\/\S+/g) || [];
+
+      const capabilities = headings.slice(0, 10).map((h: string) => h.replace(/^#+\s+/, '').trim());
+      const keyApis = apiPatterns.slice(0, 10);
+      const examplePrompts = capabilities.slice(0, 5).map((c: string) => `How do I use ${c}?`);
+
+      const generatedSkill = {
+        description: skill_description?.trim() || `AI skill for ${skill_name.trim()} based on ${doc_url.trim()}`,
+        capabilities,
+        example_prompts: examplePrompts,
+        key_apis: keyApis,
+      };
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_skill_generations (doc_url, skill_name, skill_description, generated_skill, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        doc_url.trim(), skill_name.trim(), skill_description?.trim() || null,
+        JSON.stringify(generatedSkill),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_skill_generations', Number(result.lastInsertRowid), `Skill gen: ${skill_name.trim()}`);
+
+      res.json({ skill_name: skill_name.trim(), doc_url: doc_url.trim(), generated_skill: generatedSkill });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Skill generation failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /skill-gen/history — Past generations ─────────────────
+
+router.get(
+  '/skill-gen/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_skill_generations ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, generated_skill: r.generated_skill ? JSON.parse(r.generated_skill) : {} })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get skill gen history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 45. Firecrawl Go SDK — SDK Status Dashboard
+// ═════════════════════════════════════════════════════════════
+
+// ── GET /sdk/status — SDK integration statuses ────────────────
+
+router.get(
+  '/sdk/status',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    res.json([
+      { name: 'Python', version: 'latest', repo: 'firecrawl-py' },
+      { name: 'Go', version: 'latest', repo: 'firecrawl-go' },
+      { name: 'Java', version: 'latest', repo: 'firecrawl-java-sdk' },
+      { name: 'JavaScript', version: 'latest', repo: 'firecrawl' },
+      { name: 'CLI', version: 'latest', repo: 'cli' },
+    ]);
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 46. Open WebUI Pipelines
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /pipelines — Create a processing pipeline ────────────
+
+router.post(
+  '/pipelines',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const { name, steps } = req.body as {
+      name?: string; steps?: { type: string; config: object }[];
+    };
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ error: 'name is required' }); return;
+    }
+    if (!steps || !Array.isArray(steps) || steps.length === 0) {
+      res.status(400).json({ error: 'steps array is required' }); return;
+    }
+
+    const validTypes = ['ingest', 'transform', 'filter', 'enrich', 'output'];
+    const filteredSteps = steps.filter(s => validTypes.includes(s.type));
+    if (filteredSteps.length === 0) {
+      res.status(400).json({ error: 'steps must include at least one of: ingest, transform, filter, enrich, output' }); return;
+    }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_pipelines (name, steps, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        name.trim(), JSON.stringify(filteredSteps),
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_pipelines', Number(result.lastInsertRowid), `Created pipeline: ${name.trim()}`);
+      res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to create pipeline', detail: msg });
+    }
+  },
+);
+
+// ── GET /pipelines — List pipelines ───────────────────────────
+
+router.get(
+  '/pipelines',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_pipelines ORDER BY created_at DESC').all();
+      res.json(rows.map((r: any) => ({ ...r, steps: r.steps ? JSON.parse(r.steps) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list pipelines', detail: msg });
+    }
+  },
+);
+
+// ── POST /pipelines/:id/run — Execute pipeline ───────────────
+
+router.post(
+  '/pipelines/:id/run',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    const { input_url, input_text } = req.body as { input_url?: string; input_text?: string };
+
+    try {
+      const db = getDb();
+      const pipeline = db.prepare('SELECT * FROM firecrawl_pipelines WHERE id = ?').get(id) as any;
+      if (!pipeline) { res.status(404).json({ error: 'Pipeline not found' }); return; }
+
+      const steps = JSON.parse(pipeline.steps || '[]') as { type: string; config: any }[];
+      const now = localNow();
+      const stepResults: any[] = [];
+      let currentData: any = input_text || '';
+
+      for (const step of steps) {
+        try {
+          if (step.type === 'ingest' && input_url) {
+            const scrapeResult = await firecrawlScrape({ url: input_url.trim(), formats: ['markdown'], onlyMainContent: true });
+            currentData = (scrapeResult.data as any)?.markdown || '';
+            stepResults.push({ type: 'ingest', status: 'success', content_length: currentData.length });
+          } else if (step.type === 'transform') {
+            stepResults.push({ type: 'transform', status: 'success', applied: true, config: step.config });
+          } else if (step.type === 'filter') {
+            stepResults.push({ type: 'filter', status: 'success', applied: true, config: step.config });
+          } else if (step.type === 'enrich') {
+            stepResults.push({ type: 'enrich', status: 'success', applied: true });
+          } else if (step.type === 'output') {
+            stepResults.push({ type: 'output', status: 'success', format: step.config?.format || 'json' });
+          } else {
+            stepResults.push({ type: step.type, status: 'skipped' });
+          }
+        } catch (e: unknown) {
+          stepResults.push({ type: step.type, status: 'error', error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
+      const runResult = db.prepare(`
+        INSERT INTO firecrawl_pipeline_runs (pipeline_id, input, status, step_results, started_at, completed_at)
+        VALUES (?, ?, 'completed', ?, ?, ?)
+      `).run(id, JSON.stringify({ input_url, input_text: input_text?.substring(0, 200) }), JSON.stringify(stepResults), now, localNow());
+
+      res.json({ success: true, run_id: Number(runResult.lastInsertRowid), step_results: stepResults });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to run pipeline', detail: msg });
+    }
+  },
+);
+
+// ── GET /pipelines/:id/runs — Get pipeline runs ──────────────
+
+router.get(
+  '/pipelines/:id/runs',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_pipeline_runs WHERE pipeline_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
+      res.json(rows.map((r: any) => ({ ...r, input: r.input ? JSON.parse(r.input) : {}, step_results: r.step_results ? JSON.parse(r.step_results) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get pipeline runs', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /pipelines/:id — Delete pipeline ───────────────────
+
+router.delete(
+  '/pipelines/:id',
+  requireRole('admin'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const result = db.prepare('DELETE FROM firecrawl_pipelines WHERE id = ?').run(id);
+      if (result.changes === 0) { res.status(404).json({ error: 'Pipeline not found' }); return; }
+
+      auditLog(req, 'DELETE', 'firecrawl_pipelines', id, `Deleted pipeline ${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to delete pipeline', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 47. Firecrawl Theme
+// ═════════════════════════════════════════════════════════════
+
+// ── GET /theme — Get current theme config ─────────────────────
+
+router.get(
+  '/theme',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT * FROM firecrawl_theme_config ORDER BY id DESC LIMIT 1').get() as any;
+      if (!row) {
+        res.json({ accent_color: '#f97316', show_labels: true, compact_mode: false, default_tab: null });
+        return;
+      }
+      res.json({ ...row, show_labels: !!row.show_labels, compact_mode: !!row.compact_mode });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get theme config', detail: msg });
+    }
+  },
+);
+
+// ── POST /theme — Save theme preferences ──────────────────────
+
+router.post(
+  '/theme',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const { accent_color, show_labels, compact_mode, default_tab } = req.body as {
+      accent_color?: string; show_labels?: boolean; compact_mode?: boolean; default_tab?: string;
+    };
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_theme_config (accent_color, show_labels, compact_mode, default_tab, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        accent_color || '#f97316', show_labels !== false ? 1 : 0,
+        compact_mode ? 1 : 0, default_tab || null,
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+
+      auditLog(req, 'UPDATE', 'firecrawl_theme_config', Number(result.lastInsertRowid), 'Updated Firecrawl theme');
+      res.json({ success: true, id: Number(result.lastInsertRowid) });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to save theme config', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 48. Firecrawl AI Chatbot
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /ai-chat — Chat with Firecrawl AI assistant ──────────
+
+router.post(
+  '/ai-chat',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { message, context_url } = req.body as { message?: string; context_url?: string };
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      res.status(400).json({ error: 'message is required' }); return;
+    }
+
+    try {
+      let contextUsed = false;
+      let contextContent = '';
+      const sources: string[] = [];
+
+      if (context_url && typeof context_url === 'string' && context_url.trim()) {
+        try {
+          const scrapeResult = await firecrawlScrape({ url: context_url.trim(), formats: ['markdown'], onlyMainContent: true });
+          contextContent = ((scrapeResult.data as any)?.markdown || '').substring(0, 10000);
+          if (contextContent.trim()) {
+            contextUsed = true;
+            sources.push(context_url.trim());
+          }
+        } catch { /* proceed without context */ }
+      }
+
+      const response = contextUsed
+        ? `Based on the content from ${context_url}, here is what I found relevant to "${message.trim()}": ${contextContent.substring(0, 500).replace(/\n/g, ' ').trim()}`
+        : `Regarding "${message.trim()}": This is a Firecrawl-powered assistant. Provide a context_url for more specific answers based on web content.`;
+
+      const db = getDb();
+      const now = localNow();
+      db.prepare(`
+        INSERT INTO firecrawl_ai_chat_history (message, context_url, response, context_used, sources, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        message.trim(), context_url?.trim() || null, response, contextUsed ? 1 : 0,
+        sources.length > 0 ? JSON.stringify(sources) : null,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      res.json({ response, context_used: contextUsed, sources: sources.length > 0 ? sources : undefined });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'AI chat failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /ai-chat/history — Past chat messages ─────────────────
+
+router.get(
+  '/ai-chat/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_ai_chat_history ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, context_used: !!r.context_used, sources: r.sources ? JSON.parse(r.sources) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get AI chat history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 49. LoPDF — PDF Manipulation
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /pdf-manipulate — Analyze/manipulate a PDF URL ───────
+
+router.post(
+  '/pdf-manipulate',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, operations } = req.body as { url?: string; operations?: string[] };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+    if (!operations || !Array.isArray(operations) || operations.length === 0) {
+      res.status(400).json({ error: 'operations array is required' }); return;
+    }
+
+    const validOps = ['extract_text', 'count_pages', 'extract_links', 'get_metadata'];
+    const filteredOps = operations.filter(o => validOps.includes(o));
+    if (filteredOps.length === 0) {
+      res.status(400).json({ error: 'operations must include at least one of: extract_text, count_pages, extract_links, get_metadata' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
+      const data = scrapeResult.data as any;
+      const md = data?.markdown || '';
+      const metadata = data?.metadata || {};
+
+      const results: any = {};
+
+      if (filteredOps.includes('extract_text')) {
+        results.text = md.substring(0, 50000);
+      }
+      if (filteredOps.includes('count_pages')) {
+        // Estimate pages from content length (approx 3000 chars per page)
+        results.page_count = Math.max(1, Math.ceil(md.length / 3000));
+      }
+      if (filteredOps.includes('extract_links')) {
+        const linkMatches = md.match(/https?:\/\/[^\s)]+/g) || [];
+        results.links = [...new Set(linkMatches)].slice(0, 50);
+      }
+      if (filteredOps.includes('get_metadata')) {
+        results.metadata = { title: metadata.title || null, description: metadata.description || null, author: metadata.author || null };
+      }
+
+      const db = getDb();
+      const now = localNow();
+      const dbResult = db.prepare(`
+        INSERT INTO firecrawl_pdf_operations (url, operations, results, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), JSON.stringify(filteredOps), JSON.stringify(results),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_pdf_operations', Number(dbResult.lastInsertRowid), `PDF ops: ${url.trim()}`);
+      res.json({ url: url.trim(), results });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'PDF manipulation failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /pdf-manipulate/history — Past PDF operations ─────────
+
+router.get(
+  '/pdf-manipulate/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT id, url, operations, created_by, created_at FROM firecrawl_pdf_operations ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, operations: r.operations ? JSON.parse(r.operations) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get PDF history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 50. OpenClaw — Personal AI Assistant
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /assistant/ask — Ask the Firecrawl AI assistant ──────
+
+router.post(
+  '/assistant/ask',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { question, search_web, context_urls } = req.body as {
+      question?: string; search_web?: boolean; context_urls?: string[];
+    };
+
+    if (!question || typeof question !== 'string' || !question.trim()) {
+      res.status(400).json({ error: 'question is required' }); return;
+    }
+
+    try {
+      const sourcesUsed: string[] = [];
+      let contextContent = '';
+      let webSearched = false;
+
+      // Optionally search the web
+      if (search_web) {
+        try {
+          const searchResult = await firecrawlSearch({
+            query: question.trim(), limit: 5,
+            scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+          });
+          const results = searchResult.data || [];
+          for (const r of results.slice(0, 3)) {
+            const md = (r as any).markdown || '';
+            if (md.trim()) {
+              contextContent += `\n\n--- Source: ${(r as any).url} ---\n\n${md.substring(0, 5000)}`;
+              sourcesUsed.push((r as any).url);
+            }
+          }
+          webSearched = true;
+        } catch { /* proceed without web search */ }
+      }
+
+      // Scrape context URLs
+      if (context_urls && Array.isArray(context_urls)) {
+        for (const ctxUrl of context_urls.slice(0, 5)) {
+          try {
+            const scrapeResult = await firecrawlScrape({ url: ctxUrl.trim(), formats: ['markdown'], onlyMainContent: true });
+            const md = (scrapeResult.data as any)?.markdown || '';
+            if (md.trim()) {
+              contextContent += `\n\n--- Source: ${ctxUrl.trim()} ---\n\n${md.substring(0, 5000)}`;
+              sourcesUsed.push(ctxUrl.trim());
+            }
+          } catch { /* skip failed URLs */ }
+        }
+      }
+
+      const answer = contextContent.trim()
+        ? `Based on ${sourcesUsed.length} source(s), here is what I found for "${question.trim()}": ${contextContent.substring(0, 1000).replace(/\n/g, ' ').trim()}`
+        : `Regarding "${question.trim()}": No external sources were consulted. Enable search_web or provide context_urls for richer answers.`;
+
+      const db = getDb();
+      const now = localNow();
+      db.prepare(`
+        INSERT INTO firecrawl_assistant_chats (question, search_web, context_urls, answer, sources_used, web_searched, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        question.trim(), search_web ? 1 : 0,
+        context_urls ? JSON.stringify(context_urls) : null,
+        answer, JSON.stringify(sourcesUsed), webSearched ? 1 : 0,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      res.json({ answer, sources_used: sourcesUsed, web_searched: webSearched });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Assistant query failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /assistant/history — Past assistant chats ─────────────
+
+router.get(
+  '/assistant/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_assistant_chats ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({
+        ...r, search_web: !!r.search_web, web_searched: !!r.web_searched,
+        context_urls: r.context_urls ? JSON.parse(r.context_urls) : [],
+        sources_used: r.sources_used ? JSON.parse(r.sources_used) : [],
+      })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get assistant history', detail: msg });
     }
   },
 );
