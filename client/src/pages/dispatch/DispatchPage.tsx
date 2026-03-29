@@ -2925,7 +2925,7 @@ export default function DispatchPage() {
                   <div className="px-3 py-3 text-xs text-rmpg-400 text-center italic">No templates available</div>
                 ) : (
                   templates.map((tpl: any) => (
-                    <button type="button"
+                    <button
                       key={tpl.id}
                       type="button"
                       onClick={() => {
@@ -3713,7 +3713,7 @@ export default function DispatchPage() {
                           { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
                           { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
                           { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#6b7280' },
-                        ] as const).filter(ts => ts.value || isAdminOrManager).map(ts => (
+                        ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#1e3048', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
                             <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
@@ -5203,7 +5203,7 @@ export default function DispatchPage() {
 
               {/* Actions */}
               <div className="flex items-center justify-between pt-2 border-t border-rmpg-700">
-                <button type="button"
+                <button
                   type="button"
                   className="toolbar-btn text-xs"
                   onClick={() => {
@@ -5223,7 +5223,7 @@ export default function DispatchPage() {
                 </button>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setQuickTemplateData(null)} className="toolbar-btn text-xs">Cancel</button>
-                  <button type="button"
+                  <button
                     type="submit"
                     disabled={!quickTemplateAddress.trim() || quickTemplateSubmitting}
                     className="toolbar-btn toolbar-btn-primary text-xs"

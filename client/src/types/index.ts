@@ -211,6 +211,8 @@ export interface CallNote {
   author: string;
   text: string;
   timestamp: string;
+  edited_at?: string | null;
+  edited_by?: string | null;
 }
 
 export interface CallForService {

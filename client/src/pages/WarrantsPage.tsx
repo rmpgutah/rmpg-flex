@@ -753,7 +753,7 @@ export default function WarrantsPage() {
       subject_address: w.city || '',
       issuing_court: w.court_name || '',
       issuing_judge: '',
-      bail_amount: w.bail_amount ?? null,
+      bail_amount: w.bail_amount ?? undefined,
       expires_at: '',
       entered_by_name: '',
       created_at: w.issue_date || new Date().toISOString(),
