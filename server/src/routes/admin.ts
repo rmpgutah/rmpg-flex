@@ -1888,4 +1888,369 @@ router.delete('/third-party-keys', requireRole('admin'), (req: Request, res: Res
 });
 
 
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Admin Impersonation
+// ════════════════════════════════════════════════════════════
+
+// POST /admin/impersonate/:userId — Start impersonating a user
+router.post('/impersonate/:userId', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const targetId = parseInt(req.params.userId, 10);
+    if (isNaN(targetId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
+
+    const target = db.prepare('SELECT id, username, full_name, role, badge_number, call_sign, email, status FROM users WHERE id = ?').get(targetId) as any;
+    if (!target) { res.status(404).json({ error: 'User not found' }); return; }
+    if (target.status !== 'active') { res.status(400).json({ error: 'Cannot impersonate inactive user' }); return; }
+
+    // Generate a short-lived impersonation token (30 min)
+    const jwt = require('jsonwebtoken');
+    const secret = process.env.JWT_SECRET || 'dev-secret';
+    const impersonationToken = jwt.sign(
+      {
+        userId: target.id,
+        username: target.username,
+        role: target.role,
+        type: 'access',
+        impersonatedBy: req.user!.userId,
+        impersonation: true,
+      },
+      secret,
+      { expiresIn: '30m' }
+    );
+
+    // Audit this critical action
+    auditLog(req, 'ADMIN_IMPERSONATE', 'user', targetId,
+      `Admin ${req.user!.username} (ID:${req.user!.userId}) started impersonating ${target.username} (ID:${target.id}, role:${target.role})`);
+
+    res.json({
+      success: true,
+      token: impersonationToken,
+      user: {
+        id: target.id,
+        username: target.username,
+        full_name: target.full_name,
+        role: target.role,
+        badge_number: target.badge_number,
+        call_sign: target.call_sign,
+        email: target.email,
+      },
+      expires_in: '30m',
+      warning: 'Impersonation session — all actions will be logged under your admin account',
+    });
+  } catch (error: any) {
+    console.error('Impersonate error:', error);
+    res.status(500).json({ error: 'Impersonation failed' });
+  }
+});
+
+// POST /admin/stop-impersonation — End impersonation session
+router.post('/stop-impersonation', requireRole('admin'), (req: Request, res: Response) => {
+  auditLog(req, 'ADMIN_STOP_IMPERSONATE', 'user', req.user!.userId, 'Admin ended impersonation session');
+  res.json({ success: true, message: 'Impersonation ended' });
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Database Maintenance
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/database/stats — Database size, table counts, index info
+router.get('/database/stats', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Get page count and page size for DB file size
+    const pageCount = ((db.pragma('page_count') as any[])[0] as any)?.page_count || 0;
+    const pageSize = ((db.pragma('page_size') as any[])[0] as any)?.page_size || 4096;
+    const dbSizeBytes = pageCount * pageSize;
+    const freelistCount = ((db.pragma('freelist_count') as any[])[0] as any)?.freelist_count || 0;
+    const freelistBytes = freelistCount * pageSize;
+
+    // Get table list with row counts
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as any[];
+    const tableStats = tables.map((t: any) => {
+      const count = (db.prepare(`SELECT COUNT(*) as count FROM "${t.name}"`).get() as any)?.count || 0;
+      return { name: t.name, row_count: count };
+    });
+
+    // Get index list
+    const indexes = db.prepare("SELECT name, tbl_name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, name").all();
+
+    // Integrity quick check
+    const integrityResult = db.pragma('quick_check') as any[];
+    const isHealthy = integrityResult.length === 1 && (integrityResult[0] as any)?.quick_check === 'ok';
+
+    // WAL mode info
+    const journalMode = ((db.pragma('journal_mode') as any[])[0] as any)?.journal_mode || 'unknown';
+
+    const totalRows = tableStats.reduce((sum: number, t: any) => sum + t.row_count, 0);
+
+    res.json({
+      database_size_bytes: dbSizeBytes,
+      database_size_mb: Math.round(dbSizeBytes / 1024 / 1024 * 100) / 100,
+      freelist_bytes: freelistBytes,
+      freelist_mb: Math.round(freelistBytes / 1024 / 1024 * 100) / 100,
+      reclaimable_percent: dbSizeBytes > 0 ? Math.round(freelistBytes / dbSizeBytes * 10000) / 100 : 0,
+      table_count: tables.length,
+      total_rows: totalRows,
+      index_count: indexes.length,
+      journal_mode: journalMode,
+      integrity: isHealthy ? 'OK' : 'ISSUES DETECTED',
+      integrity_details: isHealthy ? null : integrityResult,
+      tables: tableStats.sort((a: any, b: any) => b.row_count - a.row_count),
+      indexes,
+    });
+  } catch (error: any) {
+    console.error('Database stats error:', error);
+    res.status(500).json({ error: 'Failed to get database stats' });
+  }
+});
+
+// POST /admin/database/vacuum — Optimize database (reclaim space)
+router.post('/database/vacuum', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const beforePages = ((db.pragma('page_count') as any[])[0] as any)?.page_count || 0;
+    const pageSize = ((db.pragma('page_size') as any[])[0] as any)?.page_size || 4096;
+    const beforeSize = beforePages * pageSize;
+
+    db.exec('VACUUM');
+
+    const afterPages = ((db.pragma('page_count') as any[])[0] as any)?.page_count || 0;
+    const afterSize = afterPages * pageSize;
+    const reclaimed = beforeSize - afterSize;
+
+    auditLog(req, 'ADMIN_DB_VACUUM', 'database', 0,
+      `Database VACUUM: ${Math.round(beforeSize/1024/1024*100)/100}MB → ${Math.round(afterSize/1024/1024*100)/100}MB (reclaimed ${Math.round(reclaimed/1024/1024*100)/100}MB)`);
+
+    res.json({
+      success: true,
+      before_size_mb: Math.round(beforeSize / 1024 / 1024 * 100) / 100,
+      after_size_mb: Math.round(afterSize / 1024 / 1024 * 100) / 100,
+      reclaimed_mb: Math.round(reclaimed / 1024 / 1024 * 100) / 100,
+    });
+  } catch (error: any) {
+    console.error('Database VACUUM error:', error);
+    res.status(500).json({ error: 'VACUUM failed — database may be locked' });
+  }
+});
+
+// POST /admin/database/integrity-check — Full integrity check
+router.post('/database/integrity-check', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = db.pragma('integrity_check') as any[];
+    const isHealthy = result.length === 1 && (result[0] as any)?.integrity_check === 'ok';
+
+    auditLog(req, 'ADMIN_DB_INTEGRITY', 'database', 0,
+      `Integrity check: ${isHealthy ? 'PASSED' : 'ISSUES DETECTED'}`);
+
+    res.json({
+      success: true,
+      healthy: isHealthy,
+      result: isHealthy ? ['ok'] : result.map((r: any) => r.integrity_check),
+    });
+  } catch (error: any) {
+    console.error('Integrity check error:', error);
+    res.status(500).json({ error: 'Integrity check failed' });
+  }
+});
+
+// POST /admin/database/backup — Create database backup
+router.post('/database/backup', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const dataDir = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backupPath = path.join(dataDir, `rmpg-flex-backup-${timestamp}.db`);
+
+    db.backup(backupPath);
+
+    const stats = fs.statSync(backupPath);
+
+    auditLog(req, 'ADMIN_DB_BACKUP', 'database', 0,
+      `Database backup created: ${backupPath} (${Math.round(stats.size/1024/1024*100)/100}MB)`);
+
+    res.json({
+      success: true,
+      backup_path: backupPath,
+      size_mb: Math.round(stats.size / 1024 / 1024 * 100) / 100,
+      timestamp,
+    });
+  } catch (error: any) {
+    console.error('Backup error:', error);
+    res.status(500).json({ error: 'Backup failed' });
+  }
+});
+
+// GET /admin/database/backups — List existing backups
+router.get('/database/backups', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const dataDir = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
+
+    const files = fs.readdirSync(dataDir)
+      .filter((f: string) => f.startsWith('rmpg-flex-backup-') && f.endsWith('.db'))
+      .map((f: string) => {
+        const stats = fs.statSync(path.join(dataDir, f));
+        return {
+          filename: f,
+          size_mb: Math.round(stats.size / 1024 / 1024 * 100) / 100,
+          created_at: stats.birthtime.toISOString(),
+        };
+      })
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    res.json(files);
+  } catch (error: any) {
+    console.error('List backups error:', error);
+    res.status(500).json({ error: 'Failed to list backups' });
+  }
+});
+
+// DELETE /admin/database/backups/:filename — Delete a backup
+router.delete('/database/backups/:filename', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const dataDir = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
+    const filename = req.params.filename;
+
+    // Security: only allow deleting backup files
+    if (!filename.startsWith('rmpg-flex-backup-') || !filename.endsWith('.db')) {
+      res.status(400).json({ error: 'Invalid backup filename' }); return;
+    }
+
+    const fullPath = path.join(dataDir, filename);
+    if (!fs.existsSync(fullPath)) {
+      res.status(404).json({ error: 'Backup not found' }); return;
+    }
+
+    fs.unlinkSync(fullPath);
+    auditLog(req, 'ADMIN_DB_DELETE_BACKUP', 'database', 0, `Deleted backup: ${filename}`);
+
+    res.json({ success: true, deleted: filename });
+  } catch (error: any) {
+    console.error('Delete backup error:', error);
+    res.status(500).json({ error: 'Failed to delete backup' });
+  }
+});
+
+// POST /admin/database/analyze — Run ANALYZE for query optimizer
+router.post('/database/analyze', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec('ANALYZE');
+    auditLog(req, 'ADMIN_DB_ANALYZE', 'database', 0, 'Ran ANALYZE for query optimizer');
+    res.json({ success: true, message: 'ANALYZE complete — query optimizer updated' });
+  } catch (error: any) {
+    console.error('ANALYZE error:', error);
+    res.status(500).json({ error: 'ANALYZE failed' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Data Purge & Cleanup
+// ════════════════════════════════════════════════════════════
+
+// POST /admin/purge/activity-logs — Purge old activity logs
+router.post('/purge/activity-logs', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days_to_keep = 90 } = req.body;
+    const cutoff = new Date(Date.now() - days_to_keep * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = db.prepare('DELETE FROM activity_log WHERE created_at < ?').run(cutoff);
+
+    auditLog(req, 'ADMIN_PURGE_LOGS', 'activity_log', 0,
+      `Purged ${result.changes} activity logs older than ${days_to_keep} days`);
+
+    res.json({ success: true, purged: result.changes, cutoff });
+  } catch (error: any) {
+    console.error('Purge activity logs error:', error);
+    res.status(500).json({ error: 'Purge failed' });
+  }
+});
+
+// POST /admin/purge/notifications — Purge old notifications
+router.post('/purge/notifications', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days_to_keep = 30 } = req.body;
+    const cutoff = new Date(Date.now() - days_to_keep * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = db.prepare('DELETE FROM notifications WHERE created_at < ? AND is_read = 1').run(cutoff);
+
+    auditLog(req, 'ADMIN_PURGE_NOTIFICATIONS', 'notification', 0,
+      `Purged ${result.changes} read notifications older than ${days_to_keep} days`);
+
+    res.json({ success: true, purged: result.changes, cutoff });
+  } catch (error: any) {
+    console.error('Purge notifications error:', error);
+    res.status(500).json({ error: 'Purge failed' });
+  }
+});
+
+// POST /admin/purge/sessions — Purge expired sessions
+router.post('/purge/sessions', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    const result = db.prepare('DELETE FROM refresh_tokens WHERE expires_at < ?').run(now);
+
+    auditLog(req, 'ADMIN_PURGE_SESSIONS', 'refresh_token', 0,
+      `Purged ${result.changes} expired sessions`);
+
+    res.json({ success: true, purged: result.changes });
+  } catch (error: any) {
+    console.error('Purge sessions error:', error);
+    res.status(500).json({ error: 'Purge failed' });
+  }
+});
+
+// GET /admin/system-overview — Comprehensive system overview
+router.get('/system-overview', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const counts: Record<string, number> = {};
+    const tables = ['users', 'calls_for_service', 'incidents', 'citations', 'warrants', 'persons', 'vehicles',
+                     'cases', 'arrests', 'field_interviews', 'trespass_orders', 'bolos', 'notifications',
+                     'activity_log', 'refresh_tokens', 'fleet_vehicles', 'evidence_items'];
+
+    for (const table of tables) {
+      try {
+        counts[table] = (db.prepare(`SELECT COUNT(*) as c FROM "${table}"`).get() as any)?.c || 0;
+      } catch { counts[table] = -1; } // table doesn't exist
+    }
+
+    // Active users (logged in last 24h)
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const activeUsers = (db.prepare('SELECT COUNT(DISTINCT user_id) as c FROM refresh_tokens WHERE expires_at > ?').get(dayAgo) as any)?.c || 0;
+
+    // Server uptime
+    const uptime = process.uptime();
+    const hours = Math.floor(uptime / 3600);
+    const mins = Math.floor((uptime % 3600) / 60);
+
+    res.json({
+      server: {
+        uptime: `${hours}h ${mins}m`,
+        uptime_seconds: Math.round(uptime),
+        node_version: process.version,
+        platform: os.platform(),
+        arch: os.arch(),
+        hostname: os.hostname(),
+        total_memory_gb: Math.round(os.totalmem() / 1024 / 1024 / 1024 * 100) / 100,
+        free_memory_gb: Math.round(os.freemem() / 1024 / 1024 / 1024 * 100) / 100,
+        load_average: os.loadavg().map((l: number) => Math.round(l * 100) / 100),
+        cpus: os.cpus().length,
+      },
+      active_users_24h: activeUsers,
+      record_counts: counts,
+    });
+  } catch (error: any) {
+    console.error('System overview error:', error);
+    res.status(500).json({ error: 'Failed to get system overview' });
+  }
+});
+
 export default router;

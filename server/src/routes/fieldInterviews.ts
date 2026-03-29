@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
@@ -463,7 +463,7 @@ router.get('/location-clusters', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════
 // UPGRADE 30: Field Interviews CSV Export
 // ════════════════════════════════════════════════════════════
-router.get('/export/csv', (req: Request, res: Response) => {
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { date_from, date_to, contact_reason } = req.query;

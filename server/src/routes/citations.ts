@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastCitationUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -704,8 +704,8 @@ function handleCitationsExport(req: Request, res: Response) {
     res.send(csv);
   } catch (error: any) { console.error('Export citations error:', error); res.status(500).json({ error: 'Failed to export citations', code: 'EXPORT_CITATIONS_ERROR' }); }
 }
-router.get('/export', handleCitationsExport);
-router.get('/export/csv', handleCitationsExport);
+router.get('/export', requireRole('admin', 'manager', 'supervisor'), handleCitationsExport);
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), handleCitationsExport);
 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 14: Citation Data Completeness

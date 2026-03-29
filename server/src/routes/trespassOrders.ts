@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { auditLog } from '../utils/auditLogger';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -681,7 +681,7 @@ router.post('/auto-archive-expired', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════
 // UPGRADE 24: Trespass Orders CSV Export
 // ════════════════════════════════════════════════════════════
-router.get('/export/csv', (req: Request, res: Response) => {
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, date_from, date_to } = req.query;

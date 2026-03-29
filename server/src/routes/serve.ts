@@ -272,7 +272,8 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
       return;
     }
 
-    if (order.length > 500) {
+    // God Mode: admin bypass
+    if (req.user?.role !== 'admin' && order.length > 500) {
       res.status(400).json({ error: 'Cannot reorder more than 500 items at once', code: 'CANNOT_REORDER_MORE_THAN' });
       return;
     }

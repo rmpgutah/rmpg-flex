@@ -1717,7 +1717,8 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
       res.status(400).json({ error: 'call_ids array is required', code: 'CALLIDS_REQUIRED' });
       return;
     }
-    if (call_ids.length > 200) {
+    // God Mode: admin bypass
+    if (req.user?.role !== 'admin' && call_ids.length > 200) {
       res.status(400).json({ error: 'Cannot update more than 200 calls at once', code: 'TOO_MANY_CALLS' });
       return;
     }

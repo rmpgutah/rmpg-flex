@@ -426,7 +426,8 @@ router.post('/units/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
       res.status(400).json({ error: 'unit_ids array is required', code: 'UNITIDS_REQUIRED' });
       return;
     }
-    if (unit_ids.length > 50) {
+    // God Mode: admin bypass
+    if (req.user?.role !== 'admin' && unit_ids.length > 50) {
       res.status(400).json({ error: 'Cannot update more than 50 units at once', code: 'TOO_MANY_UNITS' });
       return;
     }

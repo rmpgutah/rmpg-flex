@@ -207,7 +207,7 @@ router.get('/stats', (req: Request, res: Response) => {
 });
 
 // GET /api/incidents/export - Export incidents as CSV
-router.get('/export', (req: Request, res: Response) => {
+router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, officerId, startDate, endDate } = req.query;

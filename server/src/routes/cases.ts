@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -503,7 +503,7 @@ router.delete('/:id/persons/:personEntryId', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════
 // UPGRADE 36: Cases CSV Export
 // ════════════════════════════════════════════════════════════
-router.get('/export/csv', (req: Request, res: Response) => {
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, case_type, date_from, date_to } = req.query;

@@ -327,7 +327,7 @@ router.post('/scan', (req: Request, res: Response) => {
 });
 
 // GET /api/patrol/scans/export - Export patrol scans as CSV
-router.get('/scans/export', (req: Request, res: Response) => {
+router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { checkpointId, officerId, startDate, endDate } = req.query;
 

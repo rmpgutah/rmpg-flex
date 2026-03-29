@@ -86,7 +86,8 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
       return;
     }
     // Validate all unit_ids are positive integers and limit count
-    if (unit_ids.length > 50) {
+    // God Mode: admin bypass
+    if (req.user?.role !== 'admin' && unit_ids.length > 50) {
       res.status(400).json({ error: 'Cannot dispatch more than 50 units at once', code: 'CANNOT_DISPATCH_MORE_THAN' });
       return;
     }

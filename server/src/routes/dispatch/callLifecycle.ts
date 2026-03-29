@@ -53,7 +53,8 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
     let callsToArchive: any[] = [];
 
     if (call_ids && Array.isArray(call_ids) && call_ids.length > 0) {
-      if (call_ids.length > 500) {
+      // God Mode: admin bypass
+      if (req.user?.role !== 'admin' && call_ids.length > 500) {
         res.status(400).json({ error: 'Cannot archive more than 500 calls at once', code: 'CANNOT_ARCHIVE_MORE_THAN' });
         return;
       }

@@ -803,7 +803,7 @@ router.get('/dashcam-events/by-officer/:officerId', (req: Request, res: Response
 });
 
 // GET /api/clearpathgps/dashcam-events/export — Export dashcam events CSV
-router.get('/dashcam-events/export', (req: Request, res: Response) => {
+router.get('/dashcam-events/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const events = db.prepare(`

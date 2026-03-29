@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
@@ -149,7 +149,7 @@ router.get('/persons/search', (req: Request, res: Response) => {
 });
 
 // GET /api/records/persons/export - Export persons as CSV
-router.get('/persons/export', (req: Request, res: Response) => {
+router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { flags } = req.query;
@@ -753,7 +753,7 @@ router.get('/vehicles/search', (req: Request, res: Response) => {
 });
 
 // GET /api/records/vehicles/export - Export vehicles as CSV
-router.get('/vehicles/export', (req: Request, res: Response) => {
+router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
