@@ -1,5 +1,5 @@
 // ============================================================
-// RMPG Flex — Skip Tracer v2 — Enhanced Dossier Builder
+// RMPG Flex — Skip Tracker 3.5 — Enhanced Dossier Builder
 // Three-panel: Navigation tabs (top) + Search/Results (left) + Dossier/Content (right)
 // Tabs: Search, Saved Dossiers, History, Sources, Stats
 // ============================================================
@@ -830,7 +830,7 @@ export default function SkipTracerV2Page() {
   // ─── Search Panel (left side for search tab) ──────────────
   const searchPanel = (
     <div className={`flex flex-col ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1e2d40] bg-[#141e2b]`}>
-      <PanelTitleBar title="Skip Tracer v2" icon={Search} statusLed="blue" ledPulse={loading}>
+      <PanelTitleBar title="Skip Tracker 3.5" icon={Search} statusLed="blue" ledPulse={loading}>
         {result && (
           <span className="text-[9px] font-mono text-[#556677]">
             {result.totalResults} result{result.totalResults !== 1 ? 's' : ''} &middot; {result.durationMs}ms
@@ -1892,7 +1892,7 @@ export default function SkipTracerV2Page() {
   // ─── Main Layout ──────────────────────────────────────────
 
   // Set document title
-  useEffect(() => { document.title = 'Skip Tracer V2 \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Skip Tracker 3.5 \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#0d1520]">

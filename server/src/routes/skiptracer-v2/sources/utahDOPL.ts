@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Utah DOPL Professional Licenses Adapter
+// Skip Tracker 3.5 — Utah DOPL Professional Licenses Adapter
 // ============================================================
 // Searches the Utah Division of Professional Licensing (DOPL)
 // license verification portal for professional licenses.

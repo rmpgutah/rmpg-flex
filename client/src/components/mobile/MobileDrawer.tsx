@@ -130,7 +130,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
       { path: '/sex-offender-registry', icon: ShieldAlert, label: 'Sex Offender Registry' },
-      { path: '/skip-tracer', icon: Crosshair, label: 'Skip Tracer' },
+      { path: '/skip-tracer', icon: Crosshair, label: 'Skip Tracker' },
     ],
   },
   {

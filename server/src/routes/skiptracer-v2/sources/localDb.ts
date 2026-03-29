@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Local Database Adapter
+// Skip Tracker 3.5 — Local Database Adapter
 // ============================================================
 // Searches the local persons table for matching records.
 // Always configured, always enabled, zero cost.

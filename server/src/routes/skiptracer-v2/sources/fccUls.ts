@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — FCC ULS License Search Adapter
+// Skip Tracker 3.5 — FCC ULS License Search Adapter
 // ============================================================
 // Searches the FCC Universal Licensing System for radio/telecom
 // licenses. Free government API, no auth required.

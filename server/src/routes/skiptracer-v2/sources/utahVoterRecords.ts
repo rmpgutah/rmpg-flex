@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Utah Voter Registration Adapter
+// Skip Tracker 3.5 — Utah Voter Registration Adapter
 // ============================================================
 // Searches Utah voter registration public records via the
 // votesearch.utah.gov POST form. Free public record source.

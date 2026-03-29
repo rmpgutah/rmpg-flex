@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Utah UCC Filings Adapter
+// Skip Tracker 3.5 — Utah UCC Filings Adapter
 // ============================================================
 // Searches Utah Uniform Commercial Code filings via the
 // Division of Corporations portal at secure.utah.gov.

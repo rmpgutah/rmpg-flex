@@ -91,7 +91,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       const data = await apiFetch<SkipTracerStatus>('/skiptracer/status');
       setStatus(data);
     } catch (err) {
-      console.error('Failed to fetch Skip Tracer status:', err);
+      console.error('Failed to fetch Skip Tracker status:', err);
     } finally {
       setLoading(false);
     }
@@ -103,7 +103,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       const data = await apiFetch<SearchStats>('/skiptracer/stats');
       setStats(data);
     } catch (err) {
-      console.error('Failed to fetch Skip Tracer stats:', err);
+      console.error('Failed to fetch Skip Tracker stats:', err);
     }
   }, []);
 
@@ -182,7 +182,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
-                Skip Tracer
+                Skip Tracker
               </h2>
               <p className="text-[10px] text-rmpg-500 mt-0.5">
                 Locate individuals by name, address, phone, or email via RapidAPI
@@ -312,7 +312,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
           Available Search Methods
         </div>
         <p className="text-[10px] text-rmpg-500">
-          These search methods are available through the Skip Tracer panel in Records. All searches are logged and auditable.
+          These search methods are available through the Skip Tracker panel in Records. All searches are logged and auditable.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {Object.entries(SEARCH_TYPE_LABELS).map(([key, { label, icon: Icon, color }]) => (
@@ -423,7 +423,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
 
       {/* ─── Info ───────────────────────────────────────────── */}
       <div className="text-[9px] text-rmpg-600 px-1">
-        Skip Tracer uses the Skip Tracing Working API on RapidAPI.
+        Skip Tracker uses the Skip Tracing Working API on RapidAPI.
         All searches are logged with the operator's identity for audit compliance.
         Results are cached locally for review. API subscription billed separately through RapidAPI.
       </div>

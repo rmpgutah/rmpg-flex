@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — OpenCorporates Business Records Adapter
+// Skip Tracker 3.5 — OpenCorporates Business Records Adapter
 // ============================================================
 // Searches OpenCorporates officer records for business
 // associations. Free tier allows 500 requests/month.

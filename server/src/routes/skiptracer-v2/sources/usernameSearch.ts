@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Social Username Search Adapter
+// Skip Tracker 3.5 — Social Username Search Adapter
 // ============================================================
 // Checks if a username exists across popular social platforms
 // by testing profile URLs with HEAD requests. Free OSINT source.

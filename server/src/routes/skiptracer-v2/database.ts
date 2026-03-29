@@ -1,7 +1,7 @@
 import { getDb } from '../../models/database';
 
 /**
- * Creates all Skip Tracer v2 tables if they don't already exist.
+ * Creates all Skip Tracker 3.5 tables if they don't already exist.
  * Called lazily before any v2 route handler touches the database.
  */
 export function ensureSkipTracerV2Tables(): void {

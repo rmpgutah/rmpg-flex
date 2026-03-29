@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer — RapidAPI Skip Tracing Integration
+// Skip Tracker — RapidAPI Skip Tracing Integration
 // ============================================================
 // Proxy routes for the Skip Tracing Working API on RapidAPI.
 // Credentials are stored AES-256-GCM encrypted in system_config,
@@ -149,7 +149,7 @@ function ensureTable(): void {
 
 async function rapidApiFetch(path: string, params: Record<string, string>): Promise<any> {
   const apiKey = getApiKey();
-  if (!apiKey) throw new Error('Skip Tracer API key not configured');
+  if (!apiKey) throw new Error('Skip Tracker API key not configured');
 
   const qs = new URLSearchParams(params).toString();
   const url = `${RAPIDAPI_BASE}${path}${qs ? '?' + qs : ''}`;
@@ -165,7 +165,7 @@ async function rapidApiFetch(path: string, params: Record<string, string>): Prom
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Skip Tracer API error (${res.status}): ${text.slice(0, 500)}`);
+    throw new Error(`Skip Tracker API error (${res.status}): ${text.slice(0, 500)}`);
   }
 
   return res.json();
@@ -193,7 +193,7 @@ function persistSearch(searchType: string, queryParams: Record<string, string>, 
       localNow(),
     );
   } catch (err) {
-    console.error('[SkipTracer] Failed to persist search:', err);
+    console.error('[Skip Tracker] Failed to persist search:', err);
   }
 }
 
@@ -236,13 +236,13 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     // Always production for RapidAPI
     setConfigValue(CONFIG_KEYS.environment, 'production');
 
-    auditLog(req, 'skiptracer_config_updated', 'integration', 0, 'Skip Tracer configuration updated');
+    auditLog(req, 'skiptracer_config_updated', 'integration', 0, 'Skip Tracker configuration updated');
     broadcastAdminUpdate({ type: 'skiptracer_config_updated' });
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -251,13 +251,13 @@ router.delete('/config', requireRole('admin'), (req: Request, res: Response) => 
   try {
     Object.values(CONFIG_KEYS).forEach(deleteConfigValue);
 
-    auditLog(req, 'skiptracer_config_cleared', 'integration', 0, 'Skip Tracer configuration cleared');
+    auditLog(req, 'skiptracer_config_cleared', 'integration', 0, 'Skip Tracker configuration cleared');
     broadcastAdminUpdate({ type: 'skiptracer_config_cleared' });
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -295,8 +295,8 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     }
   } catch (err: any) {
-    console.error('[SkipTracer] Connection test error:', err?.message || err);
-    res.status(502).json({ success: false, error: 'Failed to connect to skip tracer API' });
+    console.error('[Skip Tracker] Connection test error:', err?.message || err);
+    res.status(502).json({ success: false, error: 'Failed to connect to Skip Tracker API' });
   }
 });
 
@@ -319,8 +319,8 @@ router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Resp
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name: ${name}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -343,8 +343,8 @@ router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: R
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by address: ${address}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -368,8 +368,8 @@ router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, re
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name+address: ${name}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -396,8 +396,8 @@ router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Res
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by phone: ${phone}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -424,8 +424,8 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by email: ${email}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -439,8 +439,8 @@ router.get('/person/:id', validateParamIdMiddleware, async (req: Request, res: R
     persistSearch('personDetailsByID', { id }, data, req.user!.userId);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -465,8 +465,8 @@ router.get('/history', async (req: Request, res: Response) => {
 
     res.json({ searches: rows, total, limit, offset });
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -494,12 +494,12 @@ router.get('/stats', async (_req: Request, res: Response) => {
     res.set('Cache-Control', 'private, max-age=60');
     res.json({ ...stats, byType });
   } catch (err: any) {
-    console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip Tracker error:', err.message);
+    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
-// ── Skip Tracer CSV Export ────────────────────────────────────────────────────
+// ── Skip Tracker CSV Export ────────────────────────────────────────────────────
 router.get('/export/csv', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();

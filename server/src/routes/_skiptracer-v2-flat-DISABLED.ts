@@ -1,5 +1,5 @@
 // ============================================================
-// SkipTracer V2 — Enhanced Skip Tracing with Dossier Support
+// Skip Tracker 3.5 — Enhanced Skip Tracing with Dossier Support
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -127,7 +127,7 @@ router.post('/dossiers', (req: Request, res: Response) => {
     const id = Number(result.lastInsertRowid);
     res.status(201).json({ id, dossierId: id });
   } catch (error: any) {
-    console.error('[SkipTracer V2] Create dossier error:', error);
+    console.error('[Skip Tracker 3.5] Create dossier error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
@@ -156,7 +156,7 @@ router.put('/dossiers/:id', (req: Request, res: Response) => {
     db.prepare(`UPDATE skiptracer_dossiers SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('[SkipTracer V2] Update dossier error:', error);
+    console.error('[Skip Tracker 3.5] Update dossier error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
@@ -185,7 +185,7 @@ router.get('/dossiers/:id/pdf', (req: Request, res: Response) => {
     // Title
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text('SkipTracer Dossier Report', pageWidth / 2, y, { align: 'center' });
+    doc.text('Skip Tracker Dossier Report', pageWidth / 2, y, { align: 'center' });
     y += 12;
 
     doc.setFontSize(10);
@@ -323,7 +323,7 @@ router.get('/dossiers/:id/pdf', (req: Request, res: Response) => {
       doc.setPage(i);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'italic');
-      doc.text(`RMPG Flex — SkipTracer Dossier #${dossier.id} — Page ${i} of ${totalPages}`, pageWidth / 2, 290, { align: 'center' });
+      doc.text(`RMPG Flex — Skip Tracker Dossier #${dossier.id} — Page ${i} of ${totalPages}`, pageWidth / 2, 290, { align: 'center' });
     }
 
     const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
@@ -331,7 +331,7 @@ router.get('/dossiers/:id/pdf', (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="dossier_${dossier.id}_${(dossier.subject_name || 'unknown').replace(/\s+/g, '_')}.pdf"`);
     res.send(pdfBuffer);
   } catch (error: any) {
-    console.error('[SkipTracer V2] PDF export error:', error);
+    console.error('[Skip Tracker 3.5] PDF export error:', error);
     res.status(500).json({ error: 'Failed to generate PDF', code: 'PDF_EXPORT_ERROR' });
   }
 });
@@ -428,7 +428,7 @@ router.get('/search', async (req: Request, res: Response) => {
       durationMs,
     });
   } catch (error: any) {
-    console.error('[SkipTracer V2] Search error:', error);
+    console.error('[Skip Tracker 3.5] Search error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });

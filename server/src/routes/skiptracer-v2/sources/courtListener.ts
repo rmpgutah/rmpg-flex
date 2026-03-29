@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — CourtListener Federal Courts Adapter
+// Skip Tracker 3.5 — CourtListener Federal Courts Adapter
 // ============================================================
 // Searches CourtListener's REST API for federal court dockets.
 // Requires a free API token from courtlistener.com.

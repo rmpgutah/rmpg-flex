@@ -120,7 +120,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
-                Skip Tracer V2 — Sources
+                Skip Tracker 3.5 — Sources
               </h2>
               <p className="text-[10px] text-rmpg-500 mt-0.5">
                 Multi-source dossier builder — configure and manage data source adapters
@@ -281,7 +281,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
 
       {/* Info */}
       <div className="text-[9px] text-rmpg-600 px-1">
-        Skip Tracer V2 queries multiple data sources in parallel and merges results into unified dossier profiles.
+        Skip Tracker 3.5 queries multiple data sources in parallel and merges results into unified dossier profiles.
         Enable/disable sources here and configure API keys where required. Costs shown are per-lookup estimates.
       </div>
     </div>
