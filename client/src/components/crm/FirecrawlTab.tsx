@@ -97,7 +97,7 @@ function safeObj(val: any): Record<string, any> {
 
 // ── Shared Types ──────────────────────────────────────────────
 
-type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant';
+type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant' | 'lead-gen';
 
 interface Scout {
   id: number;
@@ -329,6 +329,7 @@ const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = 
   { id: 'ai-chat', label: 'AI Chat', icon: MessageSquare },
   { id: 'pdf-tools', label: 'PDF Tools', icon: FileType },
   { id: 'assistant', label: 'Assistant', icon: HelpCircle },
+  { id: 'lead-gen', label: 'Lead Gen', icon: Users },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -9752,6 +9753,108 @@ interface AssistantResult {
   created_at: string;
 }
 
+// ══════════════════════════════════════════════════════════════
+// ██ LEAD GENERATION PANEL
+// ══════════════════════════════════════════════════════════════
+
+function LeadGenPanel() {
+  const { addToast } = useToast();
+  const [query, setQuery] = useState('');
+  const [searchType, setSearchType] = useState<'company' | 'person' | 'domain' | 'email'>('company');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<any>(null);
+  const [configured, setConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ configured: boolean }>('/firecrawl-tools/leads/config')
+      .then(d => setConfigured(d.configured))
+      .catch(() => setConfigured(false));
+  }, []);
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setResults(null);
+    try {
+      const data = await apiFetch<any>('/firecrawl-tools/leads/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim(), type: searchType }),
+      });
+      setResults(data);
+      if (!data?.results || (Array.isArray(data.results) && data.results.length === 0)) {
+        addToast('No leads found', 'info');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Lead search failed', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Users size={16} className="text-[#1a5a9e]" />
+        <h3 className="text-sm font-bold text-white uppercase tracking-wider">Lead Generation</h3>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#1a5a9e]/20 text-[#60a5fa] font-bold uppercase">Firecrawl</span>
+      </div>
+
+      {configured === false && (
+        <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-sm text-[11px] text-yellow-400">
+          Lead Generation API key not configured. Set <code className="bg-black/30 px-1">lead_gen_rapidapi_key</code> in Admin → Integrations.
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <select
+          value={searchType}
+          onChange={e => setSearchType(e.target.value as any)}
+          className="px-2 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white"
+        >
+          <option value="company">Company</option>
+          <option value="person">Person</option>
+          <option value="domain">Domain</option>
+          <option value="email">Email</option>
+        </select>
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
+          className="flex-1 px-3 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#1a5a9e]"
+        />
+        <button
+          type="button"
+          onClick={handleSearch}
+          disabled={loading || !query.trim()}
+          className="px-4 py-2 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          Search
+        </button>
+      </div>
+
+      {results && (
+        <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
+          <div className="px-3 py-2 bg-[#1a2636] border-b border-[#1e2d40] flex items-center justify-between">
+            <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
+            <span className="text-[9px] text-[#556677] font-mono">
+              {Array.isArray(results.results) ? results.results.length : typeof results.results === 'object' ? Object.keys(results.results).length : '—'} entries
+            </span>
+          </div>
+          <div className="p-3 bg-[#0d1520] max-h-[500px] overflow-y-auto">
+            <pre className="text-[10px] text-[#8899aa] font-mono whitespace-pre-wrap break-words">
+              {JSON.stringify(results.results, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AssistantPanel() {
   const { addToast } = useToast();
   const [question, setQuestion] = useState('');
@@ -9963,6 +10066,7 @@ export default function FirecrawlTab() {
         {activeTab === 'ai-chat' && <AiChatPanel />}
         {activeTab === 'pdf-tools' && <PdfToolsPanel />}
         {activeTab === 'assistant' && <AssistantPanel />}
+        {activeTab === 'lead-gen' && <LeadGenPanel />}
       </div>
     </div>
   );

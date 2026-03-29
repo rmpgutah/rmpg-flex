@@ -19,6 +19,8 @@ import {
 } from '../utils/firecrawlEnhanced';
 import TurndownService from 'turndown';
 import * as cheerio from 'cheerio';
+import crypto from 'crypto';
+import config from '../config';
 
 const router = Router();
 router.use(authenticate);
@@ -7677,5 +7679,114 @@ router.get(
     }
   },
 );
+
+// ═════════════════════════════════════════════════════════════
+// LEAD GENERATION — RapidAPI Integration
+// ═════════════════════════════════════════════════════════════
+
+// POST /api/firecrawl-tools/leads/search — Search for leads by company/domain/name
+router.post('/leads/search', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const { query, type } = req.body as { query?: string; type?: 'company' | 'person' | 'domain' | 'email' };
+
+    if (!query || !query.trim()) {
+      res.status(400).json({ error: 'Search query is required' }); return;
+    }
+
+    // Get API key from system_config
+    const db = getDb();
+    const jwtSecret = config.jwt.secret;
+    let apiKey: string | null = null;
+    const keyRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'lead_gen_rapidapi_key' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+
+    if (keyRow?.config_value) {
+      try {
+        const key = crypto.createHash('sha256').update(jwtSecret).digest();
+        const parts = keyRow.config_value.split(':');
+        if (parts.length >= 3) {
+          const [ivHex, authTagHex, ciphertext] = parts;
+          const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+          decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+          apiKey = decipher.update(ciphertext, 'hex', 'utf8') + decipher.final('utf8');
+        } else {
+          apiKey = keyRow.config_value;
+        }
+      } catch { apiKey = keyRow.config_value; }
+    }
+
+    if (!apiKey) {
+      res.status(503).json({ error: 'Lead Generation API key not configured. Set it in Admin → Integrations.', code: 'LEAD_GEN_NOT_CONFIGURED' }); return;
+    }
+
+    // Build request based on search type
+    const searchType = type || 'company';
+    const endpoint = 'https://lead-generation2.p.rapidapi.com/search';
+    const headers: Record<string, string> = {
+      'x-rapidapi-key': apiKey,
+      'x-rapidapi-host': 'lead-generation2.p.rapidapi.com',
+      'Content-Type': 'application/json',
+    };
+
+    const body: any = { query: query.trim() };
+    if (searchType === 'domain') body.domain = query.trim();
+    if (searchType === 'email') body.email = query.trim();
+    if (searchType === 'company') body.company_name = query.trim();
+    if (searchType === 'person') body.name = query.trim();
+
+    const apiRes = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!apiRes.ok) {
+      // Try GET method as fallback
+      const params = new URLSearchParams({ query: query.trim(), type: searchType });
+      const getRes = await fetch(`${endpoint}?${params}`, {
+        method: 'GET',
+        headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': 'lead-generation2.p.rapidapi.com' },
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!getRes.ok) {
+        const errText = await getRes.text().catch(() => '');
+        console.error(`[LeadGen] API error (${getRes.status}):`, errText.slice(0, 300));
+        res.status(502).json({ error: `Lead Generation API returned ${getRes.status}`, detail: errText.slice(0, 200) }); return;
+      }
+
+      const getData = await getRes.json();
+      res.json({ success: true, results: getData, searchType, query: query.trim() });
+      return;
+    }
+
+    const data = await apiRes.json();
+
+    // Store search in activity log
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'lead_search', 'crm', 0, ?, ?)"
+    ).run(req.user!.userId, `Lead search (${searchType}): ${query.trim()}`, req.ip || 'unknown');
+
+    res.json({ success: true, results: data, searchType, query: query.trim() });
+  } catch (err: any) {
+    console.error('[LeadGen] Search error:', err);
+    res.status(500).json({ error: 'Lead generation search failed', detail: err.message });
+  }
+});
+
+// GET /api/firecrawl-tools/leads/config — Check if lead gen is configured
+router.get('/leads/config', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'lead_gen_rapidapi_key' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+    res.json({ configured: !!row?.config_value });
+  } catch {
+    res.json({ configured: false });
+  }
+});
 
 export default router;

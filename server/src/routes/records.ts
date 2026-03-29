@@ -4107,4 +4107,107 @@ router.get('/persons/stats/completeness', (req: Request, res: Response) => {
   } catch (error: any) { console.error('Get completeness stats error:', error); res.status(500).json({ error: 'Failed to get completeness stats', code: 'GET_COMPLETENESS_STATS_ERROR' }); }
 });
 
+// ═════════════════════════════════════════════════════════════
+// PLATE CHECK — Multi-Source Vehicle Lookup by License Plate
+// ═════════════════════════════════════════════════════════════
+
+// POST /api/records/plate-check — Look up a vehicle by license plate across all sources
+router.post('/plate-check', async (req: Request, res: Response) => {
+  try {
+    const { plate, state } = req.body;
+
+    if (!plate || !plate.trim()) {
+      res.status(400).json({ error: 'License plate number is required' }); return;
+    }
+
+    const db = getDb();
+    const plateClean = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const stateClean = (state || '').trim().toUpperCase();
+
+    // 1. Check local vehicles_records table
+    let localResults: any[] = [];
+    try {
+      const localWhere = stateClean
+        ? "UPPER(REPLACE(plate_number, ' ', '')) = ? AND UPPER(state) = ?"
+        : "UPPER(REPLACE(plate_number, ' ', '')) = ?";
+      const localParams = stateClean ? [plateClean, stateClean] : [plateClean];
+      localResults = db.prepare(`SELECT * FROM vehicles_records WHERE ${localWhere}`).all(...localParams) as any[];
+    } catch { /* vehicles_records table may not exist */ }
+
+    // 2. Check fleet vehicles
+    let fleetResults: any[] = [];
+    try {
+      const fleetWhere = stateClean
+        ? "UPPER(REPLACE(license_plate, ' ', '')) = ? AND UPPER(registration_state) = ?"
+        : "UPPER(REPLACE(license_plate, ' ', '')) = ?";
+      const fleetParams = stateClean ? [plateClean, stateClean] : [plateClean];
+      fleetResults = db.prepare(`SELECT * FROM fleet_vehicles WHERE ${fleetWhere}`).all(...fleetParams) as any[];
+    } catch { /* fleet table may not exist */ }
+
+    // 3. Check people_index for vehicles (skip tracker data)
+    let indexResults: any[] = [];
+    try {
+      const rows = db.prepare(
+        "SELECT vehicles FROM people_index WHERE vehicles LIKE ? LIMIT 10"
+      ).all(`%${plateClean}%`) as any[];
+      for (const row of rows) {
+        try {
+          const vehicles = JSON.parse(row.vehicles || '[]');
+          for (const v of vehicles) {
+            const vPlate = (v.plate || v.plateNumber || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+            if (vPlate === plateClean) {
+              indexResults.push(v);
+            }
+          }
+        } catch { /* bad JSON */ }
+      }
+    } catch { /* people_index may not exist */ }
+
+    const allResults = [
+      ...localResults.map(r => ({ ...r, source: 'local_vehicles' })),
+      ...fleetResults.map(r => ({
+        vin: r.vin,
+        plate_number: r.license_plate,
+        plate_state: r.registration_state,
+        year: r.year,
+        make: r.make,
+        model: r.model,
+        color: r.color,
+        registered_owner: r.assigned_officer_name || null,
+        vehicle_type: r.vehicle_type,
+        status: r.status,
+        source: 'fleet',
+      })),
+      ...indexResults.map(r => ({
+        vin: r.vin,
+        plate_number: r.plate || r.plateNumber,
+        plate_state: r.plateState,
+        year: r.year,
+        make: r.make,
+        model: r.model,
+        color: r.color,
+        registered_owner: r.registeredOwner,
+        source: 'skip_tracker',
+      })),
+    ];
+
+    // Audit log
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'plate_check', 'vehicle', 0, ?, ?)"
+    ).run(req.user!.userId, `Plate check: ${plateClean} ${stateClean || 'ANY'}`, req.ip || 'unknown');
+
+    res.json({
+      hit: allResults.length > 0,
+      plate: plateClean,
+      state: stateClean || null,
+      results: allResults,
+      resultCount: allResults.length,
+      sources: [...new Set(allResults.map(r => r.source))],
+    });
+  } catch (err: any) {
+    console.error('[Plate Check] Error:', err);
+    res.status(500).json({ error: 'Plate check failed', code: 'PLATE_CHECK_ERROR' });
+  }
+});
+
 export default router;
