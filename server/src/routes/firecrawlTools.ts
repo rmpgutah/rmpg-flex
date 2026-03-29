@@ -12,6 +12,13 @@ import { firecrawlScrape, firecrawlSearch, FirecrawlUnavailableError } from '../
 import { getDb } from '../models/database';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import {
+  analyzeSentiment, extractKeywords, extractContactInfo, extractBusinessInfo,
+  lookupWhois, parseRssFeed, toCsv, analyzeAiReadiness as analyzeAiReadinessEnhanced,
+  extractTables, comparePages,
+} from '../utils/firecrawlEnhanced';
+import TurndownService from 'turndown';
+import * as cheerio from 'cheerio';
 
 const router = Router();
 router.use(authenticate);
@@ -1267,11 +1274,9 @@ router.post(
         return;
       }
 
-      const { scores, overall_score, recommendations } = analyzeAiReadiness(
-        scrapeResult.data.html || scrapeResult.data.rawHtml || '',
-        scrapeResult.data.markdown || '',
-        url.trim(),
-      );
+      const rawHtml = scrapeResult.data.html || scrapeResult.data.rawHtml || '';
+      const { scores, overall, recommendations } = analyzeAiReadinessEnhanced(rawHtml, url.trim());
+      const overall_score = overall;
 
       // Store scan
       const db = getDb();
@@ -1536,23 +1541,25 @@ router.post(
         scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
       });
 
-      const mentions: Array<{ url: string; title: string; snippet: string; source: string }> = [];
+      const mentions: Array<{ url: string; title: string; snippet: string; source: string; sentiment?: { score: number; label: string } }> = [];
 
       for (const item of (searchResult.data || [])) {
         const snippet = (item.markdown || item.description || '').substring(0, 500);
+        const sentimentResult = analyzeSentiment(snippet);
         const mention = {
           url: item.url,
           title: item.title || '',
           snippet,
           source: 'web_search',
+          sentiment: { score: sentimentResult.comparative, label: sentimentResult.label },
         };
         mentions.push(mention);
 
-        // Store mention
+        // Store mention with sentiment
         db.prepare(`
-          INSERT INTO firecrawl_brand_mentions (monitor_id, url, title, snippet, source, found_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(id, mention.url, mention.title, mention.snippet, mention.source, now);
+          INSERT INTO firecrawl_brand_mentions (monitor_id, url, title, snippet, source, sentiment, found_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(id, mention.url, mention.title, mention.snippet, mention.source, JSON.stringify(mention.sentiment), now);
       }
 
       // Also scrape competitor URLs if configured
@@ -1567,17 +1574,20 @@ router.post(
           if (scrapeResult.success && scrapeResult.data?.markdown) {
             const brandLower = monitor.brand_name.toLowerCase();
             if (scrapeResult.data.markdown.toLowerCase().includes(brandLower)) {
+              const compSnippet = scrapeResult.data.markdown.substring(0, 500);
+              const compSentiment = analyzeSentiment(compSnippet);
               const mention = {
                 url: compUrl,
                 title: (scrapeResult.data.metadata as any)?.title || compUrl,
-                snippet: scrapeResult.data.markdown.substring(0, 500),
+                snippet: compSnippet,
                 source: 'competitor_site',
+                sentiment: { score: compSentiment.comparative, label: compSentiment.label },
               };
               mentions.push(mention);
               db.prepare(`
-                INSERT INTO firecrawl_brand_mentions (monitor_id, url, title, snippet, source, found_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-              `).run(id, mention.url, mention.title, mention.snippet, mention.source, now);
+                INSERT INTO firecrawl_brand_mentions (monitor_id, url, title, snippet, source, sentiment, found_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `).run(id, mention.url, mention.title, mention.snippet, mention.source, JSON.stringify(mention.sentiment), now);
             }
           }
         } catch { /* skip failed competitor scrapes */ }
@@ -1671,10 +1681,10 @@ router.post(
     }
 
     try {
-      // Scrape both URLs in parallel
+      // Scrape both URLs in parallel (include HTML for structural diff)
       const [resultA, resultB] = await Promise.all([
-        firecrawlScrape({ url: url_a.trim(), formats: ['markdown'], onlyMainContent: true }),
-        firecrawlScrape({ url: url_b.trim(), formats: ['markdown'], onlyMainContent: true }),
+        firecrawlScrape({ url: url_a.trim(), formats: ['markdown', 'html'], onlyMainContent: false }),
+        firecrawlScrape({ url: url_b.trim(), formats: ['markdown', 'html'], onlyMainContent: false }),
       ]);
 
       if (!resultA.success || !resultA.data) {
@@ -1686,17 +1696,13 @@ router.post(
 
       const markdownA = resultA.data.markdown || '';
       const markdownB = resultB.data.markdown || '';
+      const htmlA = resultA.data.html || resultA.data.rawHtml || '';
+      const htmlB = resultB.data.html || resultB.data.rawHtml || '';
 
-      // Simple diff summary
-      const linesA = markdownA.split('\n').filter(l => l.trim());
-      const linesB = markdownB.split('\n').filter(l => l.trim());
-      const setA = new Set(linesA);
-      const setB = new Set(linesB);
-      const onlyInA = linesA.filter(l => !setB.has(l)).length;
-      const onlyInB = linesB.filter(l => !setA.has(l)).length;
-      const common = linesA.filter(l => setB.has(l)).length;
+      // Use enhanced comparePages for real structural diff
+      const diff = comparePages(htmlA, htmlB);
 
-      const diffSummary = `Page A: ${linesA.length} lines, Page B: ${linesB.length} lines. Common: ${common}, Only in A: ${onlyInA}, Only in B: ${onlyInB}`;
+      const diffSummary = `Similarity: ${diff.similarity_score}%. Sections added: ${diff.sections_added.length}, removed: ${diff.sections_removed.length}, changed: ${diff.sections_changed.length}`;
 
       // Store comparison
       const db = getDb();
@@ -1720,6 +1726,7 @@ router.post(
         id, url_a: url_a.trim(), url_b: url_b.trim(),
         markdown_a: markdownA, markdown_b: markdownB,
         diff_summary: diffSummary,
+        diff,
       });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -2047,11 +2054,14 @@ router.post(
 
       for (let i = 0; i < rawResults.length; i++) {
         const r = rawResults[i] as any;
+        const snippetText = (r.markdown || r.content || '').substring(0, 300);
+        const sentimentResult = analyzeSentiment(snippetText);
         const item: any = {
           url: r.url || r.metadata?.sourceURL || '',
           title: r.metadata?.title || r.title || '',
-          snippet: (r.markdown || r.content || '').substring(0, 300),
+          snippet: snippetText,
           relevance_score: Math.round(100 - (i * (100 / Math.max(rawResults.length, 1)))),
+          sentiment: { score: sentimentResult.comparative, label: sentimentResult.label },
         };
 
         // For standard/deep, include full content
@@ -2246,17 +2256,41 @@ router.post(
         if (matches > maxMatches) { maxMatches = matches; industry = ind; }
       }
 
+      // Enhanced: extract business info using cheerio + JSON-LD
+      const businessInfo = extractBusinessInfo(homepage?.html || homepage?.rawHtml || '', homepageUrl);
+      if (!resolvedName || resolvedName === targetDomain) {
+        if (businessInfo.name) Object.assign({}, { resolvedName: businessInfo.name });
+      }
+      const finalName = (businessInfo.name && company_name !== businessInfo.name)
+        ? (company_name || businessInfo.name || resolvedName)
+        : resolvedName;
+      const finalDescription = businessInfo.description || (typeof description === 'string' ? description : '');
+      const finalIndustry = businessInfo.industry || industry;
+      if (businessInfo.phone && !contactInfo.phone) contactInfo.phone = businessInfo.phone;
+      if (businessInfo.email && !contactInfo.email) contactInfo.email = businessInfo.email;
+      if (businessInfo.address) contactInfo.address = businessInfo.address;
+      for (const sl of businessInfo.socialLinks) {
+        if (!socialLinks[sl.platform]) socialLinks[sl.platform] = sl.url;
+      }
+
+      // Enhanced: WHOIS lookup for domain intelligence
+      let whoisData: Record<string, any> = {};
+      try {
+        whoisData = await lookupWhois(targetDomain);
+      } catch { /* skip whois errors */ }
+
       const enrichedAt = localNow();
 
       const enrichmentData = {
         domain: targetDomain,
-        company_name: resolvedName,
-        description: typeof description === 'string' ? description.substring(0, 500) : '',
-        industry,
+        company_name: finalName,
+        description: finalDescription.substring(0, 500),
+        industry: finalIndustry,
         employee_count_estimate: null as string | null,
         tech_stack: techStack,
         social_links: socialLinks,
         contact_info: contactInfo,
+        whois: whoisData,
         funding_info: null as string | null,
         enriched_at: enrichedAt,
       };
@@ -3669,24 +3703,32 @@ router.post(
       if (!connector) { res.status(404).json({ error: 'Connector not found' }); return; }
 
       // Fetch data based on connector type
-      const scrapeResult = await firecrawlScrape({
-        url: connector.url,
-        formats: ['markdown'],
-        onlyMainContent: connector.type === 'webpage',
-      });
-
-      const content = (scrapeResult.data as any)?.markdown || '';
       let records: any[] = [];
 
       if (connector.type === 'rss') {
-        // Parse RSS-like items from markdown
-        const items = content.split(/---|\n#{2,3}\s/).filter(Boolean).slice(0, 50);
-        records = items.map((item: string, i: number) => ({ index: i, content: item.trim().substring(0, 500) }));
-      } else if (connector.type === 'sitemap') {
-        const urlMatches = content.match(/https?:\/\/[^\s<>"]+/g) || [];
-        records = ([...new Set(urlMatches)] as string[]).slice(0, 100).map((u) => ({ url: u }));
+        // Use proper RSS parser for RSS/Atom feeds
+        const feed = await parseRssFeed(connector.url);
+        records = feed.items.slice(0, 50).map((item, i) => ({
+          index: i,
+          title: item.title,
+          link: item.link,
+          pubDate: item.pubDate,
+          content: item.contentSnippet || '',
+        }));
       } else {
-        records = [{ content: content.substring(0, 5000) }];
+        const scrapeResult = await firecrawlScrape({
+          url: connector.url,
+          formats: ['markdown'],
+          onlyMainContent: connector.type === 'webpage',
+        });
+        const content = (scrapeResult.data as any)?.markdown || '';
+
+        if (connector.type === 'sitemap') {
+          const urlMatches = content.match(/https?:\/\/[^\s<>"]+/g) || [];
+          records = ([...new Set(urlMatches)] as string[]).slice(0, 100).map((u) => ({ url: u }));
+        } else {
+          records = [{ content: content.substring(0, 5000) }];
+        }
       }
 
       const now = localNow();
@@ -3871,17 +3913,13 @@ router.post(
         });
 
         for (const item of (searchResult.data || []) as any[]) {
-          const text = (item.markdown || item.content || '').toLowerCase();
+          const text = (item.markdown || item.content || '');
           const sourceUrl = item.url || item.metadata?.sourceURL || '';
 
-          // Extract topics: capitalized phrases and repeated terms
-          const phrases = (text.match(/\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2}\b/g) || []) as string[];
-          const words = text.split(/\s+/).filter((w: string) => w.length > 5);
-          const wordFreq: Record<string, number> = {};
-          for (const w of words) { wordFreq[w] = (wordFreq[w] || 0) + 1; }
-          const frequentWords = Object.entries(wordFreq).filter(([, c]) => c >= 3).map(([w]) => w);
+          // Use TF-IDF keyword extraction for better topic discovery
+          const keywords = extractKeywords(text, 20);
+          const topics = keywords.map((kw) => kw.term);
 
-          const topics = [...new Set([...phrases.slice(0, 10), ...frequentWords.slice(0, 10)])];
           for (const topic of topics) {
             const existing = allMentions.get(topic) || { count: 0, sources: [] };
             existing.count++;
@@ -4197,12 +4235,12 @@ router.post(
     try {
       const scrapeResult = await firecrawlScrape({
         url: url.trim(),
-        formats: ['markdown'],
+        formats: ['markdown', 'html'],
         onlyMainContent: true,
       });
 
       const content = (scrapeResult.data as any)?.markdown || '';
-      const contentLower = content.toLowerCase();
+      const rawHtml = (scrapeResult.data as any)?.html || (scrapeResult.data as any)?.rawHtml || '';
 
       const extracted: Record<string, any> = {};
       let fieldsFound = 0;
@@ -4247,6 +4285,9 @@ router.post(
         }
       }
 
+      // Enhanced: extract HTML tables from the page
+      const tables = rawHtml ? extractTables(rawHtml) : [];
+
       const confidence = schema.fields.length > 0
         ? Math.round((fieldsFound / schema.fields.length) * 100) / 100
         : 0;
@@ -4263,7 +4304,7 @@ router.post(
 
       auditLog(req, 'CREATE', 'firecrawl_extractions', Number(result.lastInsertRowid), `Extract: ${url.trim()} (${fieldsFound}/${schema.fields.length} fields)`);
 
-      res.json({ url: url.trim(), extracted, confidence, fields_found: fieldsFound, fields_missing: fieldsMissing });
+      res.json({ url: url.trim(), extracted, confidence, fields_found: fieldsFound, fields_missing: fieldsMissing, tables });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -4328,45 +4369,32 @@ router.post(
         markdown = (scrapeResult.data as any)?.markdown || '';
         title = (scrapeResult.data as any)?.metadata?.title || '';
       } else if (html) {
-        // Basic HTML to markdown conversion
-        let md = html;
-        // Headers
-        md = md.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '# $1\n\n');
-        md = md.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '## $1\n\n');
-        md = md.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '### $1\n\n');
-        md = md.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, '#### $1\n\n');
-        // Paragraphs
-        md = md.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1\n\n');
-        // Bold/italic
-        md = md.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
-        md = md.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
-        // Links
-        if (options?.include_links !== false) {
-          md = md.replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
-        } else {
-          md = md.replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1');
-        }
-        // Images
-        if (options?.include_images !== false) {
-          md = md.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*\/?>/gi, '![$2]($1)');
-          md = md.replace(/<img[^>]*src="([^"]*)"[^>]*\/?>/gi, '![]($1)');
-        } else {
-          md = md.replace(/<img[^>]*\/?>/gi, '');
-        }
-        // Lists
-        md = md.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
-        md = md.replace(/<\/?(?:ul|ol)[^>]*>/gi, '\n');
-        // Line breaks
-        md = md.replace(/<br\s*\/?>/gi, '\n');
-        // Remove remaining tags
-        md = md.replace(/<[^>]+>/g, '');
-        // Clean up whitespace
-        md = md.replace(/\n{3,}/g, '\n\n').trim();
+        // Use TurndownService for high-quality HTML to markdown conversion
+        const td = new TurndownService({
+          headingStyle: 'atx',
+          codeBlockStyle: 'fenced',
+          bulletListMarker: '-',
+        });
 
-        markdown = md;
-        // Try to extract title
-        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-        title = titleMatch ? titleMatch[1].trim() : '';
+        // Configure link/image handling based on options
+        if (options?.include_links === false) {
+          td.addRule('stripLinks', {
+            filter: 'a',
+            replacement: (_content: string, node: any) => node.textContent || '',
+          });
+        }
+        if (options?.include_images === false) {
+          td.addRule('stripImages', {
+            filter: 'img',
+            replacement: () => '',
+          });
+        }
+
+        markdown = td.turndown(html);
+
+        // Extract title using cheerio
+        const ch = cheerio.load(html);
+        title = ch('title').first().text().trim();
       }
 
       // Count stats

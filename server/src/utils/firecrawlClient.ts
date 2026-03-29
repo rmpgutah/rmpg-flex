@@ -6,10 +6,27 @@
 // This ensures Overwatch tools always work, even without Docker.
 // ============================================================
 
+import * as cheerio from 'cheerio';
+import TurndownService from 'turndown';
+import { convert as htmlToPlainText } from 'html-to-text';
+import robotsParser from 'robots-parser';
+
 // ── Configuration ────────────────────────────────────────────
 
 const FIRECRAWL_BASE_URL = process.env.FIRECRAWL_URL || 'http://localhost:3003';
 const TIMEOUT_MS = 30_000;
+const USER_AGENT = 'Mozilla/5.0 (RMPG Flex Overwatch Bot; +https://rmpgutah.us)';
+
+// ── Turndown instance ────────────────────────────────────────
+
+const turndownService = new TurndownService({
+  headingStyle: 'atx',
+  codeBlockStyle: 'fenced',
+  bulletListMarker: '-',
+});
+
+// Remove script, style, nav, header, footer, aside for main content
+turndownService.remove(['script', 'style', 'nav', 'header', 'footer', 'aside']);
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -77,65 +94,94 @@ export class FirecrawlUnavailableError extends Error {
   }
 }
 
-// ── HTML to Text/Markdown helpers ────────────────────────────
+// ── HTML parsing helpers (cheerio + turndown + html-to-text) ─
 
-function htmlToText(html: string): string {
-  let text = html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '');
+function htmlToMarkdown(rawHtml: string, mainContentOnly: boolean = true): string {
+  try {
+    const $ = cheerio.load(rawHtml);
 
-  text = text
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<\/tr>/gi, '\n')
-    .replace(/<\/h[1-6]>/gi, '\n\n')
-    .replace(/<h1[^>]*>/gi, '# ')
-    .replace(/<h2[^>]*>/gi, '## ')
-    .replace(/<h3[^>]*>/gi, '### ')
-    .replace(/<h4[^>]*>/gi, '#### ')
-    .replace(/<li[^>]*>/gi, '- ')
-    .replace(/<a[^>]*href="([^"]*)"[^>]*>/gi, '[$1](')
-    .replace(/<\/a>/gi, ')')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    if (mainContentOnly) {
+      // Remove non-content elements
+      $('script, style, nav, header, footer, aside, iframe, noscript').remove();
+    }
 
-  return text;
+    // Get the main content area, or fall back to body
+    const mainEl = $('main').length ? $('main') : $('article').length ? $('article') : $('body');
+    const contentHtml = mainEl.html() || '';
+
+    return turndownService.turndown(contentHtml);
+  } catch {
+    // Fallback to html-to-text if turndown fails
+    return htmlToPlainText(rawHtml, {
+      wordwrap: false,
+      selectors: [
+        { selector: 'a', options: { ignoreHref: false } },
+        { selector: 'img', format: 'skip' },
+      ],
+    });
+  }
 }
 
 function extractLinks(html: string, baseUrl: string): string[] {
   const links: string[] = [];
-  const regex = /<a[^>]*href="([^"#]*)"[^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(html)) !== null) {
-    let href = match[1].trim();
-    if (!href || href.startsWith('javascript:') || href.startsWith('mailto:')) continue;
-    try {
-      const resolved = new URL(href, baseUrl).href;
-      if (!links.includes(resolved)) links.push(resolved);
-    } catch { /* skip invalid */ }
-  }
+  try {
+    const $ = cheerio.load(html);
+    $('a[href]').each((_i, el) => {
+      const href = $(el).attr('href')?.trim();
+      if (!href || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('#')) return;
+      try {
+        const resolved = new URL(href, baseUrl).href;
+        if (!links.includes(resolved)) links.push(resolved);
+      } catch { /* skip invalid */ }
+    });
+  } catch { /* skip parse errors */ }
   return links.slice(0, 200);
 }
 
-function extractTitle(html: string): string {
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '';
+function extractMetadata(html: string): {
+  title: string;
+  description: string;
+  ogTitle: string;
+  ogDescription: string;
+  ogImage: string;
+} {
+  try {
+    const $ = cheerio.load(html);
+    return {
+      title: $('title').first().text().trim(),
+      description: $('meta[name="description"]').attr('content')?.trim() || '',
+      ogTitle: $('meta[property="og:title"]').attr('content')?.trim() || '',
+      ogDescription: $('meta[property="og:description"]').attr('content')?.trim() || '',
+      ogImage: $('meta[property="og:image"]').attr('content')?.trim() || '',
+    };
+  } catch {
+    return { title: '', description: '', ogTitle: '', ogDescription: '', ogImage: '' };
+  }
 }
 
-function extractMetaDescription(html: string): string {
-  const match = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
-    || html.match(/<meta[^>]*content=["']([^"']*)["'][^>]*name=["']description["']/i);
-  return match ? match[1].trim() : '';
+// ── Robots.txt check ─────────────────────────────────────────
+
+async function isAllowedByRobots(targetUrl: string): Promise<boolean> {
+  try {
+    const parsed = new URL(targetUrl);
+    const robotsUrl = `${parsed.origin}/robots.txt`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const res = await fetch(robotsUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': USER_AGENT },
+      });
+      if (!res.ok) return true; // No robots.txt = allowed
+      const robotsTxt = await res.text();
+      const robots = robotsParser(robotsUrl, robotsTxt);
+      return robots.isAllowed(targetUrl, USER_AGENT) !== false;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return true; // On error, assume allowed
+  }
 }
 
 // ── Docker Firecrawl availability check ──────────────────────
@@ -211,10 +257,16 @@ async function fallbackScrape(options: FirecrawlScrapeOptions): Promise<Firecraw
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
+    // Check robots.txt before scraping
+    const allowed = await isAllowedByRobots(options.url);
+    if (!allowed) {
+      return { success: false, error: 'Blocked by robots.txt' };
+    }
+
     const res = await fetch(options.url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (RMPG Flex Overwatch Bot; +https://rmpgutah.us)',
+        'User-Agent': USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
       },
@@ -226,10 +278,11 @@ async function fallbackScrape(options: FirecrawlScrapeOptions): Promise<Firecraw
     }
 
     const rawHtml = await res.text();
-    const markdown = htmlToText(rawHtml);
+
+    // Use cheerio + turndown for high-quality conversion
+    const markdown = htmlToMarkdown(rawHtml, !!options.onlyMainContent);
     const links = extractLinks(rawHtml, options.url);
-    const title = extractTitle(rawHtml);
-    const description = extractMetaDescription(rawHtml);
+    const meta = extractMetadata(rawHtml);
 
     return {
       success: true,
@@ -239,8 +292,11 @@ async function fallbackScrape(options: FirecrawlScrapeOptions): Promise<Firecraw
         rawHtml: rawHtml.slice(0, 500_000),
         links,
         metadata: {
-          title,
-          description,
+          title: meta.title,
+          description: meta.description,
+          ogTitle: meta.ogTitle,
+          ogDescription: meta.ogDescription,
+          ogImage: meta.ogImage,
           sourceURL: options.url,
           statusCode: res.status,
         },
@@ -268,7 +324,7 @@ async function fallbackSearch(options: FirecrawlSearchOptions): Promise<Firecraw
     const res = await fetch(`https://html.duckduckgo.com/html/?${params.toString()}`, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (RMPG Flex Overwatch Bot; +https://rmpgutah.us)',
+        'User-Agent': USER_AGENT,
         'Accept': 'text/html',
       },
     });
@@ -278,33 +334,28 @@ async function fallbackSearch(options: FirecrawlSearchOptions): Promise<Firecraw
     }
 
     const html = await res.text();
+    const $ = cheerio.load(html);
     const results: FirecrawlSearchResultItem[] = [];
-    const resultBlocks = html.split(/class="result\s/);
 
-    for (let i = 1; i < resultBlocks.length && results.length < limit; i++) {
-      const block = resultBlocks[i];
+    $('.result').each((_i, el) => {
+      if (results.length >= limit) return false; // break
 
-      const urlMatch = block.match(/class="result__a"[^>]*href="([^"]*)"/);
-      if (!urlMatch) continue;
-      let url = urlMatch[1];
+      const $el = $(el);
+      const linkEl = $el.find('.result__a');
+      let url = linkEl.attr('href') || '';
 
       // DuckDuckGo wraps URLs in redirect — extract actual URL
       const uddgMatch = url.match(/uddg=([^&]*)/);
       if (uddgMatch) {
         try { url = decodeURIComponent(uddgMatch[1]); } catch { /* keep */ }
       }
-      if (!url.startsWith('http')) continue;
+      if (!url.startsWith('http')) return; // continue
 
-      const titleMatch = block.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/);
-      const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : url;
-
-      const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
-      const description = snippetMatch
-        ? snippetMatch[1].replace(/<[^>]+>/g, '').trim()
-        : '';
+      const title = linkEl.text().trim() || url;
+      const description = $el.find('.result__snippet').text().trim();
 
       results.push({ url, title, description });
-    }
+    });
 
     // Optionally scrape top results for markdown content
     if (options.scrapeOptions?.formats?.includes('markdown')) {
