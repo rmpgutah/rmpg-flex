@@ -103,23 +103,23 @@ interface Scout {
   id: number;
   name: string;
   url: string;
-  search_query: string;
+  query: string;
   keywords: string;
-  check_interval: string;
+  check_interval_hours: number;
   notify_email: string;
   status: 'active' | 'paused' | 'error';
-  last_run_at: string | null;
-  last_run_status: string | null;
-  found_count: number;
+  last_checked_at: string | null;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface ScoutRun {
   id: number;
   scout_id: number;
-  status: 'success' | 'error' | 'running';
-  found_count: number;
-  error_message: string | null;
+  matched: number;
+  results: string | null;
+  error: string | null;
   created_at: string;
 }
 
@@ -156,18 +156,21 @@ interface BrandMonitor {
   brand_name: string;
   keywords: string;
   competitor_urls: string;
-  check_interval: string;
+  check_interval_hours: number;
   status: 'active' | 'paused' | 'error';
-  mention_count: number;
-  last_scan_at: string | null;
+  last_checked_at: string | null;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface BrandMention {
   id: number;
   monitor_id: number;
-  source_url: string;
+  url: string;
+  title: string;
   snippet: string;
+  source: string;
   sentiment: 'positive' | 'neutral' | 'negative';
   found_at: string;
 }
@@ -192,17 +195,19 @@ interface WorkflowDef {
   name: string;
   steps: WorkflowStep[];
   status: 'idle' | 'running' | 'error';
-  last_run_at: string | null;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface WorkflowRun {
   id: number;
   workflow_id: number;
   status: 'success' | 'error' | 'running';
-  results: Record<string, unknown>[];
-  error_message: string | null;
-  created_at: string;
+  step_results: string | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 // ── Shared Helpers ────────────────────────────────────────────
@@ -347,7 +352,7 @@ function ScoutsPanel() {
   const [formUrl, setFormUrl] = useState('');
   const [formQuery, setFormQuery] = useState('');
   const [formKeywords, setFormKeywords] = useState('');
-  const [formInterval, setFormInterval] = useState('24h');
+  const [formInterval, setFormInterval] = useState('24');
   const [formEmail, setFormEmail] = useState('');
 
   const load = useCallback(async () => {
@@ -398,15 +403,15 @@ function ScoutsPanel() {
         body: JSON.stringify({
           name: formName.trim(),
           url: formUrl.trim(),
-          search_query: formQuery.trim(),
+          query: formQuery.trim(),
           keywords: formKeywords.trim(),
-          check_interval: formInterval,
+          check_interval_hours: parseInt(formInterval),
           notify_email: formEmail.trim(),
         }),
       });
       addToast('Scout created', 'success');
       setShowForm(false);
-      setFormName(''); setFormUrl(''); setFormQuery(''); setFormKeywords(''); setFormInterval('24h'); setFormEmail('');
+      setFormName(''); setFormUrl(''); setFormQuery(''); setFormKeywords(''); setFormInterval('24'); setFormEmail('');
       load();
     } catch {
       addToast('Failed to create scout', 'error');
@@ -513,11 +518,11 @@ function ScoutsPanel() {
                 value={formInterval} onChange={e => setFormInterval(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
               >
-                <option value="1h">Every hour</option>
-                <option value="6h">Every 6 hours</option>
-                <option value="12h">Every 12 hours</option>
-                <option value="24h">Daily</option>
-                <option value="7d">Weekly</option>
+                <option value="1">Every hour</option>
+                <option value="6">Every 6 hours</option>
+                <option value="12">Every 12 hours</option>
+                <option value="24">Daily</option>
+                <option value="168">Weekly</option>
               </select>
             </div>
             <div>
@@ -554,8 +559,7 @@ function ScoutsPanel() {
                 <StatusLed status={scout.status} />
                 <span className="text-xs font-medium text-white flex-1 truncate">{scout.name}</span>
                 <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[200px]">{scout.url}</span>
-                <span className="text-[10px] text-rmpg-400">{scout.found_count} found</span>
-                <span className="text-[10px] text-rmpg-500">{fmtDate(scout.last_run_at)}</span>
+                <span className="text-[10px] text-rmpg-500">{fmtDate(scout.last_checked_at)}</span>
                 <SmallBtn onClick={() => runScout(scout.id)} loading={runningIds.has(scout.id)}>
                   <Play className="w-3 h-3" /> Run
                 </SmallBtn>
@@ -579,11 +583,11 @@ function ScoutsPanel() {
                   ) : (
                     runs.map(run => (
                       <div key={run.id} className="flex items-center gap-3 text-[10px] py-0.5">
-                        <StatusLed status={run.status} />
+                        <StatusLed status={run.error ? 'error' : 'active'} />
                         <span className="text-rmpg-300 font-mono">{fmtDate(run.created_at)}</span>
-                        <span className="text-rmpg-400">{run.found_count} found</span>
-                        {run.error_message && (
-                          <span className="text-red-400 truncate max-w-[300px]">{run.error_message}</span>
+                        <span className="text-rmpg-400">{run.matched} matched</span>
+                        {run.error && (
+                          <span className="text-red-400 truncate max-w-[300px]">{run.error}</span>
                         )}
                       </div>
                     ))
@@ -975,7 +979,7 @@ function BrandMonitorPanel() {
   const [formBrand, setFormBrand] = useState('');
   const [formKeywords, setFormKeywords] = useState('');
   const [formCompetitors, setFormCompetitors] = useState('');
-  const [formInterval, setFormInterval] = useState('24h');
+  const [formInterval, setFormInterval] = useState('24');
 
   const load = useCallback(async () => {
     try {
@@ -1023,12 +1027,12 @@ function BrandMonitorPanel() {
           brand_name: formBrand.trim(),
           keywords: formKeywords.trim(),
           competitor_urls: formCompetitors.trim(),
-          check_interval: formInterval,
+          check_interval_hours: parseInt(formInterval),
         }),
       });
       addToast('Brand monitor created', 'success');
       setShowForm(false);
-      setFormBrand(''); setFormKeywords(''); setFormCompetitors(''); setFormInterval('24h');
+      setFormBrand(''); setFormKeywords(''); setFormCompetitors(''); setFormInterval('24');
       load();
     } catch {
       addToast('Failed to create monitor', 'error');
@@ -1116,10 +1120,10 @@ function BrandMonitorPanel() {
                 value={formInterval} onChange={e => setFormInterval(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
               >
-                <option value="6h">Every 6 hours</option>
-                <option value="12h">Every 12 hours</option>
-                <option value="24h">Daily</option>
-                <option value="7d">Weekly</option>
+                <option value="6">Every 6 hours</option>
+                <option value="12">Every 12 hours</option>
+                <option value="24">Daily</option>
+                <option value="168">Weekly</option>
               </select>
             </div>
           </div>
@@ -1147,8 +1151,7 @@ function BrandMonitorPanel() {
                 </button>
                 <StatusLed status={mon.status} />
                 <span className="text-xs font-medium text-white flex-1 truncate">{mon.brand_name}</span>
-                <span className="text-[10px] text-orange-400 font-mono">{mon.mention_count} mentions</span>
-                <span className="text-[10px] text-rmpg-500">{fmtDate(mon.last_scan_at)}</span>
+                <span className="text-[10px] text-rmpg-500">{fmtDate(mon.last_checked_at)}</span>
                 <SmallBtn onClick={() => scanNow(mon.id)} loading={scanningIds.has(mon.id)}>
                   <Play className="w-3 h-3" /> Scan
                 </SmallBtn>
@@ -1174,12 +1177,12 @@ function BrandMonitorPanel() {
                         <div className="flex-1 min-w-0">
                           <div className="text-[10px] text-rmpg-300 line-clamp-2">{m.snippet}</div>
                           <a
-                            href={m.source_url}
+                            href={m.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-[9px] text-brand-400 hover:underline font-mono truncate block"
                           >
-                            {m.source_url}
+                            {m.url}
                           </a>
                         </div>
                         <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(m.found_at)}</span>
@@ -1553,7 +1556,6 @@ function WorkflowsPanel() {
                 <StatusLed status={wf.status} />
                 <span className="text-xs font-medium text-white flex-1 truncate">{wf.name}</span>
                 <span className="text-[10px] text-rmpg-400 font-mono">{safeArr(wf.steps).length} steps</span>
-                <span className="text-[10px] text-rmpg-500">{fmtDate(wf.last_run_at)}</span>
                 <SmallBtn onClick={() => runWorkflow(wf.id)} loading={runningIds.has(wf.id)} variant="primary">
                   <Play className="w-3 h-3" /> Run
                 </SmallBtn>
@@ -1599,17 +1601,17 @@ function WorkflowsPanel() {
                         <div key={run.id} className="border-b border-rmpg-700 last:border-0 py-1">
                           <div className="flex items-center gap-3 text-[10px]">
                             <StatusLed status={run.status} />
-                            <span className="text-rmpg-300 font-mono">{fmtDate(run.created_at)}</span>
-                            {run.error_message && (
-                              <span className="text-red-400 truncate">{run.error_message}</span>
+                            <span className="text-rmpg-300 font-mono">{fmtDate(run.started_at)}</span>
+                            {run.error && (
+                              <span className="text-red-400 truncate">{run.error}</span>
                             )}
-                            {safeArr(run.results).length > 0 && (
-                              <span className="text-rmpg-400">{safeArr(run.results).length} result(s)</span>
+                            {run.step_results && (
+                              <span className="text-rmpg-400">has results</span>
                             )}
                           </div>
-                          {safeArr(run.results).length > 0 && (
+                          {run.step_results && (
                             <pre className="bg-rmpg-800 border border-rmpg-700 rounded-sm p-1.5 mt-1 text-[9px] text-rmpg-300 font-mono max-h-32 overflow-auto scrollbar-dark whitespace-pre-wrap">
-                              {JSON.stringify(safeArr(run.results), null, 2)}
+                              {typeof run.step_results === 'string' ? run.step_results : JSON.stringify(safeObj(run.step_results), null, 2)}
                             </pre>
                           )}
                         </div>
@@ -1634,8 +1636,11 @@ interface SearchResult {
   id: number;
   query: string;
   depth: 'quick' | 'standard' | 'deep';
+  results: string | null;
   answer_summary: string;
-  citations: { index: number; title: string; snippet: string; url: string }[];
+  citations: string | null;
+  duration_ms: number | null;
+  created_by: number;
   created_at: string;
 }
 
@@ -1752,26 +1757,30 @@ function SearchEnginePanel() {
           {safeArr(result.citations).length > 0 && (
             <div className="space-y-1">
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Sources</div>
-              {safeArr(result.citations).map(cite => (
-                <div key={cite.index} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2 flex items-start gap-2">
+              {safeArr(result.citations).map((cite: any, ci: number) => (
+                <div key={ci} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2 flex items-start gap-2">
                   <span className="text-[9px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded-sm px-1 py-0.5 shrink-0">
-                    [{cite.index}]
+                    [{cite.index ?? ci + 1}]
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[10px] text-white font-medium truncate">{cite.title}</div>
-                    <div className="text-[10px] text-rmpg-400 line-clamp-2 mt-0.5">{cite.snippet}</div>
-                    <a
-                      href={cite.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[9px] text-brand-400 hover:underline font-mono truncate block mt-0.5"
-                    >
-                      {cite.url}
-                    </a>
+                    <div className="text-[10px] text-white font-medium truncate">{cite.title || ''}</div>
+                    <div className="text-[10px] text-rmpg-400 line-clamp-2 mt-0.5">{cite.snippet || ''}</div>
+                    {cite.url && (
+                      <a
+                        href={cite.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[9px] text-brand-400 hover:underline font-mono truncate block mt-0.5"
+                      >
+                        {cite.url}
+                      </a>
+                    )}
                   </div>
-                  <a href={cite.url} target="_blank" rel="noopener noreferrer" className="text-rmpg-500 hover:text-orange-400 shrink-0">
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                  {cite.url && (
+                    <a href={cite.url} target="_blank" rel="noopener noreferrer" className="text-rmpg-500 hover:text-orange-400 shrink-0">
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
@@ -1792,14 +1801,18 @@ function SearchEnginePanel() {
 
 interface EnrichResult {
   id: number;
-  input: string;
+  domain: string;
+  email: string;
   company_name: string;
   description: string;
   industry: string;
-  employee_count: number | null;
+  employee_count_estimate: string | null;
   tech_stack: string[];
-  social_links: { platform: string; url: string }[];
-  contact_info: { type: string; value: string }[];
+  social_links: string | null;
+  contact_info: string | null;
+  funding_info: string | null;
+  enriched_at: string;
+  created_by: number;
   created_at: string;
 }
 
@@ -1866,7 +1879,7 @@ function EnrichPanel() {
 
   const viewHistoryItem = (item: EnrichResult) => {
     setResult(item);
-    setInput(item.input);
+    setInput(item.domain || item.email || '');
     setShowHistory(false);
     setBulkMode(false);
   };
@@ -1929,7 +1942,7 @@ function EnrichPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Building2 className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-white truncate">{item.company_name || item.input}</span>
+                <span className="text-[10px] text-white truncate">{item.company_name || item.domain || item.email}</span>
                 <span className="text-[10px] text-rmpg-400 truncate">{item.industry}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -1945,11 +1958,11 @@ function EnrichPanel() {
             <Building2 className="w-5 h-5 text-orange-400 shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-white">{result.company_name || 'Unknown Company'}</div>
-              <div className="text-[10px] text-rmpg-400 font-mono">{result.input}</div>
+              <div className="text-[10px] text-rmpg-400 font-mono">{result.domain || result.email}</div>
             </div>
-            {result.employee_count != null && (
+            {result.employee_count_estimate != null && (
               <div className="text-right shrink-0">
-                <div className="text-xs font-bold text-orange-400 font-mono">{result.employee_count.toLocaleString()}</div>
+                <div className="text-xs font-bold text-orange-400 font-mono">{result.employee_count_estimate}</div>
                 <div className="text-[9px] text-rmpg-500 uppercase">employees</div>
               </div>
             )}
@@ -1981,37 +1994,18 @@ function EnrichPanel() {
           )}
 
           {/* Social Links */}
-          {safeArr(result.social_links).length > 0 && (
+          {result.social_links && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Social</div>
-              <div className="flex flex-wrap gap-2">
-                {safeArr(result.social_links).map((sl, i) => (
-                  <a
-                    key={i}
-                    href={sl.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-brand-400 hover:underline flex items-center gap-1"
-                  >
-                    <Link className="w-2.5 h-2.5" /> {sl.platform}
-                  </a>
-                ))}
-              </div>
+              <div className="text-[10px] text-rmpg-300 font-mono whitespace-pre-wrap">{typeof result.social_links === 'string' ? result.social_links : JSON.stringify(safeObj(result.social_links), null, 2)}</div>
             </div>
           )}
 
           {/* Contact Info */}
-          {safeArr(result.contact_info).length > 0 && (
+          {result.contact_info && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Contact</div>
-              <div className="space-y-0.5">
-                {safeArr(result.contact_info).map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[10px]">
-                    <span className="text-rmpg-500 uppercase font-mono w-14 shrink-0">{c.type}</span>
-                    <span className="text-rmpg-300 font-mono truncate">{c.value}</span>
-                  </div>
-                ))}
-              </div>
+              <div className="text-[10px] text-rmpg-300 font-mono whitespace-pre-wrap">{typeof result.contact_info === 'string' ? result.contact_info : JSON.stringify(safeObj(result.contact_info), null, 2)}</div>
             </div>
           )}
         </div>
@@ -2024,12 +2018,12 @@ function EnrichPanel() {
           {bulkResults.map(item => (
             <div key={item.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-3">
               <Building2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-              <span className="text-[10px] text-white font-medium truncate flex-1">{item.company_name || item.input}</span>
+              <span className="text-[10px] text-white font-medium truncate flex-1">{item.company_name || item.domain || item.email}</span>
               <span className="text-[10px] text-rmpg-400">{item.industry}</span>
-              {item.employee_count != null && (
-                <span className="text-[10px] text-orange-400 font-mono">{item.employee_count.toLocaleString()}</span>
+              {item.employee_count_estimate != null && (
+                <span className="text-[10px] text-orange-400 font-mono">{item.employee_count_estimate}</span>
               )}
-              <SmallBtn onClick={() => { setResult(item); setInput(item.input); setBulkMode(false); }}>
+              <SmallBtn onClick={() => { setResult(item); setInput(item.domain || item.email || ''); setBulkMode(false); }}>
                 <ArrowRight className="w-3 h-3" /> View
               </SmallBtn>
             </div>
@@ -2276,8 +2270,11 @@ interface Chatbot {
   name: string;
   source_url: string;
   description: string;
-  status: 'ready' | 'indexing' | 'error';
+  scraped_content: string | null;
+  page_count: number;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface ChatMessage {
@@ -2447,11 +2444,11 @@ function ChatbotPanel() {
           {bots.map(bot => (
             <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
               <div className="flex items-center gap-2 px-3 py-2">
-                <StatusLed status={bot.status === 'ready' ? 'active' : bot.status} />
+                <StatusLed status={bot.scraped_content ? 'active' : 'paused'} />
                 <MessageSquare className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                 <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
                 <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[180px]">{bot.source_url}</span>
-                <SmallBtn onClick={() => openChat(bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={bot.status !== 'ready'}>
+                <SmallBtn onClick={() => openChat(bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={!bot.scraped_content}>
                   <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Ask'}
                 </SmallBtn>
                 <SmallBtn onClick={() => deleteBot(bot.id)} loading={deletingIds.has(bot.id)} variant="danger">
@@ -2536,18 +2533,23 @@ interface ObserverWatch {
   id: number;
   name: string;
   url: string;
-  check_interval: string;
-  status: 'active' | 'paused';
-  last_status: 'changed' | 'unchanged' | null;
+  check_interval_hours: number;
+  notify_on_change: number;
+  last_content: string | null;
   last_checked_at: string | null;
-  change_count: number;
+  status: 'active' | 'paused';
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface ObserverChange {
   id: number;
-  watch_id: number;
-  diff_summary: string;
+  observer_id: number;
+  changes_summary: string;
+  diff_sections: string | null;
+  previous_content: string | null;
+  new_content: string | null;
   detected_at: string;
 }
 
@@ -2566,7 +2568,7 @@ function ObserverPanel() {
   // Form
   const [formName, setFormName] = useState('');
   const [formUrl, setFormUrl] = useState('');
-  const [formInterval, setFormInterval] = useState('24h');
+  const [formInterval, setFormInterval] = useState('24');
 
   const load = useCallback(async () => {
     try {
@@ -2613,12 +2615,12 @@ function ObserverPanel() {
         body: JSON.stringify({
           name: formName.trim(),
           url: formUrl.trim(),
-          check_interval: formInterval,
+          check_interval_hours: parseInt(formInterval),
         }),
       });
       addToast('Watch created', 'success');
       setShowForm(false);
-      setFormName(''); setFormUrl(''); setFormInterval('24h');
+      setFormName(''); setFormUrl(''); setFormInterval('24');
       load();
     } catch {
       addToast('Failed to create watch', 'error');
@@ -2694,11 +2696,11 @@ function ObserverPanel() {
                 value={formInterval} onChange={e => setFormInterval(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
               >
-                <option value="1h">Every hour</option>
-                <option value="6h">Every 6 hours</option>
-                <option value="12h">Every 12 hours</option>
-                <option value="24h">Daily</option>
-                <option value="7d">Weekly</option>
+                <option value="1">Every hour</option>
+                <option value="6">Every 6 hours</option>
+                <option value="12">Every 12 hours</option>
+                <option value="24">Daily</option>
+                <option value="168">Weekly</option>
               </select>
             </div>
           </div>
@@ -2724,17 +2726,9 @@ function ObserverPanel() {
                 <button onClick={() => toggleExpand(watch.id)} className="text-rmpg-400 hover:text-white">
                   {expandedId === watch.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
-                {/* Change detection indicator */}
-                {watch.last_status === 'changed' ? (
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Changed" />
-                ) : watch.last_status === 'unchanged' ? (
-                  <span className="inline-block w-2 h-2 rounded-full bg-rmpg-500" title="Unchanged" />
-                ) : (
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400" title="Not checked" />
-                )}
+                <StatusLed status={watch.status} />
                 <span className="text-xs font-medium text-white flex-1 truncate">{watch.name}</span>
                 <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[200px]">{watch.url}</span>
-                <span className="text-[10px] text-rmpg-400">{watch.change_count} changes</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(watch.last_checked_at)}</span>
                 <SmallBtn onClick={() => checkNow(watch.id)} loading={checkingIds.has(watch.id)}>
                   <RefreshCw className="w-3 h-3" /> Check Now
@@ -2759,7 +2753,7 @@ function ObserverPanel() {
                           <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
                           <span className="text-rmpg-300 font-mono">{fmtDate(change.detected_at)}</span>
                         </div>
-                        <div className="text-[10px] text-rmpg-400 mt-0.5 pl-4 whitespace-pre-wrap">{change.diff_summary}</div>
+                        <div className="text-[10px] text-rmpg-400 mt-0.5 pl-4 whitespace-pre-wrap">{change.changes_summary}</div>
                       </div>
                     ))
                   )}
@@ -2788,8 +2782,10 @@ interface DeepSearchClaim {
 interface DeepSearchResult {
   id: number;
   query: string;
-  validate: boolean;
-  claims: DeepSearchClaim[];
+  results: string | null;
+  validated: string | null;
+  duration_ms: number | null;
+  created_by: number;
   created_at: string;
 }
 
@@ -2835,7 +2831,6 @@ function DeepSearchPanel() {
   const viewHistoryItem = (item: DeepSearchResult) => {
     setResult(item);
     setQuery(item.query);
-    setValidate(item.validate);
     setShowHistory(false);
   };
 
@@ -2894,76 +2889,21 @@ function DeepSearchPanel() {
       )}
 
       {/* Results */}
-      {result && safeArr(result.claims).length > 0 && (
-        <div className="space-y-1">
-          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Claims ({safeArr(result.claims).length})</div>
-          {safeArr(result.claims).map((claim, idx) => (
-            <div key={idx} className="bg-surface-raised border border-rmpg-600 rounded-sm">
-              <button
-                onClick={() => setExpandedClaim(expandedClaim === idx ? null : idx)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left"
-              >
-                {/* Validation status */}
-                {claim.validated === true ? (
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                ) : claim.validated === false ? (
-                  <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                ) : (
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                )}
-                <span className="text-[10px] text-white flex-1">{claim.claim}</span>
-                {/* Confidence bar */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <div className="w-20 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${claim.confidence >= 0.7 ? 'bg-emerald-500' : claim.confidence >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}`}
-                      style={{ width: `${claim.confidence * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-[9px] font-mono text-rmpg-500 w-7 text-right">{Math.round(claim.confidence * 100)}%</span>
-                </div>
-                {expandedClaim === idx ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
-              </button>
-
-              {expandedClaim === idx && (
-                <div className="border-t border-rmpg-700 bg-surface-sunken px-3 py-2 space-y-2">
-                  {/* Supporting sources */}
-                  {safeArr(claim.supporting_sources).length > 0 && (
-                    <div>
-                      <div className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                        <CheckCircle className="w-2.5 h-2.5" /> Supporting ({safeArr(claim.supporting_sources).length})
-                      </div>
-                      {safeArr(claim.supporting_sources).map((src, si) => (
-                        <div key={si} className="pl-3 py-0.5">
-                          <div className="text-[10px] text-rmpg-300 line-clamp-2">{src.snippet}</div>
-                          <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline font-mono truncate block">
-                            {src.url}
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Contradicting sources */}
-                  {safeArr(claim.contradicting_sources).length > 0 && (
-                    <div>
-                      <div className="text-[9px] font-bold text-red-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                        <XCircle className="w-2.5 h-2.5" /> Contradicting ({safeArr(claim.contradicting_sources).length})
-                      </div>
-                      {safeArr(claim.contradicting_sources).map((src, ci) => (
-                        <div key={ci} className="pl-3 py-0.5">
-                          <div className="text-[10px] text-rmpg-300 line-clamp-2">{src.snippet}</div>
-                          <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline font-mono truncate block">
-                            {src.url}
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+      {result && result.results && (
+        <div className="space-y-2">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Results</div>
+          {result.validated && (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <CheckCircle className="w-3 h-3 text-emerald-400" />
+              <span className="text-rmpg-300">Validated</span>
             </div>
-          ))}
+          )}
+          <pre className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-80 overflow-auto scrollbar-dark whitespace-pre-wrap">
+            {typeof result.results === 'string' ? result.results : JSON.stringify(result.results, null, 2)}
+          </pre>
+          {result.duration_ms != null && (
+            <span className="text-[9px] text-rmpg-500">{(result.duration_ms / 1000).toFixed(1)}s</span>
+          )}
         </div>
       )}
 
@@ -3312,9 +3252,8 @@ interface GraphResult {
   id: number;
   title: string;
   chart_type: string;
-  labels: string;
-  datasets: GraphDataset[];
-  source_url: string | null;
+  config: string | null;
+  created_by: number;
   created_at: string;
 }
 
@@ -3373,8 +3312,7 @@ function GraphsPanel() {
         body: JSON.stringify({
           title: formTitle.trim(),
           chart_type: formChartType,
-          labels: formLabels.trim(),
-          datasets: formDatasets,
+          config: JSON.stringify({ labels: formLabels.trim(), datasets: formDatasets }),
         }),
       });
       addToast('Graph created', 'success');
@@ -3546,17 +3484,8 @@ function GraphsPanel() {
                   <Trash2 className="w-3 h-3" />
                 </SmallBtn>
               </div>
-              <div className="text-[10px] text-rmpg-400 font-mono truncate">Labels: {g.labels}</div>
-              <div className="flex flex-wrap gap-1">
-                {(g.datasets || []).map((ds, i) => (
-                  <span key={i} className="flex items-center gap-1 text-[9px] text-rmpg-300">
-                    <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ds.color }} />
-                    {ds.label}
-                  </span>
-                ))}
-              </div>
-              {g.source_url && (
-                <div className="text-[9px] text-rmpg-500 font-mono truncate">Source: {g.source_url}</div>
+              {g.config && (
+                <div className="text-[10px] text-rmpg-400 font-mono truncate">Config: {typeof g.config === 'string' ? g.config.slice(0, 80) : ''}{(g.config?.length ?? 0) > 80 ? '...' : ''}</div>
               )}
               <div className="text-[9px] text-rmpg-500">{fmtDate(g.created_at)}</div>
             </div>
@@ -3574,9 +3503,9 @@ function GraphsPanel() {
 interface ConnectorSync {
   id: number;
   connector_id: number;
-  status: 'success' | 'error' | 'running';
-  records_processed: number;
-  error_message: string | null;
+  records_fetched: number;
+  data: string | null;
+  error: string | null;
   created_at: string;
 }
 
@@ -3588,9 +3517,9 @@ interface Connector {
   schedule_hours: number;
   transform_prompt: string;
   status: 'active' | 'paused' | 'error';
-  last_sync_at: string | null;
-  last_sync_status: string | null;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 function ConnectorsPanel() {
@@ -3803,7 +3732,7 @@ function ConnectorsPanel() {
                 </span>
                 <span className="text-[10px] text-white font-medium truncate flex-1">{c.name}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono shrink-0">every {c.schedule_hours}h</span>
-                {c.last_sync_at && <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(c.last_sync_at)}</span>}
+                {c.created_at && <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(c.created_at)}</span>}
                 <SmallBtn onClick={() => syncNow(c.id)} loading={syncingIds.has(c.id)} variant="primary">
                   <RefreshCw className="w-3 h-3" /> Sync
                 </SmallBtn>
@@ -3822,10 +3751,10 @@ function ConnectorsPanel() {
                     <div className="space-y-1">
                       {syncs.map(s => (
                         <div key={s.id} className="flex items-center gap-2 text-[10px]">
-                          <StatusLed status={s.status} />
-                          <span className="text-rmpg-300">{s.status}</span>
-                          <span className="text-orange-400 font-mono">{s.records_processed} records</span>
-                          {s.error_message && <span className="text-red-400 truncate flex-1">{s.error_message}</span>}
+                          <StatusLed status={s.error ? 'error' : 'active'} />
+                          <span className="text-rmpg-300">{s.error ? 'error' : 'success'}</span>
+                          <span className="text-orange-400 font-mono">{s.records_fetched} records</span>
+                          {s.error && <span className="text-red-400 truncate flex-1">{s.error}</span>}
                           <span className="text-rmpg-500 shrink-0 ml-auto">{fmtDate(s.created_at)}</span>
                         </div>
                       ))}
@@ -5573,8 +5502,9 @@ interface FirecrawlExample {
   name: string;
   description: string;
   category: 'scraping' | 'search' | 'extraction' | 'monitoring' | 'enrichment' | 'research';
-  config_json: string;
+  config: string;
   source_url: string;
+  created_by: number;
   created_at: string;
 }
 
@@ -5617,7 +5547,7 @@ function ExamplesPanel() {
           name: formName.trim(),
           description: formDesc.trim(),
           category: formCategory,
-          config_json: formConfig,
+          config: formConfig,
           source_url: formSourceUrl.trim(),
         }),
       });
@@ -5950,8 +5880,11 @@ interface MendableBot {
   source_urls: string[];
   system_prompt: string;
   welcome_message: string;
-  status: 'ready' | 'indexing' | 'error';
+  scraped_content: string | null;
+  page_count: number;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface MendableMessage {
@@ -6132,11 +6065,11 @@ function MendablePanel() {
           {bots.map(bot => (
             <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
               <div className="flex items-center gap-2 px-3 py-2">
-                <StatusLed status={bot.status === 'ready' ? 'active' : bot.status} />
+                <StatusLed status={bot.scraped_content ? 'active' : 'paused'} />
                 <Bot className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                 <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
                 <span className="text-[10px] text-rmpg-500">{safeArr(bot.source_urls).length} source{safeArr(bot.source_urls).length !== 1 ? 's' : ''}</span>
-                <SmallBtn onClick={() => openChat(bot)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={bot.status !== 'ready'}>
+                <SmallBtn onClick={() => openChat(bot)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={!bot.scraped_content}>
                   <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Chat'}
                 </SmallBtn>
                 <SmallBtn onClick={() => deleteBot(bot.id)} loading={deletingIds.has(bot.id)} variant="danger">
@@ -6877,8 +6810,9 @@ interface AgentDef {
   goal: string;
   tools: string[];
   max_steps: number;
-  initial_input: string;
-  status: 'idle' | 'running' | 'error';
+  initial_url: string;
+  initial_query: string;
+  created_by: number;
   created_at: string;
 }
 
@@ -6893,9 +6827,11 @@ interface AgentStep {
 interface AgentRun {
   id: number;
   agent_id: number;
-  status: 'success' | 'error' | 'running';
-  steps: AgentStep[];
-  created_at: string;
+  steps: string | null;
+  completed: number;
+  result_summary: string | null;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 function AgentsPanel() {
@@ -6955,7 +6891,8 @@ function AgentsPanel() {
           goal: formGoal.trim(),
           tools: Array.from(formTools),
           max_steps: formMaxSteps,
-          initial_input: formInput.trim(),
+          initial_url: formInput.trim(),
+          initial_query: formInput.trim(),
         }),
       });
       addToast('Agent created', 'success');
@@ -7093,7 +7030,7 @@ function AgentsPanel() {
                 <button onClick={() => toggleExpand(agent.id)} className="text-rmpg-500 hover:text-white">
                   {expandedId === agent.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
-                <StatusLed status={agent.status} />
+                <StatusLed status="active" />
                 <Cpu className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                 <span className="text-xs font-medium text-white flex-1 truncate">{agent.name}</span>
                 <div className="flex gap-1">
@@ -7101,7 +7038,7 @@ function AgentsPanel() {
                     <span key={t} className="text-[8px] px-1 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{t}</span>
                   ))}
                 </div>
-                <SmallBtn onClick={() => runAgent(agent.id)} loading={runningIds.has(agent.id)} variant="primary" disabled={agent.status === 'running'}>
+                <SmallBtn onClick={() => runAgent(agent.id)} loading={runningIds.has(agent.id)} variant="primary">
                   <Play className="w-3 h-3" /> Run
                 </SmallBtn>
                 <SmallBtn onClick={() => deleteAgent(agent.id)} loading={deletingIds.has(agent.id)} variant="danger">
@@ -7120,23 +7057,15 @@ function AgentsPanel() {
                     runs.map(run => (
                       <div key={run.id} className="bg-rmpg-800 border border-rmpg-700 rounded-sm p-2 space-y-1.5">
                         <div className="flex items-center gap-2">
-                          <StatusLed status={run.status} />
-                          <span className="text-[10px] text-rmpg-400">{fmtDate(run.created_at)}</span>
-                          <span className="text-[10px] text-orange-400">{safeArr(run.steps).length} steps</span>
+                          <StatusLed status={run.completed ? 'active' : 'running'} />
+                          <span className="text-[10px] text-rmpg-400">{fmtDate(run.started_at)}</span>
+                          {run.result_summary && <span className="text-[10px] text-rmpg-300 truncate">{run.result_summary}</span>}
                         </div>
-                        <div className="space-y-1">
-                          {safeArr(run.steps).map((step, si) => (
-                            <div key={si} className="flex items-start gap-2 text-[10px]">
-                              <span className="text-rmpg-500 font-mono shrink-0">#{step.step}</span>
-                              <span className="text-orange-400 font-mono shrink-0 uppercase">{step.tool}</span>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-rmpg-400 truncate">In: {step.input}</div>
-                                <div className="text-rmpg-300 truncate">Out: {step.output}</div>
-                              </div>
-                              <StatusLed status={step.status} />
-                            </div>
-                          ))}
-                        </div>
+                        {run.steps && (
+                          <pre className="text-[9px] text-rmpg-300 font-mono whitespace-pre-wrap max-h-32 overflow-auto scrollbar-dark">
+                            {typeof run.steps === 'string' ? run.steps : JSON.stringify(run.steps, null, 2)}
+                          </pre>
+                        )}
                       </div>
                     ))
                   )}
@@ -8384,17 +8313,19 @@ interface N8nWorkflow {
   trigger: string;
   nodes: { type: string; config: string }[];
   status: 'idle' | 'running' | 'error';
-  last_run_at: string | null;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface N8nRun {
   id: number;
   workflow_id: number;
   status: 'success' | 'error' | 'running';
-  results: Record<string, unknown>;
-  error_message: string | null;
-  created_at: string;
+  node_results: string | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 function N8nPanel() {
@@ -8583,8 +8514,8 @@ function N8nPanel() {
                         <div key={run.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800 rounded-sm border border-rmpg-700">
                           <StatusLed status={run.status} />
                           <span className="text-[10px] text-rmpg-300 flex-1">{run.status}</span>
-                          {run.error_message && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error_message}</span>}
-                          <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.created_at)}</span>
+                          {run.error && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error}</span>}
+                          <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.started_at)}</span>
                         </div>
                       ))}
                     </div>
@@ -8606,8 +8537,10 @@ function N8nPanel() {
 interface MendablePyIndex {
   id: number;
   name: string;
-  url_count: number;
-  status: 'ready' | 'indexing' | 'error';
+  urls: string | null;
+  scraped_content: string | null;
+  page_count: number;
+  created_by: number;
   created_at: string;
 }
 
@@ -8734,11 +8667,11 @@ function MendablePyPanel() {
           {indexes.map(idx => (
             <div key={idx.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
               <div className="flex items-center gap-2 px-3 py-2">
-                <StatusLed status={idx.status === 'ready' ? 'active' : idx.status} />
+                <StatusLed status={idx.scraped_content ? 'active' : 'paused'} />
                 <Database className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                 <span className="text-xs font-medium text-white flex-1 truncate">{idx.name}</span>
-                <span className="text-[10px] text-rmpg-500">{idx.url_count} URLs</span>
-                <SmallBtn onClick={() => selectIndex(idx)} variant={activeIndexId === idx.id ? 'primary' : 'default'} disabled={idx.status !== 'ready'}>
+                <span className="text-[10px] text-rmpg-500">{idx.page_count} pages</span>
+                <SmallBtn onClick={() => selectIndex(idx)} variant={activeIndexId === idx.id ? 'primary' : 'default'} disabled={!idx.scraped_content}>
                   <Search className="w-3 h-3" /> {activeIndexId === idx.id ? 'Close' : 'Query'}
                 </SmallBtn>
                 <SmallBtn onClick={() => deleteIndex(idx.id)} loading={deletingIds.has(idx.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
@@ -9152,17 +9085,20 @@ interface PipelineDef {
   name: string;
   steps: { type: string; config: string }[];
   status: 'idle' | 'running' | 'error';
-  last_run_at: string | null;
+  created_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 interface PipelineRun {
   id: number;
   pipeline_id: number;
+  input: string | null;
   status: 'success' | 'error' | 'running';
-  result_preview: string;
-  error_message: string | null;
-  created_at: string;
+  step_results: string | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 function PipelinesPanel() {
@@ -9347,9 +9283,9 @@ function PipelinesPanel() {
                       {runs.map(run => (
                         <div key={run.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800 rounded-sm border border-rmpg-700">
                           <StatusLed status={run.status} />
-                          <span className="text-[10px] text-rmpg-300 truncate flex-1">{run.result_preview || run.status}</span>
-                          {run.error_message && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error_message}</span>}
-                          <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.created_at)}</span>
+                          <span className="text-[10px] text-rmpg-300 truncate flex-1">{run.step_results ? 'completed' : run.status}</span>
+                          {run.error && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error}</span>}
+                          <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.started_at)}</span>
                         </div>
                       ))}
                     </div>
