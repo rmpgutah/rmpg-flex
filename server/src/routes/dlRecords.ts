@@ -9,10 +9,209 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { storeDlRecord } from '../utils/dlRecordStore';
 import { getDb } from '../models/database';
+import { config } from '../config';
 import type { DlRecordSubject } from '../utils/dlRecordStore';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 
 const router = Router();
 router.use(authenticateToken);
+
+// ── Multer for DL image uploads ──
+const uploadDir = path.join(__dirname, '../../uploads/dl-scans');
+try { fs.mkdirSync(uploadDir, { recursive: true }); } catch { /* exists */ }
+
+const dlUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.jpg';
+      cb(null, `dl-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext) || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are accepted'));
+    }
+  },
+});
+
+// ── Encryption helpers for API key storage ──
+function deriveKey(): Buffer {
+  return crypto.createHash('sha256').update(config.jwt.secret).digest();
+}
+function decryptConfig(stored: string): string {
+  const key = deriveKey();
+  const parts = stored.split(':');
+  if (parts.length < 3) throw new Error('Malformed encrypted value');
+  const [ivHex, authTagHex, ciphertext] = parts;
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+// POST /api/dl-records/ocr-scan — Upload DL image for OCR extraction
+router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.single('image'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'No image file uploaded', code: 'NO_IMAGE' });
+      return;
+    }
+
+    // Get RapidAPI key from system_config
+    const db = getDb();
+    let apiKey: string | null = null;
+
+    // Try DL OCR specific key first, then fall back to general skip tracer key
+    const ocrKeyRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'dl_ocr_rapidapi_key' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+
+    if (ocrKeyRow?.config_value) {
+      try { apiKey = decryptConfig(ocrKeyRow.config_value); } catch { apiKey = ocrKeyRow.config_value; }
+    }
+
+    if (!apiKey) {
+      // Fall back to general skip tracer RapidAPI key
+      const skipKeyRow = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = 'skiptracer_api_key' AND is_active = 1 LIMIT 1"
+      ).get() as { config_value: string } | undefined;
+      if (skipKeyRow?.config_value) {
+        try { apiKey = decryptConfig(skipKeyRow.config_value); } catch { apiKey = skipKeyRow.config_value; }
+      }
+    }
+
+    if (!apiKey) {
+      // Clean up uploaded file
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      res.status(503).json({ error: 'DL OCR API key not configured. Set it in Admin → Integrations.', code: 'OCR_NOT_CONFIGURED' });
+      return;
+    }
+
+    // Read image file
+    const imageBuffer = fs.readFileSync(req.file.path);
+
+    // Call RapidAPI U.S. Driver License OCR using native FormData (Node 18+)
+    const blob = new Blob([imageBuffer], { type: req.file.mimetype || 'image/jpeg' });
+    const formData = new FormData();
+    formData.append('image', blob, req.file.originalname || 'dl-scan.jpg');
+
+    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/extract', {
+      method: 'POST',
+      headers: {
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
+      },
+      body: formData,
+    });
+
+    // Clean up uploaded file after sending to API
+    try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+
+    if (!ocrResponse.ok) {
+      const errorText = await ocrResponse.text().catch(() => '');
+      console.error(`[DL OCR] API error (${ocrResponse.status}):`, errorText.slice(0, 500));
+      res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: errorText.slice(0, 200) });
+      return;
+    }
+
+    const ocrData = await ocrResponse.json() as any;
+    console.log('[DL OCR] Raw response keys:', Object.keys(ocrData));
+
+    // Map OCR response to our person/DL record format
+    const raw = ocrData.result || ocrData.data || ocrData;
+
+    const extractField = (...keys: string[]): string => {
+      for (const key of keys) {
+        if (raw[key] && typeof raw[key] === 'string') return raw[key].trim();
+        if (ocrData[key] && typeof ocrData[key] === 'string') return ocrData[key].trim();
+      }
+      return '';
+    };
+
+    // Parse name parts
+    const fullName = extractField('name', 'full_name', 'fullName', 'Name', 'FN');
+    const firstName = extractField('first_name', 'firstName', 'First Name', 'FN', 'fname') || fullName.split(' ')[0] || '';
+    const lastName = extractField('last_name', 'lastName', 'Last Name', 'LN', 'lname') || fullName.split(' ').slice(-1)[0] || '';
+    const middleName = extractField('middle_name', 'middleName', 'Middle Name', 'MN');
+
+    // Parse address
+    const fullAddress = extractField('address', 'Address', 'addr', 'street_address');
+    const city = extractField('city', 'City');
+    const stateVal = extractField('state', 'State', 'st');
+    const zip = extractField('zip', 'zip_code', 'zipCode', 'Zip', 'postal_code', 'ZIP');
+
+    // Parse DL specifics
+    const dlNumber = extractField('license_number', 'licenseNumber', 'License Number', 'DL', 'dl_number', 'DLN', 'document_number');
+    const dlClass = extractField('class', 'dl_class', 'Class', 'license_class');
+    const dlState = extractField('issuing_state', 'issuingState', 'dl_state', 'state_code') || stateVal;
+    const dlExpiry = extractField('expiry_date', 'expiryDate', 'expiration_date', 'Expiry Date', 'EXP', 'exp_date', 'expires');
+    const dlIssueDate = extractField('issue_date', 'issueDate', 'Issue Date', 'ISS', 'issued', 'iss_date');
+    const dlRestrictions = extractField('restrictions', 'Restrictions', 'RSTR');
+    const dlEndorsements = extractField('endorsements', 'Endorsements', 'ENDRSMNTS');
+
+    // Parse physical descriptors
+    const dob = extractField('date_of_birth', 'dateOfBirth', 'DOB', 'dob', 'Date of Birth', 'birth_date');
+    const gender = extractField('sex', 'gender', 'Sex', 'Gender', 'SEX');
+    const height = extractField('height', 'Height', 'HGT');
+    const weight = extractField('weight', 'Weight', 'WGT');
+    const eyeColor = extractField('eyes', 'eye_color', 'eyeColor', 'Eyes', 'EYE');
+    const hairColor = extractField('hair', 'hair_color', 'hairColor', 'Hair', 'HAIR');
+
+    const parsed = {
+      first_name: firstName,
+      middle_name: middleName,
+      last_name: lastName,
+      full_name: fullName || [firstName, middleName, lastName].filter(Boolean).join(' '),
+      date_of_birth: dob,
+      gender: gender,
+      height: height,
+      weight: weight,
+      eye_color: eyeColor,
+      hair_color: hairColor,
+      address: fullAddress,
+      city: city,
+      state: stateVal,
+      zip: zip,
+      dl_number: dlNumber,
+      dl_state: dlState,
+      dl_class: dlClass,
+      dl_expiry: dlExpiry,
+      dl_issue_date: dlIssueDate,
+      dl_restrictions: dlRestrictions,
+      dl_endorsements: dlEndorsements,
+      source: 'DL_OCR_SCAN',
+      raw_ocr: ocrData,
+    };
+
+    // Audit log
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dl_ocr_scan', 'dl_record', 0, ?, ?)"
+    ).run(
+      req.user!.userId,
+      `DL OCR scan: ${parsed.dl_number || 'unknown'} (${parsed.dl_state || '??'}) — ${parsed.last_name || '??'}, ${parsed.first_name || '??'}`,
+      req.ip || 'unknown'
+    );
+
+    res.json({ success: true, parsed, raw: ocrData });
+  } catch (error: any) {
+    console.error('[DL OCR] Scan error:', error);
+    // Clean up file on error
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch { /* ignore */ } }
+    res.status(500).json({ error: 'DL OCR scan failed', code: 'OCR_SCAN_ERROR', detail: error.message });
+  }
+});
 
 // POST /api/dl-records — manually create/update a DL record
 router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res: Response) => {

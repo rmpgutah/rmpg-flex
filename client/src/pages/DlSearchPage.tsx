@@ -5,8 +5,8 @@
 // results list, and detailed DL record view.
 // ============================================================
 
-import React, {useState, useCallback, useEffect} from 'react';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus, AlertTriangle } from 'lucide-react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -86,6 +86,12 @@ export default function DlSearchPage() {
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
 
+  // ── DL OCR Scanner ──
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrResult, setOcrResult] = useState<any>(null);
+  const [showOcrPreview, setShowOcrPreview] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // ── Feature 42: Registration Alerts ──
   const [regAlerts, setRegAlerts] = useState<any>(null);
   const handleCheckRegistration = async () => {
@@ -152,6 +158,88 @@ export default function DlSearchPage() {
     setIsManualSubmitting(false);
   }, [lastName, dlNumber, handleSearch]);
 
+  const handleOcrUpload = useCallback(async (file: File) => {
+    setOcrLoading(true);
+    setOcrResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/dl-records/ocr-scan', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(err.error || `Upload failed (${resp.status})`);
+      }
+
+      const data = await resp.json();
+      if (data.parsed) {
+        setOcrResult(data.parsed);
+        setShowOcrPreview(true);
+        addToast('DL scanned successfully — review extracted data', 'success');
+      } else {
+        addToast('OCR returned no data', 'warning');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'DL scan failed', 'error');
+    } finally {
+      setOcrLoading(false);
+    }
+  }, [addToast]);
+
+  const handleCreatePersonFromOcr = useCallback(async () => {
+    if (!ocrResult) return;
+    try {
+      const resp = await apiFetch<any>('/records/persons', {
+        method: 'POST',
+        body: JSON.stringify({
+          first_name: ocrResult.first_name,
+          last_name: ocrResult.last_name,
+          middle_name: ocrResult.middle_name,
+          dob: ocrResult.date_of_birth,
+          gender: ocrResult.gender?.charAt(0)?.toUpperCase() || '',
+          height: ocrResult.height,
+          weight: ocrResult.weight,
+          eye_color: ocrResult.eye_color,
+          hair_color: ocrResult.hair_color,
+          address: ocrResult.address,
+          city: ocrResult.city,
+          state: ocrResult.state,
+          zip: ocrResult.zip,
+          dl_number: ocrResult.dl_number,
+          dl_state: ocrResult.dl_state,
+          dl_class: ocrResult.dl_class,
+          dl_expiry: ocrResult.dl_expiry,
+          notes: `Created from DL OCR scan on ${new Date().toLocaleDateString()}`,
+          flags: ['dl_ocr_imported'],
+        }),
+      });
+
+      if (resp?.id) {
+        addToast(`Person record #${resp.id} created for ${ocrResult.first_name} ${ocrResult.last_name}`, 'success');
+        setShowOcrPreview(false);
+        setOcrResult(null);
+        // Also save as DL record
+        try {
+          await apiFetch('/dl-records', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...ocrResult,
+              source: 'DL_OCR_SCAN',
+            }),
+          });
+        } catch { /* secondary — person record is primary */ }
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Failed to create person record', 'error');
+    }
+  }, [ocrResult, addToast]);
+
   const sourceBadge = (src: string) => {
     if (src === 'MICROBILT_API' || src === 'MICROBILT_DL') {
       return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50 inline-flex items-center gap-0.5"><Wifi className="w-2.5 h-2.5" />API</span>;
@@ -199,6 +287,10 @@ export default function DlSearchPage() {
       <button type="button" onClick={() => setShowManualEntry(true)} className="toolbar-btn text-[10px]">
         <Plus className="w-3 h-3" /> Manual Entry
       </button>
+      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={ocrLoading} className="toolbar-btn text-[10px]">
+        {ocrLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+        {ocrLoading ? 'Scanning...' : 'Scan DL'}
+      </button>
     </div>
   );
 
@@ -207,6 +299,19 @@ export default function DlSearchPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+      {/* Hidden file input for DL OCR — always in DOM so toolbar button works */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) handleOcrUpload(file);
+          e.target.value = '';
+        }}
+      />
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
           <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
@@ -243,11 +348,31 @@ export default function DlSearchPage() {
         {/* Results List */}
         <div className={`${isMobile ? (selected ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
           {results.length === 0 && !loading && (
-            <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
+            <div className="flex flex-col items-center justify-center h-full text-rmpg-500 text-[10px] p-4 gap-4">
               <div className="text-center">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
                 <p>Search by name, DL number, or state</p>
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
+              </div>
+              {/* DL OCR Scanner */}
+              <div className="border border-[#1e2d40] rounded-sm p-3 bg-[#0d1520] space-y-2 w-full max-w-xs">
+                <div className="flex items-center gap-2">
+                  <CreditCard size={14} className="text-[#d4a017]" />
+                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
+                </div>
+                <p className="text-[10px] text-[#556677]">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={ocrLoading}
+                    className="flex items-center gap-2 px-3 py-2 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+                  >
+                    {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+                    {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
+                  </button>
+                  <span className="text-[9px] text-[#556677]">JPG, PNG, or camera capture</span>
+                </div>
               </div>
             </div>
           )}
@@ -460,6 +585,81 @@ export default function DlSearchPage() {
         onSubmit={handleManualSubmit}
         isSubmitting={isManualSubmitting}
       />
+
+      {/* OCR Preview Modal */}
+      {showOcrPreview && ocrResult && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#141e2b] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0d1520]">
+              <div className="flex items-center gap-2">
+                <CreditCard size={14} className="text-[#d4a017]" />
+                <span className="text-[12px] font-bold text-white uppercase tracking-wider">DL OCR Results</span>
+              </div>
+              <button type="button" onClick={() => setShowOcrPreview(false)} className="text-[#556677] hover:text-white">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
+              {([
+                ['First Name', ocrResult.first_name],
+                ['Middle Name', ocrResult.middle_name],
+                ['Last Name', ocrResult.last_name],
+                ['Date of Birth', ocrResult.date_of_birth],
+                ['Gender', ocrResult.gender],
+                ['Height', ocrResult.height],
+                ['Weight', ocrResult.weight],
+                ['Eye Color', ocrResult.eye_color],
+                ['Hair Color', ocrResult.hair_color],
+                ['Address', ocrResult.address],
+                ['City', ocrResult.city],
+                ['State', ocrResult.state],
+                ['ZIP', ocrResult.zip],
+                ['DL Number', ocrResult.dl_number],
+                ['DL State', ocrResult.dl_state],
+                ['DL Class', ocrResult.dl_class],
+                ['DL Expiry', ocrResult.dl_expiry],
+                ['DL Issue Date', ocrResult.dl_issue_date],
+                ['Restrictions', ocrResult.dl_restrictions],
+                ['Endorsements', ocrResult.dl_endorsements],
+              ] as [string, string][]).filter(([_, val]) => val).map(([label, val]) => (
+                <div key={label} className="flex items-center gap-2 text-[11px]">
+                  <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
+                  <span className="text-white font-mono">{val}</span>
+                </div>
+              ))}
+              {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).length > 0 && (
+                <div className="border-t border-[#1e2d40] pt-2 mt-2">
+                  <div className="text-[8px] text-[#556677] uppercase tracking-wider mb-1">Additional Fields</div>
+                  {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-2 text-[10px]">
+                      <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[8px]">{k}</span>
+                      <span className="text-[#8899aa] font-mono">{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0d1520]">
+              <button
+                type="button"
+                onClick={handleCreatePersonFromOcr}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-white transition-colors"
+              >
+                <Plus size={14} />
+                Create Person Record
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowOcrPreview(false)}
+                className="px-4 py-2 bg-[#1a2636] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
