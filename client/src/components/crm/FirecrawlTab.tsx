@@ -54,6 +54,17 @@ import {
   FileCode,
   Ticket,
   Palette,
+  Server,
+  FolderOpen,
+  FileText as FileText2,
+  Bot,
+  Newspaper,
+  PenTool,
+  MessageCircle,
+  Cpu,
+  FileDown,
+  Briefcase,
+  Archive,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -61,7 +72,7 @@ import PanelTitleBar from '../PanelTitleBar';
 
 // ── Shared Types ──────────────────────────────────────────────
 
-type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend';
+type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml';
 
 interface Scout {
   id: number;
@@ -262,6 +273,18 @@ const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = 
   { id: 'html-to-md', label: 'HTML→MD', icon: FileCode },
   { id: 'coupons', label: 'Coupons', icon: Ticket },
   { id: 'brand-extend', label: 'Brand Extend', icon: Palette },
+  { id: 'mcp', label: 'MCP', icon: Server },
+  { id: 'examples', label: 'Examples', icon: FolderOpen },
+  { id: 'llmstxt-v2', label: 'LLMs.txt V2', icon: FileText2 },
+  { id: 'mendable', label: 'Mendable', icon: Bot },
+  { id: 'news', label: 'News', icon: Newspaper },
+  { id: 'drafts', label: 'Drafts', icon: PenTool },
+  { id: 'slack', label: 'Slack', icon: MessageCircle },
+  { id: 'discord', label: 'Discord', icon: Hash },
+  { id: 'agents', label: 'Agents', icon: Cpu },
+  { id: 'doc-extract', label: 'Doc Extract', icon: FileDown },
+  { id: 'job-match', label: 'Job Match', icon: Briefcase },
+  { id: 'mhtml', label: 'MHTML', icon: Archive },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -5303,6 +5326,2265 @@ function BrandExtendPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ██ MCP PANEL (firecrawl-mcp-server)
+// ══════════════════════════════════════════════════════════════
+
+interface McpLog {
+  id: number;
+  timestamp: string;
+  tool: string;
+  status: 'success' | 'error';
+  message?: string;
+}
+
+interface McpConfig {
+  server_url: string;
+  api_key: string;
+  enabled: boolean;
+}
+
+interface McpConnectionResult {
+  connected: boolean;
+  capabilities: string[];
+  version?: string;
+}
+
+function McpPanel() {
+  const { addToast } = useToast();
+  const [config, setConfig] = useState<McpConfig>({ server_url: '', api_key: '', enabled: true });
+  const [logs, setLogs] = useState<McpLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [connection, setConnection] = useState<McpConnectionResult | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  const loadConfig = useCallback(async () => {
+    try {
+      const data = await apiFetch<McpConfig>('/firecrawl-tools/mcp/config');
+      setConfig(data);
+    } catch { /* fresh config */ } finally { setLoading(false); }
+  }, []);
+
+  const loadLogs = useCallback(async () => {
+    try {
+      const data = await apiFetch<McpLog[]>('/firecrawl-tools/mcp/logs');
+      setLogs(data);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { loadConfig(); loadLogs(); }, [loadConfig, loadLogs]);
+
+  const testConnection = async () => {
+    if (!config.server_url.trim()) { addToast('Enter a server URL', 'warning'); return; }
+    setTesting(true);
+    setConnection(null);
+    try {
+      const data = await apiFetch<McpConnectionResult>('/firecrawl-tools/mcp/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ server_url: config.server_url.trim() }),
+      });
+      setConnection(data);
+      addToast(data.connected ? 'Connected successfully' : 'Connection failed', data.connected ? 'success' : 'error');
+      loadLogs();
+    } catch {
+      addToast('Connection test failed', 'error');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const saveConfig = async () => {
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/mcp/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      addToast('MCP config saved', 'success');
+    } catch {
+      addToast('Failed to save config', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="MCP Server" icon={Server} statusLed={connection?.connected ? 'bg-emerald-400' : 'bg-red-400'}>
+        <SmallBtn onClick={loadLogs}><RefreshCw className="w-3 h-3" /> Refresh Logs</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Config Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Server URL</label>
+            <input
+              value={config.server_url}
+              onChange={e => setConfig(prev => ({ ...prev, server_url: e.target.value }))}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder="http://localhost:3002/mcp"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">API Key</label>
+            <div className="flex items-center gap-1">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                value={config.api_key}
+                onChange={e => setConfig(prev => ({ ...prev, api_key: e.target.value }))}
+                className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+                placeholder="fc-••••••••"
+              />
+              <button onClick={() => setShowApiKey(!showApiKey)} className="text-rmpg-500 hover:text-white">
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 pt-1">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              onChange={e => setConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+              className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
+            />
+            Enabled
+          </label>
+          <div className="flex-1" />
+          <SmallBtn onClick={testConnection} loading={testing} variant="primary">
+            <Plug className="w-3 h-3" /> Test Connection
+          </SmallBtn>
+          <SmallBtn onClick={saveConfig} loading={saving} variant="primary">
+            <CheckCircle className="w-3 h-3" /> Save
+          </SmallBtn>
+        </div>
+      </div>
+
+      {/* Connection Status */}
+      {connection && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <StatusLed status={connection.connected ? 'active' : 'error'} />
+            <span className="text-xs text-white font-medium">{connection.connected ? 'Connected' : 'Disconnected'}</span>
+            {connection.version && <span className="text-[10px] text-rmpg-500 font-mono">v{connection.version}</span>}
+          </div>
+          {connection.capabilities.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Capabilities</div>
+              <div className="flex flex-wrap gap-1">
+                {connection.capabilities.map((cap, i) => (
+                  <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                    {cap}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recent Logs */}
+      {logs.length > 0 && (
+        <div className="border border-rmpg-700 rounded-sm overflow-hidden">
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="bg-surface-sunken">
+                <th className="text-left px-2 py-1 text-rmpg-400 font-medium border-b border-rmpg-700">Time</th>
+                <th className="text-left px-2 py-1 text-rmpg-400 font-medium border-b border-rmpg-700">Tool</th>
+                <th className="text-left px-2 py-1 text-rmpg-400 font-medium border-b border-rmpg-700">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map(log => (
+                <tr key={log.id} className="border-b border-rmpg-700 last:border-0 hover:bg-rmpg-700/30">
+                  <td className="px-2 py-1 text-rmpg-500 font-mono">{fmtDate(log.timestamp)}</td>
+                  <td className="px-2 py-1 text-white font-mono">{log.tool}</td>
+                  <td className="px-2 py-1">
+                    <StatusLed status={log.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {logs.length === 0 && !connection && (
+        <EmptyState icon={Server} message="Configure MCP server connection to enable Firecrawl tool integration." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ EXAMPLES PANEL (firecrawl-app-examples)
+// ══════════════════════════════════════════════════════════════
+
+interface FirecrawlExample {
+  id: number;
+  name: string;
+  description: string;
+  category: 'scraping' | 'search' | 'extraction' | 'monitoring' | 'enrichment' | 'research';
+  config_json: string;
+  source_url: string;
+  created_at: string;
+}
+
+function ExamplesPanel() {
+  const { addToast } = useToast();
+  const [examples, setExamples] = useState<FirecrawlExample[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  const [formName, setFormName] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+  const [formCategory, setFormCategory] = useState<FirecrawlExample['category']>('scraping');
+  const [formConfig, setFormConfig] = useState('{}');
+  const [formSourceUrl, setFormSourceUrl] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<FirecrawlExample[]>('/firecrawl-tools/examples');
+      setExamples(data);
+    } catch {
+      addToast('Failed to load examples', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const createExample = async () => {
+    if (!formName.trim()) { addToast('Name is required', 'warning'); return; }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/examples', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          description: formDesc.trim(),
+          category: formCategory,
+          config_json: formConfig,
+          source_url: formSourceUrl.trim(),
+        }),
+      });
+      addToast('Example created', 'success');
+      setShowForm(false);
+      setFormName(''); setFormDesc(''); setFormCategory('scraping'); setFormConfig('{}'); setFormSourceUrl('');
+      load();
+    } catch {
+      addToast('Failed to create example', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runExample = async (id: number) => {
+    setRunningIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/examples/${id}/run`, { method: 'POST' });
+      addToast('Example run triggered', 'success');
+    } catch {
+      addToast('Failed to run example', 'error');
+    } finally {
+      setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const deleteExample = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/examples/${id}`, { method: 'DELETE' });
+      addToast('Example deleted', 'success');
+      load();
+    } catch {
+      addToast('Failed to delete example', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const categoryColors: Record<string, string> = {
+    scraping: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+    search: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
+    extraction: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+    monitoring: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+    enrichment: 'bg-pink-500/10 border-pink-500/30 text-pink-400',
+    research: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Examples" icon={FolderOpen} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowForm(!showForm)} variant="primary">
+          <Plus className="w-3 h-3" /> New Example
+        </SmallBtn>
+        <SmallBtn onClick={load}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <input
+                value={formName} onChange={e => setFormName(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                placeholder="e.g. Scrape Product Pages"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Category</label>
+              <select
+                value={formCategory} onChange={e => setFormCategory(e.target.value as FirecrawlExample['category'])}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
+              >
+                <option value="scraping">Scraping</option>
+                <option value="search">Search</option>
+                <option value="extraction">Extraction</option>
+                <option value="monitoring">Monitoring</option>
+                <option value="enrichment">Enrichment</option>
+                <option value="research">Research</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
+            <input
+              value={formDesc} onChange={e => setFormDesc(e.target.value)}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="What this example demonstrates..."
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URL</label>
+            <input
+              value={formSourceUrl} onChange={e => setFormSourceUrl(e.target.value)}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder="https://github.com/mendableai/firecrawl-app-examples/..."
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Config JSON</label>
+            <textarea
+              value={formConfig} onChange={e => setFormConfig(e.target.value)}
+              rows={4}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder='{ "url": "...", "options": { ... } }'
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <SmallBtn onClick={createExample} loading={saving} variant="primary">
+              <CheckCircle className="w-3 h-3" /> Create
+            </SmallBtn>
+            <SmallBtn onClick={() => setShowForm(false)}>
+              <X className="w-3 h-3" /> Cancel
+            </SmallBtn>
+          </div>
+        </div>
+      )}
+
+      {/* Example Cards */}
+      {examples.length === 0 ? (
+        <EmptyState icon={FolderOpen} message="No examples yet. Create one to save and run Firecrawl configurations." />
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {examples.map(ex => (
+            <div key={ex.id} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-white flex-1 truncate">{ex.name}</span>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${categoryColors[ex.category] || 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
+                  {ex.category}
+                </span>
+              </div>
+              {ex.description && <div className="text-[10px] text-rmpg-400 leading-relaxed">{ex.description}</div>}
+              {ex.source_url && (
+                <a href={ex.source_url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline font-mono truncate block">
+                  <ExternalLink className="w-2.5 h-2.5 inline mr-1" />{ex.source_url}
+                </a>
+              )}
+              <div className="flex items-center gap-1.5 pt-1">
+                <SmallBtn onClick={() => runExample(ex.id)} loading={runningIds.has(ex.id)} variant="primary">
+                  <Play className="w-3 h-3" /> Run
+                </SmallBtn>
+                <SmallBtn onClick={() => deleteExample(ex.id)} loading={deletingIds.has(ex.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ LLMS.TXT V2 PANEL (llmstxt-generator)
+// ══════════════════════════════════════════════════════════════
+
+interface LlmsTxtV2Result {
+  id: number;
+  url: string;
+  llmstxt: string;
+  llmstxt_full: string;
+  pages_crawled: number;
+  word_count: number;
+  created_at: string;
+}
+
+function LlmsTxtV2Panel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [depth, setDepth] = useState(3);
+  const [maxPages, setMaxPages] = useState(50);
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<LlmsTxtV2Result | null>(null);
+  const [resultTab, setResultTab] = useState<'short' | 'full'>('short');
+  const [history, setHistory] = useState<LlmsTxtV2Result[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<LlmsTxtV2Result[]>('/firecrawl-tools/llmstxt-full/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const generate = async () => {
+    if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    setGenerating(true);
+    try {
+      const data = await apiFetch<LlmsTxtV2Result>('/firecrawl-tools/llmstxt-full', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), depth, max_pages: maxPages }),
+      });
+      setResult(data);
+      addToast('LLMs.txt V2 generated', 'success');
+      loadHistory();
+    } catch {
+      addToast('Generation failed', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyContent = (content: string) => {
+    navigator.clipboard.writeText(content).then(() => addToast('Copied to clipboard', 'success')).catch(() => addToast('Copy failed', 'error'));
+  };
+
+  const viewHistoryItem = (item: LlmsTxtV2Result) => {
+    setResult(item);
+    setUrl(item.url);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="LLMs.txt V2 Generator" icon={FileText} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Inputs */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && generate()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+        <div className="flex items-center gap-1">
+          <label className="text-[10px] text-rmpg-400">Depth:</label>
+          <input
+            type="number" min={1} max={10} value={depth} onChange={e => setDepth(Number(e.target.value))}
+            className="w-12 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1.5 text-xs text-white text-center focus:border-orange-500/50 focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          <label className="text-[10px] text-rmpg-400">Max:</label>
+          <input
+            type="number" min={1} max={500} value={maxPages} onChange={e => setMaxPages(Number(e.target.value))}
+            className="w-14 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1.5 text-xs text-white text-center focus:border-orange-500/50 focus:outline-none"
+          />
+        </div>
+        <SmallBtn onClick={generate} loading={generating} variant="primary">
+          <FileText className="w-3 h-3" /> Generate
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past generations</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <FileText className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-orange-400 shrink-0">{item.pages_crawled} pages</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] text-orange-400 font-mono">{result.pages_crawled} pages crawled</span>
+            <span className="text-[10px] text-rmpg-400 font-mono">{result.word_count.toLocaleString()} words</span>
+            <div className="flex-1" />
+            {/* Tab toggle */}
+            <div className="flex items-center gap-0.5 bg-surface-sunken rounded-sm p-0.5">
+              <button
+                onClick={() => setResultTab('short')}
+                className={`px-2 py-0.5 text-[10px] rounded-sm transition-colors ${resultTab === 'short' ? 'bg-orange-500/20 text-orange-300' : 'text-rmpg-400 hover:text-white'}`}
+              >
+                llms.txt
+              </button>
+              <button
+                onClick={() => setResultTab('full')}
+                className={`px-2 py-0.5 text-[10px] rounded-sm transition-colors ${resultTab === 'full' ? 'bg-orange-500/20 text-orange-300' : 'text-rmpg-400 hover:text-white'}`}
+              >
+                llms-full.txt
+              </button>
+            </div>
+            <SmallBtn onClick={() => copyContent(resultTab === 'short' ? result.llmstxt : result.llmstxt_full)} variant="primary">
+              <Clipboard className="w-3 h-3" /> Copy
+            </SmallBtn>
+          </div>
+          <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-96 overflow-auto scrollbar-dark whitespace-pre-wrap">
+            {resultTab === 'short' ? (result.llmstxt || 'No content') : (result.llmstxt_full || 'No content')}
+          </pre>
+        </div>
+      )}
+
+      {!result && !generating && (
+        <EmptyState icon={FileText} message="Enter a URL to generate llms.txt and llms-full.txt files with depth control." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ MENDABLE PANEL (mendable-nextjs-chatbot)
+// ══════════════════════════════════════════════════════════════
+
+interface MendableBot {
+  id: number;
+  name: string;
+  source_urls: string[];
+  system_prompt: string;
+  welcome_message: string;
+  status: 'ready' | 'indexing' | 'error';
+  created_at: string;
+}
+
+interface MendableMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: string[];
+}
+
+function MendablePanel() {
+  const { addToast } = useToast();
+  const [bots, setBots] = useState<MendableBot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [activeBotId, setActiveBotId] = useState<number | null>(null);
+  const [messages, setMessages] = useState<MendableMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [asking, setAsking] = useState(false);
+
+  const [formName, setFormName] = useState('');
+  const [formUrls, setFormUrls] = useState('');
+  const [formPrompt, setFormPrompt] = useState('');
+  const [formWelcome, setFormWelcome] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<MendableBot[]>('/firecrawl-tools/mendable');
+      setBots(data);
+    } catch {
+      addToast('Failed to load bots', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const createBot = async () => {
+    if (!formName.trim() || !formUrls.trim()) { addToast('Name and source URLs required', 'warning'); return; }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/mendable/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          source_urls: formUrls.split('\n').map(u => u.trim()).filter(Boolean),
+          system_prompt: formPrompt.trim(),
+          welcome_message: formWelcome.trim(),
+        }),
+      });
+      addToast('Mendable bot created', 'success');
+      setShowForm(false);
+      setFormName(''); setFormUrls(''); setFormPrompt(''); setFormWelcome('');
+      load();
+    } catch {
+      addToast('Failed to create bot', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteBot = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/mendable/${id}`, { method: 'DELETE' });
+      addToast('Bot deleted', 'success');
+      if (activeBotId === id) { setActiveBotId(null); setMessages([]); }
+      load();
+    } catch {
+      addToast('Failed to delete bot', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const openChat = (bot: MendableBot) => {
+    if (activeBotId === bot.id) {
+      setActiveBotId(null);
+      setMessages([]);
+    } else {
+      setActiveBotId(bot.id);
+      setMessages(bot.welcome_message ? [{ role: 'assistant', content: bot.welcome_message }] : []);
+      setChatInput('');
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!chatInput.trim() || !activeBotId) return;
+    const userMsg: MendableMessage = { role: 'user', content: chatInput.trim() };
+    setMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setAsking(true);
+    try {
+      const data = await apiFetch<{ answer: string; citations?: string[] }>(`/firecrawl-tools/mendable/${activeBotId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg.content }),
+      });
+      setMessages(prev => [...prev, { role: 'assistant', content: data.answer, citations: data.citations }]);
+    } catch {
+      addToast('Failed to get response', 'error');
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Failed to get a response.' }]);
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Mendable Chatbot" icon={Bot} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowForm(!showForm)} variant="primary">
+          <Plus className="w-3 h-3" /> New Bot
+        </SmallBtn>
+        <SmallBtn onClick={load}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <input
+                value={formName} onChange={e => setFormName(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                placeholder="e.g. Docs Assistant"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Welcome Message</label>
+              <input
+                value={formWelcome} onChange={e => setFormWelcome(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                placeholder="Hi! How can I help you today?"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs * (one per line)</label>
+            <textarea
+              value={formUrls} onChange={e => setFormUrls(e.target.value)}
+              rows={3}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder="https://docs.example.com&#10;https://blog.example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">System Prompt</label>
+            <textarea
+              value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
+              rows={2}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="You are a helpful assistant that answers questions about..."
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <SmallBtn onClick={createBot} loading={saving} variant="primary">
+              <CheckCircle className="w-3 h-3" /> Create
+            </SmallBtn>
+            <SmallBtn onClick={() => setShowForm(false)}>
+              <X className="w-3 h-3" /> Cancel
+            </SmallBtn>
+          </div>
+        </div>
+      )}
+
+      {/* Bot List */}
+      {bots.length === 0 ? (
+        <EmptyState icon={Bot} message="No Mendable bots yet. Create one from source URLs to start chatting." />
+      ) : (
+        <div className="space-y-1">
+          {bots.map(bot => (
+            <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <StatusLed status={bot.status === 'ready' ? 'active' : bot.status} />
+                <Bot className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
+                <span className="text-[10px] text-rmpg-500">{bot.source_urls.length} source{bot.source_urls.length !== 1 ? 's' : ''}</span>
+                <SmallBtn onClick={() => openChat(bot)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={bot.status !== 'ready'}>
+                  <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Chat'}
+                </SmallBtn>
+                <SmallBtn onClick={() => deleteBot(bot.id)} loading={deletingIds.has(bot.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+
+              {/* Chat Interface */}
+              {activeBotId === bot.id && (
+                <div className="border-t border-rmpg-700 bg-surface-sunken p-3 space-y-2">
+                  <div className="max-h-64 overflow-y-auto scrollbar-dark space-y-2">
+                    {messages.length === 0 && (
+                      <div className="text-[10px] text-rmpg-500 text-center py-4">Start a conversation...</div>
+                    )}
+                    {messages.map((msg, i) => (
+                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] rounded-sm px-2.5 py-1.5 ${
+                          msg.role === 'user'
+                            ? 'bg-orange-500/10 border border-orange-500/30 text-orange-200'
+                            : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-200'
+                        }`}>
+                          <div className="text-[10px] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+                          {msg.citations && msg.citations.length > 0 && (
+                            <div className="mt-1 pt-1 border-t border-rmpg-700 space-y-0.5">
+                              {msg.citations.map((cite, ci) => (
+                                <a key={ci} href={cite} target="_blank" rel="noopener noreferrer"
+                                  className="text-[9px] text-brand-400 hover:underline font-mono block truncate">
+                                  [{ci + 1}] {cite}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {asking && (
+                      <div className="flex justify-start">
+                        <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm px-3 py-2">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                      className="flex-1 bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                      placeholder="Ask a question..."
+                      disabled={asking}
+                    />
+                    <SmallBtn onClick={sendMessage} loading={asking} variant="primary" disabled={!chatInput.trim()}>
+                      <Send className="w-3 h-3" />
+                    </SmallBtn>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ NEWS PANEL (aginews)
+// ══════════════════════════════════════════════════════════════
+
+interface NewsArticle {
+  title: string;
+  summary: string;
+  published_date: string;
+  source: string;
+  url: string;
+}
+
+interface NewsResult {
+  id: number;
+  topic: string;
+  articles: NewsArticle[];
+  created_at: string;
+}
+
+function NewsPanel() {
+  const { addToast } = useToast();
+  const [topic, setTopic] = useState('');
+  const [sources, setSources] = useState('');
+  const [maxResults, setMaxResults] = useState(10);
+  const [searching, setSearching] = useState(false);
+  const [result, setResult] = useState<NewsResult | null>(null);
+  const [history, setHistory] = useState<NewsResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<NewsResult[]>('/firecrawl-tools/news/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const searchNews = async () => {
+    if (!topic.trim()) { addToast('Enter a topic', 'warning'); return; }
+    setSearching(true);
+    try {
+      const data = await apiFetch<NewsResult>('/firecrawl-tools/news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          sources: sources.split('\n').map(s => s.trim()).filter(Boolean),
+          max_results: maxResults,
+        }),
+      });
+      setResult(data);
+      addToast(`Found ${data.articles.length} articles`, 'success');
+      loadHistory();
+    } catch {
+      addToast('News search failed', 'error');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const viewHistoryItem = (item: NewsResult) => {
+    setResult(item);
+    setTopic(item.topic);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="News Search" icon={Newspaper} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Inputs */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            value={topic}
+            onChange={e => setTopic(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && searchNews()}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+            placeholder="Enter topic..."
+          />
+          <div className="flex items-center gap-1">
+            <label className="text-[10px] text-rmpg-400">Max:</label>
+            <input
+              type="number" min={1} max={50} value={maxResults} onChange={e => setMaxResults(Number(e.target.value))}
+              className="w-12 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1.5 text-xs text-white text-center focus:border-orange-500/50 focus:outline-none"
+            />
+          </div>
+          <SmallBtn onClick={searchNews} loading={searching} variant="primary">
+            <Search className="w-3 h-3" /> Search News
+          </SmallBtn>
+        </div>
+        <div>
+          <label className="block text-[10px] text-rmpg-400 mb-0.5">Sources (optional, one per line)</label>
+          <textarea
+            value={sources} onChange={e => setSources(e.target.value)}
+            rows={2}
+            className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="https://news.ycombinator.com&#10;https://techcrunch.com"
+          />
+        </div>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past searches</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Newspaper className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.topic}</span>
+                <span className="text-[10px] text-orange-400 shrink-0">{item.articles.length} articles</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && result.articles.length > 0 && (
+        <div className="space-y-1.5">
+          {result.articles.map((article, i) => (
+            <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-white flex-1">{article.title}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-blue-500/10 border border-blue-500/30 text-blue-400 shrink-0">
+                  {article.source}
+                </span>
+              </div>
+              <div className="text-[10px] text-rmpg-400 leading-relaxed">{article.summary}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] text-rmpg-500">{fmtDate(article.published_date)}</span>
+                <a href={article.url} target="_blank" rel="noopener noreferrer"
+                  className="text-[9px] text-brand-400 hover:underline font-mono">
+                  <ExternalLink className="w-2.5 h-2.5 inline mr-0.5" />Open
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!result && !searching && (
+        <EmptyState icon={Newspaper} message="Enter a topic to search for recent news articles." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ DRAFTS PANEL (auto-draft)
+// ══════════════════════════════════════════════════════════════
+
+interface Draft {
+  id: number;
+  topic: string;
+  draft_type: 'blog' | 'report' | 'summary' | 'brief';
+  content: string;
+  sources_used: string[];
+  word_count: number;
+  created_at: string;
+}
+
+function DraftsPanel() {
+  const { addToast } = useToast();
+  const [topic, setTopic] = useState('');
+  const [draftType, setDraftType] = useState<Draft['draft_type']>('blog');
+  const [sourceUrls, setSourceUrls] = useState('');
+  const [wordTarget, setWordTarget] = useState(500);
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<Draft | null>(null);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(true);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  const loadDrafts = useCallback(async () => {
+    try {
+      const data = await apiFetch<Draft[]>('/firecrawl-tools/drafts');
+      setDrafts(data);
+    } catch { /* silent */ } finally { setDraftsLoading(false); }
+  }, []);
+
+  useEffect(() => { loadDrafts(); }, [loadDrafts]);
+
+  const generateDraft = async () => {
+    if (!topic.trim()) { addToast('Enter a topic', 'warning'); return; }
+    setGenerating(true);
+    try {
+      const data = await apiFetch<Draft>('/firecrawl-tools/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          draft_type: draftType,
+          source_urls: sourceUrls.split('\n').map(u => u.trim()).filter(Boolean),
+          word_count_target: wordTarget,
+        }),
+      });
+      setResult(data);
+      addToast('Draft generated', 'success');
+      loadDrafts();
+    } catch {
+      addToast('Draft generation failed', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const deleteDraft = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/drafts/${id}`, { method: 'DELETE' });
+      addToast('Draft deleted', 'success');
+      if (result?.id === id) setResult(null);
+      loadDrafts();
+    } catch {
+      addToast('Failed to delete draft', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const copyContent = () => {
+    if (!result?.content) return;
+    navigator.clipboard.writeText(result.content).then(() => addToast('Copied', 'success')).catch(() => addToast('Copy failed', 'error'));
+  };
+
+  const viewDraft = (draft: Draft) => {
+    setResult(draft);
+    setTopic(draft.topic);
+    setDraftType(draft.draft_type);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Auto Draft" icon={PenTool} statusLed="bg-orange-400">
+        <SmallBtn onClick={loadDrafts}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Input Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Topic *</label>
+            <input
+              value={topic} onChange={e => setTopic(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && generateDraft()}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="e.g. AI trends in law enforcement"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Type</label>
+            <select
+              value={draftType} onChange={e => setDraftType(e.target.value as Draft['draft_type'])}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
+            >
+              <option value="blog">Blog</option>
+              <option value="report">Report</option>
+              <option value="summary">Summary</option>
+              <option value="brief">Brief</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs (optional, one per line)</label>
+          <textarea
+            value={sourceUrls} onChange={e => setSourceUrls(e.target.value)}
+            rows={2}
+            className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="https://example.com/article"
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <label className="text-[10px] text-rmpg-400">Words:</label>
+            <input
+              type="number" min={100} max={5000} step={100} value={wordTarget} onChange={e => setWordTarget(Number(e.target.value))}
+              className="w-16 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1 text-xs text-white text-center focus:border-orange-500/50 focus:outline-none"
+            />
+          </div>
+          <SmallBtn onClick={generateDraft} loading={generating} variant="primary">
+            <PenTool className="w-3 h-3" /> Generate Draft
+          </SmallBtn>
+        </div>
+      </div>
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400 uppercase">
+              {result.draft_type}
+            </span>
+            <span className="text-[10px] text-rmpg-400 font-mono">{result.word_count} words</span>
+            <div className="flex-1" />
+            <SmallBtn onClick={copyContent} variant="primary">
+              <Clipboard className="w-3 h-3" /> Copy
+            </SmallBtn>
+          </div>
+          <textarea
+            readOnly
+            value={result.content}
+            rows={12}
+            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 leading-relaxed resize-y scrollbar-dark focus:outline-none"
+          />
+          {result.sources_used.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Sources Used</div>
+              <div className="space-y-0.5">
+                {result.sources_used.map((src, i) => (
+                  <a key={i} href={src} target="_blank" rel="noopener noreferrer"
+                    className="text-[9px] text-brand-400 hover:underline font-mono block truncate">
+                    <ExternalLink className="w-2.5 h-2.5 inline mr-1" />{src}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Saved Drafts */}
+      {drafts.length > 0 && (
+        <div>
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1.5">Saved Drafts</div>
+          <div className="space-y-1">
+            {drafts.map(d => (
+              <div key={d.id} className="flex items-center gap-2 px-3 py-1.5 bg-surface-raised border border-rmpg-600 rounded-sm hover:bg-rmpg-700/30">
+                <PenTool className="w-3 h-3 text-orange-400 shrink-0" />
+                <button onClick={() => viewDraft(d)} className="text-[10px] text-rmpg-300 truncate flex-1 text-left hover:text-white">
+                  {d.topic}
+                </button>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{d.draft_type}</span>
+                <span className="text-[10px] text-rmpg-500">{d.word_count}w</span>
+                <span className="text-[10px] text-rmpg-500">{fmtDate(d.created_at)}</span>
+                <SmallBtn onClick={() => deleteDraft(d.id)} loading={deletingIds.has(d.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!result && drafts.length === 0 && !generating && !draftsLoading && (
+        <EmptyState icon={PenTool} message="Enter a topic and type to auto-generate a draft from web sources." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ SLACK PANEL (ai-slack-bot)
+// ══════════════════════════════════════════════════════════════
+
+interface SlackConfig {
+  id?: number;
+  webhook_url: string;
+  channel_name: string;
+  notify_on: {
+    scout_alert: boolean;
+    brand_mention: boolean;
+    observer_change: boolean;
+    enrichment_complete: boolean;
+  };
+}
+
+function SlackPanel() {
+  const { addToast } = useToast();
+  const [config, setConfig] = useState<SlackConfig>({
+    webhook_url: '', channel_name: '',
+    notify_on: { scout_alert: true, brand_mention: true, observer_change: true, enrichment_complete: false },
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [configured, setConfigured] = useState(false);
+
+  const loadConfig = useCallback(async () => {
+    try {
+      const data = await apiFetch<SlackConfig>('/firecrawl-tools/integrations/slack');
+      if (data && data.webhook_url) {
+        setConfig(data);
+        setConfigured(true);
+      }
+    } catch { /* not configured */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  const saveConfig = async () => {
+    if (!config.webhook_url.trim()) { addToast('Webhook URL required', 'warning'); return; }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/integrations/slack', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      addToast('Slack config saved', 'success');
+      setConfigured(true);
+    } catch {
+      addToast('Failed to save config', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteConfig = async () => {
+    try {
+      await apiFetch('/firecrawl-tools/integrations/slack', { method: 'DELETE' });
+      addToast('Slack config removed', 'success');
+      setConfig({ webhook_url: '', channel_name: '', notify_on: { scout_alert: true, brand_mention: true, observer_change: true, enrichment_complete: false } });
+      setConfigured(false);
+    } catch {
+      addToast('Failed to remove config', 'error');
+    }
+  };
+
+  const testWebhook = async () => {
+    setTesting(true);
+    try {
+      await apiFetch('/firecrawl-tools/integrations/slack/test', { method: 'POST' });
+      addToast('Test message sent to Slack', 'success');
+    } catch {
+      addToast('Test failed', 'error');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Slack Integration" icon={MessageCircle} statusLed={configured ? 'bg-emerald-400' : 'bg-rmpg-500'}>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${configured ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
+          {configured ? 'Configured' : 'Not Configured'}
+        </span>
+      </PanelTitleBar>
+
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Webhook URL *</label>
+            <input
+              value={config.webhook_url}
+              onChange={e => setConfig(prev => ({ ...prev, webhook_url: e.target.value }))}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder="https://hooks.slack.com/services/..."
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Channel Name</label>
+            <input
+              value={config.channel_name}
+              onChange={e => setConfig(prev => ({ ...prev, channel_name: e.target.value }))}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="#firecrawl-alerts"
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1.5">Notify On</div>
+          <div className="flex flex-wrap gap-3">
+            {(['scout_alert', 'brand_mention', 'observer_change', 'enrichment_complete'] as const).map(key => (
+              <label key={key} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.notify_on[key]}
+                  onChange={e => setConfig(prev => ({ ...prev, notify_on: { ...prev.notify_on, [key]: e.target.checked } }))}
+                  className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
+                />
+                {key.replace(/_/g, ' ')}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <SmallBtn onClick={saveConfig} loading={saving} variant="primary">
+            <CheckCircle className="w-3 h-3" /> Save
+          </SmallBtn>
+          {configured && (
+            <>
+              <SmallBtn onClick={testWebhook} loading={testing}>
+                <Send className="w-3 h-3" /> Send Test
+              </SmallBtn>
+              <SmallBtn onClick={deleteConfig} variant="danger">
+                <Trash2 className="w-3 h-3" /> Delete
+              </SmallBtn>
+            </>
+          )}
+        </div>
+      </div>
+
+      {!configured && (
+        <EmptyState icon={MessageCircle} message="Configure a Slack webhook to receive Firecrawl notifications." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ DISCORD PANEL (discord bots)
+// ══════════════════════════════════════════════════════════════
+
+interface DiscordConfig {
+  id?: number;
+  webhook_url: string;
+  notify_on: {
+    scout_alert: boolean;
+    brand_mention: boolean;
+    observer_change: boolean;
+    enrichment_complete: boolean;
+  };
+}
+
+function DiscordPanel() {
+  const { addToast } = useToast();
+  const [config, setConfig] = useState<DiscordConfig>({
+    webhook_url: '',
+    notify_on: { scout_alert: true, brand_mention: true, observer_change: true, enrichment_complete: false },
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [configured, setConfigured] = useState(false);
+
+  const loadConfig = useCallback(async () => {
+    try {
+      const data = await apiFetch<DiscordConfig>('/firecrawl-tools/integrations/discord');
+      if (data && data.webhook_url) {
+        setConfig(data);
+        setConfigured(true);
+      }
+    } catch { /* not configured */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  const saveConfig = async () => {
+    if (!config.webhook_url.trim()) { addToast('Webhook URL required', 'warning'); return; }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/integrations/discord', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      addToast('Discord config saved', 'success');
+      setConfigured(true);
+    } catch {
+      addToast('Failed to save config', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteConfig = async () => {
+    try {
+      await apiFetch('/firecrawl-tools/integrations/discord', { method: 'DELETE' });
+      addToast('Discord config removed', 'success');
+      setConfig({ webhook_url: '', notify_on: { scout_alert: true, brand_mention: true, observer_change: true, enrichment_complete: false } });
+      setConfigured(false);
+    } catch {
+      addToast('Failed to remove config', 'error');
+    }
+  };
+
+  const testWebhook = async () => {
+    setTesting(true);
+    try {
+      await apiFetch('/firecrawl-tools/integrations/discord/test', { method: 'POST' });
+      addToast('Test message sent to Discord', 'success');
+    } catch {
+      addToast('Test failed', 'error');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Discord Integration" icon={Hash} statusLed={configured ? 'bg-emerald-400' : 'bg-rmpg-500'}>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${configured ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
+          {configured ? 'Configured' : 'Not Configured'}
+        </span>
+      </PanelTitleBar>
+
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div>
+          <label className="block text-[10px] text-rmpg-400 mb-0.5">Webhook URL *</label>
+          <input
+            value={config.webhook_url}
+            onChange={e => setConfig(prev => ({ ...prev, webhook_url: e.target.value }))}
+            className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="https://discord.com/api/webhooks/..."
+          />
+        </div>
+
+        <div>
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1.5">Notify On</div>
+          <div className="flex flex-wrap gap-3">
+            {(['scout_alert', 'brand_mention', 'observer_change', 'enrichment_complete'] as const).map(key => (
+              <label key={key} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.notify_on[key]}
+                  onChange={e => setConfig(prev => ({ ...prev, notify_on: { ...prev.notify_on, [key]: e.target.checked } }))}
+                  className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
+                />
+                {key.replace(/_/g, ' ')}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <SmallBtn onClick={saveConfig} loading={saving} variant="primary">
+            <CheckCircle className="w-3 h-3" /> Save
+          </SmallBtn>
+          {configured && (
+            <>
+              <SmallBtn onClick={testWebhook} loading={testing}>
+                <Send className="w-3 h-3" /> Send Test
+              </SmallBtn>
+              <SmallBtn onClick={deleteConfig} variant="danger">
+                <Trash2 className="w-3 h-3" /> Delete
+              </SmallBtn>
+            </>
+          )}
+        </div>
+      </div>
+
+      {!configured && (
+        <EmptyState icon={Hash} message="Configure a Discord webhook to receive Firecrawl notifications." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ AGENTS PANEL (OpenManus)
+// ══════════════════════════════════════════════════════════════
+
+interface AgentDef {
+  id: number;
+  name: string;
+  goal: string;
+  tools: string[];
+  max_steps: number;
+  initial_input: string;
+  status: 'idle' | 'running' | 'error';
+  created_at: string;
+}
+
+interface AgentStep {
+  step: number;
+  tool: string;
+  input: string;
+  output: string;
+  status: 'success' | 'error';
+}
+
+interface AgentRun {
+  id: number;
+  agent_id: number;
+  status: 'success' | 'error' | 'running';
+  steps: AgentStep[];
+  created_at: string;
+}
+
+function AgentsPanel() {
+  const { addToast } = useToast();
+  const [agents, setAgents] = useState<AgentDef[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
+
+  const [formName, setFormName] = useState('');
+  const [formGoal, setFormGoal] = useState('');
+  const [formTools, setFormTools] = useState<Set<string>>(new Set(['scrape']));
+  const [formMaxSteps, setFormMaxSteps] = useState(10);
+  const [formInput, setFormInput] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<AgentDef[]>('/firecrawl-tools/agents');
+      setAgents(data);
+    } catch {
+      addToast('Failed to load agents', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const loadRuns = useCallback(async (agentId: number) => {
+    setRunsLoading(true);
+    try {
+      const data = await apiFetch<AgentRun[]>(`/firecrawl-tools/agents/${agentId}/runs`);
+      setRuns(data);
+    } catch { addToast('Failed to load runs', 'error'); }
+    finally { setRunsLoading(false); }
+  }, [addToast]);
+
+  const toggleExpand = (id: number) => {
+    if (expandedId === id) { setExpandedId(null); setRuns([]); }
+    else { setExpandedId(id); loadRuns(id); }
+  };
+
+  const createAgent = async () => {
+    if (!formName.trim() || !formGoal.trim()) { addToast('Name and goal required', 'warning'); return; }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          goal: formGoal.trim(),
+          tools: Array.from(formTools),
+          max_steps: formMaxSteps,
+          initial_input: formInput.trim(),
+        }),
+      });
+      addToast('Agent created', 'success');
+      setShowForm(false);
+      setFormName(''); setFormGoal(''); setFormTools(new Set(['scrape'])); setFormMaxSteps(10); setFormInput('');
+      load();
+    } catch {
+      addToast('Failed to create agent', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runAgent = async (id: number) => {
+    setRunningIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/agents/${id}/run`, { method: 'POST' });
+      addToast('Agent run started', 'success');
+      load();
+      if (expandedId === id) loadRuns(id);
+    } catch {
+      addToast('Failed to run agent', 'error');
+    } finally {
+      setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const deleteAgent = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/agents/${id}`, { method: 'DELETE' });
+      addToast('Agent deleted', 'success');
+      if (expandedId === id) { setExpandedId(null); setRuns([]); }
+      load();
+    } catch {
+      addToast('Failed to delete agent', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const toggleTool = (tool: string) => {
+    setFormTools(prev => {
+      const next = new Set(prev);
+      if (next.has(tool)) next.delete(tool); else next.add(tool);
+      return next;
+    });
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Agents (OpenManus)" icon={Cpu} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowForm(!showForm)} variant="primary">
+          <Plus className="w-3 h-3" /> New Agent
+        </SmallBtn>
+        <SmallBtn onClick={load}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <input
+                value={formName} onChange={e => setFormName(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                placeholder="e.g. Market Research Agent"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Max Steps</label>
+              <input
+                type="number" min={1} max={50} value={formMaxSteps} onChange={e => setFormMaxSteps(Number(e.target.value))}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white text-center focus:border-orange-500/50 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Goal *</label>
+            <textarea
+              value={formGoal} onChange={e => setFormGoal(e.target.value)}
+              rows={2}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="Describe what this agent should accomplish..."
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Initial URL/Query</label>
+            <input
+              value={formInput} onChange={e => setFormInput(e.target.value)}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder="https://example.com or search query"
+            />
+          </div>
+          <div>
+            <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tools</div>
+            <div className="flex gap-3">
+              {['scrape', 'search', 'extract'].map(tool => (
+                <label key={tool} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formTools.has(tool)}
+                    onChange={() => toggleTool(tool)}
+                    className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
+                  />
+                  {tool}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <SmallBtn onClick={createAgent} loading={saving} variant="primary">
+              <CheckCircle className="w-3 h-3" /> Create
+            </SmallBtn>
+            <SmallBtn onClick={() => setShowForm(false)}>
+              <X className="w-3 h-3" /> Cancel
+            </SmallBtn>
+          </div>
+        </div>
+      )}
+
+      {/* Agents List */}
+      {agents.length === 0 ? (
+        <EmptyState icon={Cpu} message="No agents yet. Create one with a goal and tools to automate web tasks." />
+      ) : (
+        <div className="space-y-1">
+          {agents.map(agent => (
+            <div key={agent.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <button onClick={() => toggleExpand(agent.id)} className="text-rmpg-500 hover:text-white">
+                  {expandedId === agent.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+                <StatusLed status={agent.status} />
+                <Cpu className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                <span className="text-xs font-medium text-white flex-1 truncate">{agent.name}</span>
+                <div className="flex gap-1">
+                  {agent.tools.map(t => (
+                    <span key={t} className="text-[8px] px-1 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{t}</span>
+                  ))}
+                </div>
+                <SmallBtn onClick={() => runAgent(agent.id)} loading={runningIds.has(agent.id)} variant="primary" disabled={agent.status === 'running'}>
+                  <Play className="w-3 h-3" /> Run
+                </SmallBtn>
+                <SmallBtn onClick={() => deleteAgent(agent.id)} loading={deletingIds.has(agent.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+
+              {/* Run History */}
+              {expandedId === agent.id && (
+                <div className="border-t border-rmpg-700 bg-surface-sunken p-3 space-y-2">
+                  {runsLoading ? (
+                    <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+                  ) : runs.length === 0 ? (
+                    <div className="text-[10px] text-rmpg-500 text-center py-3">No runs yet</div>
+                  ) : (
+                    runs.map(run => (
+                      <div key={run.id} className="bg-rmpg-800 border border-rmpg-700 rounded-sm p-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <StatusLed status={run.status} />
+                          <span className="text-[10px] text-rmpg-400">{fmtDate(run.created_at)}</span>
+                          <span className="text-[10px] text-orange-400">{run.steps.length} steps</span>
+                        </div>
+                        <div className="space-y-1">
+                          {run.steps.map((step, si) => (
+                            <div key={si} className="flex items-start gap-2 text-[10px]">
+                              <span className="text-rmpg-500 font-mono shrink-0">#{step.step}</span>
+                              <span className="text-orange-400 font-mono shrink-0 uppercase">{step.tool}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-rmpg-400 truncate">In: {step.input}</div>
+                                <div className="text-rmpg-300 truncate">Out: {step.output}</div>
+                              </div>
+                              <StatusLed status={step.status} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ DOC EXTRACT PANEL (mineru-api)
+// ══════════════════════════════════════════════════════════════
+
+interface DocExtractResult {
+  id: number;
+  url: string;
+  output_format: 'markdown' | 'json' | 'text';
+  content_preview: string;
+  tables_found: number;
+  images_found: number;
+  metadata: Record<string, string>;
+  created_at: string;
+}
+
+function DocExtractPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [outputFormat, setOutputFormat] = useState<'markdown' | 'json' | 'text'>('markdown');
+  const [extracting, setExtracting] = useState(false);
+  const [result, setResult] = useState<DocExtractResult | null>(null);
+  const [history, setHistory] = useState<DocExtractResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<DocExtractResult[]>('/firecrawl-tools/doc-extract/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const extract = async () => {
+    if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    setExtracting(true);
+    try {
+      const data = await apiFetch<DocExtractResult>('/firecrawl-tools/doc-extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), output_format: outputFormat }),
+      });
+      setResult(data);
+      addToast('Document extracted', 'success');
+      loadHistory();
+    } catch {
+      addToast('Extraction failed', 'error');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const viewHistoryItem = (item: DocExtractResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setOutputFormat(item.output_format);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Document Extract" icon={FileDown} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && extract()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com/document.pdf"
+        />
+        <select
+          value={outputFormat} onChange={e => setOutputFormat(e.target.value as 'markdown' | 'json' | 'text')}
+          className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white focus:border-orange-500/50 focus:outline-none"
+        >
+          <option value="markdown">Markdown</option>
+          <option value="json">JSON</option>
+          <option value="text">Text</option>
+        </select>
+        <SmallBtn onClick={extract} loading={extracting} variant="primary">
+          <FileDown className="w-3 h-3" /> Extract
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past extractions</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <FileDown className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[9px] text-orange-400 uppercase shrink-0">{item.output_format}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400 uppercase">
+              {result.output_format}
+            </span>
+            <span className="text-[10px] text-rmpg-400">{result.tables_found} tables</span>
+            <span className="text-[10px] text-rmpg-400">{result.images_found} images</span>
+          </div>
+          <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">
+            {result.content_preview || 'No content'}
+          </pre>
+          {Object.keys(result.metadata).length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Metadata</div>
+              <div className="grid grid-cols-2 gap-1">
+                {Object.entries(result.metadata).map(([k, v]) => (
+                  <div key={k} className="text-[10px]">
+                    <span className="text-rmpg-500">{k}:</span> <span className="text-rmpg-300">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !extracting && (
+        <EmptyState icon={FileDown} message="Enter a document URL to extract content, tables, and metadata." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ JOB MATCH PANEL (jobMatcher)
+// ══════════════════════════════════════════════════════════════
+
+interface JobMatch {
+  title: string;
+  company: string;
+  location: string;
+  salary: string;
+  match_score: number;
+  url: string;
+}
+
+interface JobMatchResult {
+  id: number;
+  search_url: string;
+  total_found: number;
+  jobs: JobMatch[];
+  created_at: string;
+}
+
+function JobMatchPanel() {
+  const { addToast } = useToast();
+  const [searchUrl, setSearchUrl] = useState('');
+  const [skills, setSkills] = useState('');
+  const [location, setLocation] = useState('');
+  const [minSalary, setMinSalary] = useState('');
+  const [remote, setRemote] = useState(false);
+  const [matching, setMatching] = useState(false);
+  const [result, setResult] = useState<JobMatchResult | null>(null);
+  const [history, setHistory] = useState<JobMatchResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<JobMatchResult[]>('/firecrawl-tools/job-match/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const match = async () => {
+    if (!searchUrl.trim()) { addToast('Enter a search URL', 'warning'); return; }
+    setMatching(true);
+    try {
+      const data = await apiFetch<JobMatchResult>('/firecrawl-tools/job-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          search_url: searchUrl.trim(),
+          skills: skills.split(',').map(s => s.trim()).filter(Boolean),
+          location: location.trim(),
+          min_salary: minSalary ? Number(minSalary) : undefined,
+          remote,
+        }),
+      });
+      setResult(data);
+      addToast(`Found ${data.total_found} matches`, 'success');
+      loadHistory();
+    } catch {
+      addToast('Job match failed', 'error');
+    } finally {
+      setMatching(false);
+    }
+  };
+
+  const viewHistoryItem = (item: JobMatchResult) => {
+    setResult(item);
+    setSearchUrl(item.search_url);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Job Match" icon={Briefcase} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Input Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div>
+          <label className="block text-[10px] text-rmpg-400 mb-0.5">Search URL *</label>
+          <input
+            value={searchUrl} onChange={e => setSearchUrl(e.target.value)}
+            className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="https://jobs.example.com/search?q=..."
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Skills (comma-separated)</label>
+            <input
+              value={skills} onChange={e => setSkills(e.target.value)}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="React, TypeScript, Node"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Location</label>
+            <input
+              value={location} onChange={e => setLocation(e.target.value)}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="Salt Lake City, UT"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Min Salary</label>
+            <input
+              type="number" value={minSalary} onChange={e => setMinSalary(e.target.value)}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="80000"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <input
+              type="checkbox" checked={remote} onChange={e => setRemote(e.target.checked)}
+              className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
+            />
+            Remote only
+          </label>
+          <div className="flex-1" />
+          <SmallBtn onClick={match} loading={matching} variant="primary">
+            <Briefcase className="w-3 h-3" /> Match
+          </SmallBtn>
+        </div>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past matches</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Briefcase className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.search_url}</span>
+                <span className="text-[10px] text-orange-400 shrink-0">{item.total_found} jobs</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-1.5">
+          <div className="text-[10px] text-orange-400 font-medium">{result.total_found} jobs found</div>
+          {result.jobs.map((job, i) => (
+            <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-white flex-1">{job.title}</span>
+                <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline shrink-0">
+                  <ExternalLink className="w-2.5 h-2.5 inline mr-0.5" />Apply
+                </a>
+              </div>
+              <div className="flex items-center gap-3 text-[10px]">
+                <span className="text-rmpg-300"><Building2 className="w-3 h-3 inline mr-0.5 text-rmpg-500" />{job.company}</span>
+                <span className="text-rmpg-400">{job.location}</span>
+                {job.salary && <span className="text-emerald-400 font-mono">{job.salary}</span>}
+              </div>
+              {/* Match score bar */}
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] text-rmpg-500">Match:</span>
+                <div className="flex-1 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${job.match_score >= 80 ? 'bg-emerald-400' : job.match_score >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
+                    style={{ width: `${job.match_score}%` }}
+                  />
+                </div>
+                <span className={`text-[9px] font-mono ${job.match_score >= 80 ? 'text-emerald-400' : job.match_score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {job.match_score}%
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!result && !matching && (
+        <EmptyState icon={Briefcase} message="Enter a job search URL and criteria to find matching positions." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ MHTML PANEL (mhtml2html)
+// ══════════════════════════════════════════════════════════════
+
+interface MhtmlResult {
+  id: number;
+  url: string;
+  title: string;
+  html_preview: string;
+  assets_count: number;
+  file_size: string;
+  created_at: string;
+}
+
+function MhtmlPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [converting, setConverting] = useState(false);
+  const [result, setResult] = useState<MhtmlResult | null>(null);
+  const [history, setHistory] = useState<MhtmlResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<MhtmlResult[]>('/firecrawl-tools/mhtml-convert/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const convert = async () => {
+    if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    setConverting(true);
+    try {
+      const data = await apiFetch<MhtmlResult>('/firecrawl-tools/mhtml-convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      setResult(data);
+      addToast('MHTML converted', 'success');
+      loadHistory();
+    } catch {
+      addToast('Conversion failed', 'error');
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const viewHistoryItem = (item: MhtmlResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="MHTML Converter" icon={Archive} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && convert()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+        <SmallBtn onClick={convert} loading={converting} variant="primary">
+          <Archive className="w-3 h-3" /> Convert
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past conversions</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Archive className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-400 shrink-0">{item.file_size}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-white">{result.title}</span>
+            <div className="flex-1" />
+            <span className="text-[10px] text-rmpg-400">{result.assets_count} assets</span>
+            <span className="text-[10px] text-orange-400 font-mono">{result.file_size}</span>
+          </div>
+          <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">
+            {result.html_preview || 'No preview'}
+          </pre>
+        </div>
+      )}
+
+      {!result && !converting && (
+        <EmptyState icon={Archive} message="Enter a URL to convert the page to MHTML format." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // ██ MAIN FIRECRAWL TAB COMPONENT
 // ══════════════════════════════════════════════════════════════
 
@@ -5358,6 +7640,18 @@ export default function FirecrawlTab() {
         {activeTab === 'html-to-md' && <HtmlToMdPanel />}
         {activeTab === 'coupons' && <CouponsPanel />}
         {activeTab === 'brand-extend' && <BrandExtendPanel />}
+        {activeTab === 'mcp' && <McpPanel />}
+        {activeTab === 'examples' && <ExamplesPanel />}
+        {activeTab === 'llmstxt-v2' && <LlmsTxtV2Panel />}
+        {activeTab === 'mendable' && <MendablePanel />}
+        {activeTab === 'news' && <NewsPanel />}
+        {activeTab === 'drafts' && <DraftsPanel />}
+        {activeTab === 'slack' && <SlackPanel />}
+        {activeTab === 'discord' && <DiscordPanel />}
+        {activeTab === 'agents' && <AgentsPanel />}
+        {activeTab === 'doc-extract' && <DocExtractPanel />}
+        {activeTab === 'job-match' && <JobMatchPanel />}
+        {activeTab === 'mhtml' && <MhtmlPanel />}
       </div>
     </div>
   );
