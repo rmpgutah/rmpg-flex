@@ -253,11 +253,20 @@ router.put('/sources/:name/config', requireRole('admin'), (req: Request, res: Re
       return;
     }
 
+    // Helper: upsert into system_config using correct column names
+    const upsertConfig = (configKey: string, configValue: string) => {
+      const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(configKey) as { id: number } | undefined;
+      if (existing) {
+        db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = ?").run(configValue, localNow(), configKey);
+      } else {
+        db.prepare(
+          "INSERT INTO system_config (config_key, config_value, category, is_active, updated_at) VALUES (?, ?, 'integrations', 1, ?)"
+        ).run(configKey, configValue, localNow());
+      }
+    };
+
     if (typeof enabled === 'boolean') {
-      db.prepare(
-        `INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-      ).run(`skipv2_${name}_enabled`, enabled ? '1' : '0', localNow());
+      upsertConfig(`skipv2_${name}_enabled`, enabled ? '1' : '0');
     }
 
     if (typeof apiKey === 'string') {
@@ -270,17 +279,11 @@ router.put('/sources/:name/config', requireRole('admin'), (req: Request, res: Re
       const authTag = cipher.getAuthTag().toString('hex');
       const encryptedValue = `${iv.toString('hex')}:${authTag}:${encrypted}`;
 
-      db.prepare(
-        `INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-      ).run(`skipv2_${name}_api_key`, encryptedValue, localNow());
+      upsertConfig(`skipv2_${name}_api_key`, encryptedValue);
     }
 
     if (sourceConfig && typeof sourceConfig === 'object') {
-      db.prepare(
-        `INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-      ).run(`skipv2_${name}_config`, JSON.stringify(sourceConfig), localNow());
+      upsertConfig(`skipv2_${name}_config`, JSON.stringify(sourceConfig));
     }
 
     auditLog(req, 'skiptracer_config_updated', 'integration', 0, `Skip Tracker 3.5 source "${name}" configuration updated`);

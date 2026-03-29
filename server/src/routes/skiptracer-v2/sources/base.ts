@@ -96,8 +96,8 @@ export abstract class BaseDataSource implements DataSource {
   protected getConfigValue(suffix: string): string | null {
     const db = getDb();
     const key = this.configKey(suffix);
-    const row = db.prepare('SELECT value FROM system_config WHERE key = ?').get(key) as { value: string } | undefined;
-    return row?.value ?? null;
+    const row = db.prepare("SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1").get(key) as { config_value: string } | undefined;
+    return row?.config_value ?? null;
   }
 
   /** Read and decrypt an AES-256-GCM encrypted value from system_config. */
@@ -116,10 +116,15 @@ export abstract class BaseDataSource implements DataSource {
     const db = getDb();
     const key = this.configKey(suffix);
     const encrypted = encrypt(plaintext);
-    db.prepare(
-      `INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-    ).run(key, encrypted, localNow());
+    // Check if exists first
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = ?").run(encrypted, localNow(), key);
+    } else {
+      db.prepare(
+        "INSERT INTO system_config (config_key, config_value, category, is_active, updated_at) VALUES (?, ?, 'integrations', 1, ?)"
+      ).run(key, encrypted, localNow());
+    }
   }
 
   // ============================================================
