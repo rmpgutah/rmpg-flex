@@ -44,6 +44,16 @@ import {
   Users,
   Link,
   Tag,
+  BarChart3,
+  Plug,
+  Target,
+  TrendingUp,
+  LayoutDashboard,
+  Layers,
+  Database,
+  FileCode,
+  Ticket,
+  Palette,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -51,7 +61,7 @@ import PanelTitleBar from '../PanelTitleBar';
 
 // ── Shared Types ──────────────────────────────────────────────
 
-type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect';
+type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend';
 
 interface Scout {
   id: number;
@@ -242,6 +252,16 @@ const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = 
   { id: 'deep-search', label: 'Deep Search', icon: ShieldCheck },
   { id: 'llmstxt', label: 'LLMs.txt', icon: FileText },
   { id: 'pdf-inspect', label: 'PDF Inspect', icon: FileSearch },
+  { id: 'graphs', label: 'Graphs', icon: BarChart3 },
+  { id: 'connectors', label: 'Connectors', icon: Plug },
+  { id: 'rag-eval', label: 'RAG Eval', icon: Target },
+  { id: 'trends', label: 'Trends', icon: TrendingUp },
+  { id: 'gen-ui', label: 'Gen UI', icon: LayoutDashboard },
+  { id: 'qa-cluster', label: 'QA Cluster', icon: Layers },
+  { id: 'extract', label: 'Extract', icon: Database },
+  { id: 'html-to-md', label: 'HTML→MD', icon: FileCode },
+  { id: 'coupons', label: 'Coupons', icon: Ticket },
+  { id: 'brand-extend', label: 'Brand Extend', icon: Palette },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -3217,6 +3237,2072 @@ function PdfInspectPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ██ GRAPHS PANEL (firegraph)
+// ══════════════════════════════════════════════════════════════
+
+interface GraphDataset {
+  label: string;
+  data: string;
+  color: string;
+}
+
+interface GraphResult {
+  id: number;
+  title: string;
+  chart_type: string;
+  labels: string;
+  datasets: GraphDataset[];
+  source_url: string | null;
+  created_at: string;
+}
+
+function GraphsPanel() {
+  const { addToast } = useToast();
+  const [graphs, setGraphs] = useState<GraphResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [mode, setMode] = useState<'manual' | 'url'>('manual');
+  const [urlInput, setUrlInput] = useState('');
+  const [extracting, setExtracting] = useState(false);
+
+  // Form fields
+  const [formTitle, setFormTitle] = useState('');
+  const [formChartType, setFormChartType] = useState('bar');
+  const [formLabels, setFormLabels] = useState('');
+  const [formDatasets, setFormDatasets] = useState<GraphDataset[]>([{ label: 'Series 1', data: '', color: '#f97316' }]);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<GraphResult[]>('/firecrawl-tools/graphs');
+      setGraphs(data);
+    } catch {
+      addToast('Failed to load graphs', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const addDataset = () => {
+    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#3b82f6' }]);
+  };
+
+  const removeDataset = (idx: number) => {
+    setFormDatasets(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateDataset = (idx: number, field: keyof GraphDataset, value: string) => {
+    setFormDatasets(prev => prev.map((ds, i) => i === idx ? { ...ds, [field]: value } : ds));
+  };
+
+  const createGraph = async () => {
+    if (!formTitle.trim() || !formLabels.trim()) {
+      addToast('Title and labels are required', 'warning');
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/graph', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formTitle.trim(),
+          chart_type: formChartType,
+          labels: formLabels.trim(),
+          datasets: formDatasets,
+        }),
+      });
+      addToast('Graph created', 'success');
+      setShowForm(false);
+      setFormTitle(''); setFormLabels(''); setFormChartType('bar');
+      setFormDatasets([{ label: 'Series 1', data: '', color: '#f97316' }]);
+      load();
+    } catch {
+      addToast('Failed to create graph', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const extractFromUrl = async () => {
+    if (!urlInput.trim()) { addToast('Enter a URL', 'warning'); return; }
+    setExtracting(true);
+    try {
+      const data = await apiFetch<GraphResult>('/firecrawl-tools/graph/from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      });
+      addToast('Graph extracted from URL', 'success');
+      setUrlInput('');
+      load();
+    } catch {
+      addToast('Failed to extract graph from URL', 'error');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const deleteGraph = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/graph/${id}`, { method: 'DELETE' });
+      addToast('Graph deleted', 'success');
+      load();
+    } catch {
+      addToast('Failed to delete graph', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Graphs" icon={BarChart3} statusLed="bg-orange-400" ledPulse>
+        <SmallBtn onClick={() => setShowForm(!showForm)} variant="primary">
+          <Plus className="w-3 h-3" /> New Graph
+        </SmallBtn>
+        <SmallBtn onClick={load}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-2 mb-2">
+            <SmallBtn onClick={() => setMode('manual')} variant={mode === 'manual' ? 'primary' : 'default'}>Manual</SmallBtn>
+            <SmallBtn onClick={() => setMode('url')} variant={mode === 'url' ? 'primary' : 'default'}>From URL</SmallBtn>
+          </div>
+
+          {mode === 'url' ? (
+            <div className="flex items-center gap-2">
+              <input
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && extractFromUrl()}
+                className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+                placeholder="https://example.com/data-page"
+              />
+              <SmallBtn onClick={extractFromUrl} loading={extracting} variant="primary">
+                <BarChart3 className="w-3 h-3" /> Extract
+              </SmallBtn>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 mb-0.5">Title *</label>
+                  <input
+                    value={formTitle} onChange={e => setFormTitle(e.target.value)}
+                    className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                    placeholder="Monthly Report"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 mb-0.5">Chart Type</label>
+                  <select
+                    value={formChartType} onChange={e => setFormChartType(e.target.value)}
+                    className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
+                  >
+                    <option value="line">Line</option>
+                    <option value="bar">Bar</option>
+                    <option value="pie">Pie</option>
+                    <option value="area">Area</option>
+                    <option value="scatter">Scatter</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] text-rmpg-400 mb-0.5">Labels (comma-separated) *</label>
+                <input
+                  value={formLabels} onChange={e => setFormLabels(e.target.value)}
+                  className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                  placeholder="Jan, Feb, Mar, Apr, May"
+                />
+              </div>
+              {/* Datasets */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-rmpg-400">Datasets</span>
+                  <SmallBtn onClick={addDataset}><Plus className="w-3 h-3" /> Add</SmallBtn>
+                </div>
+                {formDatasets.map((ds, idx) => (
+                  <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
+                    <input
+                      value={ds.label} onChange={e => updateDataset(idx, 'label', e.target.value)}
+                      className="w-24 bg-transparent border border-rmpg-600 rounded-sm px-1.5 py-0.5 text-[10px] text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                      placeholder="Label"
+                    />
+                    <input
+                      value={ds.data} onChange={e => updateDataset(idx, 'data', e.target.value)}
+                      className="flex-1 bg-transparent border border-rmpg-600 rounded-sm px-1.5 py-0.5 text-[10px] text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+                      placeholder="10, 20, 30, 40, 50"
+                    />
+                    <input
+                      type="color" value={ds.color} onChange={e => updateDataset(idx, 'color', e.target.value)}
+                      className="w-6 h-6 bg-transparent border-0 cursor-pointer rounded-sm"
+                    />
+                    {formDatasets.length > 1 && (
+                      <button onClick={() => removeDataset(idx)} className="text-rmpg-500 hover:text-red-400">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <SmallBtn onClick={() => setShowForm(false)}>Cancel</SmallBtn>
+                <SmallBtn onClick={createGraph} loading={saving} variant="primary">
+                  <Plus className="w-3 h-3" /> Create Graph
+                </SmallBtn>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Graph Cards */}
+      {graphs.length === 0 ? (
+        <EmptyState icon={BarChart3} message="No graphs yet. Create one or extract from a URL." />
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {graphs.map(g => (
+            <div key={g.id} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
+                  {g.chart_type}
+                </span>
+                <span className="text-[10px] text-white font-medium truncate flex-1">{g.title}</span>
+                <SmallBtn onClick={() => deleteGraph(g.id)} loading={deletingIds.has(g.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+              <div className="text-[10px] text-rmpg-400 font-mono truncate">Labels: {g.labels}</div>
+              <div className="flex flex-wrap gap-1">
+                {(g.datasets || []).map((ds, i) => (
+                  <span key={i} className="flex items-center gap-1 text-[9px] text-rmpg-300">
+                    <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ds.color }} />
+                    {ds.label}
+                  </span>
+                ))}
+              </div>
+              {g.source_url && (
+                <div className="text-[9px] text-rmpg-500 font-mono truncate">Source: {g.source_url}</div>
+              )}
+              <div className="text-[9px] text-rmpg-500">{fmtDate(g.created_at)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ CONNECTORS PANEL (data-connectors)
+// ══════════════════════════════════════════════════════════════
+
+interface ConnectorSync {
+  id: number;
+  connector_id: number;
+  status: 'success' | 'error' | 'running';
+  records_processed: number;
+  error_message: string | null;
+  created_at: string;
+}
+
+interface Connector {
+  id: number;
+  name: string;
+  type: string;
+  url: string;
+  schedule_hours: number;
+  transform_prompt: string;
+  status: 'active' | 'paused' | 'error';
+  last_sync_at: string | null;
+  last_sync_status: string | null;
+  created_at: string;
+}
+
+function ConnectorsPanel() {
+  const { addToast } = useToast();
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [syncs, setSyncs] = useState<ConnectorSync[]>([]);
+  const [syncsLoading, setSyncsLoading] = useState(false);
+  const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  // Form
+  const [formName, setFormName] = useState('');
+  const [formType, setFormType] = useState('RSS');
+  const [formUrl, setFormUrl] = useState('');
+  const [formSchedule, setFormSchedule] = useState('24');
+  const [formPrompt, setFormPrompt] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<Connector[]>('/firecrawl-tools/connectors');
+      setConnectors(data);
+    } catch {
+      addToast('Failed to load connectors', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const loadSyncs = useCallback(async (connectorId: number) => {
+    setSyncsLoading(true);
+    try {
+      const data = await apiFetch<ConnectorSync[]>(`/firecrawl-tools/connectors/${connectorId}/syncs`);
+      setSyncs(data);
+    } catch {
+      addToast('Failed to load sync history', 'error');
+    } finally {
+      setSyncsLoading(false);
+    }
+  }, [addToast]);
+
+  const toggleExpand = (id: number) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      setSyncs([]);
+    } else {
+      setExpandedId(id);
+      loadSyncs(id);
+    }
+  };
+
+  const createConnector = async () => {
+    if (!formName.trim() || !formUrl.trim()) {
+      addToast('Name and URL are required', 'warning');
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/connectors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          type: formType,
+          url: formUrl.trim(),
+          schedule_hours: parseInt(formSchedule),
+          transform_prompt: formPrompt.trim(),
+        }),
+      });
+      addToast('Connector created', 'success');
+      setShowForm(false);
+      setFormName(''); setFormType('RSS'); setFormUrl(''); setFormSchedule('24'); setFormPrompt('');
+      load();
+    } catch {
+      addToast('Failed to create connector', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const syncNow = async (id: number) => {
+    setSyncingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/connectors/${id}/sync`, { method: 'POST' });
+      addToast('Sync triggered', 'success');
+      load();
+      if (expandedId === id) loadSyncs(id);
+    } catch {
+      addToast('Sync failed', 'error');
+    } finally {
+      setSyncingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const deleteConnector = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/connectors/${id}`, { method: 'DELETE' });
+      addToast('Connector deleted', 'success');
+      if (expandedId === id) { setExpandedId(null); setSyncs([]); }
+      load();
+    } catch {
+      addToast('Failed to delete connector', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const typeBadgeColor = (type: string): string => {
+    switch (type) {
+      case 'RSS': return 'bg-orange-500/10 border-orange-500/30 text-orange-400';
+      case 'Sitemap': return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+      case 'API': return 'bg-brand-500/10 border-brand-500/30 text-brand-400';
+      case 'Webpage': return 'bg-purple-500/10 border-purple-500/30 text-purple-400';
+      default: return 'bg-rmpg-700/50 border-rmpg-600 text-rmpg-300';
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Data Connectors" icon={Plug} statusLed="bg-orange-400" ledPulse>
+        <SmallBtn onClick={() => setShowForm(!showForm)} variant="primary">
+          <Plus className="w-3 h-3" /> New Connector
+        </SmallBtn>
+        <SmallBtn onClick={load}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <input
+                value={formName} onChange={e => setFormName(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                placeholder="News Feed"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Type</label>
+              <select
+                value={formType} onChange={e => setFormType(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
+              >
+                <option value="RSS">RSS</option>
+                <option value="Sitemap">Sitemap</option>
+                <option value="API">API</option>
+                <option value="Webpage">Webpage</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
+              <input
+                value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+                placeholder="https://example.com/feed.xml"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Schedule (hours)</label>
+              <input
+                type="number" value={formSchedule} onChange={e => setFormSchedule(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
+                min="1" max="720"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Transform Prompt</label>
+            <textarea
+              value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
+              rows={2}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none"
+              placeholder="Extract key information and summarize..."
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <SmallBtn onClick={() => setShowForm(false)}>Cancel</SmallBtn>
+            <SmallBtn onClick={createConnector} loading={saving} variant="primary">
+              <Plus className="w-3 h-3" /> Create
+            </SmallBtn>
+          </div>
+        </div>
+      )}
+
+      {/* Connector List */}
+      {connectors.length === 0 ? (
+        <EmptyState icon={Plug} message="No connectors yet. Create one to sync external data." />
+      ) : (
+        <div className="space-y-1.5">
+          {connectors.map(c => (
+            <div key={c.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <button onClick={() => toggleExpand(c.id)} className="text-rmpg-500 hover:text-white">
+                  {expandedId === c.id ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                </button>
+                <StatusLed status={c.status} />
+                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${typeBadgeColor(c.type)}`}>
+                  {c.type}
+                </span>
+                <span className="text-[10px] text-white font-medium truncate flex-1">{c.name}</span>
+                <span className="text-[9px] text-rmpg-500 font-mono shrink-0">every {c.schedule_hours}h</span>
+                {c.last_sync_at && <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(c.last_sync_at)}</span>}
+                <SmallBtn onClick={() => syncNow(c.id)} loading={syncingIds.has(c.id)} variant="primary">
+                  <RefreshCw className="w-3 h-3" /> Sync
+                </SmallBtn>
+                <SmallBtn onClick={() => deleteConnector(c.id)} loading={deletingIds.has(c.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+              {/* Sync History */}
+              {expandedId === c.id && (
+                <div className="border-t border-rmpg-700 px-3 py-2">
+                  {syncsLoading ? (
+                    <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+                  ) : syncs.length === 0 ? (
+                    <div className="text-[10px] text-rmpg-500 py-2 text-center">No sync history</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {syncs.map(s => (
+                        <div key={s.id} className="flex items-center gap-2 text-[10px]">
+                          <StatusLed status={s.status} />
+                          <span className="text-rmpg-300">{s.status}</span>
+                          <span className="text-orange-400 font-mono">{s.records_processed} records</span>
+                          {s.error_message && <span className="text-red-400 truncate flex-1">{s.error_message}</span>}
+                          <span className="text-rmpg-500 shrink-0 ml-auto">{fmtDate(s.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ RAG EVAL PANEL (rag-arena)
+// ══════════════════════════════════════════════════════════════
+
+interface RagEvalQuestion {
+  question: string;
+  relevance_score: number;
+  completeness_score: number;
+  answer_snippet: string;
+}
+
+interface RagEvalResult {
+  id: number;
+  url: string;
+  overall_score: number;
+  questions: RagEvalQuestion[];
+  created_at: string;
+}
+
+function RagEvalPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [questions, setQuestions] = useState('');
+  const [evaluating, setEvaluating] = useState(false);
+  const [result, setResult] = useState<RagEvalResult | null>(null);
+  const [history, setHistory] = useState<RagEvalResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<RagEvalResult[]>('/firecrawl-tools/rag-eval/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const evaluate = async () => {
+    if (!url.trim() || !questions.trim()) { addToast('Enter a URL and questions', 'warning'); return; }
+    setEvaluating(true);
+    try {
+      const data = await apiFetch<RagEvalResult>('/firecrawl-tools/rag-eval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), questions: questions.trim().split('\n').filter(Boolean) }),
+      });
+      setResult(data);
+      addToast('RAG evaluation complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Evaluation failed', 'error');
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  const viewHistoryItem = (item: RagEvalResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setQuestions(item.questions.map(q => q.question).join('\n'));
+    setShowHistory(false);
+  };
+
+  const scoreColor = (score: number): string => {
+    if (score >= 80) return 'text-emerald-400';
+    if (score >= 60) return 'text-amber-400';
+    return 'text-red-400';
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="RAG Evaluation Arena" icon={Target} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* URL Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+      </div>
+
+      {/* Questions */}
+      <div>
+        <label className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
+        <textarea
+          value={questions}
+          onChange={e => setQuestions(e.target.value)}
+          rows={4}
+          className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none font-mono"
+          placeholder={"What is the company's main product?\nWho is the CEO?\nWhat pricing plans are available?"}
+        />
+      </div>
+
+      <SmallBtn onClick={evaluate} loading={evaluating} variant="primary">
+        <Target className="w-3 h-3" /> Evaluate
+      </SmallBtn>
+
+      {/* History Dropdown */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past evaluations</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Target className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className={`text-[10px] font-bold ${scoreColor(item.overall_score)}`}>{item.overall_score}%</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="space-y-3">
+          {/* Overall Score */}
+          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-4 flex items-center justify-center">
+            <div className="text-center">
+              <div className={`text-4xl font-bold font-mono ${scoreColor(result.overall_score)}`}>{result.overall_score}</div>
+              <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mt-1">Overall Score</div>
+            </div>
+          </div>
+
+          {/* Per-question results */}
+          <div className="space-y-1.5">
+            {result.questions.map((q, i) => (
+              <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 space-y-1.5">
+                <div className="text-[10px] text-white font-medium">{q.question}</div>
+                {q.answer_snippet && (
+                  <div className="text-[9px] text-rmpg-400 line-clamp-2">{q.answer_snippet}</div>
+                )}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between text-[9px] text-rmpg-400 mb-0.5">
+                      <span>Relevance</span>
+                      <span className={scoreColor(q.relevance_score)}>{q.relevance_score}%</span>
+                    </div>
+                    <div className="w-full h-1 bg-rmpg-700 rounded-full overflow-hidden">
+                      <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${q.relevance_score}%` }} />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between text-[9px] text-rmpg-400 mb-0.5">
+                      <span>Completeness</span>
+                      <span className={scoreColor(q.completeness_score)}>{q.completeness_score}%</span>
+                    </div>
+                    <div className="w-full h-1 bg-rmpg-700 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${q.completeness_score}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!result && !evaluating && (
+        <EmptyState icon={Target} message="Enter a URL and questions to evaluate RAG quality." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ TRENDS PANEL (trendfinder)
+// ══════════════════════════════════════════════════════════════
+
+interface TrendItem {
+  topic: string;
+  mention_count: number;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  source_urls: string[];
+}
+
+interface TrendsResult {
+  id: number;
+  domain: string;
+  keywords: string;
+  time_range: string;
+  trends: TrendItem[];
+  created_at: string;
+}
+
+function TrendsPanel() {
+  const { addToast } = useToast();
+  const [domain, setDomain] = useState('');
+  const [keywords, setKeywords] = useState('');
+  const [timeRange, setTimeRange] = useState('7d');
+  const [finding, setFinding] = useState(false);
+  const [result, setResult] = useState<TrendsResult | null>(null);
+  const [history, setHistory] = useState<TrendsResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<TrendsResult[]>('/firecrawl-tools/trends/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const findTrends = async () => {
+    if (!domain.trim()) { addToast('Enter a domain', 'warning'); return; }
+    setFinding(true);
+    try {
+      const data = await apiFetch<TrendsResult>('/firecrawl-tools/trends', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: domain.trim(), keywords: keywords.trim(), time_range: timeRange }),
+      });
+      setResult(data);
+      addToast('Trends found', 'success');
+      loadHistory();
+    } catch {
+      addToast('Failed to find trends', 'error');
+    } finally {
+      setFinding(false);
+    }
+  };
+
+  const viewHistoryItem = (item: TrendsResult) => {
+    setResult(item);
+    setDomain(item.domain);
+    setKeywords(item.keywords || '');
+    setTimeRange(item.time_range);
+    setShowHistory(false);
+  };
+
+  const sentimentBadge = (s: string) => {
+    switch (s) {
+      case 'positive': return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+      case 'negative': return 'bg-red-500/10 border-red-500/30 text-red-400';
+      default: return 'bg-rmpg-700/50 border-rmpg-600 text-rmpg-300';
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Trend Finder" icon={TrendingUp} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Inputs */}
+      <div className="flex items-center gap-2">
+        <input
+          value={domain}
+          onChange={e => setDomain(e.target.value)}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="example.com"
+        />
+        <input
+          value={keywords}
+          onChange={e => setKeywords(e.target.value)}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+          placeholder="Optional keywords"
+        />
+        <select
+          value={timeRange}
+          onChange={e => setTimeRange(e.target.value)}
+          className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-[10px] text-white focus:border-orange-500/50 focus:outline-none"
+        >
+          <option value="24h">24 hours</option>
+          <option value="7d">7 days</option>
+          <option value="30d">30 days</option>
+        </select>
+        <SmallBtn onClick={findTrends} loading={finding} variant="primary">
+          <TrendingUp className="w-3 h-3" /> Find Trends
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past trend searches</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <TrendingUp className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.domain}</span>
+                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.time_range}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-1.5">
+          {result.trends.map((trend, i) => (
+            <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-white font-medium flex-1">{trend.topic}</span>
+                <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
+                  {trend.mention_count} mentions
+                </span>
+                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${sentimentBadge(trend.sentiment)}`}>
+                  {trend.sentiment}
+                </span>
+              </div>
+              {trend.source_urls && trend.source_urls.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {trend.source_urls.map((sUrl, j) => (
+                    <a
+                      key={j}
+                      href={sUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[9px] text-brand-400 hover:underline font-mono truncate max-w-[200px]"
+                    >
+                      {sUrl.replace(/^https?:\/\//, '').split('/')[0]}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!result && !finding && (
+        <EmptyState icon={TrendingUp} message="Enter a domain to discover trending topics and mentions." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ GEN UI PANEL (gen-ui-firecrawl)
+// ══════════════════════════════════════════════════════════════
+
+interface GenUiResult {
+  id: number;
+  url: string;
+  component_type: string;
+  layout_structure: string;
+  elements: string[];
+  colors: string[];
+  fonts: string[];
+  react_snippet: string;
+  tailwind_classes: string[];
+  created_at: string;
+}
+
+function GenUiPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [componentType, setComponentType] = useState('dashboard');
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<GenUiResult | null>(null);
+  const [history, setHistory] = useState<GenUiResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<GenUiResult[]>('/firecrawl-tools/gen-ui/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const generate = async () => {
+    if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    setGenerating(true);
+    try {
+      const data = await apiFetch<GenUiResult>('/firecrawl-tools/gen-ui', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), component_type: componentType }),
+      });
+      setResult(data);
+      addToast('UI generated', 'success');
+      loadHistory();
+    } catch {
+      addToast('Generation failed', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const viewHistoryItem = (item: GenUiResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setComponentType(item.component_type);
+    setShowHistory(false);
+  };
+
+  const copySnippet = () => {
+    if (!result?.react_snippet) return;
+    navigator.clipboard.writeText(result.react_snippet).then(() => {
+      addToast('Copied to clipboard', 'success');
+    }).catch(() => {
+      addToast('Failed to copy', 'error');
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Gen UI" icon={LayoutDashboard} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Inputs */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && generate()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+        <select
+          value={componentType}
+          onChange={e => setComponentType(e.target.value)}
+          className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-[10px] text-white focus:border-orange-500/50 focus:outline-none"
+        >
+          <option value="dashboard">Dashboard</option>
+          <option value="form">Form</option>
+          <option value="table">Table</option>
+          <option value="card">Card</option>
+          <option value="list">List</option>
+        </select>
+        <SmallBtn onClick={generate} loading={generating} variant="primary">
+          <LayoutDashboard className="w-3 h-3" /> Generate
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past generations</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <LayoutDashboard className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.component_type}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-3">
+          {/* Structure Preview */}
+          <div>
+            <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Layout Structure</div>
+            <div className="text-[10px] text-rmpg-300 whitespace-pre-wrap">{result.layout_structure}</div>
+          </div>
+
+          {/* Elements */}
+          {result.elements && result.elements.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Elements</div>
+              <div className="flex flex-wrap gap-1">
+                {result.elements.map((el, i) => (
+                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-rmpg-700/50 border border-rmpg-600 text-rmpg-300">
+                    {el}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Colors & Fonts */}
+          <div className="flex gap-4">
+            {result.colors && result.colors.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Colors</div>
+                <div className="flex gap-1">
+                  {result.colors.map((c, i) => (
+                    <div key={i} className="w-6 h-6 rounded-sm border border-rmpg-600" style={{ backgroundColor: c }} title={c} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {result.fonts && result.fonts.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Fonts</div>
+                <div className="flex flex-wrap gap-1">
+                  {result.fonts.map((f, i) => (
+                    <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-purple-500/10 border border-purple-500/30 text-purple-400">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* React Snippet */}
+          {result.react_snippet && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">React Component</div>
+                <SmallBtn onClick={copySnippet} variant="primary">
+                  <Clipboard className="w-3 h-3" /> Copy
+                </SmallBtn>
+              </div>
+              <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">
+                {result.react_snippet}
+              </pre>
+            </div>
+          )}
+
+          {/* Tailwind Classes */}
+          {result.tailwind_classes && result.tailwind_classes.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tailwind Classes</div>
+              <div className="flex flex-wrap gap-1">
+                {result.tailwind_classes.map((cls, i) => (
+                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                    {cls}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !generating && (
+        <EmptyState icon={LayoutDashboard} message="Enter a URL to generate React UI components from its design." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ QA CLUSTER PANEL (QA_clustering)
+// ══════════════════════════════════════════════════════════════
+
+interface QaCluster {
+  theme: string;
+  questions: string[];
+}
+
+interface QaClusterResult {
+  id: number;
+  total_questions: number;
+  cluster_count: number;
+  clusters: QaCluster[];
+  created_at: string;
+}
+
+function QaClusterPanel() {
+  const { addToast } = useToast();
+  const [questionsInput, setQuestionsInput] = useState('');
+  const [clustering, setClustering] = useState(false);
+  const [result, setResult] = useState<QaClusterResult | null>(null);
+  const [history, setHistory] = useState<QaClusterResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [expandedClusters, setExpandedClusters] = useState<Set<number>>(new Set());
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<QaClusterResult[]>('/firecrawl-tools/qa-cluster/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const cluster = async () => {
+    const lines = questionsInput.trim().split('\n').filter(Boolean);
+    if (lines.length === 0) { addToast('Enter at least one question', 'warning'); return; }
+    setClustering(true);
+    try {
+      const data = await apiFetch<QaClusterResult>('/firecrawl-tools/qa-cluster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions: lines }),
+      });
+      setResult(data);
+      setExpandedClusters(new Set());
+      addToast('Clustering complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Clustering failed', 'error');
+    } finally {
+      setClustering(false);
+    }
+  };
+
+  const viewHistoryItem = (item: QaClusterResult) => {
+    setResult(item);
+    setExpandedClusters(new Set());
+    setShowHistory(false);
+  };
+
+  const toggleCluster = (idx: number) => {
+    setExpandedClusters(prev => {
+      const s = new Set(prev);
+      if (s.has(idx)) s.delete(idx);
+      else s.add(idx);
+      return s;
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="QA Clustering" icon={Layers} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Questions Input */}
+      <div>
+        <label className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
+        <textarea
+          value={questionsInput}
+          onChange={e => setQuestionsInput(e.target.value)}
+          rows={6}
+          className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none font-mono"
+          placeholder={"How do I reset my password?\nI forgot my login credentials\nWhere can I change my email?\nHow to update profile settings?"}
+        />
+      </div>
+
+      <SmallBtn onClick={cluster} loading={clustering} variant="primary">
+        <Layers className="w-3 h-3" /> Cluster
+      </SmallBtn>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past clusters</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Layers className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.total_questions} questions</span>
+                <span className="text-[9px] text-orange-400 font-mono shrink-0">{item.cluster_count} clusters</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="space-y-3">
+          {/* Stats */}
+          <div className="flex gap-3">
+            <div className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 text-center">
+              <div className="text-lg font-bold text-orange-400 font-mono">{result.total_questions}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase tracking-wider">Questions</div>
+            </div>
+            <div className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 text-center">
+              <div className="text-lg font-bold text-brand-400 font-mono">{result.cluster_count}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase tracking-wider">Clusters</div>
+            </div>
+          </div>
+
+          {/* Cluster Cards */}
+          <div className="space-y-1.5">
+            {result.clusters.map((cl, idx) => (
+              <div key={idx} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+                <button
+                  onClick={() => toggleCluster(idx)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-rmpg-700/30"
+                >
+                  {expandedClusters.has(idx) ? <ChevronDown className="w-3 h-3 text-rmpg-500" /> : <ChevronRight className="w-3 h-3 text-rmpg-500" />}
+                  <span className="text-[10px] text-white font-medium flex-1">{cl.theme}</span>
+                  <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
+                    {cl.questions.length}
+                  </span>
+                </button>
+                {expandedClusters.has(idx) && (
+                  <div className="border-t border-rmpg-700 px-3 py-2 space-y-0.5">
+                    {cl.questions.map((q, qi) => (
+                      <div key={qi} className="text-[10px] text-rmpg-300 flex items-start gap-1.5">
+                        <span className="text-rmpg-500 shrink-0">{qi + 1}.</span>
+                        {q}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!result && !clustering && (
+        <EmptyState icon={Layers} message="Enter questions (one per line) to automatically group them by theme." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ EXTRACT PANEL (structured-outputs)
+// ══════════════════════════════════════════════════════════════
+
+interface ExtractField {
+  name: string;
+  type: string;
+  description: string;
+}
+
+interface ExtractedData {
+  key: string;
+  value: string;
+  confidence: number;
+}
+
+interface ExtractResult {
+  id: number;
+  url: string;
+  schema_fields: ExtractField[];
+  extracted_data: ExtractedData[];
+  confidence_score: number;
+  fields_found: number;
+  fields_missing: number;
+  created_at: string;
+}
+
+function ExtractPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [fields, setFields] = useState<ExtractField[]>([{ name: '', type: 'string', description: '' }]);
+  const [extracting, setExtracting] = useState(false);
+  const [result, setResult] = useState<ExtractResult | null>(null);
+  const [history, setHistory] = useState<ExtractResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<ExtractResult[]>('/firecrawl-tools/extract/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const addField = () => {
+    setFields(prev => [...prev, { name: '', type: 'string', description: '' }]);
+  };
+
+  const removeField = (idx: number) => {
+    setFields(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateField = (idx: number, key: keyof ExtractField, value: string) => {
+    setFields(prev => prev.map((f, i) => i === idx ? { ...f, [key]: value } : f));
+  };
+
+  const extract = async () => {
+    if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    const validFields = fields.filter(f => f.name.trim());
+    if (validFields.length === 0) { addToast('Add at least one field', 'warning'); return; }
+    setExtracting(true);
+    try {
+      const data = await apiFetch<ExtractResult>('/firecrawl-tools/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), schema_fields: validFields }),
+      });
+      setResult(data);
+      addToast('Extraction complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Extraction failed', 'error');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const viewHistoryItem = (item: ExtractResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setFields(item.schema_fields.length > 0 ? item.schema_fields : [{ name: '', type: 'string', description: '' }]);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Structured Extract" icon={Database} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* URL Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+      </div>
+
+      {/* Schema Builder */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider">Schema Fields</span>
+          <SmallBtn onClick={addField}><Plus className="w-3 h-3" /> Add Field</SmallBtn>
+        </div>
+        {fields.map((f, idx) => (
+          <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
+            <input
+              value={f.name} onChange={e => updateField(idx, 'name', e.target.value)}
+              className="w-28 bg-transparent border border-rmpg-600 rounded-sm px-1.5 py-0.5 text-[10px] text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="Field name"
+            />
+            <select
+              value={f.type} onChange={e => updateField(idx, 'type', e.target.value)}
+              className="bg-transparent border border-rmpg-600 rounded-sm px-1.5 py-0.5 text-[10px] text-white focus:border-orange-500/50 focus:outline-none"
+            >
+              <option value="string">String</option>
+              <option value="number">Number</option>
+              <option value="boolean">Boolean</option>
+              <option value="array">Array</option>
+            </select>
+            <input
+              value={f.description} onChange={e => updateField(idx, 'description', e.target.value)}
+              className="flex-1 bg-transparent border border-rmpg-600 rounded-sm px-1.5 py-0.5 text-[10px] text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="Description"
+            />
+            {fields.length > 1 && (
+              <button onClick={() => removeField(idx)} className="text-rmpg-500 hover:text-red-400">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <SmallBtn onClick={extract} loading={extracting} variant="primary">
+        <Database className="w-3 h-3" /> Extract
+      </SmallBtn>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past extractions</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Database className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[9px] text-orange-400 font-mono shrink-0">{item.fields_found}/{item.fields_found + item.fields_missing}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-3">
+          {/* Confidence + Stats */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-rmpg-400">Confidence:</span>
+              <span className={`text-[10px] font-bold font-mono ${result.confidence_score >= 80 ? 'text-emerald-400' : result.confidence_score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                {result.confidence_score}%
+              </span>
+            </div>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+              {result.fields_found} found
+            </span>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-red-500/10 border border-red-500/30 text-red-400">
+              {result.fields_missing} missing
+            </span>
+          </div>
+
+          {/* Extracted Data Table */}
+          <div className="border border-rmpg-700 rounded-sm overflow-hidden">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="bg-surface-sunken">
+                  <th className="text-left px-2 py-1 text-rmpg-400 font-medium border-b border-rmpg-700">Key</th>
+                  <th className="text-left px-2 py-1 text-rmpg-400 font-medium border-b border-rmpg-700">Value</th>
+                  <th className="text-right px-2 py-1 text-rmpg-400 font-medium border-b border-rmpg-700">Conf</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.extracted_data.map((d, i) => (
+                  <tr key={i} className="border-b border-rmpg-700 last:border-0 hover:bg-rmpg-700/30">
+                    <td className="px-2 py-1 text-white font-mono">{d.key}</td>
+                    <td className="px-2 py-1 text-rmpg-300">{d.value}</td>
+                    <td className={`px-2 py-1 text-right font-mono ${d.confidence >= 80 ? 'text-emerald-400' : d.confidence >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                      {d.confidence}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!result && !extracting && (
+        <EmptyState icon={Database} message="Enter a URL and define a schema to extract structured data." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ HTML→MD PANEL (html-to-markdown)
+// ══════════════════════════════════════════════════════════════
+
+interface HtmlToMdResult {
+  id: number;
+  url: string | null;
+  markdown: string;
+  word_count: number;
+  link_count: number;
+  image_count: number;
+  created_at: string;
+}
+
+function HtmlToMdPanel() {
+  const { addToast } = useToast();
+  const [mode, setMode] = useState<'url' | 'paste'>('url');
+  const [url, setUrl] = useState('');
+  const [htmlInput, setHtmlInput] = useState('');
+  const [includeLinks, setIncludeLinks] = useState(true);
+  const [includeImages, setIncludeImages] = useState(true);
+  const [converting, setConverting] = useState(false);
+  const [result, setResult] = useState<HtmlToMdResult | null>(null);
+  const [history, setHistory] = useState<HtmlToMdResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<HtmlToMdResult[]>('/firecrawl-tools/html-to-md/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const convert = async () => {
+    if (mode === 'url' && !url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    if (mode === 'paste' && !htmlInput.trim()) { addToast('Paste some HTML', 'warning'); return; }
+    setConverting(true);
+    try {
+      const data = await apiFetch<HtmlToMdResult>('/firecrawl-tools/html-to-md', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: mode === 'url' ? url.trim() : undefined,
+          html: mode === 'paste' ? htmlInput.trim() : undefined,
+          include_links: includeLinks,
+          include_images: includeImages,
+        }),
+      });
+      setResult(data);
+      addToast('Conversion complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Conversion failed', 'error');
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const viewHistoryItem = (item: HtmlToMdResult) => {
+    setResult(item);
+    if (item.url) { setUrl(item.url); setMode('url'); }
+    setShowHistory(false);
+  };
+
+  const copyMarkdown = () => {
+    if (!result?.markdown) return;
+    navigator.clipboard.writeText(result.markdown).then(() => {
+      addToast('Copied to clipboard', 'success');
+    }).catch(() => {
+      addToast('Failed to copy', 'error');
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="HTML to Markdown" icon={FileCode} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Mode Toggle */}
+      <div className="flex items-center gap-2">
+        <SmallBtn onClick={() => setMode('url')} variant={mode === 'url' ? 'primary' : 'default'}>URL</SmallBtn>
+        <SmallBtn onClick={() => setMode('paste')} variant={mode === 'paste' ? 'primary' : 'default'}>Paste HTML</SmallBtn>
+      </div>
+
+      {/* Input */}
+      {mode === 'url' ? (
+        <div className="flex items-center gap-2">
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && convert()}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="https://example.com"
+          />
+        </div>
+      ) : (
+        <textarea
+          value={htmlInput}
+          onChange={e => setHtmlInput(e.target.value)}
+          rows={5}
+          className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none font-mono"
+          placeholder="<h1>Paste HTML here</h1>"
+        />
+      )}
+
+      {/* Options */}
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={includeLinks} onChange={e => setIncludeLinks(e.target.checked)} className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/30 w-3 h-3" />
+          <span className="text-[10px] text-rmpg-300">Include links</span>
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={includeImages} onChange={e => setIncludeImages(e.target.checked)} className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/30 w-3 h-3" />
+          <span className="text-[10px] text-rmpg-300">Include images</span>
+        </label>
+        <SmallBtn onClick={convert} loading={converting} variant="primary">
+          <FileCode className="w-3 h-3" /> Convert
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past conversions</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <FileCode className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url || 'Pasted HTML'}</span>
+                <span className="text-[9px] text-rmpg-500 font-mono shrink-0">{item.word_count} words</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          {/* Stats */}
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
+              {result.word_count} words
+            </span>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-brand-500/10 border border-brand-500/30 text-brand-400">
+              {result.link_count} links
+            </span>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-purple-500/10 border border-purple-500/30 text-purple-400">
+              {result.image_count} images
+            </span>
+            <div className="flex-1" />
+            <SmallBtn onClick={copyMarkdown} variant="primary">
+              <Clipboard className="w-3 h-3" /> Copy
+            </SmallBtn>
+          </div>
+
+          {/* Markdown Output */}
+          <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-96 overflow-auto scrollbar-dark whitespace-pre-wrap">
+            {result.markdown || 'No markdown generated'}
+          </pre>
+        </div>
+      )}
+
+      {!result && !converting && (
+        <EmptyState icon={FileCode} message="Enter a URL or paste HTML to convert to Markdown." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ COUPONS PANEL (firecrawl-coupon-finder)
+// ══════════════════════════════════════════════════════════════
+
+interface Coupon {
+  code: string;
+  description: string;
+  expiry_date: string | null;
+  verified: boolean;
+}
+
+interface CouponResult {
+  id: number;
+  brand_or_url: string;
+  coupons: Coupon[];
+  found_count: number;
+  created_at: string;
+}
+
+function CouponsPanel() {
+  const { addToast } = useToast();
+  const [input, setInput] = useState('');
+  const [finding, setFinding] = useState(false);
+  const [result, setResult] = useState<CouponResult | null>(null);
+  const [history, setHistory] = useState<CouponResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<CouponResult[]>('/firecrawl-tools/coupons/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const findCoupons = async () => {
+    if (!input.trim()) { addToast('Enter a brand or URL', 'warning'); return; }
+    setFinding(true);
+    try {
+      const data = await apiFetch<CouponResult>('/firecrawl-tools/coupons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_or_url: input.trim() }),
+      });
+      setResult(data);
+      addToast(`Found ${data.found_count} coupons`, 'success');
+      loadHistory();
+    } catch {
+      addToast('Failed to find coupons', 'error');
+    } finally {
+      setFinding(false);
+    }
+  };
+
+  const viewHistoryItem = (item: CouponResult) => {
+    setResult(item);
+    setInput(item.brand_or_url);
+    setShowHistory(false);
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      addToast('Code copied', 'success');
+    }).catch(() => {
+      addToast('Failed to copy', 'error');
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Coupon Finder" icon={Ticket} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && findCoupons()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+          placeholder="Brand name or URL (e.g. Nike, amazon.com)"
+        />
+        <SmallBtn onClick={findCoupons} loading={finding} variant="primary">
+          <Ticket className="w-3 h-3" /> Find Coupons
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past coupon searches</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Ticket className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.brand_or_url}</span>
+                <span className="text-[9px] text-orange-400 font-mono shrink-0">{item.found_count} found</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="space-y-3">
+          {/* Found Count */}
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
+              {result.found_count} coupons found
+            </span>
+            <span className="text-[10px] text-rmpg-400">{result.brand_or_url}</span>
+          </div>
+
+          {/* Coupon Cards */}
+          <div className="space-y-1.5">
+            {result.coupons.map((coupon, i) => (
+              <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 flex items-start gap-3">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-white font-mono font-bold bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-0.5">
+                      {coupon.code}
+                    </span>
+                    {coupon.verified && (
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-0.5">
+                        <CheckCircle className="w-2.5 h-2.5" /> Verified
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-rmpg-300">{coupon.description}</div>
+                  {coupon.expiry_date && (
+                    <div className="text-[9px] text-rmpg-500">Expires: {fmtDate(coupon.expiry_date)}</div>
+                  )}
+                </div>
+                <SmallBtn onClick={() => copyCode(coupon.code)} variant="primary">
+                  <Clipboard className="w-3 h-3" /> Copy
+                </SmallBtn>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!result && !finding && (
+        <EmptyState icon={Ticket} message="Enter a brand or URL to find active coupon codes." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ BRAND EXTEND PANEL (brand-extender)
+// ══════════════════════════════════════════════════════════════
+
+interface BrandExtendResult {
+  id: number;
+  url: string;
+  brand_name: string;
+  colors: string[];
+  fonts: string[];
+  tone_keywords: string[];
+  social_profiles: { platform: string; url: string }[];
+  competitors: string[];
+  extension_suggestions: string[];
+  created_at: string;
+}
+
+function BrandExtendPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState<BrandExtendResult | null>(null);
+  const [history, setHistory] = useState<BrandExtendResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<BrandExtendResult[]>('/firecrawl-tools/brand-extend/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const analyze = async () => {
+    if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    setAnalyzing(true);
+    try {
+      const data = await apiFetch<BrandExtendResult>('/firecrawl-tools/brand-extend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      setResult(data);
+      addToast('Brand analyzed', 'success');
+      loadHistory();
+    } catch {
+      addToast('Brand analysis failed', 'error');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const viewHistoryItem = (item: BrandExtendResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Brand Extender" icon={Palette} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* URL Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && analyze()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+        <SmallBtn onClick={analyze} loading={analyzing} variant="primary">
+          <Palette className="w-3 h-3" /> Analyze
+        </SmallBtn>
+      </div>
+
+      {/* History */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past analyses</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Palette className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-white shrink-0">{item.brand_name}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-3">
+          {/* Brand Name */}
+          <div className="text-sm text-white font-bold">{result.brand_name}</div>
+
+          {/* Colors */}
+          {result.colors && result.colors.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Colors</div>
+              <div className="flex gap-1.5">
+                {result.colors.map((c, i) => (
+                  <div key={i} className="flex flex-col items-center gap-0.5">
+                    <div className="w-8 h-8 rounded-sm border border-rmpg-600" style={{ backgroundColor: c }} />
+                    <span className="text-[8px] text-rmpg-500 font-mono">{c}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fonts */}
+          {result.fonts && result.fonts.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Fonts</div>
+              <div className="flex flex-wrap gap-1">
+                {result.fonts.map((f, i) => (
+                  <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-purple-500/10 border border-purple-500/30 text-purple-400">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tone Keywords */}
+          {result.tone_keywords && result.tone_keywords.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tone</div>
+              <div className="flex flex-wrap gap-1">
+                {result.tone_keywords.map((kw, i) => (
+                  <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
+                    {kw}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Social Profiles */}
+          {result.social_profiles && result.social_profiles.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Social Profiles</div>
+              <div className="flex flex-wrap gap-1.5">
+                {result.social_profiles.map((sp, i) => (
+                  <a
+                    key={i}
+                    href={sp.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-sm bg-brand-500/10 border border-brand-500/30 text-brand-400 hover:underline"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" /> {sp.platform}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Competitors */}
+          {result.competitors && result.competitors.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Competitors</div>
+              <div className="flex flex-wrap gap-1">
+                {result.competitors.map((comp, i) => (
+                  <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-red-500/10 border border-red-500/30 text-red-400">
+                    {comp}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Extension Suggestions */}
+          {result.extension_suggestions && result.extension_suggestions.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Extension Suggestions</div>
+              <ul className="space-y-0.5">
+                {result.extension_suggestions.map((sug, i) => (
+                  <li key={i} className="text-[10px] text-rmpg-300 flex items-start gap-1.5">
+                    <ArrowRight className="w-2.5 h-2.5 text-orange-400 shrink-0 mt-0.5" />
+                    {sug}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !analyzing && (
+        <EmptyState icon={Palette} message="Enter a brand URL to analyze colors, fonts, tone, and get extension ideas." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // ██ MAIN FIRECRAWL TAB COMPONENT
 // ══════════════════════════════════════════════════════════════
 
@@ -3262,6 +5348,16 @@ export default function FirecrawlTab() {
         {activeTab === 'deep-search' && <DeepSearchPanel />}
         {activeTab === 'llmstxt' && <LlmsTxtPanel />}
         {activeTab === 'pdf-inspect' && <PdfInspectPanel />}
+        {activeTab === 'graphs' && <GraphsPanel />}
+        {activeTab === 'connectors' && <ConnectorsPanel />}
+        {activeTab === 'rag-eval' && <RagEvalPanel />}
+        {activeTab === 'trends' && <TrendsPanel />}
+        {activeTab === 'gen-ui' && <GenUiPanel />}
+        {activeTab === 'qa-cluster' && <QaClusterPanel />}
+        {activeTab === 'extract' && <ExtractPanel />}
+        {activeTab === 'html-to-md' && <HtmlToMdPanel />}
+        {activeTab === 'coupons' && <CouponsPanel />}
+        {activeTab === 'brand-extend' && <BrandExtendPanel />}
       </div>
     </div>
   );

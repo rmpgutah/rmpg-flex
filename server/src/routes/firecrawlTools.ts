@@ -295,6 +295,159 @@ function initTables(): void {
       created_at TEXT NOT NULL
     )
   `);
+
+  // ── 15. Firegraph — Graph/Chart Generator ─────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_graphs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      chart_type TEXT NOT NULL,
+      config TEXT NOT NULL,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 16. Data Connectors ───────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_connectors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      url TEXT NOT NULL,
+      schedule_hours INTEGER,
+      transform_prompt TEXT,
+      status TEXT DEFAULT 'active',
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_connector_syncs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      connector_id INTEGER NOT NULL,
+      records_fetched INTEGER DEFAULT 0,
+      data TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (connector_id) REFERENCES firecrawl_connectors(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ── 17. RAG Arena — RAG Evaluation ────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_rag_evals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      test_questions TEXT NOT NULL,
+      evaluations TEXT,
+      overall_score REAL,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 18. Trend Finder ──────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_trend_scans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      domain TEXT NOT NULL,
+      keywords TEXT,
+      time_range TEXT DEFAULT '7d',
+      trends TEXT,
+      analyzed_at TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 19. Gen UI — Generate UI from Scraped Data ────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_gen_ui (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      component_type TEXT,
+      structure TEXT,
+      react_snippet TEXT,
+      tailwind_classes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 20. QA Clustering ─────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_qa_clusters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      questions TEXT NOT NULL,
+      clusters TEXT,
+      total_questions INTEGER DEFAULT 0,
+      cluster_count INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 21. Structured Extraction ─────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_extractions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      schema TEXT NOT NULL,
+      extracted TEXT,
+      confidence REAL,
+      fields_found INTEGER DEFAULT 0,
+      fields_missing INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 22. HTML to Markdown Converter ────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_html_conversions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT,
+      markdown TEXT,
+      word_count INTEGER DEFAULT 0,
+      link_count INTEGER DEFAULT 0,
+      image_count INTEGER DEFAULT 0,
+      title TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 23. Coupon Finder ─────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_coupon_searches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      brand TEXT NOT NULL,
+      coupons TEXT,
+      found_count INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 24. Brand Extender ────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_brand_analyses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      brand_name TEXT,
+      colors TEXT,
+      fonts TEXT,
+      tone_keywords TEXT,
+      social_profiles TEXT,
+      competitors TEXT,
+      extension_suggestions TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
 }
 
 // Initialize tables on module load
@@ -2733,6 +2886,1283 @@ router.get(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get PDF inspection history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 15. Firegraph — Graph/Chart Generator
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /graph — Generate a graph/chart from data ───────────
+
+router.post(
+  '/graph',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const { title, chart_type, labels, datasets, options } = req.body as {
+      title?: string; chart_type?: string; labels?: string[];
+      datasets?: { label: string; data: number[]; color?: string }[];
+      options?: { x_label?: string; y_label?: string; show_legend?: boolean };
+    };
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      res.status(400).json({ error: 'title is required' }); return;
+    }
+    if (!chart_type || !['line', 'bar', 'pie', 'area', 'scatter'].includes(chart_type)) {
+      res.status(400).json({ error: 'chart_type must be one of: line, bar, pie, area, scatter' }); return;
+    }
+    if (!labels || !Array.isArray(labels) || labels.length === 0) {
+      res.status(400).json({ error: 'labels array is required' }); return;
+    }
+    if (!datasets || !Array.isArray(datasets) || datasets.length === 0) {
+      res.status(400).json({ error: 'datasets array is required' }); return;
+    }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const config = JSON.stringify({ labels, datasets, options: options || {} });
+      const result = db.prepare(`
+        INSERT INTO firecrawl_graphs (title, chart_type, config, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(title.trim(), chart_type, config, (req as any).user?.id || (req as any).user?.userId, now);
+
+      auditLog(req, 'CREATE', 'firecrawl_graphs', Number(result.lastInsertRowid), `Graph: ${title.trim()}`);
+
+      res.json({
+        id: Number(result.lastInsertRowid),
+        title: title.trim(),
+        chart_type,
+        config: { labels, datasets, options: options || {} },
+        created_at: now,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to create graph', detail: msg });
+    }
+  },
+);
+
+// ── GET /graphs — List saved graphs ──────────────────────────
+
+router.get(
+  '/graphs',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_graphs ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, config: r.config ? JSON.parse(r.config) : null })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list graphs', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /graphs/:id — Delete a graph ──────────────────────
+
+router.delete(
+  '/graphs/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const id = Number(req.params.id);
+      const existing = db.prepare('SELECT id FROM firecrawl_graphs WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Graph not found' }); return; }
+      db.prepare('DELETE FROM firecrawl_graphs WHERE id = ?').run(id);
+      auditLog(req, 'DELETE', 'firecrawl_graphs', id, `Deleted graph #${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to delete graph', detail: msg });
+    }
+  },
+);
+
+// ── POST /graph/from-url — Scrape URL and extract tabular data ──
+
+router.post(
+  '/graph/from-url',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url } = req.body as { url?: string };
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown', 'html'],
+        onlyMainContent: true,
+      });
+
+      const html = (scrapeResult.data as any)?.html || '';
+      const markdown = (scrapeResult.data as any)?.markdown || '';
+
+      // Extract tables from HTML
+      const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+      const extractedTables: { headers: string[]; rows: string[][] }[] = [];
+      let tableMatch;
+
+      while ((tableMatch = tableRegex.exec(html)) !== null) {
+        const tableHtml = tableMatch[1];
+        const headerMatches = tableHtml.match(/<th[^>]*>([\s\S]*?)<\/th>/gi) || [];
+        const headers = headerMatches.map(h => h.replace(/<[^>]+>/g, '').trim());
+
+        const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        const rows: string[][] = [];
+        let rowMatch;
+        while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+          const cellMatches = rowMatch[1].match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
+          if (cellMatches.length > 0) {
+            rows.push(cellMatches.map(c => c.replace(/<[^>]+>/g, '').trim()));
+          }
+        }
+        if (headers.length > 0 || rows.length > 0) {
+          extractedTables.push({ headers, rows });
+        }
+      }
+
+      // Also try markdown tables
+      const mdTableRegex = /\|(.+)\|\n\|[-\s|]+\|\n((?:\|.+\|\n?)+)/g;
+      let mdMatch;
+      while ((mdMatch = mdTableRegex.exec(markdown)) !== null) {
+        const headers = mdMatch[1].split('|').map(h => h.trim()).filter(Boolean);
+        const rowLines = mdMatch[2].trim().split('\n');
+        const rows = rowLines.map(line => line.split('|').map(c => c.trim()).filter(Boolean));
+        if (headers.length > 0) {
+          extractedTables.push({ headers, rows });
+        }
+      }
+
+      // Suggest chart configs for numeric tables
+      const suggestedCharts: any[] = [];
+      for (const table of extractedTables) {
+        if (table.headers.length >= 2 && table.rows.length >= 2) {
+          const numericCols = table.headers.filter((_, i) =>
+            table.rows.every(r => r[i] && !isNaN(Number(r[i].replace(/[,$%]/g, '')))),
+          );
+          if (numericCols.length > 0) {
+            suggestedCharts.push({
+              chart_type: numericCols.length > 1 ? 'line' : 'bar',
+              title: `Chart from ${table.headers[0]} data`,
+              labels: table.rows.map(r => r[0]),
+              datasets: numericCols.map(col => ({
+                label: col,
+                data: table.rows.map(r => Number(r[table.headers.indexOf(col)].replace(/[,$%]/g, ''))),
+              })),
+            });
+          }
+        }
+      }
+
+      res.json({ url: url.trim(), extracted_tables: extractedTables.slice(0, 10), suggested_charts: suggestedCharts.slice(0, 5) });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to extract data from URL', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 16. Data Connectors — LLM-Ready Data Connectors
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /connectors — Create a data connector ───────────────
+
+router.post(
+  '/connectors',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const { name, type, url, schedule_hours, transform_prompt } = req.body as {
+      name?: string; type?: string; url?: string; schedule_hours?: number; transform_prompt?: string;
+    };
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ error: 'name is required' }); return;
+    }
+    if (!type || !['rss', 'sitemap', 'api', 'webpage'].includes(type)) {
+      res.status(400).json({ error: 'type must be one of: rss, sitemap, api, webpage' }); return;
+    }
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_connectors (name, type, url, schedule_hours, transform_prompt, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name.trim(), type, url.trim(), schedule_hours || null, transform_prompt?.trim() || null,
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_connectors', Number(result.lastInsertRowid), `Connector: ${name.trim()}`);
+
+      res.json({
+        id: Number(result.lastInsertRowid),
+        name: name.trim(), type, url: url.trim(),
+        schedule_hours: schedule_hours || null,
+        transform_prompt: transform_prompt?.trim() || null,
+        created_at: now,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to create connector', detail: msg });
+    }
+  },
+);
+
+// ── GET /connectors — List connectors ────────────────────────
+
+router.get(
+  '/connectors',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_connectors ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list connectors', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /connectors/:id — Delete a connector ──────────────
+
+router.delete(
+  '/connectors/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const id = Number(req.params.id);
+      const existing = db.prepare('SELECT id FROM firecrawl_connectors WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Connector not found' }); return; }
+      db.prepare('DELETE FROM firecrawl_connectors WHERE id = ?').run(id);
+      auditLog(req, 'DELETE', 'firecrawl_connectors', id, `Deleted connector #${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to delete connector', detail: msg });
+    }
+  },
+);
+
+// ── POST /connectors/:id/sync — Run a connector sync ─────────
+
+router.post(
+  '/connectors/:id/sync',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const id = Number(req.params.id);
+      const connector = db.prepare('SELECT * FROM firecrawl_connectors WHERE id = ?').get(id) as any;
+      if (!connector) { res.status(404).json({ error: 'Connector not found' }); return; }
+
+      // Fetch data based on connector type
+      const scrapeResult = await firecrawlScrape({
+        url: connector.url,
+        formats: ['markdown'],
+        onlyMainContent: connector.type === 'webpage',
+      });
+
+      const content = (scrapeResult.data as any)?.markdown || '';
+      let records: any[] = [];
+
+      if (connector.type === 'rss') {
+        // Parse RSS-like items from markdown
+        const items = content.split(/---|\n#{2,3}\s/).filter(Boolean).slice(0, 50);
+        records = items.map((item: string, i: number) => ({ index: i, content: item.trim().substring(0, 500) }));
+      } else if (connector.type === 'sitemap') {
+        const urlMatches = content.match(/https?:\/\/[^\s<>"]+/g) || [];
+        records = ([...new Set(urlMatches)] as string[]).slice(0, 100).map((u) => ({ url: u }));
+      } else {
+        records = [{ content: content.substring(0, 5000) }];
+      }
+
+      const now = localNow();
+      const syncResult = db.prepare(`
+        INSERT INTO firecrawl_connector_syncs (connector_id, records_fetched, data, created_at)
+        VALUES (?, ?, ?, ?)
+      `).run(id, records.length, JSON.stringify(records), now);
+
+      auditLog(req, 'CREATE', 'firecrawl_connector_syncs', Number(syncResult.lastInsertRowid), `Sync connector #${id}: ${records.length} records`);
+
+      res.json({ id: Number(syncResult.lastInsertRowid), records_fetched: records.length, data: records });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to sync connector', detail: msg });
+    }
+  },
+);
+
+// ── GET /connectors/:id/syncs — Get sync history ─────────────
+
+router.get(
+  '/connectors/:id/syncs',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const id = Number(req.params.id);
+      const rows = db.prepare('SELECT * FROM firecrawl_connector_syncs WHERE connector_id = ? ORDER BY created_at DESC LIMIT 50').all(id);
+      res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : null })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get sync history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 17. RAG Arena — RAG Evaluation
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /rag-eval — Evaluate RAG quality on a URL ───────────
+
+router.post(
+  '/rag-eval',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, test_questions } = req.body as { url?: string; test_questions?: string[] };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+    if (!test_questions || !Array.isArray(test_questions) || test_questions.length === 0) {
+      res.status(400).json({ error: 'test_questions array is required' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown'],
+        onlyMainContent: true,
+      });
+
+      const content = ((scrapeResult.data as any)?.markdown || '').toLowerCase();
+      const contentWords = content.split(/\s+/);
+
+      const evaluations = test_questions.map((question: string) => {
+        const qWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        // Count how many question keywords appear in the content
+        const matchedWords = qWords.filter(w => content.includes(w));
+        const relevanceScore = qWords.length > 0 ? Math.round((matchedWords.length / qWords.length) * 100) / 100 : 0;
+
+        // Find the best matching passage
+        let bestPassage = '';
+        let bestScore = 0;
+        const sentences = content.split(/[.!?]\s+/);
+        for (const sentence of sentences) {
+          const sentWords = sentence.split(/\s+/);
+          const overlap = qWords.filter(w => sentence.includes(w)).length;
+          const score = qWords.length > 0 ? overlap / qWords.length : 0;
+          if (score > bestScore) {
+            bestScore = score;
+            bestPassage = sentence.substring(0, 300);
+          }
+        }
+
+        const completenessScore = Math.min(1, Math.round((bestScore * 0.7 + (bestPassage.length > 50 ? 0.3 : 0.1)) * 100) / 100);
+
+        return {
+          question,
+          answer: bestPassage || 'No relevant content found',
+          relevance_score: relevanceScore,
+          completeness_score: completenessScore,
+        };
+      });
+
+      const overallScore = evaluations.length > 0
+        ? Math.round((evaluations.reduce((s, e) => s + (e.relevance_score + e.completeness_score) / 2, 0) / evaluations.length) * 100) / 100
+        : 0;
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_rag_evals (url, test_questions, evaluations, overall_score, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), JSON.stringify(test_questions), JSON.stringify(evaluations), overallScore,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_rag_evals', Number(result.lastInsertRowid), `RAG eval: ${url.trim()} (${test_questions.length} questions)`);
+
+      res.json({ url: url.trim(), evaluations, overall_score: overallScore });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to evaluate RAG quality', detail: msg });
+    }
+  },
+);
+
+// ── GET /rag-eval/history — Past evaluations ─────────────────
+
+router.get(
+  '/rag-eval/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_rag_evals ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({
+        ...r,
+        test_questions: r.test_questions ? JSON.parse(r.test_questions) : [],
+        evaluations: r.evaluations ? JSON.parse(r.evaluations) : [],
+      })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get RAG eval history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 18. Trend Finder
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /trends — Find trending topics in a domain ──────────
+
+router.post(
+  '/trends',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { domain, keywords, time_range } = req.body as {
+      domain?: string; keywords?: string[]; time_range?: '24h' | '7d' | '30d';
+    };
+
+    if (!domain || typeof domain !== 'string' || !domain.trim()) {
+      res.status(400).json({ error: 'domain is required' }); return;
+    }
+
+    try {
+      const searchQueries = [domain.trim()];
+      if (keywords && Array.isArray(keywords)) {
+        for (const kw of keywords.slice(0, 5)) {
+          searchQueries.push(`${domain.trim()} ${kw}`);
+        }
+      }
+
+      const allMentions: Map<string, { count: number; sources: string[] }> = new Map();
+
+      for (const query of searchQueries) {
+        const searchResult = await firecrawlSearch({
+          query,
+          limit: 5,
+          scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+        });
+
+        for (const item of (searchResult.data || []) as any[]) {
+          const text = (item.markdown || item.content || '').toLowerCase();
+          const sourceUrl = item.url || item.metadata?.sourceURL || '';
+
+          // Extract topics: capitalized phrases and repeated terms
+          const phrases = (text.match(/\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2}\b/g) || []) as string[];
+          const words = text.split(/\s+/).filter((w: string) => w.length > 5);
+          const wordFreq: Record<string, number> = {};
+          for (const w of words) { wordFreq[w] = (wordFreq[w] || 0) + 1; }
+          const frequentWords = Object.entries(wordFreq).filter(([, c]) => c >= 3).map(([w]) => w);
+
+          const topics = [...new Set([...phrases.slice(0, 10), ...frequentWords.slice(0, 10)])];
+          for (const topic of topics) {
+            const existing = allMentions.get(topic) || { count: 0, sources: [] };
+            existing.count++;
+            if (sourceUrl && !existing.sources.includes(sourceUrl)) existing.sources.push(sourceUrl);
+            allMentions.set(topic, existing);
+          }
+        }
+      }
+
+      // Sort by mention count and take top trends
+      const trends = [...allMentions.entries()]
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 20)
+        .map(([topic, data]) => ({
+          topic,
+          mentions: data.count,
+          sentiment: 'neutral',
+          first_seen: localNow(),
+          sources: data.sources.slice(0, 5),
+        }));
+
+      const analyzedAt = localNow();
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_trend_scans (domain, keywords, time_range, trends, analyzed_at, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        domain.trim(), keywords ? JSON.stringify(keywords) : null,
+        time_range || '7d', JSON.stringify(trends), analyzedAt,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_trend_scans', Number(result.lastInsertRowid), `Trend scan: ${domain.trim()}`);
+
+      res.json({ domain: domain.trim(), trends, analyzed_at: analyzedAt });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to find trends', detail: msg });
+    }
+  },
+);
+
+// ── GET /trends/history — Past trend scans ───────────────────
+
+router.get(
+  '/trends/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_trend_scans ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({
+        ...r,
+        keywords: r.keywords ? JSON.parse(r.keywords) : [],
+        trends: r.trends ? JSON.parse(r.trends) : [],
+      })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get trend history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 19. Gen UI — Generate UI from Scraped Data
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /gen-ui — Generate UI component description from URL ─
+
+router.post(
+  '/gen-ui',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, component_type } = req.body as {
+      url?: string; component_type?: 'dashboard' | 'form' | 'table' | 'card' | 'list';
+    };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    const compType = component_type || 'card';
+
+    try {
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown', 'html'],
+        onlyMainContent: true,
+      });
+
+      const html = (scrapeResult.data as any)?.html || '';
+      const markdown = (scrapeResult.data as any)?.markdown || '';
+
+      // Extract visual structure info
+      const colorMatches = html.match(/#[0-9a-fA-F]{3,8}/g) || [];
+      const colors = [...new Set(colorMatches)].slice(0, 10);
+
+      const fontMatches = html.match(/font-family:\s*([^;}"]+)/gi) || [];
+      const fonts = [...new Set(fontMatches.map((f: string) => f.replace(/font-family:\s*/i, '').trim()))].slice(0, 5);
+
+      // Extract layout elements
+      const elements: string[] = [];
+      if (html.includes('<nav')) elements.push('navigation');
+      if (html.includes('<header')) elements.push('header');
+      if (html.includes('<footer')) elements.push('footer');
+      if (html.includes('<form')) elements.push('form');
+      if (html.includes('<table')) elements.push('table');
+      if (html.includes('<img')) elements.push('images');
+      if (html.match(/<h[1-3]/)) elements.push('headings');
+      if (html.includes('<button') || html.includes('<a ')) elements.push('buttons/links');
+      if (html.includes('<input') || html.includes('<select')) elements.push('inputs');
+      if (html.includes('<ul') || html.includes('<ol')) elements.push('lists');
+
+      // Determine layout
+      const hasGrid = html.includes('grid') || html.includes('flex');
+      const hasSidebar = html.includes('sidebar') || html.includes('aside');
+      const layout = hasSidebar ? 'sidebar-content' : hasGrid ? 'grid' : 'single-column';
+
+      // Extract Tailwind-like classes
+      const classMatches = html.match(/class="([^"]+)"/g) || [];
+      const allClasses = classMatches.flatMap((m: string) => m.replace(/class="/, '').replace(/"/, '').split(/\s+/));
+      const tailwindClasses = [...new Set(allClasses.filter((c: string) => /^(bg-|text-|p-|m-|flex|grid|w-|h-|rounded|shadow|border)/.test(c)))].slice(0, 20);
+
+      // Generate a simplified React snippet
+      const structure = { layout, elements, colors: colors as string[], fonts: fonts as string[] };
+      const contentPreview = markdown.substring(0, 200).replace(/\n/g, ' ');
+
+      let reactSnippet = '';
+      if (compType === 'card') {
+        reactSnippet = `<div className="bg-white rounded-lg shadow p-6">\n  <h2 className="text-xl font-bold">{title}</h2>\n  <p className="text-gray-600 mt-2">{description}</p>\n</div>`;
+      } else if (compType === 'table') {
+        reactSnippet = `<table className="w-full border-collapse">\n  <thead><tr>{columns.map(c => <th key={c} className="border p-2 text-left">{c}</th>)}</tr></thead>\n  <tbody>{rows.map(r => <tr key={r.id}>{/* cells */}</tr>)}</tbody>\n</table>`;
+      } else if (compType === 'form') {
+        reactSnippet = `<form className="space-y-4 max-w-md">\n  {fields.map(f => <div key={f.name}><label className="block text-sm font-medium">{f.label}</label><input className="mt-1 w-full border rounded p-2" /></div>)}\n  <button className="bg-blue-600 text-white px-4 py-2 rounded">Submit</button>\n</form>`;
+      } else if (compType === 'list') {
+        reactSnippet = `<ul className="divide-y">\n  {items.map(item => <li key={item.id} className="py-3 flex justify-between">\n    <span>{item.title}</span><span className="text-gray-500">{item.meta}</span>\n  </li>)}\n</ul>`;
+      } else {
+        reactSnippet = `<div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">\n  {widgets.map(w => <div key={w.id} className="bg-white rounded shadow p-4"><h3>{w.title}</h3><div>{w.content}</div></div>)}\n</div>`;
+      }
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_gen_ui (url, component_type, structure, react_snippet, tailwind_classes, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), compType, JSON.stringify(structure), reactSnippet,
+        JSON.stringify(tailwindClasses), (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_gen_ui', Number(result.lastInsertRowid), `Gen UI: ${url.trim()} (${compType})`);
+
+      res.json({
+        url: url.trim(),
+        component_type: compType,
+        structure,
+        react_snippet: reactSnippet,
+        tailwind_classes: tailwindClasses,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to generate UI', detail: msg });
+    }
+  },
+);
+
+// ── GET /gen-ui/history — Past generations ───────────────────
+
+router.get(
+  '/gen-ui/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_gen_ui ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({
+        ...r,
+        structure: r.structure ? JSON.parse(r.structure) : null,
+        tailwind_classes: r.tailwind_classes ? JSON.parse(r.tailwind_classes) : [],
+      })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get gen-ui history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 20. QA Clustering — Chat/QA Analysis
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /qa-cluster — Analyze and cluster Q&A data ──────────
+
+router.post(
+  '/qa-cluster',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const { questions } = req.body as { questions?: string[] };
+
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      res.status(400).json({ error: 'questions array is required' }); return;
+    }
+
+    try {
+      // Simple keyword-based clustering
+      const clusters: Map<string, string[]> = new Map();
+
+      for (const q of questions) {
+        const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        // Use the most significant word as the cluster key
+        const stopWords = new Set(['what', 'when', 'where', 'which', 'that', 'this', 'with', 'from', 'have', 'does', 'will', 'about', 'would', 'could', 'should', 'there', 'their', 'been', 'they', 'your', 'more', 'some', 'into']);
+        const significant = words.filter(w => !stopWords.has(w));
+        const theme = significant[0] || 'general';
+
+        const existing = clusters.get(theme) || [];
+        existing.push(q);
+        clusters.set(theme, existing);
+      }
+
+      // Merge small clusters into "other"
+      const result: { theme: string; questions: string[]; count: number }[] = [];
+      const other: string[] = [];
+
+      for (const [theme, qs] of clusters) {
+        if (qs.length >= 2) {
+          result.push({ theme, questions: qs, count: qs.length });
+        } else {
+          other.push(...qs);
+        }
+      }
+      if (other.length > 0) {
+        result.push({ theme: 'other', questions: other, count: other.length });
+      }
+
+      result.sort((a, b) => b.count - a.count);
+
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_qa_clusters (questions, clusters, total_questions, cluster_count, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        JSON.stringify(questions), JSON.stringify(result), questions.length, result.length,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_qa_clusters', Number(insertResult.lastInsertRowid), `QA cluster: ${questions.length} questions → ${result.length} clusters`);
+
+      res.json({ clusters: result, total_questions: questions.length, cluster_count: result.length });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to cluster questions', detail: msg });
+    }
+  },
+);
+
+// ── GET /qa-cluster/history — Past analyses ──────────────────
+
+router.get(
+  '/qa-cluster/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_qa_clusters ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({
+        ...r,
+        questions: r.questions ? JSON.parse(r.questions) : [],
+        clusters: r.clusters ? JSON.parse(r.clusters) : [],
+      })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get QA cluster history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 21. Structured Extraction — OpenAI Structured Outputs
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /extract — Extract structured data from URL ─────────
+
+router.post(
+  '/extract',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, schema } = req.body as {
+      url?: string;
+      schema?: { fields: { name: string; type: string; description?: string }[] };
+    };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+    if (!schema || !schema.fields || !Array.isArray(schema.fields) || schema.fields.length === 0) {
+      res.status(400).json({ error: 'schema with fields array is required' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown'],
+        onlyMainContent: true,
+      });
+
+      const content = (scrapeResult.data as any)?.markdown || '';
+      const contentLower = content.toLowerCase();
+
+      const extracted: Record<string, any> = {};
+      let fieldsFound = 0;
+      let fieldsMissing = 0;
+
+      for (const field of schema.fields) {
+        const fieldName = field.name.toLowerCase();
+        const fieldDesc = (field.description || field.name).toLowerCase();
+
+        // Search for field value in content
+        // Try pattern: "field_name: value" or "field_name - value"
+        const patterns = [
+          new RegExp(`${fieldName}[:\\s-]+([^\\n]{1,200})`, 'i'),
+          new RegExp(`${fieldDesc}[:\\s-]+([^\\n]{1,200})`, 'i'),
+        ];
+
+        let value: any = null;
+        for (const pattern of patterns) {
+          const match = content.match(pattern);
+          if (match) {
+            let raw = match[1].trim();
+            if (field.type === 'number') {
+              const numMatch = raw.match(/[\d,.]+/);
+              value = numMatch ? Number(numMatch[0].replace(/,/g, '')) : null;
+            } else if (field.type === 'boolean') {
+              value = /yes|true|enabled|active/i.test(raw);
+            } else if (field.type === 'array') {
+              value = raw.split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
+            } else {
+              value = raw.substring(0, 500);
+            }
+            break;
+          }
+        }
+
+        if (value !== null && value !== undefined) {
+          extracted[field.name] = value;
+          fieldsFound++;
+        } else {
+          extracted[field.name] = null;
+          fieldsMissing++;
+        }
+      }
+
+      const confidence = schema.fields.length > 0
+        ? Math.round((fieldsFound / schema.fields.length) * 100) / 100
+        : 0;
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_extractions (url, schema, extracted, confidence, fields_found, fields_missing, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), JSON.stringify(schema), JSON.stringify(extracted), confidence,
+        fieldsFound, fieldsMissing, (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_extractions', Number(result.lastInsertRowid), `Extract: ${url.trim()} (${fieldsFound}/${schema.fields.length} fields)`);
+
+      res.json({ url: url.trim(), extracted, confidence, fields_found: fieldsFound, fields_missing: fieldsMissing });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to extract data', detail: msg });
+    }
+  },
+);
+
+// ── GET /extract/history — Past extractions ──────────────────
+
+router.get(
+  '/extract/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_extractions ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({
+        ...r,
+        schema: r.schema ? JSON.parse(r.schema) : null,
+        extracted: r.extracted ? JSON.parse(r.extracted) : null,
+      })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get extraction history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 22. HTML to Markdown Converter
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /html-to-md — Convert HTML content or URL to markdown ─
+
+router.post(
+  '/html-to-md',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, html, options } = req.body as {
+      url?: string; html?: string;
+      options?: { include_links?: boolean; include_images?: boolean };
+    };
+
+    if (!url && !html) {
+      res.status(400).json({ error: 'Either url or html is required' }); return;
+    }
+
+    try {
+      let markdown = '';
+      let title = '';
+
+      if (url) {
+        const scrapeResult = await firecrawlScrape({
+          url: url.trim(),
+          formats: ['markdown'],
+          onlyMainContent: true,
+        });
+        markdown = (scrapeResult.data as any)?.markdown || '';
+        title = (scrapeResult.data as any)?.metadata?.title || '';
+      } else if (html) {
+        // Basic HTML to markdown conversion
+        let md = html;
+        // Headers
+        md = md.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '# $1\n\n');
+        md = md.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '## $1\n\n');
+        md = md.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '### $1\n\n');
+        md = md.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, '#### $1\n\n');
+        // Paragraphs
+        md = md.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1\n\n');
+        // Bold/italic
+        md = md.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
+        md = md.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
+        // Links
+        if (options?.include_links !== false) {
+          md = md.replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
+        } else {
+          md = md.replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1');
+        }
+        // Images
+        if (options?.include_images !== false) {
+          md = md.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*\/?>/gi, '![$2]($1)');
+          md = md.replace(/<img[^>]*src="([^"]*)"[^>]*\/?>/gi, '![]($1)');
+        } else {
+          md = md.replace(/<img[^>]*\/?>/gi, '');
+        }
+        // Lists
+        md = md.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
+        md = md.replace(/<\/?(?:ul|ol)[^>]*>/gi, '\n');
+        // Line breaks
+        md = md.replace(/<br\s*\/?>/gi, '\n');
+        // Remove remaining tags
+        md = md.replace(/<[^>]+>/g, '');
+        // Clean up whitespace
+        md = md.replace(/\n{3,}/g, '\n\n').trim();
+
+        markdown = md;
+        // Try to extract title
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        title = titleMatch ? titleMatch[1].trim() : '';
+      }
+
+      // Count stats
+      const wordCount = markdown.split(/\s+/).filter(Boolean).length;
+      const linkCount = (markdown.match(/\[([^\]]*)\]\([^)]*\)/g) || []).length;
+      const imageCount = (markdown.match(/!\[([^\]]*)\]\([^)]*\)/g) || []).length;
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_html_conversions (url, markdown, word_count, link_count, image_count, title, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        url?.trim() || null, markdown, wordCount, linkCount, imageCount,
+        title || null, (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_html_conversions', Number(result.lastInsertRowid), `HTML→MD: ${url?.trim() || 'inline HTML'}`);
+
+      res.json({ markdown, word_count: wordCount, link_count: linkCount, image_count: imageCount, title: title || null });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to convert HTML to markdown', detail: msg });
+    }
+  },
+);
+
+// ── GET /html-to-md/history — Past conversions ───────────────
+
+router.get(
+  '/html-to-md/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT id, url, word_count, link_count, image_count, title, created_by, created_at FROM firecrawl_html_conversions ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get conversion history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 23. Coupon Finder
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /coupons — Find coupons for a website/brand ─────────
+
+router.post(
+  '/coupons',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { brand_or_url } = req.body as { brand_or_url?: string };
+
+    if (!brand_or_url || typeof brand_or_url !== 'string' || !brand_or_url.trim()) {
+      res.status(400).json({ error: 'brand_or_url is required' }); return;
+    }
+
+    try {
+      const brand = brand_or_url.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
+
+      const searches = [
+        `${brand} coupons`,
+        `${brand} promo codes`,
+        `${brand} deals discount`,
+      ];
+
+      const allCoupons: { code: string; description: string; source_url: string; expiry: string | null; verified: boolean }[] = [];
+      const seenCodes = new Set<string>();
+
+      for (const query of searches) {
+        const searchResult = await firecrawlSearch({
+          query,
+          limit: 3,
+          scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+        });
+
+        for (const item of (searchResult.data || []) as any[]) {
+          const text = item.markdown || item.content || '';
+          const sourceUrl = item.url || item.metadata?.sourceURL || '';
+
+          // Extract coupon codes (typically ALL CAPS or alphanumeric patterns)
+          const codeMatches = text.match(/\b[A-Z0-9]{4,20}\b/g) || [];
+          // Filter to likely coupon codes (not common words)
+          const commonWords = new Set(['FREE', 'SAVE', 'CODE', 'DEAL', 'BEST', 'SALE', 'SHOP', 'MORE', 'NEXT', 'LAST', 'THIS', 'WITH', 'FROM', 'HAVE', 'YOUR', 'THAT', 'WILL', 'HTTPS', 'HTTP', 'HTML']);
+          const likelyCodes = codeMatches.filter((c: string) => !commonWords.has(c) && c.length >= 4 && c.length <= 20);
+
+          for (const code of likelyCodes.slice(0, 5)) {
+            if (seenCodes.has(code)) continue;
+            seenCodes.add(code);
+
+            // Try to find surrounding description
+            const codeIndex = text.indexOf(code);
+            const surrounding = text.substring(Math.max(0, codeIndex - 100), codeIndex + code.length + 100);
+            const descMatch = surrounding.match(/(\d+%?\s*off|free\s+shipping|buy\s+\d+\s+get|save\s+\$?\d+)/i);
+
+            allCoupons.push({
+              code,
+              description: descMatch ? descMatch[0].trim() : `Promo code for ${brand}`,
+              source_url: sourceUrl,
+              expiry: null,
+              verified: false,
+            });
+          }
+        }
+      }
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_coupon_searches (brand, coupons, found_count, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        brand, JSON.stringify(allCoupons), allCoupons.length,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_coupon_searches', Number(result.lastInsertRowid), `Coupon search: ${brand} (${allCoupons.length} found)`);
+
+      res.json({ brand, coupons: allCoupons, found_count: allCoupons.length });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to find coupons', detail: msg });
+    }
+  },
+);
+
+// ── GET /coupons/history — Past coupon searches ──────────────
+
+router.get(
+  '/coupons/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_coupon_searches ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({ ...r, coupons: r.coupons ? JSON.parse(r.coupons) : [] })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get coupon history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 24. Brand Extender — Analyze and extend brand presence
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /brand-extend — Analyze brand presence ──────────────
+
+router.post(
+  '/brand-extend',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { brand_url } = req.body as { brand_url?: string };
+
+    if (!brand_url || typeof brand_url !== 'string' || !brand_url.trim()) {
+      res.status(400).json({ error: 'brand_url is required' }); return;
+    }
+
+    try {
+      const scrapeResult = await firecrawlScrape({
+        url: brand_url.trim(),
+        formats: ['markdown', 'html'],
+        onlyMainContent: false,
+      });
+
+      const html = (scrapeResult.data as any)?.html || '';
+      const markdown = (scrapeResult.data as any)?.markdown || '';
+      const htmlLower = html.toLowerCase();
+
+      // Extract brand name from title
+      const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      const brandName = titleMatch ? titleMatch[1].trim().split(/[|\-–—]/)[0].trim() : new URL(brand_url.trim()).hostname;
+
+      // Extract colors
+      const colorMatches = html.match(/#[0-9a-fA-F]{3,8}/g) || [];
+      const rgbMatches = html.match(/rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)/g) || [];
+      const colors = [...new Set([...colorMatches, ...rgbMatches])].slice(0, 10);
+
+      // Extract fonts
+      const fontMatches = html.match(/font-family:\s*([^;}"]+)/gi) || [];
+      const fonts = [...new Set(fontMatches.map((f: string) => f.replace(/font-family:\s*/i, '').trim()))].slice(0, 5);
+
+      // Analyze tone keywords
+      const toneWords: Record<string, number> = {};
+      const tonePatterns = ['innovative', 'trusted', 'reliable', 'modern', 'premium', 'affordable', 'fast', 'secure', 'simple', 'powerful', 'professional', 'friendly', 'creative', 'sustainable', 'bold', 'elegant', 'cutting-edge', 'enterprise', 'community', 'open-source'];
+      for (const word of tonePatterns) {
+        const count = (htmlLower.match(new RegExp(word, 'g')) || []).length;
+        if (count > 0) toneWords[word] = count;
+      }
+      const toneKeywords = Object.entries(toneWords).sort((a, b) => b[1] - a[1]).map(([w]) => w).slice(0, 8);
+
+      // Extract social profiles
+      const socialProfiles: { platform: string; url: string }[] = [];
+      const socialPatterns: [string, RegExp][] = [
+        ['linkedin', /href="(https?:\/\/(?:www\.)?linkedin\.com\/[^"]+)"/i],
+        ['twitter', /href="(https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[^"]+)"/i],
+        ['facebook', /href="(https?:\/\/(?:www\.)?facebook\.com\/[^"]+)"/i],
+        ['instagram', /href="(https?:\/\/(?:www\.)?instagram\.com\/[^"]+)"/i],
+        ['youtube', /href="(https?:\/\/(?:www\.)?youtube\.com\/[^"]+)"/i],
+        ['github', /href="(https?:\/\/(?:www\.)?github\.com\/[^"]+)"/i],
+        ['tiktok', /href="(https?:\/\/(?:www\.)?tiktok\.com\/[^"]+)"/i],
+      ];
+      for (const [platform, pattern] of socialPatterns) {
+        const match = html.match(pattern);
+        if (match) socialProfiles.push({ platform, url: match[1] });
+      }
+
+      // Search for competitors
+      const searchResult = await firecrawlSearch({
+        query: `${brandName} competitors alternatives`,
+        limit: 5,
+        scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+      });
+
+      const competitors: string[] = [];
+      for (const item of (searchResult.data || []) as any[]) {
+        const text = (item.markdown || item.content || '').toLowerCase();
+        // Look for brand names (capitalized words near "competitor" or "alternative")
+        const compMatches = text.match(/(?:competitor|alternative|vs|versus|compared to)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/gi) || [];
+        for (const cm of compMatches) {
+          const name = cm.replace(/^(?:competitor|alternative|vs|versus|compared to)\s+/i, '').trim();
+          if (name && !competitors.includes(name) && name.toLowerCase() !== brandName.toLowerCase()) {
+            competitors.push(name);
+          }
+        }
+      }
+
+      // Generate extension suggestions
+      const extensionSuggestions: string[] = [];
+      if (socialProfiles.length < 3) extensionSuggestions.push('Expand social media presence — missing key platforms');
+      if (!htmlLower.includes('blog')) extensionSuggestions.push('Start a blog for content marketing and SEO');
+      if (!htmlLower.includes('newsletter') && !htmlLower.includes('subscribe')) extensionSuggestions.push('Add a newsletter signup for audience building');
+      if (!htmlLower.includes('testimonial') && !htmlLower.includes('review')) extensionSuggestions.push('Add customer testimonials or reviews section');
+      if (toneKeywords.length < 3) extensionSuggestions.push('Strengthen brand voice with consistent messaging');
+      if (colors.length < 3) extensionSuggestions.push('Develop a more comprehensive color palette');
+      if (competitors.length > 0) extensionSuggestions.push(`Differentiate from competitors: ${competitors.slice(0, 3).join(', ')}`);
+      extensionSuggestions.push('Consider podcast or video content for thought leadership');
+
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_brand_analyses (url, brand_name, colors, fonts, tone_keywords, social_profiles, competitors, extension_suggestions, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        brand_url.trim(), brandName, JSON.stringify(colors), JSON.stringify(fonts),
+        JSON.stringify(toneKeywords), JSON.stringify(socialProfiles),
+        JSON.stringify(competitors.slice(0, 10)), JSON.stringify(extensionSuggestions),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_brand_analyses', Number(result.lastInsertRowid), `Brand extend: ${brandName}`);
+
+      res.json({
+        url: brand_url.trim(),
+        brand_name: brandName,
+        colors,
+        fonts,
+        tone_keywords: toneKeywords,
+        social_profiles: socialProfiles,
+        competitors: competitors.slice(0, 10),
+        extension_suggestions: extensionSuggestions,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to analyze brand', detail: msg });
+    }
+  },
+);
+
+// ── GET /brand-extend/history — Past brand analyses ──────────
+
+router.get(
+  '/brand-extend/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_brand_analyses ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows.map((r: any) => ({
+        ...r,
+        colors: r.colors ? JSON.parse(r.colors) : [],
+        fonts: r.fonts ? JSON.parse(r.fonts) : [],
+        tone_keywords: r.tone_keywords ? JSON.parse(r.tone_keywords) : [],
+        social_profiles: r.social_profiles ? JSON.parse(r.social_profiles) : [],
+        competitors: r.competitors ? JSON.parse(r.competitors) : [],
+        extension_suggestions: r.extension_suggestions ? JSON.parse(r.extension_suggestions) : [],
+      })));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get brand analysis history', detail: msg });
     }
   },
 );
