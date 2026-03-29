@@ -43,6 +43,133 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
+// ── Third-Party API Keys Panel ──────────────────────────────
+// Lets admins set RapidAPI keys for Lead Generation, DL OCR, etc.
+const THIRD_PARTY_KEYS = [
+  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
+  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
+] as const;
+
+function ThirdPartyApiKeysPanel() {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [configured, setConfigured] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Check which keys are configured
+    (async () => {
+      try {
+        const data = await apiFetch<Array<{ config_key: string; has_value: boolean }>>('/admin/third-party-keys');
+        const map: Record<string, boolean> = {};
+        for (const item of data) map[item.config_key] = item.has_value;
+        setConfigured(map);
+      } catch {
+        // Endpoint may not exist yet — check individually
+        for (const { key } of THIRD_PARTY_KEYS) {
+          try {
+            const resp = await apiFetch<{ configured: boolean }>(`/admin/third-party-keys/${key}`);
+            setConfigured(prev => ({ ...prev, [key]: resp.configured }));
+          } catch { /* silent */ }
+        }
+      }
+    })();
+  }, []);
+
+  const handleSave = async (configKey: string) => {
+    const value = values[configKey]?.trim();
+    if (!value) return;
+    setSaving(configKey);
+    try {
+      await apiFetch('/admin/third-party-keys', {
+        method: 'PUT',
+        body: JSON.stringify({ key: configKey, value }),
+      });
+      setConfigured(prev => ({ ...prev, [configKey]: true }));
+      setValues(prev => ({ ...prev, [configKey]: '' }));
+    } catch { /* silent */ }
+    setSaving(null);
+  };
+
+  const handleClear = async (configKey: string) => {
+    setSaving(configKey);
+    try {
+      await apiFetch('/admin/third-party-keys', {
+        method: 'DELETE',
+        body: JSON.stringify({ key: configKey }),
+      });
+      setConfigured(prev => ({ ...prev, [configKey]: false }));
+    } catch { /* silent */ }
+    setSaving(null);
+  };
+
+  return (
+    <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1c2e42]">
+        <Key className="w-4 h-4 text-brand-400" />
+        <h2 className="text-sm font-semibold text-rmpg-300">Third-Party API Keys</h2>
+      </div>
+      <div className="p-4 space-y-4">
+        {THIRD_PARTY_KEYS.map(({ key, label, desc }) => (
+          <div key={key} className="flex flex-col gap-2 p-3 bg-[#0d1520] border border-[#1c2e42] rounded-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold text-rmpg-300">{label}</div>
+                <div className="text-[10px] text-rmpg-600">{desc}</div>
+              </div>
+              {configured[key] ? (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-sm bg-green-900/30 text-green-400 border border-green-700/40">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Configured
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-sm bg-yellow-900/30 text-yellow-400 border border-yellow-700/40">
+                  <AlertTriangle className="w-3 h-3" />
+                  Not Set
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showKey[key] ? 'text' : 'password'}
+                  value={values[key] || ''}
+                  onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
+                  placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
+                  className="w-full px-3 py-2 pr-8 bg-[#141e2b] border border-[#1c2e42] rounded-sm text-xs text-white font-mono placeholder-[#445566] focus:outline-none focus:border-brand-500"
+                />
+                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
+                  {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSave(key)}
+                disabled={!values[key]?.trim() || saving === key}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white rounded-sm transition-colors"
+              >
+                {saving === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save
+              </button>
+              {configured[key] && (
+                <button
+                  type="button"
+                  onClick={() => handleClear(key)}
+                  disabled={saving === key}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/30 border border-red-700/30 rounded-sm transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }: Props) {
   // ── Connected Service: rmpgutahps.us ──
   const [svcConfigured, setSvcConfigured] = useState(false);
@@ -326,6 +453,9 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+
+      {/* ── Third-Party RapidAPI Keys ── */}
+      <ThirdPartyApiKeysPanel />
 
       {/* ── API Keys Panel ── */}
       <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">

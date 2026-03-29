@@ -3,9 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { config } from '../config';
 
 const __filename_admin = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename_admin);
@@ -1765,6 +1767,109 @@ router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Resp
   if (!validRoles.includes(role)) { res.status(400).json({ error: 'Invalid role' }); return; }
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
   res.json({ message: 'Role updated' });
+});
+
+// ═════════════════════════════════════════════════════════════
+// Third-Party API Keys — encrypted storage for RapidAPI keys etc.
+// ═════════════════════════════════════════════════════════════
+
+const ALLOWED_THIRD_PARTY_KEYS = [
+  'lead_gen_rapidapi_key',
+  'dl_ocr_rapidapi_key',
+  'plate_check_rapidapi_key',
+];
+
+function encryptValue(plaintext: string): string {
+  const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+// GET /api/admin/third-party-keys — list which keys are configured
+router.get('/third-party-keys', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = ALLOWED_THIRD_PARTY_KEYS.map(k => {
+      const row = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1"
+      ).get(k) as { config_value: string } | undefined;
+      return { config_key: k, has_value: !!row?.config_value };
+    });
+    res.json(result);
+  } catch (err: any) {
+    console.error('[Admin] Third-party keys list error:', err);
+    res.status(500).json({ error: 'Failed to list keys' });
+  }
+});
+
+// GET /api/admin/third-party-keys/:key — check single key
+router.get('/third-party-keys/:key', requireRole('admin'), (req: Request, res: Response) => {
+  const { key } = req.params;
+  if (!ALLOWED_THIRD_PARTY_KEYS.includes(key)) {
+    res.status(400).json({ error: 'Unknown key' }); return;
+  }
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1"
+    ).get(key) as { config_value: string } | undefined;
+    res.json({ configured: !!row?.config_value });
+  } catch {
+    res.json({ configured: false });
+  }
+});
+
+// PUT /api/admin/third-party-keys — save an encrypted key
+router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { key, value } = req.body;
+    if (!key || !value || typeof value !== 'string') {
+      res.status(400).json({ error: 'key and value are required' }); return;
+    }
+    if (!ALLOWED_THIRD_PARTY_KEYS.includes(key)) {
+      res.status(400).json({ error: 'Unknown key' }); return;
+    }
+
+    const db = getDb();
+    const encrypted = encryptValue(value.trim());
+    const now = localNow();
+
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(encrypted, now, key);
+    } else {
+      db.prepare(
+        "INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)"
+      ).run(key, encrypted, now, now);
+    }
+
+    res.json({ success: true, message: `${key} saved` });
+  } catch (err: any) {
+    console.error('[Admin] Save third-party key error:', err);
+    res.status(500).json({ error: 'Failed to save key' });
+  }
+});
+
+// DELETE /api/admin/third-party-keys — clear a key
+router.delete('/third-party-keys', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { key } = req.body;
+    if (!key || !ALLOWED_THIRD_PARTY_KEYS.includes(key)) {
+      res.status(400).json({ error: 'Unknown key' }); return;
+    }
+
+    const db = getDb();
+    db.prepare("UPDATE system_config SET config_value = '', is_active = 0, updated_at = ? WHERE config_key = ?").run(localNow(), key);
+
+    res.json({ success: true, message: `${key} cleared` });
+  } catch (err: any) {
+    console.error('[Admin] Clear third-party key error:', err);
+    res.status(500).json({ error: 'Failed to clear key' });
+  }
 });
 
 export default router;
