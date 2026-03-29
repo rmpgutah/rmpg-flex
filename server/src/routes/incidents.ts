@@ -587,9 +587,14 @@ router.delete('/:id', (req: Request, res: Response) => {
       return;
     }
 
-    if (incident.status !== 'draft') {
-      res.status(403).json({ error: 'Can only delete draft incidents', code: 'CAN_ONLY_DELETE_DRAFT' });
-      return;
+    // God Mode: admin bypass — can delete any incident regardless of status
+    if (req.user?.role !== 'admin') {
+      if (incident.status !== 'draft') {
+        res.status(403).json({ error: 'Can only delete draft incidents', code: 'CAN_ONLY_DELETE_DRAFT' });
+        return;
+      }
+    } else if (incident.status !== 'draft') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin God Mode: bypassed draft-only delete restriction (status: ${incident.status})`);
     }
 
     if (incident.officer_id !== req.user!.userId && !['admin', 'manager'].includes(req.user!.role)) {

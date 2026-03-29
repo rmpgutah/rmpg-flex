@@ -410,6 +410,7 @@ export default function WarrantsPage() {
   const serveTitleId = useId();
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
@@ -1099,7 +1100,7 @@ export default function WarrantsPage() {
             {showArchived ? 'Showing Archived' : 'Archives'}
           </button>
         )}
-        {activeTab === 'sources' && isAdminOrManager && (
+        {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
           <>
             <button type="button"
               onClick={handleTriggerScan}
@@ -1125,7 +1126,7 @@ export default function WarrantsPage() {
       {/* ---- TAB BAR ---- */}
       <div className={`tab-bar ${isMobile ? 'overflow-x-auto' : ''}`}>
         {TABS.map((tab) => {
-          if (tab.roleGated && !isAdminOrManager) return null;
+          if (tab.roleGated && !isGodMode && !isAdminOrManager) return null;
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -1449,7 +1450,7 @@ export default function WarrantsPage() {
             )}
 
             {/* Batch Actions Bar */}
-            {batchSelected.size > 0 && isAdminOrManager && (
+            {batchSelected.size > 0 && (isGodMode || isAdminOrManager) && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
                 <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
                 <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
@@ -1519,7 +1520,7 @@ export default function WarrantsPage() {
                 <table className="table-dark">
                   <thead className="sticky top-0 z-10 bg-[#0d1520]">
                     <tr>
-                      {isAdminOrManager && (
+                      {(isGodMode || isAdminOrManager) && (
                         <th style={{ width: 30 }}>
                           <input type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
                         </th>
@@ -1542,7 +1543,7 @@ export default function WarrantsPage() {
                         onClick={() => fetchWarrantDetail(w.id)}
                         className={`cursor-pointer hover:bg-[#1a2636]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
-                        {isAdminOrManager && (
+                        {(isGodMode || isAdminOrManager) && (
                           <td onClick={e => e.stopPropagation()}>
                             <input type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
                           </td>
@@ -2271,7 +2272,7 @@ export default function WarrantsPage() {
       {/* ================================================================
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
-      {activeTab === 'sources' && isAdminOrManager && (
+      {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
         <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {/* Coverage Section */}

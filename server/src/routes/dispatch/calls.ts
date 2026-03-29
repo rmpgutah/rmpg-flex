@@ -1000,13 +1000,18 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
         return;
       }
       // Prevent backward transitions from terminal states via direct PUT
+      // God Mode: admin bypass — can change status from archived
       const TERMINAL_STATUSES = ['archived'];
       if (TERMINAL_STATUSES.includes(call.status) && status !== 'closed') {
-        res.status(400).json({
-          error: `Cannot change status from '${call.status}' to '${status}' via update. Use the unarchive endpoint instead.`,
-          code: 'INVALID_STATUS_TRANSITION',
-        });
-        return;
+        if (req.user?.role !== 'admin') {
+          res.status(400).json({
+            error: `Cannot change status from '${call.status}' to '${status}' via update. Use the unarchive endpoint instead.`,
+            code: 'INVALID_STATUS_TRANSITION',
+          });
+          return;
+        } else {
+          auditLog(req, 'ADMIN_OVERRIDE', 'call', call.id, `Admin God Mode: bypassed archived status transition (${call.status} -> ${status})`);
+        }
       }
     }
 

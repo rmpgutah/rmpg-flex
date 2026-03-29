@@ -943,7 +943,11 @@ router.delete('/templates/:id', validateParamIdMiddleware, requireRole('admin', 
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
     if (!template) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
-    if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates', code: 'CANNOT_DELETE_SYSTEM_TEMPLATES' }); return; }
+    // God Mode: admin bypass — can delete system templates
+    if (template.is_system && req.user?.role !== 'admin') { res.status(400).json({ error: 'Cannot delete system templates', code: 'CANNOT_DELETE_SYSTEM_TEMPLATES' }); return; }
+    if (template.is_system && req.user?.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'email_template', parseInt(String(req.params.id), 10), `Admin God Mode: deleting system template ${template.name}`);
+    }
 
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
     auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);

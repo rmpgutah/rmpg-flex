@@ -620,10 +620,15 @@ router.put('/:id/status', (req: Request, res: Response) => {
     };
 
     const validTransitions = allowed[invoice.status] || [];
+    // God Mode: admin bypass — can force any invoice status transition
     if (!validTransitions.includes(status)) {
-      return res.status(400).json({
-        error: `Cannot transition from '${invoice.status}' to '${status}'. Valid: ${validTransitions.join(', ')}`,
-      });
+      if (req.user?.role !== 'admin') {
+        return res.status(400).json({
+          error: `Cannot transition from '${invoice.status}' to '${status}'. Valid: ${validTransitions.join(', ')}`,
+        });
+      } else {
+        auditLog(req, 'ADMIN_OVERRIDE', 'invoice', Number(req.params.id), `Admin God Mode: forced invoice status transition ${invoice.status} -> ${status}`);
+      }
     }
 
     const updates: string[] = ['status = ?', 'updated_at = ?'];

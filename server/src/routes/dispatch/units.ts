@@ -161,9 +161,16 @@ router.delete('/units/:id', validateParamIdMiddleware, requireRole('admin', 'man
     }
 
     // Block deletion if unit is assigned to an active call
+    // God Mode: admin bypass — auto-unassign from active call then delete
     if (unit.current_call_id) {
-      res.status(400).json({ error: 'Cannot delete a unit that is assigned to an active call. Unassign the unit first.', code: 'CANNOT_DELETE_A_UNIT' });
-      return;
+      if (req.user?.role !== 'admin') {
+        res.status(400).json({ error: 'Cannot delete a unit that is assigned to an active call. Unassign the unit first.', code: 'CANNOT_DELETE_A_UNIT' });
+        return;
+      } else {
+        // Admin force-unassign: clear unit from the call
+        db.prepare('UPDATE units SET current_call_id = NULL, status = ? WHERE id = ?').run('available', req.params.id);
+        auditLog(req, 'ADMIN_OVERRIDE', 'unit', Number(req.params.id), `Admin God Mode: force-unassigned unit ${unit.call_sign} from call ${unit.current_call_id} before deletion`);
+      }
     }
 
     db.prepare('DELETE FROM units WHERE id = ?').run(req.params.id);
@@ -205,19 +212,24 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
 
     if (status) {
       // Fix 58: Validate status transitions
+      // God Mode: admin bypass — can force any status transition
       const INVALID_TRANSITIONS: Record<string, string[]> = {
         off_duty: ['onscene'], // Can't go from off_duty directly to onscene
         out_of_service: ['onscene', 'enroute'], // Must go available first
       };
       const blocked = INVALID_TRANSITIONS[unit.status];
       if (blocked && blocked.includes(status)) {
-        res.status(400).json({
-          error: `Cannot transition from '${unit.status}' to '${status}'. Must go through 'available' or 'dispatched' first.`,
-          code: 'INVALID_STATUS_TRANSITION',
-          current_status: unit.status,
-          requested_status: status,
-        });
-        return;
+        if (req.user?.role !== 'admin') {
+          res.status(400).json({
+            error: `Cannot transition from '${unit.status}' to '${status}'. Must go through 'available' or 'dispatched' first.`,
+            code: 'INVALID_STATUS_TRANSITION',
+            current_status: unit.status,
+            requested_status: status,
+          });
+          return;
+        } else {
+          auditLog(req, 'ADMIN_OVERRIDE', 'unit', Number(req.params.id), `Admin God Mode: forced status transition ${unit.status} -> ${status}`);
+        }
       }
       updates.push('status = ?');
       params.push(status);

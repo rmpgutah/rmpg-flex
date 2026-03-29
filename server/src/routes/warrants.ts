@@ -926,10 +926,15 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
       return;
     }
 
-    // Only allow updating non-served warrants
-    if (warrant.status === 'served') {
-      res.status(403).json({ error: 'Cannot update a served warrant', code: 'CANNOT_UPDATE_A_SERVED' });
-      return;
+    // God Mode: admin bypass — can update served warrants
+    if (req.user?.role !== 'admin') {
+      // Only allow updating non-served warrants
+      if (warrant.status === 'served') {
+        res.status(403).json({ error: 'Cannot update a served warrant', code: 'CANNOT_UPDATE_A_SERVED' });
+        return;
+      }
+    } else if (warrant.status === 'served') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'warrant', warrant.id, 'Admin God Mode: bypassed served warrant update restriction');
     }
 
     // Validate subject person exists if provided
@@ -1084,9 +1089,14 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
     if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
-    if (warrant.status === 'active') {
-      res.status(400).json({ error: 'Cannot delete an active warrant. Change status first.', code: 'CANNOT_DELETE_AN_ACTIVE' });
-      return;
+    // God Mode: admin bypass — can delete active warrants
+    if (req.user?.role !== 'admin') {
+      if (warrant.status === 'active') {
+        res.status(400).json({ error: 'Cannot delete an active warrant. Change status first.', code: 'CANNOT_DELETE_AN_ACTIVE' });
+        return;
+      }
+    } else if (warrant.status === 'active') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'warrant', warrant.id, 'Admin God Mode: bypassed active warrant delete restriction');
     }
 
     const delTx = db.transaction(() => {

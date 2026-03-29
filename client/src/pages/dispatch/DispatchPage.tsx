@@ -170,6 +170,7 @@ function formatDocumentType(val: string | undefined | null): string {
 export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -3761,7 +3762,7 @@ export default function DispatchPage() {
                     <div>
                       <div className="flex items-center justify-between">
                         <label className="field-label">Assigned Units:</label>
-                        {!isEditing && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                        {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                           <div className="relative" ref={attachUnitDropdownRef} style={{ display: 'inline-block' }}>
                             <button type="button"
                               onClick={() => setShowAttachUnitDropdown((prev) => !prev)}
@@ -3795,7 +3796,7 @@ export default function DispatchPage() {
                         )}
                       </div>
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
-                      {!isEditing && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">
                           <button type="button"
                             onClick={() => handleAutoAssign(selectedCall.id)}

@@ -22,6 +22,7 @@ interface DisciplinaryTabProps {
 }
 
 const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+const isGodModeRole = (role: string) => role === 'admin'; // Admin God Mode — unrestricted access
 
 function isManagerPlus(role: string) {
   return MANAGER_ROLES.includes(role);

@@ -41,6 +41,7 @@ export default function BodyCamerasPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = user?.role === 'admin';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ----------------------------------------------------------
   // State

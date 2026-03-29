@@ -74,6 +74,7 @@ const timeAgo = (date: string): string => {
 export default function TrainingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [records, setRecords] = useState<TrainingRecord[]>([]);
   const [requirements, setRequirements] = useState<TrainingRequirement[]>([]);

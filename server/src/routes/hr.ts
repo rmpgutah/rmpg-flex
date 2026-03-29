@@ -1077,7 +1077,12 @@ router.put('/payroll/entries/:id', validateParamIdMiddleware, requireRole('admin
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM hr_payroll_entries WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Payroll entry not found', code: 'PAYROLL_ENTRY_NOT_FOUND' });
-    if (existing.status === 'approved') return res.status(400).json({ error: 'Cannot edit approved entries', code: 'CANNOT_EDIT_APPROVED_ENTRIES' });
+    // God Mode: admin bypass — can edit approved payroll entries
+    if (existing.status === 'approved' && req.user?.role !== 'admin') {
+      return res.status(400).json({ error: 'Cannot edit approved entries', code: 'CANNOT_EDIT_APPROVED_ENTRIES' });
+    } else if (existing.status === 'approved') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'hr_payroll_entry', id, 'Admin God Mode: bypassed approved entry edit restriction');
+    }
 
     const { regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, notes, status } = req.body;
 

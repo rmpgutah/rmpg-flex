@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import { config } from '../config';
 
 const router = Router();
@@ -191,10 +192,17 @@ router.delete('/clients/:id', (req: Request, res: Response) => {
     }
 
     // Check for associated properties
+    // God Mode: admin bypass — cascade delete/unlink properties first
     const propCount = db.prepare('SELECT COUNT(*) as count FROM properties WHERE client_id = ?').get(client.id) as any;
     if (propCount.count > 0) {
-      res.status(400).json({ error: `Cannot delete client with ${propCount.count} associated properties` });
-      return;
+      if (req.user?.role !== 'admin') {
+        res.status(400).json({ error: `Cannot delete client with ${propCount.count} associated properties` });
+        return;
+      } else {
+        // Admin force cleanup: unlink properties from this client
+        db.prepare('UPDATE properties SET client_id = NULL WHERE client_id = ?').run(client.id);
+        auditLog(req, 'ADMIN_OVERRIDE', 'client', client.id, `Admin God Mode: unlinked ${propCount.count} properties before deleting client ${client.name}`);
+      }
     }
 
     db.prepare('DELETE FROM clients WHERE id = ?').run(client.id);
@@ -1256,8 +1264,15 @@ router.post('/record-locks', (req: Request, res: Response) => {
 router.delete('/record-locks/:entity_type/:entity_id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    db.prepare('DELETE FROM record_locks WHERE entity_type = ? AND entity_id = ? AND locked_by = ?')
-      .run(req.params.entity_type, req.params.entity_id, req.user!.userId);
+    // God Mode: admin bypass — can break any lock, not just their own
+    if (req.user?.role === 'admin') {
+      db.prepare('DELETE FROM record_locks WHERE entity_type = ? AND entity_id = ?')
+        .run(req.params.entity_type, req.params.entity_id);
+      auditLog(req, 'ADMIN_OVERRIDE', 'record_lock', 0, `Admin God Mode: broke record lock on ${req.params.entity_type}/${req.params.entity_id}`);
+    } else {
+      db.prepare('DELETE FROM record_locks WHERE entity_type = ? AND entity_id = ? AND locked_by = ?')
+        .run(req.params.entity_type, req.params.entity_id, req.user!.userId);
+    }
     res.json({ success: true });
   } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });

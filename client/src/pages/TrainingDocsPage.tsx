@@ -80,6 +80,7 @@ export default function TrainingDocsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
