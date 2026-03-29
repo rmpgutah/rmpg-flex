@@ -3,7 +3,8 @@ import { apiFetch } from '../../hooks/useApi';
 import {
   Shield, Database, Users, Bell, Trash2, RefreshCw, Download,
   HardDrive, Activity, UserCheck, AlertTriangle, CheckCircle,
-  Play, Archive, BarChart3, Loader2, Copy, Eye
+  Play, Archive, BarChart3, Loader2, Copy, Eye,
+  Lock, Unlock, Merge, Terminal, Radio, Globe, Clock
 } from 'lucide-react';
 
 interface DbStats {
@@ -60,6 +61,34 @@ export default function AdminGodModeTab() {
   const [purgeLogDays, setPurgeLogDays] = useState(90);
   const [purgeNotifDays, setPurgeNotifDays] = useState(30);
 
+  // Bulk reassign
+  const [reassignCallIds, setReassignCallIds] = useState('');
+  const [reassignTargetId, setReassignTargetId] = useState('');
+
+  // Force close
+  const [closeDisposition, setCloseDisposition] = useState('Closed by Admin');
+
+  // SQL Console
+  const [sqlQuery, setSqlQuery] = useState('');
+  const [sqlResult, setSqlResult] = useState<any>(null);
+  const [sqlRunning, setSqlRunning] = useState(false);
+
+  // Lockdown
+  const [lockdownStatus, setLockdownStatus] = useState<any>(null);
+  const [lockdownMessage, setLockdownMessage] = useState('System is in lockdown mode. Only administrators can access the system.');
+  const [lockdownKickSessions, setLockdownKickSessions] = useState(false);
+
+  // Merge persons
+  const [mergeKeepId, setMergeKeepId] = useState('');
+  const [mergeMergeId, setMergeMergeId] = useState('');
+
+  // WebSocket / Presence
+  const [wsClients, setWsClients] = useState<any[]>([]);
+  const [userPresence, setUserPresence] = useState<any>(null);
+
+  // Activity feed
+  const [activityFeed, setActivityFeed] = useState<any[]>([]);
+
   const showResult = useCallback((type: 'success' | 'error', message: string) => {
     setActionResult({ type, message });
     setTimeout(() => setActionResult(null), 5000);
@@ -78,6 +107,17 @@ export default function AdminGodModeTab() {
       if (overview) setSystemOverview(overview);
       setBackups(bk || []);
       setUsers(userList || []);
+
+      const [ws, presence, lockdown, feed] = await Promise.all([
+        apiFetch<any>('/admin/websocket/clients').catch(() => ({ clients: [] })),
+        apiFetch<any>('/admin/users/presence').catch(() => null),
+        apiFetch<any>('/admin/system/lockdown').catch(() => null),
+        apiFetch<any>('/admin/activity-feed?limit=20').catch(() => ({ actions: [] })),
+      ]);
+      setWsClients(ws?.clients || []);
+      if (presence) setUserPresence(presence);
+      if (lockdown) setLockdownStatus(lockdown);
+      setActivityFeed(feed?.actions || []);
     } catch (err) {
       console.error('God Mode load error:', err);
     } finally {
@@ -177,6 +217,80 @@ export default function AdminGodModeTab() {
     try {
       const result = await apiFetch<any>('/admin/purge/sessions', { method: 'POST' });
       showResult('success', `Purged ${result.purged} expired sessions`);
+    } catch (err: any) { showResult('error', err.message); }
+  };
+
+  const handleBulkReassign = async () => {
+    const ids = reassignCallIds.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    if (!ids.length || !reassignTargetId) return;
+    try {
+      const r = await apiFetch<any>('/admin/calls/bulk-reassign', {
+        method: 'POST', body: JSON.stringify({ call_ids: ids, target_officer_id: parseInt(reassignTargetId) }),
+      });
+      showResult('success', `Reassigned ${r.updated} calls to ${r.target}`);
+    } catch (err: any) { showResult('error', err.message); }
+  };
+
+  const handleForceCloseAll = async () => {
+    try {
+      const r = await apiFetch<any>('/admin/calls/force-close-all', {
+        method: 'POST', body: JSON.stringify({ disposition: closeDisposition }),
+      });
+      showResult('success', `Force-closed ${r.closed} open calls`);
+    } catch (err: any) { showResult('error', err.message); }
+  };
+
+  const handleSqlQuery = async () => {
+    if (!sqlQuery.trim()) return;
+    setSqlRunning(true);
+    setSqlResult(null);
+    try {
+      const r = await apiFetch<any>('/admin/query', {
+        method: 'POST', body: JSON.stringify({ sql: sqlQuery }),
+      });
+      setSqlResult(r);
+    } catch (err: any) { setSqlResult({ error: err.message }); }
+    finally { setSqlRunning(false); }
+  };
+
+  const handleToggleLockdown = async () => {
+    try {
+      if (lockdownStatus?.active) {
+        await apiFetch<any>('/admin/system/lockdown', { method: 'DELETE' });
+        showResult('success', 'Lockdown DISABLED');
+      } else {
+        await apiFetch<any>('/admin/system/lockdown', {
+          method: 'POST', body: JSON.stringify({ message: lockdownMessage, kick_sessions: lockdownKickSessions }),
+        });
+        showResult('success', 'Lockdown ENABLED — non-admin users blocked');
+      }
+      loadData();
+    } catch (err: any) { showResult('error', err.message); }
+  };
+
+  const handleMergePersons = async () => {
+    if (!mergeKeepId || !mergeMergeId) return;
+    try {
+      const r = await apiFetch<any>('/admin/records/persons/merge', {
+        method: 'POST', body: JSON.stringify({ keep_id: parseInt(mergeKeepId), merge_id: parseInt(mergeMergeId) }),
+      });
+      showResult('success', `Merged Person #${r.merged} into #${r.kept} — ${r.records_reassigned} records reassigned`);
+      setMergeKeepId(''); setMergeMergeId('');
+    } catch (err: any) { showResult('error', err.message); }
+  };
+
+  const handleFullExport = async () => {
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      const resp = await fetch('/api/admin/export/full', { headers: { Authorization: `Bearer ${token}` } });
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rmpg-flex-export-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showResult('success', 'Full export downloaded');
     } catch (err: any) { showResult('error', err.message); }
   };
 
@@ -365,6 +479,269 @@ export default function AdminGodModeTab() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* User Presence */}
+      {userPresence && (
+        <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+          <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Users size={14} /> User Presence</h3>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-[#0d1520] px-2 py-1.5 rounded-sm text-center">
+              <div className="text-[9px] text-gray-500 uppercase">Online</div>
+              <div className="text-[14px] font-mono font-bold text-green-400">{userPresence.online || 0}</div>
+            </div>
+            <div className="bg-[#0d1520] px-2 py-1.5 rounded-sm text-center">
+              <div className="text-[9px] text-gray-500 uppercase">Idle</div>
+              <div className="text-[14px] font-mono font-bold text-yellow-400">{userPresence.idle || 0}</div>
+            </div>
+            <div className="bg-[#0d1520] px-2 py-1.5 rounded-sm text-center">
+              <div className="text-[9px] text-gray-500 uppercase">Offline</div>
+              <div className="text-[14px] font-mono font-bold text-gray-500">{userPresence.offline || 0}</div>
+            </div>
+          </div>
+          {userPresence.users && userPresence.users.length > 0 && (
+            <div className="bg-[#0d1520] rounded-sm p-2 max-h-40 overflow-y-auto">
+              {userPresence.users.map((u: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 py-0.5 border-b border-[#1a2636]/50 text-[11px]">
+                  <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-600'}`} />
+                  <span className="text-gray-300 font-mono">{u.username || u.full_name}</span>
+                  <span className="text-gray-600 text-[9px]">{u.role}</span>
+                  {u.last_seen && <span className="text-gray-600 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* WebSocket Clients */}
+      <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Radio size={14} /> WebSocket Clients</h3>
+        {wsClients.length === 0 ? (
+          <div className="text-[11px] text-gray-500 italic">No connected clients</div>
+        ) : (
+          <div className="bg-[#0d1520] rounded-sm overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-[#1a2636]">
+                  <th className="text-left px-2 py-1 text-gray-500 font-normal">User ID</th>
+                  <th className="text-left px-2 py-1 text-gray-500 font-normal">Username</th>
+                  <th className="text-left px-2 py-1 text-gray-500 font-normal">Role</th>
+                  <th className="text-left px-2 py-1 text-gray-500 font-normal">IP</th>
+                  <th className="text-left px-2 py-1 text-gray-500 font-normal">Connected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wsClients.map((c: any, i: number) => (
+                  <tr key={i} className="border-b border-[#1a2636]/50">
+                    <td className="px-2 py-1 font-mono text-gray-400">{c.userId}</td>
+                    <td className="px-2 py-1 text-white">{c.username}</td>
+                    <td className="px-2 py-1 text-gray-400">{c.role}</td>
+                    <td className="px-2 py-1 font-mono text-gray-500">{c.ip}</td>
+                    <td className="px-2 py-1 text-gray-500">{c.connectedAt ? new Date(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Bulk Call Operations */}
+      <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+        <h3 className="text-xs font-bold text-yellow-400 uppercase mb-2 flex items-center gap-1.5"><Globe size={14} /> Bulk Call Operations</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Bulk Reassign */}
+          <div className="bg-[#0d1520] p-2 rounded-sm space-y-2">
+            <div className="text-[10px] text-gray-400 font-bold uppercase">Bulk Reassign Calls</div>
+            <textarea
+              value={reassignCallIds}
+              onChange={e => setReassignCallIds(e.target.value)}
+              placeholder="Call IDs (comma-separated): 101, 102, 103"
+              rows={2}
+              className="w-full bg-[#141e2b] border border-[#2a3a4a] rounded-sm px-2 py-1 text-[11px] text-white placeholder-gray-600 resize-none font-mono"
+            />
+            <select
+              value={reassignTargetId}
+              onChange={e => setReassignTargetId(e.target.value)}
+              className="w-full bg-[#141e2b] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white"
+            >
+              <option value="">Target officer...</option>
+              {users.filter((u: any) => ['officer', 'supervisor'].includes(u.role)).map((u: any) => (
+                <option key={u.id} value={u.id}>{u.full_name || u.username} ({u.call_sign || u.badge_number || 'N/A'})</option>
+              ))}
+            </select>
+            <button onClick={handleBulkReassign} disabled={!reassignCallIds || !reassignTargetId} className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white">
+              Reassign Calls
+            </button>
+          </div>
+          {/* Force Close All */}
+          <div className="bg-[#0d1520] p-2 rounded-sm space-y-2">
+            <div className="text-[10px] text-gray-400 font-bold uppercase">Force Close All Open Calls</div>
+            <input
+              type="text"
+              value={closeDisposition}
+              onChange={e => setCloseDisposition(e.target.value)}
+              placeholder="Disposition..."
+              className="w-full bg-[#141e2b] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+            />
+            <button onClick={handleForceCloseAll} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-sm text-[11px] font-bold text-white">
+              Force Close ALL Open Calls
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* SQL Query Console */}
+      <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+        <h3 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1.5"><Terminal size={14} /> SQL Query Console</h3>
+        <p className="text-[9px] text-gray-500 mb-2">Direct database access. Use with caution — queries run against the live production database.</p>
+        <textarea
+          value={sqlQuery}
+          onChange={e => setSqlQuery(e.target.value)}
+          placeholder="SELECT * FROM users LIMIT 10;"
+          rows={4}
+          className="w-full bg-[#0d1520] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 resize-y font-mono"
+        />
+        <div className="flex items-center gap-2 mt-2">
+          <button onClick={handleSqlQuery} disabled={sqlRunning || !sqlQuery.trim()} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+            {sqlRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Run Query
+          </button>
+          <button onClick={() => { setSqlQuery(''); setSqlResult(null); }} className="px-3 py-1.5 bg-[#1a2636] hover:bg-[#243447] border border-[#2a3a4a] rounded-sm text-[11px] text-gray-300">
+            Clear
+          </button>
+        </div>
+        {sqlResult && (
+          <div className="mt-2 bg-[#0d1520] rounded-sm p-2 max-h-60 overflow-auto">
+            {sqlResult.error ? (
+              <div className="text-red-400 text-[11px] font-mono">{sqlResult.error}</div>
+            ) : sqlResult.rows ? (
+              <table className="w-full text-[10px] font-mono">
+                <thead>
+                  <tr className="border-b border-[#1a2636]">
+                    {sqlResult.columns?.map((col: string) => (
+                      <th key={col} className="text-left px-1.5 py-1 text-gray-500 font-normal whitespace-nowrap">{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sqlResult.rows.map((row: any, i: number) => (
+                    <tr key={i} className="border-b border-[#1a2636]/30">
+                      {sqlResult.columns?.map((col: string) => (
+                        <td key={col} className="px-1.5 py-0.5 text-gray-300 whitespace-nowrap max-w-[200px] truncate">{String(row[col] ?? '')}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="text-green-400 text-[11px] font-mono">
+                {sqlResult.changes !== undefined ? `${sqlResult.changes} rows affected` : 'Query executed successfully'}
+              </div>
+            )}
+            {sqlResult.row_count !== undefined && (
+              <div className="text-[9px] text-gray-500 mt-1">{sqlResult.row_count} rows returned</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Emergency Lockdown */}
+      <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+        <h3 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1.5">
+          {lockdownStatus?.active ? <Lock size={14} /> : <Unlock size={14} />} Emergency Lockdown
+        </h3>
+        <div className="flex items-center gap-3 mb-3">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-[11px] font-bold ${lockdownStatus?.active ? 'bg-red-900/60 text-red-300 border border-red-700/40' : 'bg-green-900/40 text-green-300 border border-green-700/40'}`}>
+            <span className={`w-2 h-2 rounded-full ${lockdownStatus?.active ? 'bg-red-400 animate-pulse' : 'bg-green-400'}`} />
+            {lockdownStatus?.active ? 'LOCKDOWN ACTIVE' : 'System Normal'}
+          </div>
+        </div>
+        {!lockdownStatus?.active && (
+          <div className="space-y-2 mb-3">
+            <input
+              type="text"
+              value={lockdownMessage}
+              onChange={e => setLockdownMessage(e.target.value)}
+              placeholder="Lockdown message..."
+              className="w-full bg-[#0d1520] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+            />
+            <label className="flex items-center gap-2 text-[10px] text-gray-400">
+              <input
+                type="checkbox"
+                checked={lockdownKickSessions}
+                onChange={e => setLockdownKickSessions(e.target.checked)}
+                className="rounded-sm"
+              />
+              Kick all non-admin sessions immediately
+            </label>
+          </div>
+        )}
+        <button onClick={handleToggleLockdown} className={`px-4 py-1.5 rounded-sm text-[11px] font-bold text-white flex items-center gap-1 ${lockdownStatus?.active ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}>
+          {lockdownStatus?.active ? <><Unlock size={12} /> Disable Lockdown</> : <><Lock size={12} /> Enable Lockdown</>}
+        </button>
+      </div>
+
+      {/* Merge Person Records */}
+      <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Merge size={14} /> Merge Person Records</h3>
+        <p className="text-[9px] text-gray-500 mb-2">Merge duplicate person records. The "merge" record will be deleted and all associated records reassigned to the "keep" record.</p>
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <label className="text-[9px] text-gray-500 uppercase">Keep (Primary ID)</label>
+            <input
+              type="number"
+              value={mergeKeepId}
+              onChange={e => setMergeKeepId(e.target.value)}
+              placeholder="ID to keep"
+              className="w-full bg-[#0d1520] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="text-[9px] text-gray-500 uppercase">Merge (Duplicate ID)</label>
+            <input
+              type="number"
+              value={mergeMergeId}
+              onChange={e => setMergeMergeId(e.target.value)}
+              placeholder="ID to merge"
+              className="w-full bg-[#0d1520] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
+            />
+          </div>
+          <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+            <Merge size={12} /> Merge
+          </button>
+        </div>
+      </div>
+
+      {/* Full System Export */}
+      <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Download size={14} /> Full System Export</h3>
+        <p className="text-[9px] text-gray-500 mb-2">Download a complete JSON export of all system data (users, calls, reports, persons, vehicles, etc.).</p>
+        <button onClick={handleFullExport} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+          <Download size={12} /> Download Full Export
+        </button>
+      </div>
+
+      {/* Live Activity Feed */}
+      <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
+        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Clock size={14} /> Live Activity Feed</h3>
+        {activityFeed.length === 0 ? (
+          <div className="text-[11px] text-gray-500 italic">No recent activity</div>
+        ) : (
+          <div className="bg-[#0d1520] rounded-sm p-2 max-h-60 overflow-y-auto space-y-0.5">
+            {activityFeed.map((a: any, i: number) => (
+              <div key={i} className="flex items-start gap-2 py-1 border-b border-[#1a2636]/50 text-[10px]">
+                <span className="text-gray-600 font-mono whitespace-nowrap min-w-[60px]">
+                  {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—'}
+                </span>
+                <span className="text-blue-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
+                <span className="text-yellow-400 min-w-[60px]">{a.action || '—'}</span>
+                <span className="text-gray-500">{a.entity_type || ''}</span>
+                <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : JSON.stringify(a.details).slice(0, 80)) : ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

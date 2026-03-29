@@ -2253,4 +2253,405 @@ router.get('/system-overview', requireRole('admin'), (req: Request, res: Respons
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Bulk Call Operations
+// ════════════════════════════════════════════════════════════
+
+// POST /admin/calls/bulk-reassign — Reassign multiple calls to a different officer
+router.post('/calls/bulk-reassign', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_ids, target_officer_id } = req.body;
+    if (!Array.isArray(call_ids) || !call_ids.length) { res.status(400).json({ error: 'call_ids array required' }); return; }
+    if (!target_officer_id) { res.status(400).json({ error: 'target_officer_id required' }); return; }
+
+    const officer = db.prepare('SELECT id, full_name, call_sign FROM users WHERE id = ?').get(target_officer_id) as any;
+    if (!officer) { res.status(404).json({ error: 'Target officer not found' }); return; }
+
+    const update = db.prepare('UPDATE calls_for_service SET primary_unit = ?, updated_at = ? WHERE id = ?');
+    const now = new Date().toISOString();
+    let updated = 0;
+
+    const tx = db.transaction(() => {
+      for (const id of call_ids) {
+        const r = update.run(officer.call_sign || officer.full_name, now, id);
+        if (r.changes > 0) updated++;
+      }
+    });
+    tx();
+
+    auditLog(req, 'ADMIN_BULK_REASSIGN', 'calls_for_service', 0,
+      `Bulk reassigned ${updated} calls to ${officer.full_name} (${officer.call_sign || 'N/A'})`);
+
+    res.json({ success: true, updated, target: officer.full_name });
+  } catch (error: any) {
+    console.error('Bulk reassign error:', error);
+    res.status(500).json({ error: 'Bulk reassign failed' });
+  }
+});
+
+// POST /admin/calls/force-close-all — Close all open calls (shift end)
+router.post('/calls/force-close-all', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { disposition = 'Closed by Admin', exclude_priorities } = req.body;
+    const now = new Date().toISOString();
+
+    let where = "status NOT IN ('closed', 'cancelled', 'archived')";
+    const params: any[] = [];
+    if (exclude_priorities && Array.isArray(exclude_priorities) && exclude_priorities.length) {
+      where += ` AND (priority IS NULL OR priority NOT IN (${exclude_priorities.map(() => '?').join(',')}))`;
+      params.push(...exclude_priorities);
+    }
+
+    const openCalls = db.prepare(`SELECT id FROM calls_for_service WHERE ${where}`).all(...params) as any[];
+
+    const update = db.prepare(`UPDATE calls_for_service SET status = 'closed', disposition = ?, closed_at = ?, updated_at = ? WHERE id = ?`);
+    const tx = db.transaction(() => {
+      for (const call of openCalls) {
+        update.run(disposition, now, now, call.id);
+      }
+    });
+    tx();
+
+    auditLog(req, 'ADMIN_FORCE_CLOSE_ALL', 'calls_for_service', 0,
+      `Force-closed ${openCalls.length} open calls with disposition: ${disposition}`);
+
+    try {
+      const { broadcast } = require('../utils/websocket');
+      broadcast('dispatch', 'calls:bulk_closed', { count: openCalls.length });
+    } catch {}
+
+    res.json({ success: true, closed: openCalls.length, disposition });
+  } catch (error: any) {
+    console.error('Force close all error:', error);
+    res.status(500).json({ error: 'Force close failed' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: SQL Query Console (Read-Only)
+// ════════════════════════════════════════════════════════════
+
+// POST /admin/query — Execute a read-only SQL query
+router.post('/query', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { sql, limit = 100 } = req.body;
+    if (!sql || typeof sql !== 'string') { res.status(400).json({ error: 'SQL query required' }); return; }
+
+    // Security: only allow SELECT statements
+    const trimmed = sql.trim().replace(/^\/\*[\s\S]*?\*\//g, '').trim();
+    const firstWord = trimmed.split(/\s+/)[0].toUpperCase();
+    if (!['SELECT', 'PRAGMA', 'EXPLAIN', 'WITH'].includes(firstWord)) {
+      res.status(403).json({ error: 'Only SELECT, PRAGMA, EXPLAIN, and WITH queries are allowed', code: 'WRITE_QUERY_BLOCKED' });
+      return;
+    }
+
+    // Block dangerous patterns
+    const dangerous = /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|ATTACH|DETACH|VACUUM|REINDEX)\b/i;
+    if (dangerous.test(trimmed)) {
+      res.status(403).json({ error: 'Query contains blocked keywords (DROP, DELETE, INSERT, UPDATE, ALTER, CREATE)', code: 'DANGEROUS_QUERY_BLOCKED' });
+      return;
+    }
+
+    // Add LIMIT if not present
+    let finalSql = trimmed;
+    if (firstWord === 'SELECT' && !/\bLIMIT\b/i.test(finalSql)) {
+      finalSql = finalSql.replace(/;?\s*$/, '') + ` LIMIT ${Math.min(limit, 10000)}`;
+    }
+
+    const startMs = Date.now();
+    const rows = db.prepare(finalSql).all() as any[];
+    const durationMs = Date.now() - startMs;
+
+    const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+
+    auditLog(req, 'ADMIN_SQL_QUERY', 'database', 0,
+      `SQL query (${durationMs}ms, ${rows.length} rows): ${finalSql.slice(0, 200)}`);
+
+    res.json({
+      success: true,
+      columns,
+      rows,
+      row_count: rows.length,
+      duration_ms: durationMs,
+      sql: finalSql,
+    });
+  } catch (error: any) {
+    console.error('SQL query error:', error);
+    res.status(400).json({ error: error.message || 'Query execution failed', code: 'QUERY_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Emergency Lockdown
+// ════════════════════════════════════════════════════════════
+
+// POST /admin/system/lockdown — Enable system lockdown (admin-only access)
+router.post('/system/lockdown', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { message = 'System is in lockdown mode. Only administrators can access the system.', kick_sessions = false } = req.body;
+    const now = new Date().toISOString();
+
+    // Store lockdown state in system_config
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = 'system_lockdown'").get() as any;
+    const lockdownData = JSON.stringify({ active: true, message, activated_by: req.user!.userId, activated_at: now });
+
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = 'system_lockdown'").run(lockdownData, now);
+    } else {
+      db.prepare("INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES ('system_lockdown', ?, 'system', 1, ?, ?)").run(lockdownData, now, now);
+    }
+
+    // Optionally kill all non-admin sessions
+    let sessionsKilled = 0;
+    if (kick_sessions) {
+      const result = db.prepare("DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE role != 'admin')").run();
+      sessionsKilled = result.changes;
+    }
+
+    auditLog(req, 'ADMIN_LOCKDOWN_ENABLED', 'system', 0,
+      `System lockdown ENABLED. Message: ${message}. Sessions killed: ${sessionsKilled}`);
+
+    try {
+      const { broadcast } = require('../utils/websocket');
+      broadcast('system', 'lockdown:enabled', { message });
+    } catch {}
+
+    res.json({ success: true, message: 'Lockdown enabled', sessions_killed: sessionsKilled });
+  } catch (error: any) {
+    console.error('Lockdown enable error:', error);
+    res.status(500).json({ error: 'Failed to enable lockdown' });
+  }
+});
+
+// DELETE /admin/system/lockdown — Disable lockdown
+router.delete('/system/lockdown', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = 'system_lockdown'")
+      .run(JSON.stringify({ active: false }), now);
+
+    auditLog(req, 'ADMIN_LOCKDOWN_DISABLED', 'system', 0, 'System lockdown DISABLED');
+
+    try {
+      const { broadcast } = require('../utils/websocket');
+      broadcast('system', 'lockdown:disabled', {});
+    } catch {}
+
+    res.json({ success: true, message: 'Lockdown disabled' });
+  } catch (error: any) {
+    console.error('Lockdown disable error:', error);
+    res.status(500).json({ error: 'Failed to disable lockdown' });
+  }
+});
+
+// GET /admin/system/lockdown — Check lockdown status
+router.get('/system/lockdown', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'system_lockdown'").get() as any;
+    if (!row) { res.json({ active: false }); return; }
+    try {
+      const data = JSON.parse(row.config_value);
+      res.json(data);
+    } catch { res.json({ active: false }); }
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to check lockdown status' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Merge Duplicate Records
+// ════════════════════════════════════════════════════════════
+
+// POST /admin/records/persons/merge — Merge two person records
+router.post('/records/persons/merge', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { keep_id, merge_id } = req.body;
+    if (!keep_id || !merge_id) { res.status(400).json({ error: 'keep_id and merge_id required' }); return; }
+    if (keep_id === merge_id) { res.status(400).json({ error: 'Cannot merge a record with itself' }); return; }
+
+    const keepPerson = db.prepare('SELECT * FROM persons WHERE id = ?').get(keep_id) as any;
+    const mergePerson = db.prepare('SELECT * FROM persons WHERE id = ?').get(merge_id) as any;
+    if (!keepPerson) { res.status(404).json({ error: 'Keep person not found' }); return; }
+    if (!mergePerson) { res.status(404).json({ error: 'Merge person not found' }); return; }
+
+    // Tables that reference person_id
+    const refTables = [
+      'calls_for_service', 'incidents', 'citations', 'arrests', 'warrants',
+      'field_interviews', 'trespass_orders', 'dl_records', 'evidence_items',
+    ];
+
+    let reassigned = 0;
+    const tx = db.transaction(() => {
+      for (const table of refTables) {
+        try {
+          const r = db.prepare(`UPDATE "${table}" SET person_id = ? WHERE person_id = ?`).run(keep_id, merge_id);
+          reassigned += r.changes;
+        } catch {} // table may not have person_id column
+      }
+
+      // Also update incident_persons junction table if it exists
+      try {
+        db.prepare('UPDATE incident_persons SET person_id = ? WHERE person_id = ?').run(keep_id, merge_id);
+      } catch {}
+
+      // Fill in blank fields on the keep record from the merge record
+      const fillableFields = ['phone', 'email', 'address', 'city', 'state', 'zip', 'ssn_last4', 'dl_number', 'dl_state', 'employer', 'occupation', 'emergency_contact', 'notes'];
+      for (const field of fillableFields) {
+        if (!keepPerson[field] && mergePerson[field]) {
+          try {
+            db.prepare(`UPDATE persons SET "${field}" = ? WHERE id = ?`).run(mergePerson[field], keep_id);
+          } catch {}
+        }
+      }
+
+      // Append merge person's notes to keep person
+      if (mergePerson.notes) {
+        const combined = [keepPerson.notes, `[Merged from Person #${merge_id}] ${mergePerson.notes}`].filter(Boolean).join('\n');
+        db.prepare('UPDATE persons SET notes = ? WHERE id = ?').run(combined, keep_id);
+      }
+
+      // Soft-delete the merged record
+      db.prepare("UPDATE persons SET full_name = ?, notes = ?, updated_at = ? WHERE id = ?")
+        .run(`[MERGED INTO #${keep_id}] ${mergePerson.full_name}`, `Merged into Person #${keep_id} by admin on ${new Date().toISOString()}`, new Date().toISOString(), merge_id);
+    });
+    tx();
+
+    auditLog(req, 'ADMIN_MERGE_PERSONS', 'person', keep_id,
+      `Merged Person #${merge_id} (${mergePerson.full_name}) into Person #${keep_id} (${keepPerson.full_name}). ${reassigned} linked records reassigned.`);
+
+    res.json({ success: true, kept: keep_id, merged: merge_id, records_reassigned: reassigned });
+  } catch (error: any) {
+    console.error('Merge persons error:', error);
+    res.status(500).json({ error: 'Merge failed' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: WebSocket Monitoring & User Presence
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/websocket/clients — List connected WebSocket clients
+router.get('/websocket/clients', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    let clients: any[] = [];
+    try {
+      const ws = require('../utils/websocket');
+      if (typeof ws.getConnectedClients === 'function') {
+        clients = ws.getConnectedClients();
+      }
+    } catch {}
+    res.json({ connected: clients.length, clients });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get WebSocket clients' });
+  }
+});
+
+// GET /admin/users/presence — User online presence (from recent activity)
+router.get('/users/presence', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Users active in last 15 minutes (based on refresh tokens and activity log)
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    const users = db.prepare(`
+      SELECT u.id, u.username, u.full_name, u.role, u.call_sign, u.badge_number,
+        (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) as last_activity,
+        (SELECT COUNT(*) FROM refresh_tokens rt WHERE rt.user_id = u.id AND rt.expires_at > datetime('now')) as active_sessions,
+        CASE
+          WHEN (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) > ? THEN 'online'
+          WHEN (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) > ? THEN 'idle'
+          ELSE 'offline'
+        END as status
+      FROM users u
+      WHERE u.status = 'active'
+      ORDER BY last_activity DESC NULLS LAST
+    `).all(fifteenMinAgo, oneHourAgo) as any[];
+
+    const online = users.filter((u: any) => u.status === 'online').length;
+    const idle = users.filter((u: any) => u.status === 'idle').length;
+    const offline = users.filter((u: any) => u.status === 'offline').length;
+
+    res.json({ online, idle, offline, total: users.length, users });
+  } catch (error: any) {
+    console.error('User presence error:', error);
+    res.status(500).json({ error: 'Failed to get user presence' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Full System Export
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/export/full — Export all system data as JSON
+router.get('/export/full', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as any[];
+
+    const data: Record<string, any[]> = {};
+    for (const t of tables) {
+      // Skip sensitive tables
+      if (['refresh_tokens'].includes(t.name)) continue;
+      try {
+        data[t.name] = db.prepare(`SELECT * FROM "${t.name}" ORDER BY id DESC LIMIT 50000`).all();
+      } catch {
+        try {
+          data[t.name] = db.prepare(`SELECT * FROM "${t.name}" LIMIT 50000`).all();
+        } catch { data[t.name] = []; }
+      }
+    }
+
+    auditLog(req, 'ADMIN_FULL_EXPORT', 'database', 0, `Full system export: ${tables.length} tables`);
+
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="rmpg-flex-export-${timestamp}.json"`);
+    res.json({
+      exported_at: new Date().toISOString(),
+      table_count: Object.keys(data).length,
+      data,
+    });
+  } catch (error: any) {
+    console.error('Full export error:', error);
+    res.status(500).json({ error: 'Full export failed' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Live Activity Feed
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/activity-feed — Real-time activity feed (recent actions)
+router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 500);
+    const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    const rows = db.prepare(`
+      SELECT al.*, u.username, u.full_name, u.role, u.call_sign
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.created_at > ?
+      ORDER BY al.created_at DESC
+      LIMIT ?
+    `).all(since, limit) as any[];
+
+    res.json({ actions: rows, count: rows.length, since });
+  } catch (error: any) {
+    console.error('Activity feed error:', error);
+    res.status(500).json({ error: 'Failed to get activity feed' });
+  }
+});
+
 export default router;
