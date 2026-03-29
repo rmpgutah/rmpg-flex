@@ -230,7 +230,7 @@ export default function ShiftPlansPage() {
             </div>
           )}
 
-          <ExportButton exportUrl="/api/shift-plans/export/csv" exportFilename="shift-plans.csv" />
+          <ExportButton exportUrl="/api/admin/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           <button type="button"
             onClick={() => setShowCreateForm(true)}
             className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"

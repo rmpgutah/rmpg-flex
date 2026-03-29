@@ -499,4 +499,36 @@ router.get('/stats', async (_req: Request, res: Response) => {
   }
 });
 
+// ── Skip Tracer CSV Export ────────────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT s.search_type, s.query_params, s.result_count,
+             u.full_name as searched_by_name, s.created_at
+      FROM skip_tracer_searches s
+      LEFT JOIN users u ON s.searched_by = u.id
+      ORDER BY s.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['Search Type', 'Query', 'Result Count', 'Searched By', 'Date'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.search_type,
+        (r.query_params || '').replace(/"/g, '""'),
+        r.result_count,
+        (r.searched_by_name || '').replace(/"/g, '""'),
+        r.created_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="skip_traces_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Skip tracer CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export skip traces', code: 'SKIPTRACER_EXPORT_ERROR' });
+  }
+});
+
 export default router;

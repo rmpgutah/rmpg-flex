@@ -681,7 +681,7 @@ router.get('/stats/by-officer', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════
 // UPGRADE 13: Citations CSV Export with Date Range
 // ════════════════════════════════════════════════════════════
-router.get('/export', (req: Request, res: Response) => {
+function handleCitationsExport(req: Request, res: Response) {
   try {
     const db = getDb();
     const { date_from, date_to, status, type } = req.query;
@@ -699,7 +699,9 @@ router.get('/export', (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="citations_export_${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(csv);
   } catch (error: any) { console.error('Export citations error:', error); res.status(500).json({ error: 'Failed to export citations', code: 'EXPORT_CITATIONS_ERROR' }); }
-});
+}
+router.get('/export', handleCitationsExport);
+router.get('/export/csv', handleCitationsExport);
 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 14: Citation Data Completeness

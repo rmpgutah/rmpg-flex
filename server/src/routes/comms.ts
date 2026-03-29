@@ -1420,4 +1420,38 @@ router.get('/bolos/watch-list', (req: Request, res: Response) => {
   }
 });
 
+// ── Communications CSV Export ─────────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT b.bolo_number, b.type, b.priority, b.status, b.title,
+             b.subject_description, b.vehicle_description,
+             b.broadcast_count, b.expires_at,
+             u.full_name as issued_by_name, b.created_at, b.updated_at
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      ORDER BY b.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['BOLO #', 'Type', 'Priority', 'Status', 'Title', 'Subject Description', 'Vehicle Description', 'Broadcasts', 'Expires', 'Issued By', 'Created', 'Updated'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.bolo_number, r.type, r.priority, r.status,
+        (r.title || '').replace(/"/g, '""'),
+        (r.subject_description || '').replace(/"/g, '""'),
+        (r.vehicle_description || '').replace(/"/g, '""'),
+        r.broadcast_count, r.expires_at, r.issued_by_name, r.created_at, r.updated_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="communications_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Comms CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export communications', code: 'COMMS_EXPORT_ERROR' });
+  }
+});
+
 export default router;

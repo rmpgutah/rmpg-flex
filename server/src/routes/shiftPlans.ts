@@ -606,4 +606,35 @@ router.get('/shift-notifications', requireRole('admin', 'manager', 'supervisor',
   }
 });
 
+// ── Shift Plans CSV Export ────────────────────────────────────────────────────
+router.get('/shift-plans/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sp.name, sp.date, sp.shift_type, sp.status,
+             u.full_name as created_by_name, sp.created_at
+      FROM shift_plans sp
+      LEFT JOIN users u ON sp.created_by = u.id
+      ORDER BY sp.date DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['Plan Name', 'Date', 'Shift Type', 'Status', 'Created By', 'Created At'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        (r.name || '').replace(/"/g, '""'),
+        r.date, r.shift_type, r.status,
+        (r.created_by_name || '').replace(/"/g, '""'),
+        r.created_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="shift_plans_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Shift plans CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export shift plans', code: 'SHIFT_PLANS_EXPORT_ERROR' });
+  }
+});
+
 export default router;

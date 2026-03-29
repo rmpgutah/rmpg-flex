@@ -4041,4 +4041,40 @@ router.get('/notifications', (req: Request, res: Response) => {
   }
 });
 
+// ── Fleet CSV Export ─────────────────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fv.vehicle_number, fv.make, fv.model, fv.year, fv.color, fv.vin,
+             fv.license_plate, fv.status, fv.assigned_officer_name,
+             fv.current_mileage, fv.next_service_due, fv.insurance_expiry,
+             fv.registration_expiry, fv.purchase_date, fv.purchase_price,
+             fv.fuel_type, fv.notes, fv.created_at
+      FROM fleet_vehicles fv
+      WHERE fv.archived_at IS NULL
+      ORDER BY fv.vehicle_number
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['Vehicle #', 'Make', 'Model', 'Year', 'Color', 'VIN', 'License Plate', 'Status', 'Assigned Officer', 'Mileage', 'Next Service', 'Insurance Expiry', 'Registration Expiry', 'Purchase Date', 'Purchase Price', 'Fuel Type', 'Notes', 'Created'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.vehicle_number, r.make, r.model, r.year, r.color,
+        (r.vin || '').replace(/"/g, '""'), r.license_plate, r.status,
+        (r.assigned_officer_name || '').replace(/"/g, '""'),
+        r.current_mileage, r.next_service_due, r.insurance_expiry,
+        r.registration_expiry, r.purchase_date, r.purchase_price,
+        r.fuel_type, (r.notes || '').replace(/"/g, '""'), r.created_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="fleet_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Fleet CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export fleet data', code: 'FLEET_EXPORT_ERROR' });
+  }
+});
+
 export default router;

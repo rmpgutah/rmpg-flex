@@ -1486,4 +1486,37 @@ router.get('/metrics/backlog', (_req: Request, res: Response) => {
   }
 });
 
+// ── Forensic Lab CSV Export ───────────────────────────────────────────────────
+router.get('/export/csv', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fc.lab_number, fc.case_number, fc.case_type, fc.status, fc.priority,
+             fc.submitted_by_name, fc.lead_examiner_name, fc.description,
+             fc.received_date, fc.due_date, fc.completed_date, fc.created_at,
+             (SELECT COUNT(*) FROM forensic_exhibits WHERE forensic_case_id = fc.id) as exhibit_count
+      FROM forensic_cases fc
+      ORDER BY fc.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['Lab #', 'Case #', 'Case Type', 'Status', 'Priority', 'Submitted By', 'Lead Examiner', 'Description', 'Received Date', 'Due Date', 'Completed Date', 'Exhibits', 'Created'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.lab_number, r.case_number, r.case_type, r.status, r.priority,
+        (r.submitted_by_name || '').replace(/"/g, '""'),
+        (r.lead_examiner_name || '').replace(/"/g, '""'),
+        (r.description || '').replace(/"/g, '""'),
+        r.received_date, r.due_date, r.completed_date, r.exhibit_count, r.created_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="forensic_cases_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Forensics CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export forensic cases', code: 'FORENSICS_EXPORT_ERROR' });
+  }
+});
+
 export default router;
