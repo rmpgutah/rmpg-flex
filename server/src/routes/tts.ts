@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { Communicate } from 'edge-tts-universal';
+// Lazy-imported: edge-tts-universal is optional
+let Communicate: any = null;
+const edgeTtsReady = import('edge-tts-universal').then(mod => {
+  Communicate = mod.Communicate;
+}).catch(() => { /* edge-tts-universal not installed */ });
 
 const router = Router();
 router.use(authenticateToken);
@@ -38,8 +42,8 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    if (text.length > 500) {
-      res.status(400).json({ error: 'text must be 500 characters or less', code: 'TTS_TEXT_TOO_LONG' });
+    if (text.length > 1500) {
+      res.status(400).json({ error: 'text must be 1500 characters or less', code: 'TTS_TEXT_TOO_LONG' });
       return;
     }
 
@@ -60,6 +64,11 @@ router.post('/', async (req: Request, res: Response) => {
     const pitch = urgent ? '+5Hz' : '+0Hz';
     const volume = urgent ? '+10%' : '+0%';
 
+    await edgeTtsReady;
+    if (!Communicate) {
+      res.status(503).json({ error: 'TTS service not available (edge-tts-universal not installed)' });
+      return;
+    }
     const communicate = new Communicate(text, { voice, rate, pitch, volume });
     const buffers: Buffer[] = [];
 

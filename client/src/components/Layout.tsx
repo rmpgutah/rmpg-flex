@@ -78,6 +78,8 @@ import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
+import { useVoiceChannel } from '../hooks/useVoiceChannel';
+import VoiceChannelIndicator from './VoiceChannelIndicator';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -212,6 +214,9 @@ export default function Layout() {
   const gps = useGpsTracking();
   const presence = usePresence();
 
+  // ── Voice channel (unified voice I/O state machine) ──
+  const { alert: voiceAlert } = useVoiceChannel();
+
   // ── Dispatch voice alerts + visual banner state ──
   const [dispatchAlerts, setDispatchAlerts] = useState<AlertBannerItem[]>([]);
   const addDispatchAlert = useCallback((alert: AlertBannerItem) => {
@@ -221,7 +226,7 @@ export default function Layout() {
     setDispatchAlerts(prev => prev.filter(a => a.id !== id));
   }, []);
   const dismissAllDispatchAlerts = useCallback(() => setDispatchAlerts([]), []);
-  useDispatchVoiceAlerts({ onAlert: addDispatchAlert });
+  useDispatchVoiceAlerts({ onAlert: addDispatchAlert, voiceAlert });
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
@@ -1552,6 +1557,9 @@ export default function Layout() {
           </div>
         </div>
       )}
+
+      {/* Voice Channel floating indicator (mic button + state overlay) */}
+      <VoiceChannelIndicator />
     </div>
   );
 }

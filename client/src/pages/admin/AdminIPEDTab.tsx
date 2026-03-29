@@ -284,9 +284,6 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
   // Set document title
   useEffect(() => { document.title = 'Admin - IPED \u2014 RMPG Flex'; }, []);
 
-
-
-
   if (loading) return <LoadingSpinner />;
 
   return (

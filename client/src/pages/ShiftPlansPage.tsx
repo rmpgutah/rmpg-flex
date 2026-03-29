@@ -106,14 +106,14 @@ export default function ShiftPlansPage() {
   const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
 
   useEffect(() => {
-    apiFetch('/api/admin/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
-    apiFetch('/api/admin/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
+    apiFetch('/api/shift-plans/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
+    apiFetch('/api/shift-plans/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
   }, []);
 
   useEffect(() => {
-    apiFetch(`/api/admin/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
-    apiFetch(`/api/admin/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
-    apiFetch(`/api/admin/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
+    apiFetch(`/api/shift-plans/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
   }, [selectedDate]);
 
   // ── Computed ──

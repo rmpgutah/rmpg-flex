@@ -552,7 +552,7 @@ export default function SkipTracerV2Page() {
   const handleExportPdf = useCallback(async (dossierId: number) => {
     try {
       const resp = await fetch(`/api/skiptracer-v2/dossiers/${dossierId}/pdf`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem('rmpg_token')}` },
       });
       if (!resp.ok) throw new Error('Export failed');
       const blob = await resp.blob();

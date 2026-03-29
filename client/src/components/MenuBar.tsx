@@ -89,6 +89,8 @@ import {
   AudioLines,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
+import { setVoiceChannelConfig, setVoiceChannelEnabled, isVoiceChannelEnabled, getVoiceChannelConfig } from '../utils/voiceChannel';
+import { setDetailLevel, getDetailLevel, type NarrativeDetail } from '../utils/narrativeComposer';
 import { apiFetch } from '../hooks/useApi';
 
 // ============================================================
@@ -192,6 +194,21 @@ export default function MenuBar({
   const [aiAssistEnabled, setAiAssistEnabled] = useState(() => {
     return localStorage.getItem('rmpg-ai-assist') !== 'false';
   });
+  // Voice Channel settings
+  const [vcEnabled, setVcEnabled] = useState(() => isVoiceChannelEnabled());
+  const [vcListenMode, setVcListenMode] = useState<'auto' | 'wake' | 'manual'>(() => getVoiceChannelConfig().listenMode);
+  const [vcListenDuration, setVcListenDuration] = useState<number>(() => getVoiceChannelConfig().listenDuration);
+  const [vcWakeWord, setVcWakeWord] = useState(() => getVoiceChannelConfig().wakeWord);
+  const [vcConfirmMode, setVcConfirmMode] = useState<'speak' | 'beep' | 'silent'>(() => getVoiceChannelConfig().confirmMode);
+  const [vcDetailLevel, setVcDetailLevel] = useState<NarrativeDetail>(() => getDetailLevel());
+
+  // Advanced Voice Channel settings
+  const [stressDetection, setStressDetection] = useState(() => localStorage.getItem('rmpg-voice-stress-detection') !== 'false');
+  const [welfareChecks, setWelfareChecks] = useState(() => localStorage.getItem('rmpg-voice-welfare-checks') !== 'false');
+  const [proximityAlerts, setProximityAlerts] = useState(() => localStorage.getItem('rmpg-voice-proximity-alerts') !== 'false');
+  const [tacticalAssessments, setTacticalAssessments] = useState(() => localStorage.getItem('rmpg-voice-tactical-assessments') !== 'false');
+  const [nearestUnitsAuto, setNearestUnitsAuto] = useState(() => localStorage.getItem('rmpg-voice-nearest-units') !== 'false');
+
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [show10Codes, setShow10Codes] = useState(false);
   const [showLawBooks, setShowLawBooks] = useState(false);
@@ -343,6 +360,75 @@ export default function MenuBar({
     localStorage.setItem('rmpg-ai-assist', String(next));
   }, [aiAssistEnabled]);
 
+  // Voice Channel toggles
+  const toggleVcEnabled = useCallback(() => {
+    const next = !vcEnabled;
+    setVcEnabled(next);
+    setVoiceChannelEnabled(next);
+  }, [vcEnabled]);
+
+  const cycleVcListenMode = useCallback(() => {
+    const modes: Array<'auto' | 'wake' | 'manual'> = ['auto', 'wake', 'manual'];
+    const idx = modes.indexOf(vcListenMode);
+    const next = modes[(idx + 1) % modes.length];
+    setVcListenMode(next);
+    setVoiceChannelConfig({ listenMode: next });
+  }, [vcListenMode]);
+
+  const cycleVcListenDuration = useCallback(() => {
+    const durations = [3000, 5000, 8000, 10000];
+    const idx = durations.indexOf(vcListenDuration);
+    const next = durations[(idx + 1) % durations.length];
+    setVcListenDuration(next);
+    setVoiceChannelConfig({ listenDuration: next });
+  }, [vcListenDuration]);
+
+  const cycleVcConfirmMode = useCallback(() => {
+    const modes: Array<'speak' | 'beep' | 'silent'> = ['speak', 'beep', 'silent'];
+    const idx = modes.indexOf(vcConfirmMode);
+    const next = modes[(idx + 1) % modes.length];
+    setVcConfirmMode(next);
+    setVoiceChannelConfig({ confirmMode: next });
+  }, [vcConfirmMode]);
+
+  const cycleVcDetailLevel = useCallback(() => {
+    const levels: NarrativeDetail[] = ['minimal', 'standard', 'full'];
+    const idx = levels.indexOf(vcDetailLevel);
+    const next = levels[(idx + 1) % levels.length];
+    setVcDetailLevel(next);
+    setDetailLevel(next);
+  }, [vcDetailLevel]);
+
+  const toggleStressDetection = useCallback(() => {
+    const next = !stressDetection;
+    setStressDetection(next);
+    localStorage.setItem('rmpg-voice-stress-detection', String(next));
+  }, [stressDetection]);
+
+  const toggleWelfareChecks = useCallback(() => {
+    const next = !welfareChecks;
+    setWelfareChecks(next);
+    localStorage.setItem('rmpg-voice-welfare-checks', String(next));
+  }, [welfareChecks]);
+
+  const toggleProximityAlerts = useCallback(() => {
+    const next = !proximityAlerts;
+    setProximityAlerts(next);
+    localStorage.setItem('rmpg-voice-proximity-alerts', String(next));
+  }, [proximityAlerts]);
+
+  const toggleTacticalAssessments = useCallback(() => {
+    const next = !tacticalAssessments;
+    setTacticalAssessments(next);
+    localStorage.setItem('rmpg-voice-tactical-assessments', String(next));
+  }, [tacticalAssessments]);
+
+  const toggleNearestUnitsAuto = useCallback(() => {
+    const next = !nearestUnitsAuto;
+    setNearestUnitsAuto(next);
+    localStorage.setItem('rmpg-voice-nearest-units', String(next));
+  }, [nearestUnitsAuto]);
+
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen?.();
@@ -488,6 +574,35 @@ export default function MenuBar({
           }},
           { type: 'separator' },
           { type: 'toggle', label: 'AI Dispatch Assistant', icon: Brain, checked: aiAssistEnabled, action: toggleAiAssist },
+        ],
+      },
+      {
+        type: 'submenu',
+        label: 'Voice Channel',
+        icon: Radio,
+        items: [
+          { type: 'toggle', label: 'Voice Channel Enabled', icon: vcEnabled ? Mic : MicOff, checked: vcEnabled, action: toggleVcEnabled },
+          { type: 'separator' },
+          { type: 'action', label: `Listen Mode: ${vcListenMode === 'auto' ? 'Auto' : vcListenMode === 'wake' ? 'Wake Word' : 'Manual Only'}`, icon: AudioLines, action: cycleVcListenMode },
+          { type: 'action', label: `Listen Duration: ${vcListenDuration / 1000}s`, icon: Clock, action: cycleVcListenDuration },
+          ...(vcListenMode === 'wake' ? [
+            { type: 'action' as const, label: `Wake Word: "${vcWakeWord}"`, icon: Mic, action: () => {
+              const word = prompt('Enter wake word:', vcWakeWord);
+              if (word && word.trim()) {
+                setVcWakeWord(word.trim().toLowerCase());
+                setVoiceChannelConfig({ wakeWord: word.trim().toLowerCase() });
+              }
+            }},
+          ] : []),
+          { type: 'separator' },
+          { type: 'action', label: `Confirmation: ${vcConfirmMode === 'speak' ? 'Speak' : vcConfirmMode === 'beep' ? 'Beep Only' : 'Silent'}`, icon: Volume2, action: cycleVcConfirmMode },
+          { type: 'action', label: `Alert Detail: ${vcDetailLevel === 'minimal' ? 'Minimal' : vcDetailLevel === 'standard' ? 'Standard' : 'Full Tactical'}`, icon: SlidersHorizontal, action: cycleVcDetailLevel },
+          { type: 'separator' },
+          { type: 'toggle', label: 'Stress Detection', checked: stressDetection, action: toggleStressDetection },
+          { type: 'toggle', label: 'Welfare Checks', checked: welfareChecks, action: toggleWelfareChecks },
+          { type: 'toggle', label: 'Proximity Alerts', checked: proximityAlerts, action: toggleProximityAlerts },
+          { type: 'toggle', label: 'Tactical Assessments', checked: tacticalAssessments, action: toggleTacticalAssessments },
+          { type: 'toggle', label: 'Auto Nearest Units', checked: nearestUnitsAuto, action: toggleNearestUnitsAuto },
         ],
       },
       { type: 'separator' },

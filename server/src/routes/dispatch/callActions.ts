@@ -11,6 +11,8 @@ import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
 import { auditLog } from '../../utils/auditLogger';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { sendCsv } from '../../utils/csvExport';
+import { isLegalTransition, LEGAL_TRANSITIONS } from './callLifecycle';
+import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
 
 const router = Router();
 
@@ -94,6 +96,28 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
         res.status(400).json({ error: 'All unit_ids must be positive integers', code: 'ALL_UNITIDS_MUST_BE' });
         return;
       }
+    }
+
+    // Validate units exist and are in a dispatchable state
+    const NON_DISPATCHABLE = ['off_duty', 'out_of_service'];
+    const blockedUnits: { id: number; call_sign: string; status: string }[] = [];
+    for (const uid of unit_ids) {
+      const unit = db.prepare('SELECT id, call_sign, status FROM units WHERE id = ?').get(uid) as any;
+      if (!unit) {
+        res.status(404).json({ error: `Unit ${uid} not found`, code: 'UNIT_NOT_FOUND' });
+        return;
+      }
+      if (NON_DISPATCHABLE.includes(unit.status)) {
+        blockedUnits.push(unit);
+      }
+    }
+    if (blockedUnits.length > 0) {
+      res.status(400).json({
+        error: `Cannot dispatch units that are ${blockedUnits.map(u => `${u.call_sign} (${u.status})`).join(', ')}`,
+        code: 'UNIT_NOT_DISPATCHABLE',
+        blockedUnits,
+      });
+      return;
     }
 
     const now = localNow();
@@ -371,25 +395,14 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       return;
     }
 
-    // ── Legal status transition enforcement ──────────────────────
-    const LEGAL_TRANSITIONS: Record<string, string[]> = {
-      pending:     ['dispatched', 'cancelled', 'on_hold'],
-      dispatched:  ['enroute', 'onscene', 'cleared', 'cancelled', 'on_hold', 'pending'],
-      enroute:     ['onscene', 'cleared', 'cancelled', 'on_hold', 'dispatched'],
-      onscene:     ['cleared', 'closed', 'cancelled', 'on_hold', 'enroute'],
-      cleared:     ['closed', 'archived', 'onscene'],
-      closed:      ['archived', 'cleared'],
-      cancelled:   ['archived', 'pending'],
-      on_hold:     ['pending', 'dispatched', 'enroute', 'onscene'],
-      archived:    ['closed'],
-    };
-    const allowed = LEGAL_TRANSITIONS[call.status] || [];
-    if (!allowed.includes(status)) {
+    // Enforce legal status transitions
+    if (!isLegalTransition(call.status, status)) {
+      const allowed = LEGAL_TRANSITIONS[call.status] || [];
       res.status(400).json({
         error: `Cannot transition from '${call.status}' to '${status}'`,
         code: 'ILLEGAL_STATUS_TRANSITION',
-        current_status: call.status,
-        allowed_transitions: allowed,
+        currentStatus: call.status,
+        allowedTransitions: allowed,
       });
       return;
     }
@@ -591,6 +604,20 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       return;
     }
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
+
+    // Start welfare monitoring for high-priority calls when going onscene
+    if (status === 'onscene') {
+      try {
+        startWelfareWatch(req.user!.userId, call.call_sign || call.call_number, call.id, call.call_number, call.priority);
+      } catch { /* non-critical */ }
+    }
+
+    // Clear welfare watch when call is cleared/closed/cancelled
+    if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+      try {
+        clearWelfareWatch(req.user!.userId);
+      } catch { /* non-critical */ }
+    }
 
     // Broadcast unit status changes so dispatch map reflects freed units
     for (const unitId of freedUnitIds) {

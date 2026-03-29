@@ -6,7 +6,8 @@
  * transparently by the aiManager.
  */
 
-import Groq from 'groq-sdk';
+// Lazy-imported: groq-sdk is optional and only needed when Groq provider is used
+let Groq: any = null;
 
 // ---------------------------------------------------------------------------
 // Provider Interface
@@ -15,6 +16,8 @@ import Groq from 'groq-sdk';
 export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
+  topP?: number;
+  repeatPenalty?: number;
   jsonMode?: boolean;
 }
 
@@ -32,12 +35,20 @@ export interface AIProvider {
 export class GroqProvider implements AIProvider {
   name = 'groq';
   model: string;
-  private client: Groq | null;
+  private client: any | null;
+  private initPromise: Promise<void> | null = null;
 
   constructor(apiKey?: string, model?: string) {
     const key = apiKey || process.env.GROQ_API_KEY || '';
     this.model = model || 'llama-3.3-70b-versatile';
-    this.client = key ? new Groq({ apiKey: key }) : null;
+    this.client = null;
+    if (key) {
+      // Lazy-load groq-sdk only when actually needed
+      this.initPromise = import('groq-sdk').then(mod => {
+        Groq = mod.default || mod;
+        this.client = new Groq({ apiKey: key });
+      }).catch(() => { /* groq-sdk not installed — provider stays unavailable */ });
+    }
   }
 
   isAvailable(): boolean {
@@ -51,6 +62,7 @@ export class GroqProvider implements AIProvider {
         model: this.model,
         temperature: options?.temperature ?? 0.3,
         max_tokens: options?.maxTokens ?? 300,
+        top_p: options?.topP ?? 0.9,
         ...(options?.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
         messages: [
           { role: 'system', content: systemPrompt },
@@ -95,6 +107,7 @@ export class GeminiProvider implements AIProvider {
         generationConfig: {
           temperature: options?.temperature ?? 0.3,
           maxOutputTokens: options?.maxTokens ?? 300,
+          topP: options?.topP ?? 0.9,
           ...(options?.jsonMode ? { responseMimeType: 'application/json' } : {}),
         },
       };
@@ -146,6 +159,8 @@ export class OpenAIProvider implements AIProvider {
         model: this.model,
         temperature: options?.temperature ?? 0.3,
         max_tokens: options?.maxTokens ?? 300,
+        top_p: options?.topP ?? 0.9,
+        frequency_penalty: options?.repeatPenalty ? options.repeatPenalty - 1.0 : 0,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
@@ -189,7 +204,7 @@ export class OllamaProvider implements AIProvider {
 
   constructor(url?: string, model?: string) {
     this.baseUrl = (url || process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '');
-    this.model = model || 'llama3.1:8b';
+    this.model = model || 'qwen2.5:3b';
   }
 
   isAvailable(): boolean {
@@ -209,6 +224,8 @@ export class OllamaProvider implements AIProvider {
         options: {
           temperature: options?.temperature ?? 0.3,
           num_predict: options?.maxTokens ?? 300,
+          top_p: options?.topP ?? 0.9,
+          repeat_penalty: options?.repeatPenalty ?? 1.1,
         },
       };
       if (options?.jsonMode) {
@@ -216,7 +233,7 @@ export class OllamaProvider implements AIProvider {
       }
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const timeout = setTimeout(() => controller.abort(), 120_000); // 2min for CPU inference on 9B
 
       const resp = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
@@ -232,7 +249,12 @@ export class OllamaProvider implements AIProvider {
       }
 
       const data = await resp.json();
-      return data?.message?.content?.trim() || null;
+      let content = data?.message?.content?.trim() || null;
+      // Strip <think>...</think> reasoning blocks from Qwen models
+      if (content) {
+        content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+      }
+      return content;
     } catch (err: any) {
       console.error(`[AI:ollama] chat error:`, err?.message || err);
       throw err;

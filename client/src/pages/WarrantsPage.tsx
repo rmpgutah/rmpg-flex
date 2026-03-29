@@ -1937,7 +1937,7 @@ export default function WarrantsPage() {
                     </div>
                     <div className="divide-y divide-surface-border">
                       {utahResults.utahResults.map((w, i) => (
-                        <div key={`utah-${i}`} className="p-3 hover:bg-[#1a2636] transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'utah')}>
+                        <div key={`utah-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'utah')}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -1989,7 +1989,7 @@ export default function WarrantsPage() {
                     </div>
                     <div className="divide-y divide-surface-border">
                       {utahResults.localWarrants.map((w) => (
-                        <div key={`local-${w.id}`} className="p-3 hover:bg-[#1a2636] transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
+                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-white">{w.warrant_number}</span>
                             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
@@ -2022,7 +2022,7 @@ export default function WarrantsPage() {
                     </div>
                     <div className="divide-y divide-surface-border">
                       {utahResults.scrapedWarrants.map((w, i) => (
-                        <div key={`scraped-${i}`} className="p-3 hover:bg-[#1a2636] transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'scraped')}>
+                        <div key={`scraped-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'scraped')}>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
                             {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}

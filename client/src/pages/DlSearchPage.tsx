@@ -218,7 +218,7 @@ export default function DlSearchPage() {
       const formData = new FormData();
       formData.append('image', file);
 
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('rmpg_token');
       const resp = await fetch('/api/dl-records/ocr-scan', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },

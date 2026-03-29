@@ -100,9 +100,13 @@ import mapGeofenceRoutes from './routes/mapGeofences';
 import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
+import voiceRoutes from './routes/voice';
 import aiRoutes from './routes/ai';
+import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
 import { authenticateToken } from './middleware/auth';
+import { checkWelfareWatches } from './utils/officerWelfare';
+import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
 
@@ -382,7 +386,9 @@ app.use('/api/map/geofences', mapGeofenceRoutes);
 app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
+app.use('/api/voice', voiceRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
@@ -600,6 +606,19 @@ try {
     } catch (err: any) {
       console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
     }
+
+    // Voice system timers — welfare checks and pursuit updates every 30s
+    setInterval(() => {
+      try { checkWelfareWatches(); } catch (err: any) {
+        console.error('[WELFARE] Timer error:', err?.message);
+      }
+    }, 30_000);
+
+    setInterval(() => {
+      try { generatePursuitUpdates(); } catch (err: any) {
+        console.error('[PURSUIT] Timer error:', err?.message);
+      }
+    }, 30_000);
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)

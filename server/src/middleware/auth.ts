@@ -170,6 +170,47 @@ export function generate2faPendingToken(payload: Omit<JwtPayload, 'type'>): stri
   );
 }
 
+/**
+ * Middleware that accepts BOTH full access tokens AND 2fa_pending tempTokens.
+ * Used on login-flow endpoints like /2fa/setup and /2fa/setup/verify where
+ * a user may not have a full session yet (mandatory 2FA enrollment).
+ */
+export function authenticateTokenOrTemp(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers['authorization'];
+  const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const token = headerToken || req.body?.tempToken;
+
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  if (typeof token === 'string' && token.length > 4096) {
+    res.status(400).json({ error: 'Malformed token' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
+
+    // Accept access tokens AND 2fa_pending tokens (but not refresh tokens)
+    if (decoded.type === 'refresh') {
+      res.status(403).json({ error: 'Invalid token type' });
+      return;
+    }
+
+    if (!decoded.userId || !decoded.username || !decoded.role) {
+      res.status(403).json({ error: 'Malformed token payload' });
+      return;
+    }
+
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Session expired. Please log in again.', code: 'MFA_EXPIRED' });
+  }
+}
+
 // Backwards compatibility aliases
 export function generateToken(payload: Omit<JwtPayload, 'type'>): string {
   return generateAccessToken(payload);

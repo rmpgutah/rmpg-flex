@@ -214,6 +214,11 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
   if (loading && !health) return <LoadingSpinner />;
 
 
+
+  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
+  if (loading && !health) return <LoadingSpinner />;
+
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}

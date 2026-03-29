@@ -17,7 +17,7 @@ export default function AISearchButton({ query, searchType, onFiltersExtracted }
     setIsLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('rmpg-token');
+      const token = localStorage.getItem('rmpg_token');
       const res = await fetch('/api/ai/smart-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

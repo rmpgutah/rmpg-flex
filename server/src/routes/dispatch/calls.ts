@@ -12,6 +12,8 @@ import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
+import { buildThreatContext } from '../../utils/threatContext';
+import { findNearestUnits } from '../../utils/proximityAlerts';
 
 // ── Upgrade 1: Priority score calculation ──
 // Higher scores = more urgent. Used for sorting the dispatch queue.
@@ -288,7 +290,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     }
 
     // Upgrade 9: Validate source enum if provided
-    const VALID_SOURCES = ['phone', 'radio', 'walk_in', 'online', 'alarm', 'officer_initiated', 'panic', 'dispatch', 'email', 'app', 'other'];
+    const VALID_SOURCES = ['phone', 'radio', 'walk_in', 'online', 'alarm', 'officer_initiated', 'patrol', 'panic', 'dispatch', 'email', 'app', 'other'];
     if (source && !VALID_SOURCES.includes(source)) {
       res.status(400).json({ error: `Invalid source. Must be one of: ${VALID_SOURCES.join(', ')}`, code: 'INVALID_SOURCE' });
       return;
@@ -598,8 +600,38 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // If no coordinates were provided, geocode the address asynchronously
     geocodeCallIfNeeded(call.id, location_address, latitude, longitude);
 
-    // Broadcast to dispatch channel
-    broadcastDispatchUpdate({ action: 'call_created', call });
+    // Find nearest units (sync)
+    let nearestUnits: any[] = [];
+    try {
+      if (call.latitude && call.longitude) {
+        nearestUnits = findNearestUnits(call.latitude, call.longitude, 3);
+      }
+    } catch { /* non-critical */ }
+
+    // Broadcast to dispatch channel (immediate, threat context added async below)
+    broadcastDispatchUpdate({ action: 'call_created', call, nearestUnits });
+
+    // Build threat context asynchronously and broadcast enrichment if available
+    buildThreatContext({
+      locationAddress: call.location_address,
+      latitude: call.latitude,
+      longitude: call.longitude,
+      callId: call.id,
+    }).then((ctx) => {
+      if (ctx.briefingSummary) {
+        broadcastDispatchUpdate({
+          action: 'call_created',
+          call,
+          threatContext: {
+            threatLevel: ctx.threatLevel,
+            briefingSummary: ctx.briefingSummary,
+            premiseHistoryCount: ctx.premiseHistory.length,
+            activeWarrantCount: ctx.activeWarrants.length,
+          },
+          nearestUnits,
+        });
+      }
+    }).catch(() => { /* non-critical */ });
 
     // Notify dispatch/supervisors of new call
     createNotificationForRoles(
@@ -631,6 +663,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         console.error('[Dispatch] Auto-send to serve queue failed (non-fatal):', serveErr instanceof Error ? serveErr.message : serveErr);
       }
     }
+
 
     // Upgrade 13: Include duplicate warning and estimated response time in response
     const response: any = { ...call, estimated_response_minutes: estResponseMinutes };
@@ -1115,6 +1148,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       if (closed_at !== undefined) { if (closed_at === null || closed_at === '') { updates.push('closed_at = NULL'); } else if (isValidIso(closed_at)) { addField('closed_at', closed_at); } }
       if (created_at_override !== undefined && isValidIso(created_at_override)) { addField('created_at', created_at_override); }
     }
+
 
     // Upgrade 17: Track status_changed_at on every status change
     if (status !== undefined && status !== call.status) {

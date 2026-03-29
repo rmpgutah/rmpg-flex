@@ -5,6 +5,9 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { config } from '../config';
@@ -1871,5 +1874,6 @@ router.delete('/third-party-keys', requireRole('admin'), (req: Request, res: Res
     res.status(500).json({ error: 'Failed to clear key' });
   }
 });
+
 
 export default router;

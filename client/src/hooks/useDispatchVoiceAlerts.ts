@@ -26,6 +26,13 @@ import {
 } from '../utils/voiceAlerts';
 import { classifySeverity } from '../utils/alertSeverity';
 import { announceWithSeverity, isEdgeTTSEnabled } from '../utils/edgeTTS';
+import {
+  composeDispatchNarrative,
+  composePanicNarrative,
+  composeBoloNarrative,
+  composeBackupNarrative,
+  composePursuitNarrative,
+} from '../utils/narrativeComposer';
 import type { AlertBannerItem } from '../components/DispatchAlertBanner';
 
 /**
@@ -78,12 +85,26 @@ function nextAlertId(): string { return `alert-${Date.now()}-${++alertIdCounter}
  * When `onAlert` is provided, each event also pushes a visual
  * AlertBannerItem for the DispatchAlertBanner overlay.
  */
-export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBannerItem) => void }): void {
+export function useDispatchVoiceAlerts(options?: {
+  onAlert?: (alert: AlertBannerItem) => void;
+  voiceAlert?: (narrative: string, severity: 'minor' | 'moderate' | 'major') => void;
+}): void {
   const { subscribe } = useWebSocket();
   const onAlert = options?.onAlert;
+  const voiceAlert = options?.voiceAlert;
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
+
+    // Route TTS through voice channel when active, otherwise direct
+    type AlertSeverity = 'minor' | 'moderate' | 'major';
+    const speak = (text: string, severity: AlertSeverity) => {
+      if (voiceAlert) {
+        voiceAlert(text, severity);
+      } else {
+        announceWithSeverity(text, severity);
+      }
+    };
 
     // ── Dispatch updates (call created, status changed, units dispatched) ──
     unsubs.push(
@@ -95,8 +116,11 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
           const call = normalizeCallForVoice(data.call);
           const { severity } = classifySeverity('call_created', call);
           if (isEdgeTTSEnabled()) {
-            const text = `New call: ${call.call_type || call.nature || 'Unknown'} at ${call.location || 'unknown location'}`;
-            announceWithSeverity(text, severity);
+            const text = composeDispatchNarrative(call, undefined, {
+              threatContext: data.threatContext || undefined,
+              nearestUnits: data.nearestUnits || undefined,
+            });
+            speak(text, severity);
           } else {
             announceNewCall(call);
             announceCallAlerts(call);
@@ -113,9 +137,8 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
           if (status === 'dispatched') {
             const { severity } = classifySeverity('call_dispatched', call);
             if (isEdgeTTSEnabled()) {
-              const units = Array.isArray(call.assigned_units) ? call.assigned_units.join(', ') : '';
-              const text = `Dispatched${units ? ` ${units}` : ''} to ${call.call_type || 'call'} at ${call.location || 'unknown location'}`;
-              announceWithSeverity(text, severity);
+              const text = composeDispatchNarrative(call);
+              speak(text, severity);
             } else {
               announceDispatchEvent(call);
             }
@@ -132,7 +155,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
 
         if (action === 'ai_analysis' && data.analysis?.safetyBriefing && data.analysis.confidence > 0.7) {
           const severity = data.analysis.severityOverride || 'moderate';
-          announceWithSeverity(
+          speak(
             `AI safety alert, call ${data.call_number}: ${data.analysis.safetyBriefing}`,
             severity
           );
@@ -144,6 +167,16 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
             timestamp: Date.now(),
           });
         }
+
+        if (action === 'arrest_created' && data.arrest) {
+          const a = data.arrest;
+          speak(`Arrest booked. ${a.subject_name || 'Subject'}, ${a.charge || 'charge pending'}.`, 'minor');
+        }
+
+        if (action === 'citation_issued' && data.citation) {
+          const c = data.citation;
+          speak(`Citation issued. ${c.subject_name || 'Subject'}, ${c.violation || ''}.`, 'minor');
+        }
       })
     );
 
@@ -153,7 +186,9 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const officerName = data.user_name || data.userName || data.officerName || 'Unknown officer';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Panic alert! ${officerName} has activated panic.`, 'major');
+          const loc = data.location || data.gps_address || '';
+          const cs = data.call_sign || data.unit || '';
+          speak(composePanicNarrative(officerName, loc, cs), 'major');
         } else {
           announcePanicAlert(officerName);
         }
@@ -167,7 +202,14 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const boloTitle = data.title || data.subject || 'Alert';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`BOLO alert: ${boloTitle}`, 'moderate');
+          speak(composeBoloNarrative({
+            type: boloTitle,
+            description: data.description || data.details || '',
+            vehicle_description: data.vehicle_description || data.vehicle || '',
+            suspect_description: data.suspect_description || '',
+            last_seen_location: data.last_seen_location || '',
+            direction_of_travel: data.direction_of_travel || '',
+          }), 'moderate');
         } else {
           announceBolo(boloTitle, data.priority);
         }
@@ -181,7 +223,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const subjectName = data.subject_name || data.name || 'Unknown subject';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Warrant hit on ${subjectName}`, 'moderate');
+          speak(`Warrant hit on ${subjectName}`, 'moderate');
         } else {
           announceWarrantHit(subjectName);
         }
@@ -196,7 +238,7 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const loc = data.location || 'unknown location';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Backup requested by ${unit} at ${loc}`, 'moderate');
+          speak(composeBackupNarrative(unit, loc, data.call_number), 'moderate');
         } else {
           announceBackupRequest({ officer_name: unit, location: loc });
         }
@@ -211,7 +253,13 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const direction = data.direction || '';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`Pursuit update: ${unit}${direction ? ` heading ${direction}` : ''}`, 'major');
+          speak(composePursuitNarrative({
+            unit,
+            direction,
+            location: data.location || '',
+            speed: data.speed || '',
+            vehicle_description: data.vehicle_description || '',
+          }), 'major');
         } else {
           announcePursuit({ officer_name: unit, direction });
         }
@@ -225,9 +273,212 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const allUnitsMsg = data.message || data.text || '';
         if (isEdgeTTSEnabled()) {
-          announceWithSeverity(`All units: ${allUnitsMsg}`, 'moderate');
+          speak(`All units: ${allUnitsMsg}`, 'moderate');
         } else {
           announceAllUnits(allUnitsMsg);
+        }
+      })
+    );
+
+    // ── Welfare check (directed at this officer) ──
+    unsubs.push(
+      subscribe('welfare_check', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const text = data.message || 'Status check. Are you code 4?';
+        if (voiceAlert) {
+          voiceAlert(text, 'moderate');
+        } else {
+          announceWithSeverity(text, 'moderate');
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WELFARE CHECK', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Welfare emergency (all units) ──
+    unsubs.push(
+      subscribe('welfare_emergency', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const text = data.message || 'Welfare emergency. All units respond.';
+        if (voiceAlert) {
+          voiceAlert(text, 'major');
+        } else {
+          announceWithSeverity(text, 'major');
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'WELFARE EMERGENCY', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Welfare alert (supervisor notification) ──
+    unsubs.push(
+      subscribe('welfare_alert', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const text = data.message || 'Officer welfare alert.';
+        if (voiceAlert) {
+          voiceAlert(text, 'moderate');
+        } else {
+          announceWithSeverity(text, 'moderate');
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WELFARE ALERT', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Warrant scanner hits ──
+    unsubs.push(
+      subscribe('warrant', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        // Only voice auto-detected warrant hits, not manual warrant CRUD
+        if (data.auto_detected || data.scanner_hit) {
+          const subject = data.subject_name || data.name || 'Unknown subject';
+          const charge = data.charge_description || data.offense || 'Unknown charge';
+          const warrantType = data.warrant_type || 'unknown';
+          const bail = data.bail_amount ? `, bail $${Number(data.bail_amount).toLocaleString()}` : '';
+          const text = `Warrant hit. ${warrantType} warrant on ${subject}. ${charge}${bail}.`;
+          const sev: AlertSeverity = warrantType === 'felony' ? 'major' : 'moderate';
+          speak(text, sev);
+          onAlert?.({ id: nextAlertId(), severity: sev, title: 'WARRANT HIT', message: `${subject} — ${charge}`, timestamp: Date.now() });
+        }
+      })
+    );
+
+    unsubs.push(
+      subscribe('warrants_updated', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.action === 'warrant_served') {
+          speak(`Warrant served on ${data.subject_name || 'subject'}.`, 'minor');
+        }
+      })
+    );
+
+    // ── Map safety alerts ──
+    unsubs.push(
+      subscribe('safety:broadcast', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const alertType = data.alert_type || data.type || 'Safety alert';
+        const location = data.location || data.address || 'unknown location';
+        const unit = data.call_sign || data.unit || '';
+        const text = `Safety alert. ${alertType.replace(/_/g, ' ')}${unit ? ` reported by ${unit}` : ''} at ${location}.`;
+        const sev: AlertSeverity = ['officer_down', 'active_shooter', 'shots_fired'].includes(alertType) ? 'major' : 'moderate';
+        speak(text, sev);
+        onAlert?.({ id: nextAlertId(), severity: sev, title: 'SAFETY ALERT', message: `${alertType} — ${location}`, timestamp: Date.now() });
+      })
+    );
+
+    // ── Integration health alerts ──
+    unsubs.push(
+      subscribe('integration_health_alert', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const system = data.system || data.name || 'Unknown system';
+        const status = data.status || 'offline';
+        if (status === 'offline' || status === 'error' || status === 'degraded') {
+          const text = `System alert. ${system} is ${status}. Proceed with caution.`;
+          speak(text, 'moderate');
+          onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'SYSTEM ALERT', message: `${system} ${status}`, timestamp: Date.now() });
+        }
+      })
+    );
+
+    // ── Trespass order violations ──
+    unsubs.push(
+      subscribe('trespass_order_violated', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const subject = data.subject_name || 'Unknown subject';
+        const property = data.property_name || data.property_address || 'unknown property';
+        const arrest = data.arrest_authority ? ' Arrest authority granted.' : '';
+        const text = `Trespass violation. ${subject} at ${property}.${arrest}`;
+        speak(text, 'moderate');
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'TRESPASS VIOLATION', message: `${subject} — ${property}`, timestamp: Date.now() });
+      })
+    );
+
+    // ── Dispatch broadcast messages ──
+    unsubs.push(
+      subscribe('dispatch_broadcast', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const message = data.message || data.text || '';
+        const from = data.from_name || data.dispatcher || 'Dispatch';
+        if (message) {
+          const text = `${from}: ${message}`;
+          speak(text, 'minor');
+        }
+      })
+    );
+
+    // ── Emergency messages ──
+    unsubs.push(
+      subscribe('emergency_message', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const message = data.message || data.text || data.content || '';
+        const from = data.sender_name || data.from || 'Unknown';
+        const text = `Emergency message from ${from}. ${message}`;
+        speak(text, 'major');
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'EMERGENCY MSG', message: `${from}: ${message.slice(0, 50)}`, timestamp: Date.now() });
+      })
+    );
+
+    // ── New messages (high priority only) ──
+    unsubs.push(
+      subscribe('new_message', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.priority === 'high' || data.priority === 'emergency' || data.channel === 'dispatch') {
+          const from = data.sender_name || data.from || 'Unknown';
+          const preview = (data.content || data.text || '').slice(0, 80);
+          const text = `Message from ${from}. ${preview}`;
+          speak(text, data.priority === 'emergency' ? 'major' : 'moderate');
+        }
+      })
+    );
+
+    // ── Serve manager attempts ──
+    unsubs.push(
+      subscribe('serve:attempt', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const status = data.result || data.status || 'attempted';
+        const subject = data.subject_name || data.respondent || 'subject';
+        if (status === 'served') {
+          speak(`Service completed. ${subject} has been served.`, 'minor');
+        } else if (status === 'failed' || status === 'unable') {
+          speak(`Service attempt failed for ${subject}. ${data.reason || ''}`, 'minor');
+        }
+      })
+    );
+
+    // ── Radio cross-integration (selcall pages) ──
+    unsubs.push(
+      subscribe('radio_transmit_start', (_msg) => {
+        // Don't announce — just track that radio is active
+        // The voice channel can check this to avoid mic conflicts
+      })
+    );
+
+    unsubs.push(
+      subscribe('selcall_page', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const from = data.from_full_name || data.from_call_sign || 'Unknown';
+        const message = data.message || '';
+        const text = `Selcall page from ${from}. ${message}`;
+        speak(text, 'moderate');
+      })
+    );
+
+    // ── Email notifications (urgent only) ──
+    unsubs.push(
+      subscribe('email:new_messages', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const count = data.newCount || data.count || 0;
+        if (count > 0 && data.has_urgent) {
+          speak(`${count} new email${count > 1 ? 's' : ''}, including urgent messages.`, 'minor');
+        }
+      })
+    );
+
+    // ── Security events ──
+    unsubs.push(
+      subscribe('security:updated', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const action = data.action || data.entity || 'Security event';
+        if (['device_removed', 'sessions_terminated', 'ip_blocked'].includes(action)) {
+          speak(`Security alert. ${action.replace(/_/g, ' ')}.`, 'moderate');
+          onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'SECURITY', message: action.replace(/_/g, ' '), timestamp: Date.now() });
         }
       })
     );
@@ -235,5 +486,5 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
     return () => {
       unsubs.forEach(fn => fn());
     };
-  }, [subscribe, onAlert]);
+  }, [subscribe, onAlert, voiceAlert]);
 }

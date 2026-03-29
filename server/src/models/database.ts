@@ -1102,6 +1102,59 @@ function createTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_company_docs_category ON company_documents(category);
     CREATE INDEX IF NOT EXISTS idx_company_docs_published ON company_documents(published);
+
+    CREATE TABLE IF NOT EXISTS ai_dev_chat (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('user','assistant','system')),
+      content TEXT NOT NULL,
+      model TEXT,
+      provider TEXT,
+      tokens_used INTEGER DEFAULT 0,
+      latency_ms INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_dev_chat_session ON ai_dev_chat(session_id);
+
+    CREATE TABLE IF NOT EXISTS ai_activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_type TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT,
+      latency_ms INTEGER NOT NULL DEFAULT 0,
+      success INTEGER NOT NULL DEFAULT 1,
+      error TEXT,
+      prompt_preview TEXT,
+      full_prompt TEXT,
+      full_response TEXT,
+      tokens_used INTEGER DEFAULT 0,
+      rating INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_activity_created ON ai_activity_log(created_at);
+
+    CREATE TABLE IF NOT EXISTS ai_prompt_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      system_prompt TEXT NOT NULL,
+      user_prompt_template TEXT,
+      variables TEXT DEFAULT '[]',
+      is_default INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_model_presets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      temperature REAL NOT NULL DEFAULT 0.3,
+      max_tokens INTEGER NOT NULL DEFAULT 300,
+      top_p REAL NOT NULL DEFAULT 0.9,
+      repeat_penalty REAL NOT NULL DEFAULT 1.1,
+      is_default INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 
@@ -4387,6 +4440,16 @@ function seedData(): void {
   });
 
   console.log('Seed data initialized (admin user + system config).');
+
+  // ─── AI MODEL PRESETS (seed defaults if empty) ────
+  const existingPresets = db.prepare('SELECT COUNT(*) as count FROM ai_model_presets').get() as { count: number };
+  if (existingPresets.count === 0) {
+    const insertPreset = db.prepare('INSERT OR IGNORE INTO ai_model_presets (name, temperature, max_tokens, top_p, repeat_penalty, is_default) VALUES (?, ?, ?, ?, ?, ?)');
+    insertPreset.run('Precise', 0.1, 300, 0.8, 1.2, 0);
+    insertPreset.run('Balanced', 0.3, 500, 0.9, 1.1, 1);
+    insertPreset.run('Creative', 0.7, 1024, 0.95, 1.0, 0);
+    insertPreset.run('Verbose', 0.5, 2048, 0.9, 1.0, 0);
+  }
 }
 
 export default { initDatabase, getDb };

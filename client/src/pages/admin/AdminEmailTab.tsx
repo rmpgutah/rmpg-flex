@@ -197,9 +197,6 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   // Set document title
   useEffect(() => { document.title = 'Admin - Email \u2014 RMPG Flex'; }, []);
 
-
-
-
   if (loading) return <div className="p-8 text-center"><LoadingSpinner /></div>;
 
   return (
