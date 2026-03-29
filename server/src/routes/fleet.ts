@@ -3841,7 +3841,6 @@ router.get('/driver-performance', (req: Request, res: Response) => {
   }
 });
 
-
 // ── U11: Fleet Notifications ────────────────────────────────────────
 router.get('/notifications', (req: Request, res: Response) => {
   try {
@@ -3905,6 +3904,5 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
     res.status(500).json({ error: 'Failed to export fleet data', code: 'FLEET_EXPORT_ERROR' });
   }
 });
-
 
 export default router;

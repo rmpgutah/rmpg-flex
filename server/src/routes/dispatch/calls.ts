@@ -664,7 +664,6 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       }
     }
 
-
     // Upgrade 13: Include duplicate warning and estimated response time in response
     const response: any = { ...call, estimated_response_minutes: estResponseMinutes };
     if (duplicateWarning) {
@@ -1153,7 +1152,6 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       if (closed_at !== undefined) { if (closed_at === null || closed_at === '') { updates.push('closed_at = NULL'); } else if (isValidIso(closed_at)) { addField('closed_at', closed_at); } }
       if (created_at_override !== undefined && isValidIso(created_at_override)) { addField('created_at', created_at_override); }
     }
-
 
     // Upgrade 17: Track status_changed_at on every status change
     if (status !== undefined && status !== call.status) {

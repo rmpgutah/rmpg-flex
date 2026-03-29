@@ -302,7 +302,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
     })),
   [costTrends]);
 
-  // Additional analytics data (from origin/main)
+  // Additional analytics data
   const [costAnalytics, setCostAnalytics] = useState<any>(null);
   const [inspectionStats, setInspectionStats] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -1298,6 +1298,24 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded text-[10px] ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : 'bg-amber-900/30 text-amber-400'}`}>
                 <AlertTriangle className="w-3 h-3 shrink-0" />
                 <span className="truncate">{n.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Service Interval Alerts */}
+      {serviceAlerts.length > 0 && (
+        <div className="panel-beveled p-3 bg-surface-base">
+          <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Clock className="w-3 h-3" /> Service Intervals Due ({serviceAlerts.length})
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {serviceAlerts.slice(0, 8).map((a: any) => (
+              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-blue-900/20 border-blue-800/40 text-blue-400'}`}>
+                <span className="font-mono font-bold">{a.vehicle_number}</span>
+                <span>{a.service_type}</span>
+                <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>
               </div>
             ))}
           </div>
