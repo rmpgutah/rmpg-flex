@@ -143,6 +143,158 @@ function initTables(): void {
       FOREIGN KEY (workflow_id) REFERENCES firecrawl_workflows(id) ON DELETE CASCADE
     )
   `);
+
+  // ── 7. Fireplexity — AI Search Engine ──────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_search_engine_queries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      query TEXT NOT NULL,
+      depth TEXT DEFAULT 'quick',
+      results TEXT,
+      answer_summary TEXT,
+      citations TEXT,
+      duration_ms INTEGER,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 8. Fire Enrich — Data Enrichment ───────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_enrichments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      domain TEXT,
+      email TEXT,
+      company_name TEXT,
+      description TEXT,
+      industry TEXT,
+      employee_count_estimate TEXT,
+      tech_stack TEXT,
+      social_links TEXT,
+      contact_info TEXT,
+      funding_info TEXT,
+      enriched_at TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 9. Open Researcher — Deep Research Assistant ───────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_research_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic TEXT NOT NULL,
+      questions TEXT,
+      depth TEXT DEFAULT 'basic',
+      findings TEXT,
+      synthesis TEXT,
+      sources TEXT,
+      duration_ms INTEGER,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 10. Firestarter — Website Chatbot / RAG ────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_chatbots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      description TEXT,
+      scraped_content TEXT,
+      page_count INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_chatbot_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chatbot_id INTEGER NOT NULL,
+      question TEXT NOT NULL,
+      answer TEXT,
+      sources TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (chatbot_id) REFERENCES firecrawl_chatbots(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ── 11. Firecrawl Observer — Website Change Detection ──────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_observers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      url TEXT NOT NULL,
+      check_interval_hours INTEGER DEFAULT 24,
+      notify_on_change INTEGER DEFAULT 1,
+      last_content TEXT,
+      last_checked_at TEXT,
+      status TEXT DEFAULT 'active',
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_observer_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      observer_id INTEGER NOT NULL,
+      changes_summary TEXT,
+      diff_sections TEXT,
+      previous_content TEXT,
+      new_content TEXT,
+      detected_at TEXT NOT NULL,
+      FOREIGN KEY (observer_id) REFERENCES firecrawl_observers(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ── 12. Firesearch — Deep Research with Validation ─────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_deep_searches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      query TEXT NOT NULL,
+      results TEXT,
+      validated INTEGER DEFAULT 0,
+      duration_ms INTEGER,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 13. LLMs.txt Generator ─────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_llmstxt (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      llmstxt_content TEXT,
+      pages_analyzed INTEGER DEFAULT 0,
+      generated_at TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // ── 14. PDF Inspector ──────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_pdf_inspections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      page_count_estimate INTEGER,
+      is_scanned INTEGER DEFAULT 0,
+      has_text INTEGER DEFAULT 1,
+      classification TEXT DEFAULT 'other',
+      summary TEXT,
+      key_sections TEXT,
+      extracted_entities TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
 }
 
 // Initialize tables on module load
@@ -1241,6 +1393,1346 @@ router.delete(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete workflow', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 7. Fireplexity — AI Search Engine with Citations
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /search-engine — Run an AI-powered search ──────────
+
+router.post(
+  '/search-engine',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { query, depth } = req.body as {
+      query?: string; depth?: 'quick' | 'standard' | 'deep';
+    };
+
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      res.status(400).json({ error: 'query is required' }); return;
+    }
+
+    const searchDepth = depth || 'quick';
+    const startTime = Date.now();
+
+    try {
+      // Step 1: Run firecrawl search
+      const searchResult = await firecrawlSearch({
+        query: query.trim(),
+        limit: searchDepth === 'deep' ? 10 : searchDepth === 'standard' ? 5 : 3,
+        scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+      });
+
+      const rawResults = searchResult.data || [];
+      const results: any[] = [];
+      const citations: any[] = [];
+
+      for (let i = 0; i < rawResults.length; i++) {
+        const r = rawResults[i] as any;
+        const item: any = {
+          url: r.url || r.metadata?.sourceURL || '',
+          title: r.metadata?.title || r.title || '',
+          snippet: (r.markdown || r.content || '').substring(0, 300),
+          relevance_score: Math.round(100 - (i * (100 / Math.max(rawResults.length, 1)))),
+        };
+
+        // For standard/deep, include full content
+        if (searchDepth !== 'quick' && (r.markdown || r.content)) {
+          item.content = (r.markdown || r.content || '').substring(0, 5000);
+
+          // Extract citation-worthy sentences
+          const sentences = (r.markdown || r.content || '').split(/[.!?]+/).filter((s: string) => s.trim().length > 30);
+          for (const sentence of sentences.slice(0, 3)) {
+            citations.push({
+              text: sentence.trim().substring(0, 200),
+              source_url: item.url,
+              source_title: item.title,
+            });
+          }
+        }
+
+        results.push(item);
+      }
+
+      // Build answer summary from top results
+      const snippets = results.slice(0, 3).map(r => r.snippet).join(' ');
+      const answerSummary = snippets.substring(0, 500) || 'No summary available.';
+
+      const durationMs = Date.now() - startTime;
+
+      // Store in DB
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_search_engine_queries (query, depth, results, answer_summary, citations, duration_ms, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        query.trim(), searchDepth, JSON.stringify(results), answerSummary,
+        JSON.stringify(citations), durationMs,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'EXECUTE', 'firecrawl_search_engine_queries', Number(insertResult.lastInsertRowid), `Search engine query: ${query.trim()}`);
+
+      res.json({
+        id: Number(insertResult.lastInsertRowid),
+        query: query.trim(),
+        results,
+        answer_summary: answerSummary,
+        citations,
+        depth: searchDepth,
+        duration_ms: durationMs,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Search engine error:', msg);
+      res.status(500).json({ error: 'Search engine query failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /search-engine/history — Past search queries ────────
+
+router.get(
+  '/search-engine/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_search_engine_queries ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get search history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 8. Fire Enrich — Data Enrichment
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /enrich — Enrich a company/person ──────────────────
+
+router.post(
+  '/enrich',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { email, domain, company_name } = req.body as {
+      email?: string; domain?: string; company_name?: string;
+    };
+
+    if (!email && !domain && !company_name) {
+      res.status(400).json({ error: 'At least one of email, domain, or company_name is required' }); return;
+    }
+
+    try {
+      // Derive domain from email if not provided
+      let targetDomain = domain?.trim();
+      if (!targetDomain && email) {
+        const parts = email.trim().split('@');
+        if (parts.length === 2) targetDomain = parts[1];
+      }
+
+      if (!targetDomain && company_name) {
+        // Try searching for the company
+        const searchResult = await firecrawlSearch({
+          query: `${company_name} official website`,
+          limit: 1,
+          scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+        });
+        const firstResult = (searchResult.data || [])[0] as any;
+        if (firstResult?.url) {
+          try { targetDomain = new URL(firstResult.url).hostname; } catch { /* skip */ }
+        }
+      }
+
+      if (!targetDomain) {
+        res.status(400).json({ error: 'Could not determine domain from provided data' }); return;
+      }
+
+      // Scrape homepage
+      const homepageUrl = `https://${targetDomain}`;
+      const homepageResult = await firecrawlScrape({
+        url: homepageUrl,
+        formats: ['markdown', 'html'],
+        onlyMainContent: false,
+      });
+
+      const homepage = homepageResult.data as any;
+      const html = (homepage?.html || '').toLowerCase();
+      const markdown = homepage?.markdown || '';
+
+      // Try to scrape about/team page
+      let aboutContent = '';
+      try {
+        const aboutResult = await firecrawlScrape({
+          url: `${homepageUrl}/about`,
+          formats: ['markdown'],
+          onlyMainContent: true,
+        });
+        aboutContent = (aboutResult.data as any)?.markdown || '';
+      } catch { /* about page may not exist */ }
+
+      const combinedContent = markdown + '\n' + aboutContent;
+
+      // Extract tech stack indicators
+      const techStack: string[] = [];
+      const techPatterns = [
+        'react', 'angular', 'vue', 'next.js', 'nuxt', 'svelte', 'wordpress', 'shopify',
+        'django', 'rails', 'laravel', 'express', 'flask', 'aws', 'azure', 'gcp',
+        'cloudflare', 'vercel', 'netlify', 'stripe', 'segment', 'intercom', 'hubspot',
+      ];
+      for (const tech of techPatterns) {
+        if (html.includes(tech)) techStack.push(tech);
+      }
+
+      // Extract social links
+      const socialLinks: Record<string, string> = {};
+      const linkedinMatch = html.match(/href="(https?:\/\/(?:www\.)?linkedin\.com\/[^"]+)"/);
+      const twitterMatch = html.match(/href="(https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[^"]+)"/);
+      const facebookMatch = html.match(/href="(https?:\/\/(?:www\.)?facebook\.com\/[^"]+)"/);
+      if (linkedinMatch) socialLinks.linkedin = linkedinMatch[1];
+      if (twitterMatch) socialLinks.twitter = twitterMatch[1];
+      if (facebookMatch) socialLinks.facebook = facebookMatch[1];
+
+      // Extract contact info
+      const contactInfo: Record<string, string> = {};
+      const phoneMatch = combinedContent.match(/(?:\+1[- ]?)?(?:\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4})/);
+      const emailMatch = combinedContent.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+      if (phoneMatch) contactInfo.phone = phoneMatch[0];
+      if (emailMatch) contactInfo.email = emailMatch[0];
+
+      // Determine company name and description
+      const resolvedName = company_name || homepage?.metadata?.title || targetDomain;
+      const description = homepage?.metadata?.description || combinedContent.substring(0, 300);
+
+      // Determine industry from content keywords
+      const industryKeywords: Record<string, string[]> = {
+        'Technology': ['software', 'saas', 'platform', 'api', 'developer', 'tech'],
+        'E-commerce': ['shop', 'store', 'buy', 'cart', 'ecommerce', 'product'],
+        'Finance': ['bank', 'financial', 'invest', 'insurance', 'fintech'],
+        'Healthcare': ['health', 'medical', 'patient', 'care', 'clinical'],
+        'Education': ['learn', 'course', 'education', 'university', 'school'],
+        'Media': ['news', 'media', 'publish', 'content', 'journalism'],
+      };
+      let industry = 'Other';
+      let maxMatches = 0;
+      const lowerCombined = combinedContent.toLowerCase();
+      for (const [ind, kws] of Object.entries(industryKeywords)) {
+        const matches = kws.filter(kw => lowerCombined.includes(kw)).length;
+        if (matches > maxMatches) { maxMatches = matches; industry = ind; }
+      }
+
+      const enrichedAt = localNow();
+
+      const enrichmentData = {
+        domain: targetDomain,
+        company_name: resolvedName,
+        description: typeof description === 'string' ? description.substring(0, 500) : '',
+        industry,
+        employee_count_estimate: null as string | null,
+        tech_stack: techStack,
+        social_links: socialLinks,
+        contact_info: contactInfo,
+        funding_info: null as string | null,
+        enriched_at: enrichedAt,
+      };
+
+      // Store in DB
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_enrichments (domain, email, company_name, description, industry, employee_count_estimate, tech_stack, social_links, contact_info, funding_info, enriched_at, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        targetDomain, email?.trim() || null, resolvedName, enrichmentData.description,
+        industry, null, JSON.stringify(techStack), JSON.stringify(socialLinks),
+        JSON.stringify(contactInfo), null, enrichedAt,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_enrichments', Number(insertResult.lastInsertRowid), `Enriched: ${targetDomain}`);
+
+      res.json({ id: Number(insertResult.lastInsertRowid), ...enrichmentData });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Enrich error:', msg);
+      res.status(500).json({ error: 'Enrichment failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /enrich/history — Past enrichments ──────────────────
+
+router.get(
+  '/enrich/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_enrichments ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get enrichment history', detail: msg });
+    }
+  },
+);
+
+// ── POST /enrich/bulk — Bulk enrich ─────────────────────────
+
+router.post(
+  '/enrich/bulk',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { items } = req.body as { items?: { email?: string; domain?: string }[] };
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: 'items array is required' }); return;
+    }
+
+    if (items.length > 20) {
+      res.status(400).json({ error: 'Maximum 20 items per bulk request' }); return;
+    }
+
+    const results: any[] = [];
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const item of items) {
+      try {
+        let targetDomain = item.domain?.trim();
+        if (!targetDomain && item.email) {
+          const parts = item.email.trim().split('@');
+          if (parts.length === 2) targetDomain = parts[1];
+        }
+
+        if (!targetDomain) {
+          results.push({ email: item.email, domain: item.domain, error: 'Could not determine domain' });
+          errorCount++;
+          continue;
+        }
+
+        const scrapeResult = await firecrawlScrape({
+          url: `https://${targetDomain}`,
+          formats: ['markdown'],
+          onlyMainContent: true,
+        });
+
+        const page = scrapeResult.data as any;
+        const resolvedName = page?.metadata?.title || targetDomain;
+        const description = (page?.metadata?.description || (page?.markdown || '').substring(0, 300));
+        const enrichedAt = localNow();
+
+        const db = getDb();
+        const now = localNow();
+        const insertResult = db.prepare(`
+          INSERT INTO firecrawl_enrichments (domain, email, company_name, description, enriched_at, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          targetDomain, item.email?.trim() || null, resolvedName,
+          typeof description === 'string' ? description.substring(0, 500) : '',
+          enrichedAt,
+          (req as any).user?.id || (req as any).user?.userId, now,
+        );
+
+        results.push({
+          id: Number(insertResult.lastInsertRowid),
+          domain: targetDomain,
+          company_name: resolvedName,
+          description: typeof description === 'string' ? description.substring(0, 500) : '',
+          enriched_at: enrichedAt,
+        });
+        successCount++;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        results.push({ email: item.email, domain: item.domain, error: msg });
+        errorCount++;
+      }
+    }
+
+    auditLog(req, 'EXECUTE', 'firecrawl_enrichments', 0, `Bulk enrich: ${successCount} success, ${errorCount} errors`);
+    res.json({ results, success_count: successCount, error_count: errorCount });
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 9. Open Researcher — Deep Research Assistant
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /research — Start a research session ───────────────
+
+router.post(
+  '/research',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { topic, questions, depth } = req.body as {
+      topic?: string; questions?: string[]; depth?: 'basic' | 'thorough' | 'comprehensive';
+    };
+
+    if (!topic || typeof topic !== 'string' || !topic.trim()) {
+      res.status(400).json({ error: 'topic is required' }); return;
+    }
+
+    const researchDepth = depth || 'basic';
+    const startTime = Date.now();
+
+    try {
+      const findings: any[] = [];
+      const sources: any[] = [];
+
+      // Build search queries
+      const queries = [topic.trim()];
+      if (questions && Array.isArray(questions)) {
+        for (const q of questions.slice(0, 5)) {
+          if (typeof q === 'string' && q.trim()) queries.push(q.trim());
+        }
+      }
+
+      const maxQueries = researchDepth === 'comprehensive' ? queries.length : researchDepth === 'thorough' ? Math.min(queries.length, 3) : 1;
+      const scrapeLimit = researchDepth === 'comprehensive' ? 10 : researchDepth === 'thorough' ? 5 : 0;
+
+      for (let qi = 0; qi < maxQueries; qi++) {
+        const q = queries[qi];
+        const searchResult = await firecrawlSearch({
+          query: q,
+          limit: researchDepth === 'comprehensive' ? 10 : 5,
+          scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+        });
+
+        const data = searchResult.data || [];
+        for (let i = 0; i < data.length; i++) {
+          const item = data[i] as any;
+          const url = item.url || item.metadata?.sourceURL || '';
+          const title = item.metadata?.title || item.title || url;
+
+          // Deduplicate sources
+          if (!sources.find((s: any) => s.url === url)) {
+            sources.push({ url, title, relevance: Math.round(100 - (i * 10)) });
+          }
+
+          // For thorough/comprehensive, scrape top results
+          if (i < scrapeLimit && (researchDepth === 'thorough' || researchDepth === 'comprehensive')) {
+            try {
+              const scrapeResult = await firecrawlScrape({
+                url,
+                formats: ['markdown'],
+                onlyMainContent: true,
+              });
+              const content = (scrapeResult.data as any)?.markdown || '';
+              if (content.trim()) {
+                findings.push({
+                  title,
+                  content: content.substring(0, 3000),
+                  source_url: url,
+                  confidence: Math.max(30, 100 - (i * 15)),
+                });
+              }
+            } catch { /* skip failed scrapes */ }
+          } else {
+            // Use search snippet content
+            const snippet = item.markdown || item.content || '';
+            if (snippet.trim()) {
+              findings.push({
+                title,
+                content: snippet.substring(0, 1000),
+                source_url: url,
+                confidence: Math.max(20, 80 - (i * 15)),
+              });
+            }
+          }
+        }
+      }
+
+      // Build synthesis from findings
+      const topFindings = findings.slice(0, 5).map(f => f.content.substring(0, 200)).join(' ');
+      const synthesis = topFindings
+        ? `Research on "${topic.trim()}" yielded ${findings.length} findings from ${sources.length} sources. ${topFindings.substring(0, 500)}`
+        : `No significant findings for "${topic.trim()}".`;
+
+      const durationMs = Date.now() - startTime;
+
+      // Store in DB
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_research_sessions (topic, questions, depth, findings, synthesis, sources, duration_ms, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        topic.trim(), questions ? JSON.stringify(questions) : null, researchDepth,
+        JSON.stringify(findings), synthesis, JSON.stringify(sources), durationMs,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_research_sessions', Number(insertResult.lastInsertRowid), `Research: ${topic.trim()}`);
+
+      res.json({
+        id: Number(insertResult.lastInsertRowid),
+        topic: topic.trim(),
+        findings,
+        synthesis,
+        sources,
+        depth: researchDepth,
+        duration_ms: durationMs,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Research error:', msg);
+      res.status(500).json({ error: 'Research session failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /research/history — Past research sessions ──────────
+
+router.get(
+  '/research/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT id, topic, depth, synthesis, duration_ms, created_by, created_at FROM firecrawl_research_sessions ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get research history', detail: msg });
+    }
+  },
+);
+
+// ── GET /research/:id — Get a specific research session ─────
+
+router.get(
+  '/research/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT * FROM firecrawl_research_sessions WHERE id = ?').get(id);
+      if (!row) { res.status(404).json({ error: 'Research session not found' }); return; }
+      res.json(row);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get research session', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 10. Firestarter — Website Chatbot / RAG
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /chatbot/create — Create a chatbot for a website ───
+
+router.post(
+  '/chatbot/create',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { name, source_url, description } = req.body as {
+      name?: string; source_url?: string; description?: string;
+    };
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ error: 'name is required' }); return;
+    }
+    if (!source_url || typeof source_url !== 'string' || !source_url.trim()) {
+      res.status(400).json({ error: 'source_url is required' }); return;
+    }
+
+    try {
+      // Scrape the website to build knowledge base
+      const scrapeResult = await firecrawlScrape({
+        url: source_url.trim(),
+        formats: ['markdown'],
+        onlyMainContent: true,
+      });
+
+      const mainContent = (scrapeResult.data as any)?.markdown || '';
+
+      // Also try to scrape a few sub-pages via search
+      let additionalContent = '';
+      let pageCount = 1;
+      try {
+        const searchResult = await firecrawlSearch({
+          query: `site:${new URL(source_url.trim()).hostname}`,
+          limit: 5,
+          scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+        });
+        const pages = searchResult.data || [];
+        for (const page of pages) {
+          const md = (page as any).markdown || (page as any).content || '';
+          if (md.trim()) {
+            additionalContent += '\n\n---\n\n' + md.substring(0, 3000);
+            pageCount++;
+          }
+        }
+      } catch { /* search may fail for some sites */ }
+
+      const scrapedContent = (mainContent + additionalContent).substring(0, 100000);
+
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_chatbots (name, source_url, description, scraped_content, page_count, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name.trim(), source_url.trim(), description?.trim() || null,
+        scrapedContent, pageCount,
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_chatbots', Number(insertResult.lastInsertRowid), `Created chatbot: ${name.trim()}`);
+
+      res.status(201).json({
+        success: true,
+        id: Number(insertResult.lastInsertRowid),
+        name: name.trim(),
+        source_url: source_url.trim(),
+        page_count: pageCount,
+        content_length: scrapedContent.length,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Chatbot create error:', msg);
+      res.status(500).json({ error: 'Failed to create chatbot', detail: msg });
+    }
+  },
+);
+
+// ── GET /chatbot — List chatbots ────────────────────────────
+
+router.get(
+  '/chatbot',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT id, name, source_url, description, page_count, created_by, created_at, updated_at FROM firecrawl_chatbots ORDER BY created_at DESC').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list chatbots', detail: msg });
+    }
+  },
+);
+
+// ── GET /chatbot/:id — Get chatbot details ──────────────────
+
+router.get(
+  '/chatbot/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT * FROM firecrawl_chatbots WHERE id = ?').get(id);
+      if (!row) { res.status(404).json({ error: 'Chatbot not found' }); return; }
+      res.json(row);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get chatbot', detail: msg });
+    }
+  },
+);
+
+// ── POST /chatbot/:id/ask — Ask a question to a chatbot ─────
+
+router.post(
+  '/chatbot/:id/ask',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    const { question } = req.body as { question?: string };
+    if (!question || typeof question !== 'string' || !question.trim()) {
+      res.status(400).json({ error: 'question is required' }); return;
+    }
+
+    try {
+      const db = getDb();
+      const chatbot = db.prepare('SELECT * FROM firecrawl_chatbots WHERE id = ?').get(id) as any;
+      if (!chatbot) { res.status(404).json({ error: 'Chatbot not found' }); return; }
+
+      const content = chatbot.scraped_content || '';
+      const questionLower = question.trim().toLowerCase();
+      const questionWords = questionLower.split(/\s+/).filter((w: string) => w.length > 3);
+
+      // Split content into sections for search
+      const sections = content.split(/\n{2,}/).filter((s: string) => s.trim().length > 20);
+      const scoredSections = sections.map((section: string) => {
+        const sectionLower = section.toLowerCase();
+        let score = 0;
+        for (const word of questionWords) {
+          if (sectionLower.includes(word)) score++;
+        }
+        return { text: section, score };
+      }).filter((s: any) => s.score > 0).sort((a: any, b: any) => b.score - a.score);
+
+      const topSections = scoredSections.slice(0, 5);
+      const sourceParts = topSections.map((s: any) => ({
+        text: s.text.substring(0, 300),
+        section: s.text.substring(0, 50),
+      }));
+
+      const answer = topSections.length > 0
+        ? topSections.map((s: any) => s.text.substring(0, 500)).join('\n\n')
+        : 'No relevant information found for your question.';
+
+      // Store message
+      const now = localNow();
+      db.prepare(`
+        INSERT INTO firecrawl_chatbot_messages (chatbot_id, question, answer, sources, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        id, question.trim(), answer, JSON.stringify(sourceParts),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      res.json({ answer, sources: sourceParts });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Chatbot ask error:', msg);
+      res.status(500).json({ error: 'Failed to process question', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /chatbot/:id — Delete a chatbot ──────────────────
+
+router.delete(
+  '/chatbot/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const result = db.prepare('DELETE FROM firecrawl_chatbots WHERE id = ?').run(id);
+      if (result.changes === 0) { res.status(404).json({ error: 'Chatbot not found' }); return; }
+
+      db.prepare('DELETE FROM firecrawl_chatbot_messages WHERE chatbot_id = ?').run(id);
+
+      auditLog(req, 'DELETE', 'firecrawl_chatbots', id, `Deleted chatbot ${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to delete chatbot', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 11. Firecrawl Observer — Website Change Detection
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /observer/watch — Start watching a URL ─────────────
+
+router.post(
+  '/observer/watch',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url, name, check_interval_hours, notify_on_change } = req.body as {
+      url?: string; name?: string; check_interval_hours?: number; notify_on_change?: boolean;
+    };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      // Scrape initial baseline
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown'],
+        onlyMainContent: true,
+      });
+
+      const baselineContent = (scrapeResult.data as any)?.markdown || '';
+      const now = localNow();
+
+      const db = getDb();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_observers (name, url, check_interval_hours, notify_on_change, last_content, last_checked_at, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name?.trim() || url.trim(), url.trim(),
+        check_interval_hours || 24, notify_on_change !== false ? 1 : 0,
+        baselineContent, now,
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_observers', Number(insertResult.lastInsertRowid), `Watching: ${url.trim()}`);
+
+      res.status(201).json({
+        success: true,
+        id: Number(insertResult.lastInsertRowid),
+        url: url.trim(),
+        baseline_length: baselineContent.length,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Observer watch error:', msg);
+      res.status(500).json({ error: 'Failed to start watching', detail: msg });
+    }
+  },
+);
+
+// ── GET /observer/watches — List all watched URLs ───────────
+
+router.get(
+  '/observer/watches',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT id, name, url, check_interval_hours, notify_on_change, last_checked_at, status, created_by, created_at, updated_at FROM firecrawl_observers ORDER BY created_at DESC').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list watches', detail: msg });
+    }
+  },
+);
+
+// ── POST /observer/watch/:id/check — Manually check for changes
+
+router.post(
+  '/observer/watch/:id/check',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const observer = db.prepare('SELECT * FROM firecrawl_observers WHERE id = ?').get(id) as any;
+      if (!observer) { res.status(404).json({ error: 'Watch not found' }); return; }
+
+      // Scrape current version
+      const scrapeResult = await firecrawlScrape({
+        url: observer.url,
+        formats: ['markdown'],
+        onlyMainContent: true,
+      });
+
+      const newContent = (scrapeResult.data as any)?.markdown || '';
+      const oldContent = observer.last_content || '';
+      const now = localNow();
+
+      // Compare contents
+      const changed = newContent !== oldContent;
+      let changesSummary: string | null = null;
+      let diffSections: string[] = [];
+
+      if (changed) {
+        // Simple diff: find sections that are different
+        const oldLines = oldContent.split('\n');
+        const newLines = newContent.split('\n');
+
+        const addedLines = newLines.filter((l: string) => !oldLines.includes(l) && l.trim().length > 10);
+        const removedLines = oldLines.filter((l: string) => !newLines.includes(l) && l.trim().length > 10);
+
+        diffSections = [
+          ...addedLines.slice(0, 10).map((l: string) => `+ ${l.substring(0, 200)}`),
+          ...removedLines.slice(0, 10).map((l: string) => `- ${l.substring(0, 200)}`),
+        ];
+
+        changesSummary = `${addedLines.length} lines added, ${removedLines.length} lines removed`;
+
+        // Store change record
+        db.prepare(`
+          INSERT INTO firecrawl_observer_changes (observer_id, changes_summary, diff_sections, previous_content, new_content, detected_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(id, changesSummary, JSON.stringify(diffSections), oldContent.substring(0, 50000), newContent.substring(0, 50000), now);
+
+        // Update observer with new content
+        db.prepare('UPDATE firecrawl_observers SET last_content = ?, last_checked_at = ?, updated_at = ? WHERE id = ?')
+          .run(newContent, now, now, id);
+      } else {
+        db.prepare('UPDATE firecrawl_observers SET last_checked_at = ?, updated_at = ? WHERE id = ?')
+          .run(now, now, id);
+      }
+
+      auditLog(req, 'EXECUTE', 'firecrawl_observers', id, `Check: ${changed ? 'changes detected' : 'no changes'}`);
+
+      res.json({ changed, changes_summary: changesSummary, diff_sections: diffSections });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Observer check error:', msg);
+      res.status(500).json({ error: 'Failed to check for changes', detail: msg });
+    }
+  },
+);
+
+// ── GET /observer/watch/:id/changes — Change history ────────
+
+router.get(
+  '/observer/watch/:id/changes',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const rows = db.prepare(
+        'SELECT id, observer_id, changes_summary, diff_sections, detected_at FROM firecrawl_observer_changes WHERE observer_id = ? ORDER BY detected_at DESC LIMIT 50'
+      ).all(id);
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get change history', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /observer/watch/:id — Stop watching ──────────────
+
+router.delete(
+  '/observer/watch/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const result = db.prepare('DELETE FROM firecrawl_observers WHERE id = ?').run(id);
+      if (result.changes === 0) { res.status(404).json({ error: 'Watch not found' }); return; }
+
+      db.prepare('DELETE FROM firecrawl_observer_changes WHERE observer_id = ?').run(id);
+
+      auditLog(req, 'DELETE', 'firecrawl_observers', id, `Stopped watching ${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to stop watching', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 12. Firesearch — Deep Research with Validation
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /deep-search — Run validated deep search ───────────
+
+router.post(
+  '/deep-search',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { query, validate } = req.body as { query?: string; validate?: boolean };
+
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      res.status(400).json({ error: 'query is required' }); return;
+    }
+
+    const shouldValidate = validate !== false;
+    const startTime = Date.now();
+
+    try {
+      // Initial search
+      const searchResult = await firecrawlSearch({
+        query: query.trim(),
+        limit: 10,
+        scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+      });
+
+      const rawResults = searchResult.data || [];
+
+      // Extract claims from results
+      const claims: any[] = [];
+      for (const item of rawResults) {
+        const content = (item as any).markdown || (item as any).content || '';
+        const url = (item as any).url || (item as any).metadata?.sourceURL || '';
+        const sentences = content.split(/[.!?]+/).filter((s: string) => s.trim().length > 30 && s.trim().length < 300);
+
+        for (const sentence of sentences.slice(0, 3)) {
+          claims.push({
+            claim: sentence.trim(),
+            primary_source: url,
+            sources: [{ url, supports: true }],
+            confidence: 50,
+          });
+        }
+      }
+
+      // Validation: cross-reference claims
+      if (shouldValidate && claims.length > 0) {
+        // Validate top claims by searching for corroboration
+        for (const claim of claims.slice(0, 5)) {
+          try {
+            const validationSearch = await firecrawlSearch({
+              query: claim.claim.substring(0, 100),
+              limit: 3,
+              scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+            });
+
+            const valResults = validationSearch.data || [];
+            for (const vr of valResults) {
+              const vrUrl = (vr as any).url || (vr as any).metadata?.sourceURL || '';
+              const vrContent = ((vr as any).markdown || (vr as any).content || '').toLowerCase();
+              const claimWords = claim.claim.toLowerCase().split(/\s+/).filter((w: string) => w.length > 4);
+              const matchCount = claimWords.filter((w: string) => vrContent.includes(w)).length;
+              const supports = matchCount > claimWords.length * 0.3;
+
+              if (vrUrl && vrUrl !== claim.primary_source) {
+                claim.sources.push({ url: vrUrl, supports });
+                if (supports) claim.confidence = Math.min(95, claim.confidence + 15);
+              }
+            }
+          } catch { /* skip failed validation searches */ }
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+
+      // Store in DB
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_deep_searches (query, results, validated, duration_ms, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        query.trim(), JSON.stringify(claims), shouldValidate ? 1 : 0, durationMs,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'EXECUTE', 'firecrawl_deep_searches', Number(insertResult.lastInsertRowid), `Deep search: ${query.trim()}`);
+
+      res.json({
+        id: Number(insertResult.lastInsertRowid),
+        query: query.trim(),
+        results: claims,
+        validated: shouldValidate,
+        duration_ms: durationMs,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Deep search error:', msg);
+      res.status(500).json({ error: 'Deep search failed', detail: msg });
+    }
+  },
+);
+
+// ── GET /deep-search/history — Past deep searches ───────────
+
+router.get(
+  '/deep-search/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_deep_searches ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get deep search history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 13. LLMs.txt Generator
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /llmstxt — Generate llms.txt for a website ─────────
+
+router.post(
+  '/llmstxt',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url } = req.body as { url?: string };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      let hostname: string;
+      try { hostname = new URL(url.trim()).hostname; } catch {
+        res.status(400).json({ error: 'Invalid URL' }); return;
+      }
+
+      // Scrape the homepage
+      const homepageResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown', 'html'],
+        onlyMainContent: false,
+      });
+
+      const homepage = homepageResult.data as any;
+      const homeMarkdown = homepage?.markdown || '';
+      const homeHtml = (homepage?.html || '').toLowerCase();
+      const title = homepage?.metadata?.title || hostname;
+      const description = homepage?.metadata?.description || '';
+
+      // Search for sub-pages
+      const searchResult = await firecrawlSearch({
+        query: `site:${hostname}`,
+        limit: 10,
+        scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
+      });
+
+      const pages = searchResult.data || [];
+      const pagesAnalyzed = 1 + pages.length;
+
+      // Build page entries
+      const pageEntries: string[] = [];
+      for (const page of pages) {
+        const pageUrl = (page as any).url || (page as any).metadata?.sourceURL || '';
+        const pageTitle = (page as any).metadata?.title || (page as any).title || pageUrl;
+        const pageSummary = ((page as any).markdown || (page as any).content || '').substring(0, 150).replace(/\n/g, ' ');
+        if (pageUrl) {
+          pageEntries.push(`- [${pageTitle}](${pageUrl}): ${pageSummary}`);
+        }
+      }
+
+      // Detect API docs
+      const hasApiDocs = homeHtml.includes('/api') || homeHtml.includes('developer') || homeHtml.includes('documentation');
+
+      // Detect content types
+      const contentTypes: string[] = [];
+      if (homeHtml.includes('blog')) contentTypes.push('Blog');
+      if (homeHtml.includes('pricing')) contentTypes.push('Pricing');
+      if (hasApiDocs) contentTypes.push('API Documentation');
+      if (homeHtml.includes('about')) contentTypes.push('About');
+      if (homeHtml.includes('contact')) contentTypes.push('Contact');
+
+      // Generate llms.txt content
+      const llmstxtContent = [
+        `# ${title}`,
+        '',
+        `> ${description}`,
+        '',
+        `## Site Overview`,
+        '',
+        `- **URL**: ${url.trim()}`,
+        `- **Domain**: ${hostname}`,
+        `- **Pages Analyzed**: ${pagesAnalyzed}`,
+        contentTypes.length > 0 ? `- **Content Types**: ${contentTypes.join(', ')}` : '',
+        '',
+        `## Key Pages`,
+        '',
+        `- [Homepage](${url.trim()}): ${homeMarkdown.substring(0, 150).replace(/\n/g, ' ')}`,
+        ...pageEntries,
+        '',
+        hasApiDocs ? `## API Documentation\n\nThis site appears to have API documentation. Check /api or /docs paths.\n` : '',
+        `## Content Summary`,
+        '',
+        homeMarkdown.substring(0, 1000).replace(/\n{3,}/g, '\n\n'),
+        '',
+        `---`,
+        `Generated: ${localNow()}`,
+      ].filter(Boolean).join('\n');
+
+      const generatedAt = localNow();
+
+      // Store in DB
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_llmstxt (url, llmstxt_content, pages_analyzed, generated_at, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), llmstxtContent, pagesAnalyzed, generatedAt,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_llmstxt', Number(insertResult.lastInsertRowid), `Generated llms.txt: ${url.trim()}`);
+
+      res.json({
+        id: Number(insertResult.lastInsertRowid),
+        url: url.trim(),
+        llmstxt_content: llmstxtContent,
+        pages_analyzed: pagesAnalyzed,
+        generated_at: generatedAt,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] LLMs.txt error:', msg);
+      res.status(500).json({ error: 'Failed to generate llms.txt', detail: msg });
+    }
+  },
+);
+
+// ── GET /llmstxt/history — Past llms.txt generations ────────
+
+router.get(
+  '/llmstxt/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_llmstxt ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get llms.txt history', detail: msg });
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
+// 14. PDF Inspector
+// ═════════════════════════════════════════════════════════════
+
+// ── POST /pdf-inspect — Inspect/classify a PDF URL ──────────
+
+router.post(
+  '/pdf-inspect',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { url } = req.body as { url?: string };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required' }); return;
+    }
+
+    try {
+      // Scrape the PDF
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown'],
+        onlyMainContent: false,
+      });
+
+      const content = (scrapeResult.data as any)?.markdown || '';
+      const contentLower = content.toLowerCase();
+
+      // Estimate page count (~3000 chars per page)
+      const pageCountEstimate = Math.max(1, Math.round(content.length / 3000));
+
+      // Detect if scanned (very little structured text)
+      const lineCount = content.split('\n').length;
+      const avgLineLength = content.length / Math.max(lineCount, 1);
+      const isScanned = content.length < 200 || avgLineLength < 10;
+      const hasText = content.trim().length > 50;
+
+      // Classification
+      let classification: 'report' | 'form' | 'contract' | 'invoice' | 'legal' | 'other' = 'other';
+      if (contentLower.includes('invoice') || contentLower.includes('bill to') || contentLower.includes('amount due')) {
+        classification = 'invoice';
+      } else if (contentLower.includes('agreement') || contentLower.includes('hereby agree') || contentLower.includes('terms and conditions')) {
+        classification = 'contract';
+      } else if (contentLower.includes('court') || contentLower.includes('plaintiff') || contentLower.includes('defendant') || contentLower.includes('statute')) {
+        classification = 'legal';
+      } else if (contentLower.includes('fill in') || contentLower.includes('signature:') || contentLower.includes('date:___')) {
+        classification = 'form';
+      } else if (contentLower.includes('report') || contentLower.includes('executive summary') || contentLower.includes('findings')) {
+        classification = 'report';
+      }
+
+      // Extract key sections (headers)
+      const headers = content.match(/^#{1,3}\s+.+$/gm) || [];
+      const keySections = headers.slice(0, 20).map((h: string) => h.replace(/^#+\s+/, ''));
+
+      // Extract entities
+      const names: string[] = [];
+      const dates: string[] = [];
+      const amounts: string[] = [];
+
+      // Dates
+      const dateMatches = content.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g) || [];
+      const isoDateMatches = content.match(/\b\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\b/g) || [];
+      const writtenDateMatches = content.match(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/gi) || [];
+      dates.push(...[...dateMatches, ...isoDateMatches, ...writtenDateMatches].slice(0, 20));
+
+      // Amounts
+      const amountMatches = content.match(/\$[\d,]+(?:\.\d{2})?/g) || [];
+      amounts.push(...amountMatches.slice(0, 20));
+
+      // Names (capitalized word pairs that look like names)
+      const nameMatches = content.match(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g) || [];
+      const uniqueNames = [...new Set(nameMatches)].slice(0, 20) as string[];
+      names.push(...uniqueNames);
+
+      // Summary
+      const summary = content.substring(0, 500).replace(/\n{2,}/g, ' ').trim();
+
+      const extractedEntities = { names, dates, amounts };
+
+      // Store in DB
+      const db = getDb();
+      const now = localNow();
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_pdf_inspections (url, page_count_estimate, is_scanned, has_text, classification, summary, key_sections, extracted_entities, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        url.trim(), pageCountEstimate, isScanned ? 1 : 0, hasText ? 1 : 0,
+        classification, summary, JSON.stringify(keySections), JSON.stringify(extractedEntities),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_pdf_inspections', Number(insertResult.lastInsertRowid), `PDF inspect: ${url.trim()}`);
+
+      res.json({
+        id: Number(insertResult.lastInsertRowid),
+        url: url.trim(),
+        page_count_estimate: pageCountEstimate,
+        is_scanned: isScanned,
+        has_text: hasText,
+        classification,
+        summary,
+        key_sections: keySections,
+        extracted_entities: extractedEntities,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] PDF inspect error:', msg);
+      res.status(500).json({ error: 'Failed to inspect PDF', detail: msg });
+    }
+  },
+);
+
+// ── GET /pdf-inspect/history — Past PDF inspections ─────────
+
+router.get(
+  '/pdf-inspect/history',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_pdf_inspections ORDER BY created_at DESC LIMIT 100').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get PDF inspection history', detail: msg });
     }
   },
 );

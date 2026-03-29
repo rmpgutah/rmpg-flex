@@ -30,6 +30,20 @@ import {
   ArrowRight,
   GripVertical,
   X,
+  Sparkles,
+  Building2,
+  BookOpen,
+  MessageSquare,
+  Eye,
+  ShieldCheck,
+  FileText,
+  FileSearch,
+  Send,
+  Clipboard,
+  Hash,
+  Users,
+  Link,
+  Tag,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -37,7 +51,7 @@ import PanelTitleBar from '../PanelTitleBar';
 
 // ── Shared Types ──────────────────────────────────────────────
 
-type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows';
+type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect';
 
 interface Scout {
   id: number;
@@ -220,6 +234,14 @@ const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = 
   { id: 'brand', label: 'Brand Monitor', icon: Megaphone },
   { id: 'compare', label: 'Page Compare', icon: GitCompareArrows },
   { id: 'workflows', label: 'Workflows', icon: Workflow },
+  { id: 'search-engine', label: 'Search Engine', icon: Sparkles },
+  { id: 'enrich', label: 'Enrich', icon: Building2 },
+  { id: 'researcher', label: 'Researcher', icon: BookOpen },
+  { id: 'chatbot', label: 'Chatbot', icon: MessageSquare },
+  { id: 'observer', label: 'Observer', icon: Eye },
+  { id: 'deep-search', label: 'Deep Search', icon: ShieldCheck },
+  { id: 'llmstxt', label: 'LLMs.txt', icon: FileText },
+  { id: 'pdf-inspect', label: 'PDF Inspect', icon: FileSearch },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -1523,6 +1545,1678 @@ function WorkflowsPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ██ SEARCH ENGINE PANEL (Fireplexity)
+// ══════════════════════════════════════════════════════════════
+
+interface SearchResult {
+  id: number;
+  query: string;
+  depth: 'quick' | 'standard' | 'deep';
+  answer_summary: string;
+  citations: { index: number; title: string; snippet: string; url: string }[];
+  created_at: string;
+}
+
+function SearchEnginePanel() {
+  const { addToast } = useToast();
+  const [query, setQuery] = useState('');
+  const [depth, setDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
+  const [searching, setSearching] = useState(false);
+  const [result, setResult] = useState<SearchResult | null>(null);
+  const [history, setHistory] = useState<SearchResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<SearchResult[]>('/firecrawl-tools/search-engine/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const search = async () => {
+    if (!query.trim()) { addToast('Enter a search query', 'warning'); return; }
+    setSearching(true);
+    try {
+      const data = await apiFetch<SearchResult>('/firecrawl-tools/search-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim(), depth }),
+      });
+      setResult(data);
+      addToast('Search complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Search failed', 'error');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const viewHistoryItem = (item: SearchResult) => {
+    setResult(item);
+    setQuery(item.query);
+    setDepth(item.depth);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Search Engine (Fireplexity)" icon={Sparkles} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Query Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+          placeholder="Ask anything..."
+        />
+        <select
+          value={depth}
+          onChange={e => setDepth(e.target.value as 'quick' | 'standard' | 'deep')}
+          className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-[10px] text-white focus:border-orange-500/50 focus:outline-none"
+        >
+          <option value="quick">Quick</option>
+          <option value="standard">Standard</option>
+          <option value="deep">Deep</option>
+        </select>
+        <SmallBtn onClick={search} loading={searching} variant="primary">
+          <Search className="w-3 h-3" /> Search
+        </SmallBtn>
+      </div>
+
+      {/* History Dropdown */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past searches</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Sparkles className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.query}</span>
+                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.depth}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-3">
+          {/* Answer Summary */}
+          <div className="bg-orange-500/5 border border-orange-500/30 rounded-sm p-3">
+            <div className="text-[10px] font-bold text-orange-400 uppercase tracking-wider mb-1">Answer</div>
+            <div className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{result.answer_summary}</div>
+          </div>
+
+          {/* Citations */}
+          {result.citations && result.citations.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Sources</div>
+              {result.citations.map(cite => (
+                <div key={cite.index} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2 flex items-start gap-2">
+                  <span className="text-[9px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded-sm px-1 py-0.5 shrink-0">
+                    [{cite.index}]
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-white font-medium truncate">{cite.title}</div>
+                    <div className="text-[10px] text-rmpg-400 line-clamp-2 mt-0.5">{cite.snippet}</div>
+                    <a
+                      href={cite.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[9px] text-brand-400 hover:underline font-mono truncate block mt-0.5"
+                    >
+                      {cite.url}
+                    </a>
+                  </div>
+                  <a href={cite.url} target="_blank" rel="noopener noreferrer" className="text-rmpg-500 hover:text-orange-400 shrink-0">
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !searching && (
+        <EmptyState icon={Sparkles} message="Enter a query to search the web with AI-powered answers and citations." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ ENRICH PANEL (Fire Enrich)
+// ══════════════════════════════════════════════════════════════
+
+interface EnrichResult {
+  id: number;
+  input: string;
+  company_name: string;
+  description: string;
+  industry: string;
+  employee_count: number | null;
+  tech_stack: string[];
+  social_links: { platform: string; url: string }[];
+  contact_info: { type: string; value: string }[];
+  created_at: string;
+}
+
+function EnrichPanel() {
+  const { addToast } = useToast();
+  const [input, setInput] = useState('');
+  const [enriching, setEnriching] = useState(false);
+  const [result, setResult] = useState<EnrichResult | null>(null);
+  const [history, setHistory] = useState<EnrichResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkInput, setBulkInput] = useState('');
+  const [bulkEnriching, setBulkEnriching] = useState(false);
+  const [bulkResults, setBulkResults] = useState<EnrichResult[]>([]);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<EnrichResult[]>('/firecrawl-tools/enrich/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const enrich = async () => {
+    if (!input.trim()) { addToast('Enter an email or domain', 'warning'); return; }
+    setEnriching(true);
+    try {
+      const data = await apiFetch<EnrichResult>('/firecrawl-tools/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: input.trim() }),
+      });
+      setResult(data);
+      addToast('Enrichment complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Enrichment failed', 'error');
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const bulkEnrich = async () => {
+    const emails = bulkInput.split('\n').map(e => e.trim()).filter(Boolean);
+    if (emails.length === 0) { addToast('Enter at least one email or domain', 'warning'); return; }
+    setBulkEnriching(true);
+    try {
+      const data = await apiFetch<EnrichResult[]>('/firecrawl-tools/enrich/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: emails }),
+      });
+      setBulkResults(data);
+      addToast(`Enriched ${data.length} entries`, 'success');
+      loadHistory();
+    } catch {
+      addToast('Bulk enrichment failed', 'error');
+    } finally {
+      setBulkEnriching(false);
+    }
+  };
+
+  const viewHistoryItem = (item: EnrichResult) => {
+    setResult(item);
+    setInput(item.input);
+    setShowHistory(false);
+    setBulkMode(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Fire Enrich" icon={Building2} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setBulkMode(!bulkMode)} variant={bulkMode ? 'primary' : 'default'}>
+          <Users className="w-3 h-3" /> {bulkMode ? 'Single' : 'Bulk'}
+        </SmallBtn>
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Single Input */}
+      {!bulkMode && (
+        <div className="flex items-center gap-2">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && enrich()}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="email@company.com or company.com"
+          />
+          <SmallBtn onClick={enrich} loading={enriching} variant="primary">
+            <Building2 className="w-3 h-3" /> Enrich
+          </SmallBtn>
+        </div>
+      )}
+
+      {/* Bulk Input */}
+      {bulkMode && (
+        <div className="space-y-2">
+          <textarea
+            value={bulkInput}
+            onChange={e => setBulkInput(e.target.value)}
+            className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono resize-none"
+            rows={5}
+            placeholder="One email or domain per line..."
+          />
+          <SmallBtn onClick={bulkEnrich} loading={bulkEnriching} variant="primary">
+            <Users className="w-3 h-3" /> Bulk Enrich ({bulkInput.split('\n').filter(l => l.trim()).length} entries)
+          </SmallBtn>
+        </div>
+      )}
+
+      {/* History Dropdown */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past enrichments</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Building2 className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-white truncate">{item.company_name || item.input}</span>
+                <span className="text-[10px] text-rmpg-400 truncate">{item.industry}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Single Result */}
+      {!bulkMode && result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-3">
+          <div className="flex items-center gap-3">
+            <Building2 className="w-5 h-5 text-orange-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-white">{result.company_name || 'Unknown Company'}</div>
+              <div className="text-[10px] text-rmpg-400 font-mono">{result.input}</div>
+            </div>
+            {result.employee_count != null && (
+              <div className="text-right shrink-0">
+                <div className="text-xs font-bold text-orange-400 font-mono">{result.employee_count.toLocaleString()}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase">employees</div>
+              </div>
+            )}
+          </div>
+
+          {result.description && (
+            <div className="text-[10px] text-rmpg-300 leading-relaxed">{result.description}</div>
+          )}
+
+          {result.industry && (
+            <div className="flex items-center gap-1.5">
+              <Tag className="w-3 h-3 text-rmpg-500" />
+              <span className="text-[10px] text-rmpg-300">{result.industry}</span>
+            </div>
+          )}
+
+          {/* Tech Stack */}
+          {result.tech_stack && result.tech_stack.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tech Stack</div>
+              <div className="flex flex-wrap gap-1">
+                {result.tech_stack.map((tech, i) => (
+                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 bg-brand-500/10 border border-brand-500/30 text-brand-400 rounded-sm">
+                    {tech}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Social Links */}
+          {result.social_links && result.social_links.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Social</div>
+              <div className="flex flex-wrap gap-2">
+                {result.social_links.map((sl, i) => (
+                  <a
+                    key={i}
+                    href={sl.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] text-brand-400 hover:underline flex items-center gap-1"
+                  >
+                    <Link className="w-2.5 h-2.5" /> {sl.platform}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Contact Info */}
+          {result.contact_info && result.contact_info.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Contact</div>
+              <div className="space-y-0.5">
+                {result.contact_info.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px]">
+                    <span className="text-rmpg-500 uppercase font-mono w-14 shrink-0">{c.type}</span>
+                    <span className="text-rmpg-300 font-mono truncate">{c.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bulk Results */}
+      {bulkMode && bulkResults.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Bulk Results ({bulkResults.length})</div>
+          {bulkResults.map(item => (
+            <div key={item.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-3">
+              <Building2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+              <span className="text-[10px] text-white font-medium truncate flex-1">{item.company_name || item.input}</span>
+              <span className="text-[10px] text-rmpg-400">{item.industry}</span>
+              {item.employee_count != null && (
+                <span className="text-[10px] text-orange-400 font-mono">{item.employee_count.toLocaleString()}</span>
+              )}
+              <SmallBtn onClick={() => { setResult(item); setInput(item.input); setBulkMode(false); }}>
+                <ArrowRight className="w-3 h-3" /> View
+              </SmallBtn>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!bulkMode && !result && !enriching && (
+        <EmptyState icon={Building2} message="Enter an email or domain to enrich with company data." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ RESEARCHER PANEL (Open Researcher)
+// ══════════════════════════════════════════════════════════════
+
+interface ResearchFinding {
+  title: string;
+  content: string;
+  source_url: string;
+  confidence: number;
+}
+
+interface ResearchResult {
+  id: number;
+  topic: string;
+  depth: 'basic' | 'thorough' | 'comprehensive';
+  synthesis: string;
+  findings: ResearchFinding[];
+  sources: { url: string; relevance: number }[];
+  created_at: string;
+}
+
+function ResearcherPanel() {
+  const { addToast } = useToast();
+  const [topic, setTopic] = useState('');
+  const [questions, setQuestions] = useState('');
+  const [depth, setDepth] = useState<'basic' | 'thorough' | 'comprehensive'>('thorough');
+  const [researching, setResearching] = useState(false);
+  const [result, setResult] = useState<ResearchResult | null>(null);
+  const [history, setHistory] = useState<ResearchResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [expandedFinding, setExpandedFinding] = useState<number | null>(null);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<ResearchResult[]>('/firecrawl-tools/research/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const research = async () => {
+    if (!topic.trim()) { addToast('Enter a research topic', 'warning'); return; }
+    setResearching(true);
+    try {
+      const data = await apiFetch<ResearchResult>('/firecrawl-tools/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          questions: questions.trim() || undefined,
+          depth,
+        }),
+      });
+      setResult(data);
+      addToast('Research complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Research failed', 'error');
+    } finally {
+      setResearching(false);
+    }
+  };
+
+  const viewHistoryItem = (item: ResearchResult) => {
+    setResult(item);
+    setTopic(item.topic);
+    setDepth(item.depth);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Open Researcher" icon={BookOpen} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Topic Input */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            value={topic}
+            onChange={e => setTopic(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !questions && research()}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+            placeholder="Research topic..."
+          />
+          <select
+            value={depth}
+            onChange={e => setDepth(e.target.value as 'basic' | 'thorough' | 'comprehensive')}
+            className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-[10px] text-white focus:border-orange-500/50 focus:outline-none"
+          >
+            <option value="basic">Basic</option>
+            <option value="thorough">Thorough</option>
+            <option value="comprehensive">Comprehensive</option>
+          </select>
+          <SmallBtn onClick={research} loading={researching} variant="primary">
+            <BookOpen className="w-3 h-3" /> Research
+          </SmallBtn>
+        </div>
+        <textarea
+          value={questions}
+          onChange={e => setQuestions(e.target.value)}
+          className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none"
+          rows={2}
+          placeholder="Optional specific questions (one per line)..."
+        />
+      </div>
+
+      {/* History Dropdown */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past research sessions</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <BookOpen className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.topic}</span>
+                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.depth}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-3">
+          {/* Synthesis Summary */}
+          <div className="bg-orange-500/5 border border-orange-500/30 rounded-sm p-3">
+            <div className="text-[10px] font-bold text-orange-400 uppercase tracking-wider mb-1">Synthesis</div>
+            <div className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{result.synthesis}</div>
+          </div>
+
+          {/* Findings */}
+          {result.findings && result.findings.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Findings ({result.findings.length})</div>
+              {result.findings.map((finding, idx) => (
+                <div key={idx} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+                  <button
+                    onClick={() => setExpandedFinding(expandedFinding === idx ? null : idx)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                  >
+                    {expandedFinding === idx ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
+                    <span className="text-[10px] text-white font-medium flex-1 truncate">{finding.title}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <div className="w-16 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${finding.confidence >= 0.7 ? 'bg-emerald-500' : finding.confidence >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}`}
+                          style={{ width: `${finding.confidence * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-[9px] font-mono text-rmpg-500">{Math.round(finding.confidence * 100)}%</span>
+                    </div>
+                  </button>
+                  {expandedFinding === idx && (
+                    <div className="border-t border-rmpg-700 px-3 py-2 bg-surface-sunken">
+                      <div className="text-[10px] text-rmpg-300 leading-relaxed whitespace-pre-wrap">{finding.content}</div>
+                      {finding.source_url && (
+                        <a
+                          href={finding.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[9px] text-brand-400 hover:underline font-mono mt-1 flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" /> {finding.source_url}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Sources */}
+          {result.sources && result.sources.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Sources ({result.sources.length})</div>
+              <div className="space-y-0.5">
+                {result.sources.map((src, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px]">
+                    <div className="w-10 h-1.5 bg-rmpg-700 rounded-full overflow-hidden shrink-0">
+                      <div
+                        className="h-full bg-orange-500 rounded-full"
+                        style={{ width: `${src.relevance * 100}%` }}
+                      />
+                    </div>
+                    <a
+                      href={src.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand-400 hover:underline font-mono truncate"
+                    >
+                      {src.url}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !researching && (
+        <EmptyState icon={BookOpen} message="Enter a topic to start AI-powered research with source citations." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ CHATBOT PANEL (Firestarter)
+// ══════════════════════════════════════════════════════════════
+
+interface Chatbot {
+  id: number;
+  name: string;
+  source_url: string;
+  description: string;
+  status: 'ready' | 'indexing' | 'error';
+  created_at: string;
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: string[];
+}
+
+function ChatbotPanel() {
+  const { addToast } = useToast();
+  const [bots, setBots] = useState<Chatbot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [activeBotId, setActiveBotId] = useState<number | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [asking, setAsking] = useState(false);
+
+  // Form
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<Chatbot[]>('/firecrawl-tools/chatbot');
+      setBots(data);
+    } catch {
+      addToast('Failed to load chatbots', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const createBot = async () => {
+    if (!formName.trim() || !formUrl.trim()) { addToast('Name and source URL are required', 'warning'); return; }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/chatbot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          source_url: formUrl.trim(),
+          description: formDesc.trim(),
+        }),
+      });
+      addToast('Chatbot created', 'success');
+      setShowForm(false);
+      setFormName(''); setFormUrl(''); setFormDesc('');
+      load();
+    } catch {
+      addToast('Failed to create chatbot', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteBot = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/chatbot/${id}`, { method: 'DELETE' });
+      addToast('Chatbot deleted', 'success');
+      if (activeBotId === id) { setActiveBotId(null); setMessages([]); }
+      load();
+    } catch {
+      addToast('Failed to delete chatbot', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const openChat = (id: number) => {
+    if (activeBotId === id) {
+      setActiveBotId(null);
+      setMessages([]);
+    } else {
+      setActiveBotId(id);
+      setMessages([]);
+      setChatInput('');
+    }
+  };
+
+  const askQuestion = async () => {
+    if (!chatInput.trim() || !activeBotId) return;
+    const userMsg: ChatMessage = { role: 'user', content: chatInput.trim() };
+    setMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setAsking(true);
+    try {
+      const data = await apiFetch<{ answer: string; citations?: string[] }>(`/firecrawl-tools/chatbot/${activeBotId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: userMsg.content }),
+      });
+      setMessages(prev => [...prev, { role: 'assistant', content: data.answer, citations: data.citations }]);
+    } catch {
+      addToast('Failed to get answer', 'error');
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Failed to get a response.' }]);
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Chatbot (Firestarter)" icon={MessageSquare} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowForm(!showForm)} variant="primary">
+          <Plus className="w-3 h-3" /> New Chatbot
+        </SmallBtn>
+        <SmallBtn onClick={load}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <input
+                value={formName} onChange={e => setFormName(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                placeholder="e.g. Company FAQ Bot"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URL *</label>
+              <input
+                value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+                placeholder="https://docs.example.com"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
+            <input
+              value={formDesc} onChange={e => setFormDesc(e.target.value)}
+              className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+              placeholder="What this chatbot answers questions about..."
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <SmallBtn onClick={createBot} loading={saving} variant="primary">
+              <CheckCircle className="w-3 h-3" /> Create
+            </SmallBtn>
+            <SmallBtn onClick={() => setShowForm(false)}>
+              <X className="w-3 h-3" /> Cancel
+            </SmallBtn>
+          </div>
+        </div>
+      )}
+
+      {/* Bot List */}
+      {bots.length === 0 ? (
+        <EmptyState icon={MessageSquare} message="No chatbots yet. Create one from a URL to start asking questions." />
+      ) : (
+        <div className="space-y-1">
+          {bots.map(bot => (
+            <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <StatusLed status={bot.status === 'ready' ? 'active' : bot.status} />
+                <MessageSquare className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
+                <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[180px]">{bot.source_url}</span>
+                <SmallBtn onClick={() => openChat(bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={bot.status !== 'ready'}>
+                  <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Ask'}
+                </SmallBtn>
+                <SmallBtn onClick={() => deleteBot(bot.id)} loading={deletingIds.has(bot.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+
+              {/* Chat Interface */}
+              {activeBotId === bot.id && (
+                <div className="border-t border-rmpg-700 bg-surface-sunken p-3 space-y-2">
+                  {/* Messages */}
+                  <div className="max-h-64 overflow-y-auto scrollbar-dark space-y-2">
+                    {messages.length === 0 && (
+                      <div className="text-[10px] text-rmpg-500 text-center py-4">
+                        Ask a question about {bot.name}...
+                      </div>
+                    )}
+                    {messages.map((msg, i) => (
+                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] rounded-sm px-2.5 py-1.5 ${
+                          msg.role === 'user'
+                            ? 'bg-orange-500/10 border border-orange-500/30 text-orange-200'
+                            : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-200'
+                        }`}>
+                          <div className="text-[10px] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+                          {msg.citations && msg.citations.length > 0 && (
+                            <div className="mt-1 pt-1 border-t border-rmpg-700 space-y-0.5">
+                              {msg.citations.map((cite, ci) => (
+                                <a
+                                  key={ci}
+                                  href={cite}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[9px] text-brand-400 hover:underline font-mono block truncate"
+                                >
+                                  [{ci + 1}] {cite}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {asking && (
+                      <div className="flex justify-start">
+                        <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm px-3 py-2">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Input */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && askQuestion()}
+                      className="flex-1 bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                      placeholder="Ask a question..."
+                      disabled={asking}
+                    />
+                    <SmallBtn onClick={askQuestion} loading={asking} variant="primary" disabled={!chatInput.trim()}>
+                      <Send className="w-3 h-3" />
+                    </SmallBtn>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ OBSERVER PANEL (Firecrawl Observer)
+// ══════════════════════════════════════════════════════════════
+
+interface ObserverWatch {
+  id: number;
+  name: string;
+  url: string;
+  check_interval: string;
+  status: 'active' | 'paused';
+  last_status: 'changed' | 'unchanged' | null;
+  last_checked_at: string | null;
+  change_count: number;
+  created_at: string;
+}
+
+interface ObserverChange {
+  id: number;
+  watch_id: number;
+  diff_summary: string;
+  detected_at: string;
+}
+
+function ObserverPanel() {
+  const { addToast } = useToast();
+  const [watches, setWatches] = useState<ObserverWatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [changes, setChanges] = useState<ObserverChange[]>([]);
+  const [changesLoading, setChangesLoading] = useState(false);
+  const [checkingIds, setCheckingIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  // Form
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formInterval, setFormInterval] = useState('24h');
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<ObserverWatch[]>('/firecrawl-tools/observer');
+      setWatches(data);
+    } catch {
+      addToast('Failed to load watches', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const loadChanges = useCallback(async (watchId: number) => {
+    setChangesLoading(true);
+    try {
+      const data = await apiFetch<ObserverChange[]>(`/firecrawl-tools/observer/${watchId}/changes`);
+      setChanges(data);
+    } catch {
+      addToast('Failed to load change history', 'error');
+    } finally {
+      setChangesLoading(false);
+    }
+  }, [addToast]);
+
+  const toggleExpand = (id: number) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      setChanges([]);
+    } else {
+      setExpandedId(id);
+      loadChanges(id);
+    }
+  };
+
+  const createWatch = async () => {
+    if (!formName.trim() || !formUrl.trim()) { addToast('Name and URL are required', 'warning'); return; }
+    setSaving(true);
+    try {
+      await apiFetch('/firecrawl-tools/observer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          url: formUrl.trim(),
+          check_interval: formInterval,
+        }),
+      });
+      addToast('Watch created', 'success');
+      setShowForm(false);
+      setFormName(''); setFormUrl(''); setFormInterval('24h');
+      load();
+    } catch {
+      addToast('Failed to create watch', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const checkNow = async (id: number) => {
+    setCheckingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/observer/${id}/check`, { method: 'POST' });
+      addToast('Check triggered', 'success');
+      load();
+      if (expandedId === id) loadChanges(id);
+    } catch {
+      addToast('Check failed', 'error');
+    } finally {
+      setCheckingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const deleteWatch = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/firecrawl-tools/observer/${id}`, { method: 'DELETE' });
+      addToast('Watch deleted', 'success');
+      if (expandedId === id) { setExpandedId(null); setChanges([]); }
+      load();
+    } catch {
+      addToast('Failed to delete watch', 'error');
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Observer" icon={Eye} statusLed="bg-orange-400" ledPulse>
+        <SmallBtn onClick={() => setShowForm(!showForm)} variant="primary">
+          <Plus className="w-3 h-3" /> New Watch
+        </SmallBtn>
+        <SmallBtn onClick={load}><RefreshCw className="w-3 h-3" /> Refresh</SmallBtn>
+      </PanelTitleBar>
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <input
+                value={formName} onChange={e => setFormName(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+                placeholder="e.g. Competitor Pricing"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
+              <input
+                value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+                placeholder="https://example.com/pricing"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-rmpg-400 mb-0.5">Check Interval</label>
+              <select
+                value={formInterval} onChange={e => setFormInterval(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white focus:border-orange-500/50 focus:outline-none"
+              >
+                <option value="1h">Every hour</option>
+                <option value="6h">Every 6 hours</option>
+                <option value="12h">Every 12 hours</option>
+                <option value="24h">Daily</option>
+                <option value="7d">Weekly</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <SmallBtn onClick={createWatch} loading={saving} variant="primary">
+              <CheckCircle className="w-3 h-3" /> Create Watch
+            </SmallBtn>
+            <SmallBtn onClick={() => setShowForm(false)}>
+              <X className="w-3 h-3" /> Cancel
+            </SmallBtn>
+          </div>
+        </div>
+      )}
+
+      {/* Watch List */}
+      {watches.length === 0 ? (
+        <EmptyState icon={Eye} message="No watches configured yet. Create one to monitor pages for changes." />
+      ) : (
+        <div className="space-y-1">
+          {watches.map(watch => (
+            <div key={watch.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <button onClick={() => toggleExpand(watch.id)} className="text-rmpg-400 hover:text-white">
+                  {expandedId === watch.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+                {/* Change detection indicator */}
+                {watch.last_status === 'changed' ? (
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Changed" />
+                ) : watch.last_status === 'unchanged' ? (
+                  <span className="inline-block w-2 h-2 rounded-full bg-rmpg-500" title="Unchanged" />
+                ) : (
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400" title="Not checked" />
+                )}
+                <span className="text-xs font-medium text-white flex-1 truncate">{watch.name}</span>
+                <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[200px]">{watch.url}</span>
+                <span className="text-[10px] text-rmpg-400">{watch.change_count} changes</span>
+                <span className="text-[10px] text-rmpg-500">{fmtDate(watch.last_checked_at)}</span>
+                <SmallBtn onClick={() => checkNow(watch.id)} loading={checkingIds.has(watch.id)}>
+                  <RefreshCw className="w-3 h-3" /> Check Now
+                </SmallBtn>
+                <SmallBtn onClick={() => deleteWatch(watch.id)} loading={deletingIds.has(watch.id)} variant="danger">
+                  <Trash2 className="w-3 h-3" />
+                </SmallBtn>
+              </div>
+
+              {/* Expanded: Change History */}
+              {expandedId === watch.id && (
+                <div className="border-t border-rmpg-700 bg-surface-sunken px-4 py-2 space-y-1">
+                  <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Change History</div>
+                  {changesLoading ? (
+                    <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+                  ) : changes.length === 0 ? (
+                    <div className="text-[10px] text-rmpg-500 py-2">No changes detected yet</div>
+                  ) : (
+                    changes.map(change => (
+                      <div key={change.id} className="border-b border-rmpg-700 last:border-0 py-1.5">
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                          <span className="text-rmpg-300 font-mono">{fmtDate(change.detected_at)}</span>
+                        </div>
+                        <div className="text-[10px] text-rmpg-400 mt-0.5 pl-4 whitespace-pre-wrap">{change.diff_summary}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ DEEP SEARCH PANEL (Firesearch)
+// ══════════════════════════════════════════════════════════════
+
+interface DeepSearchClaim {
+  claim: string;
+  confidence: number;
+  validated: boolean | null;
+  supporting_sources: { url: string; snippet: string }[];
+  contradicting_sources: { url: string; snippet: string }[];
+}
+
+interface DeepSearchResult {
+  id: number;
+  query: string;
+  validate: boolean;
+  claims: DeepSearchClaim[];
+  created_at: string;
+}
+
+function DeepSearchPanel() {
+  const { addToast } = useToast();
+  const [query, setQuery] = useState('');
+  const [validate, setValidate] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [result, setResult] = useState<DeepSearchResult | null>(null);
+  const [history, setHistory] = useState<DeepSearchResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [expandedClaim, setExpandedClaim] = useState<number | null>(null);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<DeepSearchResult[]>('/firecrawl-tools/deep-search/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const search = async () => {
+    if (!query.trim()) { addToast('Enter a search query', 'warning'); return; }
+    setSearching(true);
+    try {
+      const data = await apiFetch<DeepSearchResult>('/firecrawl-tools/deep-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim(), validate }),
+      });
+      setResult(data);
+      addToast('Deep search complete', 'success');
+      loadHistory();
+    } catch {
+      addToast('Deep search failed', 'error');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const viewHistoryItem = (item: DeepSearchResult) => {
+    setResult(item);
+    setQuery(item.query);
+    setValidate(item.validate);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Deep Search (Firesearch)" icon={ShieldCheck} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* Query Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+          placeholder="Enter a claim or question to verify..."
+        />
+        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
+          <input
+            type="checkbox"
+            checked={validate}
+            onChange={e => setValidate(e.target.checked)}
+            className="rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/50 w-3 h-3"
+          />
+          Validate
+        </label>
+        <SmallBtn onClick={search} loading={searching} variant="primary">
+          <ShieldCheck className="w-3 h-3" /> Search
+        </SmallBtn>
+      </div>
+
+      {/* History Dropdown */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past deep searches</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <ShieldCheck className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.query}</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && result.claims && result.claims.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Claims ({result.claims.length})</div>
+          {result.claims.map((claim, idx) => (
+            <div key={idx} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <button
+                onClick={() => setExpandedClaim(expandedClaim === idx ? null : idx)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left"
+              >
+                {/* Validation status */}
+                {claim.validated === true ? (
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                ) : claim.validated === false ? (
+                  <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                )}
+                <span className="text-[10px] text-white flex-1">{claim.claim}</span>
+                {/* Confidence bar */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <div className="w-20 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${claim.confidence >= 0.7 ? 'bg-emerald-500' : claim.confidence >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${claim.confidence * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] font-mono text-rmpg-500 w-7 text-right">{Math.round(claim.confidence * 100)}%</span>
+                </div>
+                {expandedClaim === idx ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
+              </button>
+
+              {expandedClaim === idx && (
+                <div className="border-t border-rmpg-700 bg-surface-sunken px-3 py-2 space-y-2">
+                  {/* Supporting sources */}
+                  {claim.supporting_sources && claim.supporting_sources.length > 0 && (
+                    <div>
+                      <div className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                        <CheckCircle className="w-2.5 h-2.5" /> Supporting ({claim.supporting_sources.length})
+                      </div>
+                      {claim.supporting_sources.map((src, si) => (
+                        <div key={si} className="pl-3 py-0.5">
+                          <div className="text-[10px] text-rmpg-300 line-clamp-2">{src.snippet}</div>
+                          <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline font-mono truncate block">
+                            {src.url}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Contradicting sources */}
+                  {claim.contradicting_sources && claim.contradicting_sources.length > 0 && (
+                    <div>
+                      <div className="text-[9px] font-bold text-red-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                        <XCircle className="w-2.5 h-2.5" /> Contradicting ({claim.contradicting_sources.length})
+                      </div>
+                      {claim.contradicting_sources.map((src, ci) => (
+                        <div key={ci} className="pl-3 py-0.5">
+                          <div className="text-[10px] text-rmpg-300 line-clamp-2">{src.snippet}</div>
+                          <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline font-mono truncate block">
+                            {src.url}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!result && !searching && (
+        <EmptyState icon={ShieldCheck} message="Enter a query to search and validate claims with supporting evidence." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ LLMS.TXT PANEL (create-llmstxt-py)
+// ══════════════════════════════════════════════════════════════
+
+interface LlmsTxtResult {
+  id: number;
+  url: string;
+  content: string;
+  pages_analyzed: number;
+  created_at: string;
+}
+
+function LlmsTxtPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<LlmsTxtResult | null>(null);
+  const [history, setHistory] = useState<LlmsTxtResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<LlmsTxtResult[]>('/firecrawl-tools/llmstxt/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const generate = async () => {
+    if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
+    setGenerating(true);
+    try {
+      const data = await apiFetch<LlmsTxtResult>('/firecrawl-tools/llmstxt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      setResult(data);
+      addToast('LLMs.txt generated', 'success');
+      loadHistory();
+    } catch {
+      addToast('Generation failed', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (!result?.content) return;
+    navigator.clipboard.writeText(result.content).then(() => {
+      addToast('Copied to clipboard', 'success');
+    }).catch(() => {
+      addToast('Failed to copy', 'error');
+    });
+  };
+
+  const viewHistoryItem = (item: LlmsTxtResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setShowHistory(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="LLMs.txt Generator" icon={FileText} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* URL Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && generate()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+        <SmallBtn onClick={generate} loading={generating} variant="primary">
+          <FileText className="w-3 h-3" /> Generate
+        </SmallBtn>
+      </div>
+
+      {/* History Dropdown */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past generations</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <FileText className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-400 shrink-0">{item.pages_analyzed} pages</span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] text-rmpg-400 font-mono">{result.url}</span>
+            <span className="text-[10px] text-orange-400 font-mono">{result.pages_analyzed} pages analyzed</span>
+            <div className="flex-1" />
+            <SmallBtn onClick={copyToClipboard} variant="primary">
+              <Clipboard className="w-3 h-3" /> Copy
+            </SmallBtn>
+          </div>
+          <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-96 overflow-auto scrollbar-dark whitespace-pre-wrap">
+            {result.content || 'No content generated'}
+          </pre>
+        </div>
+      )}
+
+      {!result && !generating && (
+        <EmptyState icon={FileText} message="Enter a URL to generate an llms.txt file for LLM consumption." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ PDF INSPECT PANEL (PDF Inspector)
+// ══════════════════════════════════════════════════════════════
+
+interface PdfEntity {
+  type: string;
+  value: string;
+}
+
+interface PdfInspectResult {
+  id: number;
+  url: string;
+  classification: string;
+  is_scanned: boolean;
+  summary: string;
+  key_sections: string[];
+  entities: PdfEntity[];
+  created_at: string;
+}
+
+function PdfInspectPanel() {
+  const { addToast } = useToast();
+  const [url, setUrl] = useState('');
+  const [inspecting, setInspecting] = useState(false);
+  const [result, setResult] = useState<PdfInspectResult | null>(null);
+  const [history, setHistory] = useState<PdfInspectResult[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<PdfInspectResult[]>('/firecrawl-tools/pdf-inspect/history');
+      setHistory(data);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const inspect = async () => {
+    if (!url.trim()) { addToast('Enter a PDF URL', 'warning'); return; }
+    setInspecting(true);
+    try {
+      const data = await apiFetch<PdfInspectResult>('/firecrawl-tools/pdf-inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      setResult(data);
+      addToast('PDF inspected', 'success');
+      loadHistory();
+    } catch {
+      addToast('PDF inspection failed', 'error');
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  const viewHistoryItem = (item: PdfInspectResult) => {
+    setResult(item);
+    setUrl(item.url);
+    setShowHistory(false);
+  };
+
+  const entityColor = (type: string): string => {
+    switch (type.toLowerCase()) {
+      case 'name': case 'person': return 'bg-brand-500/10 border-brand-500/30 text-brand-400';
+      case 'date': return 'bg-amber-500/10 border-amber-500/30 text-amber-400';
+      case 'amount': case 'money': return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+      case 'location': case 'address': return 'bg-purple-500/10 border-purple-500/30 text-purple-400';
+      case 'email': return 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400';
+      default: return 'bg-rmpg-700/50 border-rmpg-600 text-rmpg-300';
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="PDF Inspector" icon={FileSearch} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setShowHistory(!showHistory)}>
+          <Clock className="w-3 h-3" /> History ({history.length})
+        </SmallBtn>
+      </PanelTitleBar>
+
+      {/* URL Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && inspect()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com/document.pdf"
+        />
+        <SmallBtn onClick={inspect} loading={inspecting} variant="primary">
+          <FileSearch className="w-3 h-3" /> Inspect
+        </SmallBtn>
+      </div>
+
+      {/* History Dropdown */}
+      {showHistory && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+          {historyLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-rmpg-500" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 py-3 text-center">No past inspections</div>
+          ) : (
+            history.map(item => (
+              <button
+                key={item.id}
+                onClick={() => viewHistoryItem(item)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <FileSearch className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className={`text-[9px] font-bold uppercase px-1.5 py-0 rounded-sm ${
+                  item.is_scanned ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'
+                }`}>
+                  {item.is_scanned ? 'Scanned' : 'Text'}
+                </span>
+                <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-3">
+          {/* Header badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
+              {result.classification}
+            </span>
+            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm ${
+              result.is_scanned ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+            }`}>
+              {result.is_scanned ? 'Scanned PDF' : 'Text PDF'}
+            </span>
+            <span className="text-[10px] text-rmpg-500 font-mono ml-auto truncate max-w-[300px]">{result.url}</span>
+          </div>
+
+          {/* Summary */}
+          {result.summary && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Summary</div>
+              <div className="text-[10px] text-rmpg-300 leading-relaxed whitespace-pre-wrap">{result.summary}</div>
+            </div>
+          )}
+
+          {/* Key Sections */}
+          {result.key_sections && result.key_sections.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Key Sections</div>
+              <div className="space-y-0.5">
+                {result.key_sections.map((section, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-[10px] text-rmpg-300">
+                    <Hash className="w-2.5 h-2.5 text-rmpg-500 shrink-0" />
+                    {section}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Extracted Entities */}
+          {result.entities && result.entities.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Extracted Entities</div>
+              <div className="flex flex-wrap gap-1">
+                {result.entities.map((ent, i) => (
+                  <span
+                    key={i}
+                    className={`text-[9px] font-mono px-1.5 py-0.5 rounded-sm border ${entityColor(ent.type)}`}
+                    title={ent.type}
+                  >
+                    <span className="opacity-60 uppercase text-[8px]">{ent.type}:</span> {ent.value}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result && !inspecting && (
+        <EmptyState icon={FileSearch} message="Enter a PDF URL to inspect its structure and extract entities." />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // ██ MAIN FIRECRAWL TAB COMPONENT
 // ══════════════════════════════════════════════════════════════
 
@@ -1532,15 +3226,15 @@ export default function FirecrawlTab() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-rmpg-600 bg-surface-sunken">
-        <span className="text-[10px] font-bold text-orange-400 tracking-wider uppercase mr-3">
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark">
+        <span className="text-[10px] font-bold text-orange-400 tracking-wider uppercase mr-3 shrink-0">
           FIRECRAWL
         </span>
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-sm border transition-colors ${
+            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
                 : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
@@ -1560,6 +3254,14 @@ export default function FirecrawlTab() {
         {activeTab === 'brand' && <BrandMonitorPanel />}
         {activeTab === 'compare' && <PageComparePanel />}
         {activeTab === 'workflows' && <WorkflowsPanel />}
+        {activeTab === 'search-engine' && <SearchEnginePanel />}
+        {activeTab === 'enrich' && <EnrichPanel />}
+        {activeTab === 'researcher' && <ResearcherPanel />}
+        {activeTab === 'chatbot' && <ChatbotPanel />}
+        {activeTab === 'observer' && <ObserverPanel />}
+        {activeTab === 'deep-search' && <DeepSearchPanel />}
+        {activeTab === 'llmstxt' && <LlmsTxtPanel />}
+        {activeTab === 'pdf-inspect' && <PdfInspectPanel />}
       </div>
     </div>
   );
