@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
@@ -6,8 +7,24 @@ import { broadcastRecordUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
+import { config } from '../config';
 
 const router = Router();
+
+// ── Encryption helper for API key decryption ──
+function decryptApiKey(stored: string): string {
+  const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
+  const parts = stored.split(':');
+  if (parts.length < 3) throw new Error('Malformed encrypted value');
+  const [ivHex, authTagHex, ciphertext] = parts;
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
 
 /**
  * Screen a person against the OFAC consolidated sanctions list.
@@ -4163,6 +4180,72 @@ router.post('/plate-check', async (req: Request, res: Response) => {
       }
     } catch { /* people_index may not exist */ }
 
+    // 4. Call RapidAPI Plate Check for external data
+    let apiResults: any[] = [];
+    try {
+      let apiKey: string | null = null;
+      const keyRow = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = 'plate_check_rapidapi_key' AND is_active = 1 LIMIT 1"
+      ).get() as { config_value: string } | undefined;
+
+      if (keyRow?.config_value) {
+        try { apiKey = decryptApiKey(keyRow.config_value); } catch { apiKey = keyRow.config_value; }
+      }
+      if (!apiKey) {
+        const fallback = db.prepare(
+          "SELECT config_value FROM system_config WHERE config_key = 'skiptracer_api_key' AND is_active = 1 LIMIT 1"
+        ).get() as { config_value: string } | undefined;
+        if (fallback?.config_value) {
+          try { apiKey = decryptApiKey(fallback.config_value); } catch { apiKey = fallback.config_value; }
+        }
+      }
+
+      if (apiKey) {
+        const params = new URLSearchParams({ plate: plateClean });
+        if (stateClean) params.set('state', stateClean);
+
+        const apiRes = await fetch(`https://plate-check.p.rapidapi.com/plate-check?${params}`, {
+          method: 'GET',
+          headers: {
+            'x-rapidapi-key': apiKey,
+            'x-rapidapi-host': 'plate-check.p.rapidapi.com',
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (apiRes.ok) {
+          const apiData = await apiRes.json() as any;
+          // Map API response to our format
+          const vehicle = apiData?.vehicle || apiData?.result || apiData?.data || apiData;
+          if (vehicle && (vehicle.vin || vehicle.make || vehicle.model)) {
+            apiResults.push({
+              vin: vehicle.vin || vehicle.VIN || '',
+              plate_number: plateClean,
+              plate_state: stateClean || vehicle.state || '',
+              year: vehicle.year || vehicle.model_year || '',
+              make: vehicle.make || '',
+              model: vehicle.model || '',
+              trim: vehicle.trim || '',
+              color: vehicle.color || vehicle.exterior_color || '',
+              body_type: vehicle.body_type || vehicle.style || '',
+              drivetrain: vehicle.drivetrain || '',
+              engine: vehicle.engine || vehicle.engine_description || '',
+              fuel_type: vehicle.fuel_type || '',
+              transmission: vehicle.transmission || '',
+              doors: vehicle.doors || '',
+              registered_owner: vehicle.owner || vehicle.registered_owner || '',
+              vehicle_type: vehicle.vehicle_type || vehicle.type || '',
+              source: 'rapidapi_plate_check',
+            });
+          }
+        } else {
+          console.warn(`[Plate Check] RapidAPI returned ${apiRes.status}`);
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[Plate Check] RapidAPI call failed:', apiErr);
+    }
+
     const allResults = [
       ...localResults.map(r => ({ ...r, source: 'local_vehicles' })),
       ...fleetResults.map(r => ({
@@ -4189,6 +4272,7 @@ router.post('/plate-check', async (req: Request, res: Response) => {
         registered_owner: r.registeredOwner,
         source: 'skip_tracker',
       })),
+      ...apiResults,
     ];
 
     // Audit log

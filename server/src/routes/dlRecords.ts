@@ -217,6 +217,106 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
   }
 });
 
+// POST /api/dl-records/verify — Verify a DL number via RapidAPI
+router.post('/verify', requireRole('admin', 'manager', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const { dl_number, date_of_birth, dl_state } = req.body;
+
+    if (!dl_number || !dl_number.trim()) {
+      res.status(400).json({ error: 'DL number is required' }); return;
+    }
+
+    const db = getDb();
+    let apiKey: string | null = null;
+
+    // Get API key
+    const keyRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'dl_verification_rapidapi_key' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+
+    if (keyRow?.config_value) {
+      try { apiKey = decryptConfig(keyRow.config_value); } catch { apiKey = keyRow.config_value; }
+    }
+
+    if (!apiKey) {
+      // Fall back to general RapidAPI key
+      const fallback = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = 'skiptracer_api_key' AND is_active = 1 LIMIT 1"
+      ).get() as { config_value: string } | undefined;
+      if (fallback?.config_value) {
+        try { apiKey = decryptConfig(fallback.config_value); } catch { apiKey = fallback.config_value; }
+      }
+    }
+
+    if (!apiKey) {
+      res.status(503).json({ error: 'DL Verification API key not configured', code: 'DL_VERIFY_NOT_CONFIGURED' }); return;
+    }
+
+    const taskId = crypto.randomUUID();
+    const groupId = crypto.randomUUID();
+
+    const apiRes = await fetch('https://driving-license-verification.p.rapidapi.com/v3/tasks/sync/verify_with_source/ind_driving_license', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'driving-license-verification.p.rapidapi.com',
+      },
+      body: JSON.stringify({
+        task_id: taskId,
+        group_id: groupId,
+        data: {
+          id_number: dl_number.trim().toUpperCase(),
+          ...(date_of_birth ? { date_of_birth } : {}),
+        },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!apiRes.ok) {
+      const errText = await apiRes.text().catch(() => '');
+      console.error(`[DL Verify] API error (${apiRes.status}):`, errText.slice(0, 500));
+      res.status(502).json({ error: `DL Verification API returned ${apiRes.status}`, detail: errText.slice(0, 200) }); return;
+    }
+
+    const data = await apiRes.json() as any;
+
+    // Parse response — extract useful fields
+    const result = data?.result || data?.data || data;
+    const extraction = result?.extraction_output || result?.source_output || result;
+
+    const parsed = {
+      verified: result?.status === 'completed' || result?.verified === true || false,
+      dl_number: extraction?.id_number || extraction?.dl_number || extraction?.license_number || dl_number,
+      name: extraction?.name || extraction?.full_name || [extraction?.first_name, extraction?.last_name].filter(Boolean).join(' ') || '',
+      first_name: extraction?.first_name || '',
+      last_name: extraction?.last_name || '',
+      father_name: extraction?.fathers_name || extraction?.father_name || '',
+      date_of_birth: extraction?.dob || extraction?.date_of_birth || date_of_birth || '',
+      address: extraction?.permanent_address || extraction?.address || '',
+      dl_class: extraction?.vehicle_class || extraction?.class_of_vehicle || extraction?.cov || '',
+      dl_status: extraction?.status || '',
+      dl_validity: extraction?.validity || extraction?.valid_upto || extraction?.non_transport_validity || '',
+      dl_issue_date: extraction?.date_of_issue || extraction?.issue_date || '',
+      dl_expiry: extraction?.non_transport_validity || extraction?.transport_validity || extraction?.expiry_date || '',
+      dl_state: extraction?.issuing_state || extraction?.state || dl_state || '',
+      blood_group: extraction?.blood_group || '',
+      photo_url: extraction?.photo || extraction?.image || '',
+      raw: data,
+    };
+
+    // Audit
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dl_verification', 'dl_record', 0, ?, ?)"
+    ).run(req.user!.userId, `DL verification: ${dl_number} — ${parsed.verified ? 'VERIFIED' : 'NOT VERIFIED'}`, req.ip || 'unknown');
+
+    res.json({ success: true, parsed, raw: data });
+  } catch (err: any) {
+    console.error('[DL Verify] Error:', err);
+    res.status(500).json({ error: 'DL verification failed', detail: err.message });
+  }
+});
+
 // POST /api/dl-records — manually create/update a DL record
 router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res: Response) => {
   try {

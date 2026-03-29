@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, {useState, useCallback, useEffect, useRef} from 'react';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -91,6 +91,59 @@ export default function DlSearchPage() {
   const [ocrResult, setOcrResult] = useState<any>(null);
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── DL Verification via RapidAPI ──
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<any>(null);
+
+  const handleVerifyDl = useCallback(async () => {
+    if (!dlNumber.trim()) { addToast('Enter a DL number to verify', 'warning'); return; }
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const data = await apiFetch<any>('/dl-records/verify', {
+        method: 'POST',
+        body: JSON.stringify({ dl_number: dlNumber.trim(), date_of_birth: dob || undefined, dl_state: state || undefined }),
+      });
+      setVerifyResult(data.parsed);
+      if (data.parsed?.verified) {
+        addToast('DL Verified', 'success');
+      } else {
+        addToast('DL could not be verified', 'warning');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Verification failed', 'error');
+    } finally {
+      setVerifying(false);
+    }
+  }, [dlNumber, dob, state, addToast]);
+
+  const handleCreatePersonFromVerify = useCallback(async () => {
+    if (!verifyResult) return;
+    try {
+      const nameParts = (verifyResult.name || '').split(' ');
+      const resp = await apiFetch<any>('/records/persons', {
+        method: 'POST',
+        body: JSON.stringify({
+          first_name: verifyResult.first_name || nameParts[0] || '',
+          last_name: verifyResult.last_name || nameParts.slice(-1)[0] || '',
+          dob: verifyResult.date_of_birth || '',
+          address: verifyResult.address || '',
+          dl_number: verifyResult.dl_number || '',
+          dl_state: verifyResult.dl_state || '',
+          dl_class: verifyResult.dl_class || '',
+          dl_expiry: verifyResult.dl_expiry || '',
+          notes: `Created from DL verification on ${new Date().toLocaleDateString()}`,
+          flags: ['dl_verify_imported'],
+        }),
+      });
+      if (resp?.id) {
+        addToast(`Person record #${resp.id} created from verification`, 'success');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Failed to create person record', 'error');
+    }
+  }, [verifyResult, addToast]);
 
   // ── Feature 42: Registration Alerts ──
   const [regAlerts, setRegAlerts] = useState<any>(null);
@@ -290,6 +343,16 @@ export default function DlSearchPage() {
       <button type="button" onClick={() => fileInputRef.current?.click()} disabled={ocrLoading} className="toolbar-btn text-[10px]">
         {ocrLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
         {ocrLoading ? 'Scanning...' : 'Scan DL'}
+      </button>
+      <button
+        type="button"
+        onClick={handleVerifyDl}
+        disabled={verifying || !dlNumber.trim()}
+        className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+        title="Verify DL via RapidAPI"
+      >
+        {verifying ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+        Verify
       </button>
     </div>
   );
@@ -585,6 +648,81 @@ export default function DlSearchPage() {
         onSubmit={handleManualSubmit}
         isSubmitting={isManualSubmitting}
       />
+
+      {/* DL Verification Result Panel */}
+      {verifyResult && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#141e2b] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0d1520]">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={14} className={verifyResult.verified ? 'text-green-400' : 'text-amber-400'} />
+                <span className="text-[12px] font-bold text-white uppercase tracking-wider">
+                  DL Verification {verifyResult.verified ? '- VERIFIED' : '- NOT VERIFIED'}
+                </span>
+              </div>
+              <button type="button" onClick={() => setVerifyResult(null)} className="text-[#556677] hover:text-white">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-1">
+              {verifyResult.verified && (
+                <div className="mb-3 px-3 py-2 bg-green-900/30 border border-green-700/50 text-green-400 text-[11px] font-bold flex items-center gap-2">
+                  <ShieldCheck size={14} /> License verified successfully
+                </div>
+              )}
+              {!verifyResult.verified && (
+                <div className="mb-3 px-3 py-2 bg-amber-900/30 border border-amber-700/50 text-amber-400 text-[11px] font-bold flex items-center gap-2">
+                  <AlertTriangle size={14} /> Could not verify this license
+                </div>
+              )}
+              {([
+                ['DL Number', verifyResult.dl_number],
+                ['Name', verifyResult.name],
+                ['Father Name', verifyResult.father_name],
+                ['Date of Birth', verifyResult.date_of_birth],
+                ['Address', verifyResult.address],
+                ['DL Class', verifyResult.dl_class],
+                ['DL Status', verifyResult.dl_status],
+                ['Validity', verifyResult.dl_validity],
+                ['Issue Date', verifyResult.dl_issue_date],
+                ['Expiry', verifyResult.dl_expiry],
+                ['State', verifyResult.dl_state],
+                ['Blood Group', verifyResult.blood_group],
+              ] as [string, string][]).filter(([_, val]) => val).map(([label, val]) => (
+                <div key={label} className="flex items-center gap-2 text-[11px] py-0.5">
+                  <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
+                  <span className="text-white font-mono">{val}</span>
+                </div>
+              ))}
+              {verifyResult.photo_url && (
+                <div className="mt-2">
+                  <span className="text-[9px] text-[#556677] uppercase font-mono">Photo</span>
+                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#1e2d40] rounded-sm" />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0d1520]">
+              {verifyResult.verified && (
+                <button
+                  type="button"
+                  onClick={handleCreatePersonFromVerify}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-white transition-colors"
+                >
+                  <Plus size={14} />
+                  Create Person Record
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setVerifyResult(null)}
+                className="px-4 py-2 bg-[#1a2636] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrResult && (
