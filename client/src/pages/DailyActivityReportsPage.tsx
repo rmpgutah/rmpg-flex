@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
-// ExportButton omitted — no dedicated export endpoint
+import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -224,6 +224,7 @@ export default function DailyActivityReportsPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
+          <ExportButton exportUrl="/api/dar/export/csv" exportFilename="daily_activity_reports_export.csv" />
           <button type="button" onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)">
             <RefreshCw style={{ width: 11, height: 11 }} />
           </button>

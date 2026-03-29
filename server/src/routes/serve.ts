@@ -39,9 +39,9 @@ const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
 router.get('/linked-statuses', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const { call_ids } = req.query;
-    if (!call_ids) { res.json({}); return; }
+    if (!call_ids) { res.status(400).json({ error: 'call_ids parameter required' }); return; }
     const ids = String(call_ids).split(',').map(Number).filter(n => !isNaN(n) && n > 0).slice(0, 200);
-    if (!ids.length) { res.json({}); return; }
+    if (!ids.length) { res.status(400).json({ error: 'No valid call IDs provided' }); return; }
     const db = getDb();
     const placeholders = ids.map(() => '?').join(',');
     const rows = db.prepare(`SELECT call_id, status, attempt_count FROM serve_queue WHERE call_id IN (${placeholders})`).all(...ids) as any[];

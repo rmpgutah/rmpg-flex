@@ -80,7 +80,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   const handleSave = async () => {
     setSaving(true);
     try { await apiFetch('/email/signature', { method: 'PUT', body: JSON.stringify({ signature }) }); onClose(); }
-    catch { /* ignore */ } finally { setSaving(false); }
+    catch (err) { console.warn('[EmailPage] save signature failed:', err); } finally { setSaving(false); }
   };
 
   if (loading) return <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" role="status" aria-label="Loading" />;
@@ -1606,11 +1606,11 @@ export default function EmailPage() {
   // ─── Data Fetching ───
 
   const fetchStatus = useCallback(async () => {
-    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch { /* ignore */ }
+    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch (err) { console.warn('[EmailPage] fetch status failed:', err); }
   }, []);
 
   const fetchFolders = useCallback(async () => {
-    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch { /* ignore */ }
+    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch (err) { console.warn('[EmailPage] fetch folders failed:', err); }
   }, []);
 
   const fetchMessages = useCallback(async (p = 1, folder = selectedFolder, q = search) => {
@@ -1632,7 +1632,7 @@ export default function EmailPage() {
       setFullMessage(msg);
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
       try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
-      catch { setAttachments([]); }
+      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 
@@ -1640,7 +1640,7 @@ export default function EmailPage() {
     try {
       const children = await apiFetch<EmailFolder[]>(`/email/folders/${parentId}/children`);
       setChildFolders(prev => new Map(prev).set(parentId, children));
-    } catch { /* ignore */ }
+    } catch (err) { console.warn('[EmailPage] fetch child folders failed:', err); }
   }, []);
 
   // ─── Effects ───

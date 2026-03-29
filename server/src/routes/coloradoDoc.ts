@@ -72,7 +72,7 @@ router.get('/offender/:docNumber', requireRole('admin', 'manager', 'supervisor',
     res.json(offender);
   } catch (error: any) {
     console.error('CDOC offender lookup error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to cdoc offender lookup', code: 'CDOC_OFFENDER_LOOKUP_ERROR' });
+    res.status(500).json({ error: 'Failed to perform CDOC offender lookup', code: 'CDOC_OFFENDER_LOOKUP_ERROR' });
   }
 });
 

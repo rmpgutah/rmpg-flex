@@ -41,7 +41,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
     setLoading(true);
     try {
       const params = vehicleId ? `?vehicle_id=${vehicleId}` : '';
-      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(data); } catch { /* load error handled silently */ }
+      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(data); } catch { addToast('Failed to load recalls', 'error'); }
     } finally { setLoading(false); }
   };
 

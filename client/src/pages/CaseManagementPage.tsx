@@ -15,7 +15,7 @@ import type { Case, CaseNote, CaseStatus, CaseType, CasePriority } from '../type
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
-// ExportButton omitted — no dedicated export endpoint
+import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -451,6 +451,7 @@ export default function CaseManagementPage() {
       {/* ── Left: Case List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Case Management" icon={Briefcase}>
+          <ExportButton exportUrl="/api/cases/export/csv" exportFilename="cases_export.csv" />
           <button type="button" onClick={() => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>

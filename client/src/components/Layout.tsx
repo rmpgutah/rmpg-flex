@@ -1084,6 +1084,7 @@ export default function Layout() {
         <MenuBar
           isAdmin={isAdmin}
           isConnected={isConnected}
+          onlineCount={presence.count}
           onLogout={logout}
           onSearch={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
           onShowShortcuts={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}

@@ -993,6 +993,34 @@ router.post(
 );
 
 // ═════════════════════════════════════════════════════════════
+// DELETE /safety-alert/:id — Remove a safety alert
+// ═════════════════════════════════════════════════════════════
+router.delete(
+  '/safety-alert/:id',
+  requireRole('admin'),
+  (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        safetyError(res, 400, 'Invalid alert ID', 'INVALID_ALERT_ID');
+        return;
+      }
+      const result = db.prepare('DELETE FROM activity_log WHERE id = ? AND entity_type = ?').run(id, 'safety_alert');
+      if (result.changes === 0) {
+        safetyError(res, 404, 'Safety alert not found', 'SAFETY_ALERT_NOT_FOUND');
+        return;
+      }
+      auditLog(req, 'DELETE', 'safety_alert', id, `Deleted safety alert #${id}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Delete safety alert error:', err);
+      safetyError(res, 500, 'Failed to delete safety alert', 'DELETE_SAFETY_ALERT_ERROR');
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════
 // 8. GET /repeat-offender-map
 // ═════════════════════════════════════════════════════════════
 router.get(

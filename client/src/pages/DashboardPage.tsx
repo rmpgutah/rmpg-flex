@@ -48,6 +48,7 @@ import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
 import NewCallModal from '../components/NewCallModal';
 import IncidentFormModal from '../components/IncidentFormModal';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from '../components/ToastProvider';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -353,6 +354,7 @@ export default function DashboardPage() {
   const [weatherFetched, setWeatherFetched] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
@@ -416,7 +418,7 @@ export default function DashboardPage() {
         apiFetch<DashboardApiResponse>('/reports/dashboard'),
         apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20').then(r => r?.data ?? []),
         apiFetch<BoloApiEntry[]>('/comms/bolos/active'),
-        apiFetch<any>('/warrants?status=active&per_page=1').catch(() => ({ pagination: { total: 0 } })),
+        apiFetch<any>('/warrants?status=active&per_page=1').catch((err) => { console.warn('[Dashboard] warrant fetch failed:', err); return { pagination: { total: 0 } }; }),
       ]);
 
       setStats(mapDashboardStats(dashboardRaw));
@@ -450,8 +452,8 @@ export default function DashboardPage() {
         return exp <= sixtyDaysOut;
       });
       setExpiringCredentials(expiring);
-    } catch {
-      // Endpoint may not exist yet — fail silently
+    } catch (err) {
+      console.warn('[Dashboard] credentials fetch failed:', err);
       setExpiringCredentials([]);
     }
   }, []);
@@ -461,7 +463,8 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch<any[]>('/reports/officer-activity');
       setOfficerActivity(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (err) {
+      console.warn('[Dashboard] officer activity fetch failed:', err);
       setOfficerActivity([]);
     }
   }, []);
@@ -469,7 +472,7 @@ export default function DashboardPage() {
   // ═══ Fetch dashboard widget data (Features 31-43) ═══
   const fetchWidgets = useCallback(async () => {
     const safe = async <T,>(url: string): Promise<T | null> => {
-      try { return await apiFetch<T>(url); } catch { return null; }
+      try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
     };
     const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
@@ -1692,7 +1695,48 @@ export default function DashboardPage() {
         <NewCallModal
           isOpen={showNewCallModal}
           onClose={() => setShowNewCallModal(false)}
-          onSubmit={async (_callData: any) => { setShowNewCallModal(false); fetchDashboardData({ silent: true }); }}
+          onSubmit={async (callData: any) => {
+            try {
+              const body = {
+                call_type: callData.call_type || 'other',
+                priority: callData.priority || 'routine',
+                location: callData.location || '',
+                latitude: callData.latitude ?? null,
+                longitude: callData.longitude ?? null,
+                description: callData.description || '',
+                caller_name: callData.caller_name || '',
+                caller_phone: callData.caller_phone || '',
+                nature_of_call: callData.nature_of_call || '',
+                contract_id: callData.contract_id || null,
+                zone_beat: callData.zone_beat || null,
+                section_id: callData.section_id ?? null,
+                zone_id: callData.zone_id ?? null,
+                beat_id: callData.beat_id ?? null,
+                weapons_involved: callData.weapons_involved || null,
+                injuries_reported: callData.injuries_reported ?? false,
+                num_subjects: callData.num_subjects ?? null,
+                num_victims: callData.num_victims ?? null,
+                subject_description: callData.subject_description || null,
+                vehicle_description: callData.vehicle_description || null,
+                direction_of_travel: callData.direction_of_travel || null,
+                scene_safety: callData.scene_safety || null,
+                alcohol_involved: callData.alcohol_involved ?? false,
+                drugs_involved: callData.drugs_involved ?? false,
+                domestic_violence: callData.domestic_violence ?? false,
+                responding_officer: callData.responding_officer || null,
+                ...(callData.created_at ? { created_at: callData.created_at } : {}),
+                ...(callData.status && callData.status !== 'pending' ? { status: callData.status } : {}),
+                ...(callData.disposition ? { disposition: callData.disposition } : {}),
+              };
+              const result = await apiFetch<any>('/dispatch/calls', { method: 'POST', body: JSON.stringify(body) });
+              addToast(`Call ${result.call_number || ''} created`, 'success');
+              setShowNewCallModal(false);
+              fetchDashboardData({ silent: true });
+            } catch (err: any) {
+              console.error('Failed to create call from dashboard:', err);
+              addToast(err?.message || 'Failed to create call', 'error');
+            }
+          }}
         />
       )}
       {showIncidentModal && (

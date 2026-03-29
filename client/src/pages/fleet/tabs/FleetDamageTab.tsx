@@ -60,7 +60,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     setLoading(true);
     try {
       const data = await apiFetch<DamageReport[]>(`/fleet/${vehicleId}/damage-reports`); setReports(data);
-    } finally { setLoading(false); }
+    } catch { addToast('Failed to load damage reports', 'error'); } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [vehicleId]);

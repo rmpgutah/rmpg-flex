@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
-// ExportButton omitted — no dedicated export endpoint
+import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -321,6 +321,7 @@ export default function CodeEnforcementPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
+          <ExportButton exportUrl="/api/code-enforcement/export/csv" exportFilename="code_violations_export.csv" />
           <button type="button"
             onClick={() => activeTab === 'violations' ? (clearVErrors(), setVFormOpen(true), setVFormData({ ...EMPTY_VIOLATION })) : (clearTErrors(), setTFormOpen(true), setTFormData({ ...EMPTY_TOW }))}
             className="toolbar-btn toolbar-btn-primary print:hidden"

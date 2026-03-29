@@ -83,7 +83,7 @@ export default function StatuteAnalyticsPage() {
     try {
       const data = await apiFetch<any>(`/statutes/penalty/${encodeURIComponent(penaltySearch.trim())}`);
       setPenaltyResult(data?.data || data);
-    } catch { setPenaltyResult(null); addToast('Statute not found', 'error'); }
+    } catch (err) { console.warn('[StatuteAnalytics] penalty lookup failed:', err); setPenaltyResult(null); addToast('Statute not found', 'error'); }
   };
 
   // ── Feature 37: Top Charged (loaded with analytics data) ──
@@ -92,7 +92,7 @@ export default function StatuteAnalyticsPage() {
     try {
       const data = await apiFetch<any>('/statutes/analytics/top-charged?days=365&limit=20');
       setTopCharged(data?.data || []);
-    } catch { /* ignore */ }
+    } catch (err) { console.warn('[StatuteAnalytics] top charged load failed:', err); }
   };
 
   // ── Feature 39: Enhancement Calculator ──
@@ -107,7 +107,7 @@ export default function StatuteAnalyticsPage() {
         body: JSON.stringify({ citation, factors: enhancementFactors }),
       });
       setEnhancementResult(data?.data || data);
-    } catch { addToast('Enhancement calculation failed', 'error'); }
+    } catch (err) { console.warn('[StatuteAnalytics] enhancement calculation failed:', err); addToast('Enhancement calculation failed', 'error'); }
   };
 
   // ── Feature 40: Statute Comparison ──
@@ -118,7 +118,7 @@ export default function StatuteAnalyticsPage() {
     try {
       const data = await apiFetch<any>('/statutes/compare', { method: 'POST', body: JSON.stringify({ statute_ids: compareIds }) });
       setComparisonResult(data?.data || data);
-    } catch { addToast('Comparison failed', 'error'); }
+    } catch (err) { console.warn('[StatuteAnalytics] statute comparison failed:', err); addToast('Comparison failed', 'error'); }
   };
 
   // Set document title

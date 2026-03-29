@@ -137,6 +137,7 @@ interface MenuDefinition {
 interface MenuBarProps {
   isAdmin: boolean;
   isConnected: boolean;
+  onlineCount?: number;
   onLogout: () => void;
   onSearch: () => void;
   onShowShortcuts: () => void;
@@ -150,6 +151,7 @@ interface MenuBarProps {
 export default function MenuBar({
   isAdmin,
   isConnected,
+  onlineCount = 0,
   onLogout,
   onSearch,
   onShowShortcuts,
@@ -628,6 +630,7 @@ export default function MenuBar({
         icon: isConnected ? Wifi : WifiOff,
         items: [
           { type: 'action', label: `WebSocket: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`, icon: isConnected ? Wifi : WifiOff, disabled: true, action: () => {} },
+          { type: 'action', label: `Users Online: ${onlineCount}`, icon: Users, disabled: true, action: () => {} },
           { type: 'action', label: 'Server: RMPG-FLEX-01', icon: Server, disabled: true, action: () => {} },
           { type: 'action', label: `Page: ${currentPage}`, icon: Globe, disabled: true, action: () => {} },
           { type: 'separator' },

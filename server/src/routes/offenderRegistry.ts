@@ -7,10 +7,11 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAlert } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -756,6 +757,52 @@ router.get('/:id/compliance-summary', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Compliance summary error:', error);
     res.status(500).json({ error: 'Failed to get compliance summary', code: 'COMPLIANCE_SUMMARY_ERROR' });
+  }
+});
+
+// ─── DELETE /:id ────────────────────────────────────────
+router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID', code: 'INVALID_ALERT_ID' }); return; }
+    const result = db.prepare('DELETE FROM offender_alerts WHERE id = ?').run(id);
+    if (result.changes === 0) { res.status(404).json({ error: 'Not found', code: 'ALERT_NOT_FOUND' }); return; }
+    auditLog(req, 'DELETE', 'offender_alert', id, `Deleted offender alert #${id}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete offender alert error:', error);
+    res.status(500).json({ error: 'Delete failed', code: 'DELETE_ALERT_ERROR' });
+  }
+});
+
+// ─── CSV Export ──────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT oa.*, p.full_name as person_name, p.dob as person_dob
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      ORDER BY oa.created_at DESC
+    `).all() as any[];
+    sendCsv(res, 'offender_alerts_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'person_name', header: 'Person Name' },
+      { key: 'person_dob', header: 'DOB' },
+      { key: 'alert_type', header: 'Alert Type' },
+      { key: 'severity', header: 'Severity' },
+      { key: 'status', header: 'Status' },
+      { key: 'description', header: 'Description' },
+      { key: 'ban_zone', header: 'Ban Zone' },
+      { key: 'expiration_date', header: 'Expiration' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'created_at', header: 'Created' },
+      { key: 'updated_at', header: 'Updated' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export offender alerts error:', error);
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

@@ -120,7 +120,109 @@ router.delete('/dossiers/:id', (req: Request, res: Response) => {
 });
 
 router.get('/dossiers/:id/pdf', (req: Request, res: Response) => {
-  res.status(501).json({ error: 'PDF export not yet implemented', code: 'PDF_EXPORT_NOT_YET' });
+  try {
+    const db = getDb();
+    const dossier = db.prepare('SELECT * FROM skiptracer_dossiers WHERE id = ?').get(req.params.id) as any;
+    if (!dossier) { res.status(404).json({ error: 'Dossier not found', code: 'DOSSIER_NOT_FOUND' }); return; }
+
+    const { jsPDF } = require('jspdf');
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 20;
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SkipTracer Dossier Report', pageWidth / 2, y, { align: 'center' });
+    y += 12;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated: ${localNow()}`, pageWidth / 2, y, { align: 'center' });
+    y += 10;
+
+    // Divider
+    doc.setDrawColor(100);
+    doc.line(15, y, pageWidth - 15, y);
+    y += 10;
+
+    // Subject info
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Subject Information', 15, y);
+    y += 8;
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    const fields: [string, string][] = [
+      ['Name', dossier.subject_name || 'N/A'],
+      ['Date of Birth', dossier.subject_dob || 'N/A'],
+      ['Status', dossier.status || 'N/A'],
+      ['Created', dossier.created_at || 'N/A'],
+    ];
+
+    for (const [label, value] of fields) {
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${label}:`, 15, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(value), 60, y);
+      y += 7;
+    }
+    y += 5;
+
+    // Notes
+    if (dossier.notes) {
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Notes', 15, y);
+      y += 8;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const noteLines = doc.splitTextToSize(dossier.notes, pageWidth - 30);
+      doc.text(noteLines, 15, y);
+      y += noteLines.length * 5 + 5;
+    }
+
+    // Search results
+    if (dossier.search_results) {
+      let results: any = {};
+      try { results = typeof dossier.search_results === 'string' ? JSON.parse(dossier.search_results) : dossier.search_results; } catch {}
+
+      if (Object.keys(results).length > 0) {
+        if (y > 250) { doc.addPage(); y = 20; }
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Search Results', 15, y);
+        y += 8;
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        const resultText = JSON.stringify(results, null, 2);
+        const resultLines = doc.splitTextToSize(resultText, pageWidth - 30);
+        for (const line of resultLines) {
+          if (y > 280) { doc.addPage(); y = 20; }
+          doc.text(line, 15, y);
+          y += 4.5;
+        }
+      }
+    }
+
+    // Footer
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      doc.text(`RMPG Flex — SkipTracer Dossier #${dossier.id} — Page ${i} of ${totalPages}`, pageWidth / 2, 290, { align: 'center' });
+    }
+
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="dossier_${dossier.id}_${(dossier.subject_name || 'unknown').replace(/\s+/g, '_')}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    console.error('[SkipTracer V2] PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate PDF', code: 'PDF_EXPORT_ERROR' });
+  }
 });
 
 // ─── Search ────────────────────────────────────────────────

@@ -8,8 +8,9 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
@@ -943,6 +944,37 @@ router.get('/stats/summary', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to get DAR stats', code: 'DAR_STATS_ERROR' });
+  }
+});
+
+// ─── CSV Export ──────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM daily_activity_reports ORDER BY shift_date DESC, created_at DESC').all() as any[];
+    sendCsv(res, 'daily_activity_reports_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'dar_number', header: 'DAR Number' },
+      { key: 'status', header: 'Status' },
+      { key: 'officer_name', header: 'Officer' },
+      { key: 'shift_date', header: 'Shift Date' },
+      { key: 'shift_start', header: 'Shift Start' },
+      { key: 'shift_end', header: 'Shift End' },
+      { key: 'property_name', header: 'Property' },
+      { key: 'post_assignment', header: 'Post Assignment' },
+      { key: 'calls_handled', header: 'Calls Handled' },
+      { key: 'incidents_created', header: 'Incidents Created' },
+      { key: 'citations_issued', header: 'Citations Issued' },
+      { key: 'patrols_completed', header: 'Patrols Completed' },
+      { key: 'activities_narrative', header: 'Narrative' },
+      { key: 'notable_events', header: 'Notable Events' },
+      { key: 'equipment_issues', header: 'Equipment Issues' },
+      { key: 'safety_concerns', header: 'Safety Concerns' },
+      { key: 'created_at', header: 'Created' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export DARs error:', error);
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

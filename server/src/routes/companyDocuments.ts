@@ -7,7 +7,7 @@ const router = Router();
 router.use(authenticateToken);
 
 // ── List Documents ────────────────────────────────────────────────────────────
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { category, published } = req.query;

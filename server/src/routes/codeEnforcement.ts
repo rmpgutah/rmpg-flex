@@ -8,7 +8,8 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { sendCsv } from '../utils/csvExport';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -869,6 +870,33 @@ router.post('/violations/:id/payment', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Payment recording error:', error);
     res.status(500).json({ error: 'Failed to record payment', code: 'PAYMENT_ERROR' });
+  }
+});
+
+// ─── CSV Export ──────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const violations = db.prepare('SELECT * FROM code_violations ORDER BY created_at DESC').all() as any[];
+    sendCsv(res, 'code_violations_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'violation_number', header: 'Violation Number' },
+      { key: 'violation_type', header: 'Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'location', header: 'Location' },
+      { key: 'description', header: 'Description' },
+      { key: 'violator_name', header: 'Violator Name' },
+      { key: 'reported_by', header: 'Reported By' },
+      { key: 'assigned_officer', header: 'Assigned Officer' },
+      { key: 'fine_amount', header: 'Fine Amount' },
+      { key: 'amount_paid', header: 'Amount Paid' },
+      { key: 'created_at', header: 'Created' },
+      { key: 'updated_at', header: 'Updated' },
+    ], violations);
+  } catch (error: any) {
+    console.error('Export code violations error:', error);
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
