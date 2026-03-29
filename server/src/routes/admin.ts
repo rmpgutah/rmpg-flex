@@ -12,9 +12,6 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { config } from '../config';
 
-const __filename_admin = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename_admin);
-
 const router = Router();
 
 router.use(authenticateToken);
