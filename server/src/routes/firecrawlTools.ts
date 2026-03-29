@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
-import { firecrawlScrape, firecrawlSearch } from '../utils/firecrawlClient';
+import { firecrawlScrape, firecrawlSearch, FirecrawlUnavailableError } from '../utils/firecrawlClient';
 import { getDb } from '../models/database';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
@@ -863,6 +863,42 @@ function ensureTables(): void {
   try { initTables(); tablesReady = true; } catch { /* will retry next request */ }
 }
 
+// ── JSON field parser for SQLite rows ────────────────────────
+// SQLite stores JSON arrays/objects as TEXT strings. This helper
+// parses them back into real arrays/objects before returning to
+// the frontend, preventing ".map is not a function" and similar
+// crashes when the client tries to iterate over string values.
+function parseJsonFields(row: any, fields: string[]): any {
+  if (!row) return row;
+  const parsed = { ...row };
+  for (const f of fields) {
+    if (parsed[f] && typeof parsed[f] === 'string') {
+      try { parsed[f] = JSON.parse(parsed[f]); } catch { parsed[f] = []; }
+    }
+  }
+  return parsed;
+}
+
+function parseJsonRows(rows: any[], fields: string[]): any[] {
+  return rows.map(r => parseJsonFields(r, fields));
+}
+
+// ── Firecrawl connection error helper ─────────────────────────
+// When the Firecrawl Docker service isn't running, the client throws
+// FirecrawlUnavailableError. This helper sends a clear 503 response
+// so the frontend can show a helpful message instead of a generic error.
+function handleFirecrawlError(err: unknown, res: Response): boolean {
+  if (err instanceof FirecrawlUnavailableError) {
+    res.status(503).json({
+      error: 'Firecrawl service unavailable',
+      detail: 'The Firecrawl Docker service is not running. Start it with: docker run -p 3003:3002 firecrawl',
+      code: 'FIRECRAWL_UNAVAILABLE',
+    });
+    return true;
+  }
+  return false;
+}
+
 // ═════════════════════════════════════════════════════════════
 // 1. Open Scouts — Web monitoring with alerts
 // ═════════════════════════════════════════════════════════════
@@ -903,6 +939,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_scouts', id, `Created scout: ${name.trim()}`);
       res.status(201).json({ success: true, id });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Create scout error:', msg);
       res.status(500).json({ error: 'Failed to create scout', detail: msg });
@@ -920,8 +957,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_scouts ORDER BY created_at DESC').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['keywords']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list scouts', detail: msg });
     }
@@ -970,6 +1008,7 @@ router.put(
       auditLog(req, 'UPDATE', 'firecrawl_scouts', id, `Updated scout ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to update scout', detail: msg });
     }
@@ -994,6 +1033,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_scouts', id, `Deleted scout ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete scout', detail: msg });
     }
@@ -1071,6 +1111,7 @@ router.post(
         error,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Scout run error:', msg);
       res.status(500).json({ error: 'Failed to run scout', detail: msg });
@@ -1093,8 +1134,9 @@ router.get(
       const rows = db.prepare(
         'SELECT * FROM firecrawl_scout_runs WHERE scout_id = ? ORDER BY created_at DESC LIMIT 50'
       ).all(id);
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['results']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get scout runs', detail: msg });
     }
@@ -1250,6 +1292,7 @@ router.post(
 
       res.json({ url: url.trim(), scores, overall_score, recommendations });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] AI-ready scan error:', msg);
       res.status(502).json({ error: 'AI-ready scan failed', detail: msg });
@@ -1267,8 +1310,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_ai_ready_scans ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['scores', 'recommendations']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get scan history', detail: msg });
     }
@@ -1350,6 +1394,7 @@ router.post(
         links: data.links || [],
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Clone error:', msg);
       res.status(502).json({ error: 'Clone failed', detail: msg });
@@ -1369,8 +1414,9 @@ router.get(
       const rows = db.prepare(
         'SELECT id, url, title, component_tree, styles_summary, created_by, created_at FROM firecrawl_clones ORDER BY created_at DESC LIMIT 100'
       ).all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['component_tree', 'styles_summary']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list clones', detail: msg });
     }
@@ -1389,10 +1435,11 @@ router.get(
 
     try {
       const db = getDb();
-      const row = db.prepare('SELECT * FROM firecrawl_clones WHERE id = ?').get(id);
+      const row = db.prepare('SELECT * FROM firecrawl_clones WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Clone not found' }); return; }
-      res.json(row);
+      res.json(parseJsonFields(row, ['component_tree', 'styles_summary', 'links']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get clone', detail: msg });
     }
@@ -1437,6 +1484,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_brand_monitors', id, `Brand monitor: ${brand_name.trim()}`);
       res.status(201).json({ success: true, id });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create brand monitor', detail: msg });
     }
@@ -1453,8 +1501,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_brand_monitors ORDER BY created_at DESC').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['keywords', 'competitor_urls']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list brand monitors', detail: msg });
     }
@@ -1541,6 +1590,7 @@ router.post(
 
       res.json({ success: true, mention_count: mentions.length, mentions });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Brand scan error:', msg);
       res.status(502).json({ error: 'Brand scan failed', detail: msg });
@@ -1565,6 +1615,7 @@ router.get(
       ).all(id);
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get mentions', detail: msg });
     }
@@ -1592,6 +1643,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_brand_monitors', id, `Deleted brand monitor ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete brand monitor', detail: msg });
     }
@@ -1670,6 +1722,7 @@ router.post(
         diff_summary: diffSummary,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Compare error:', msg);
       res.status(502).json({ error: 'Comparison failed', detail: msg });
@@ -1691,6 +1744,7 @@ router.get(
       ).all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list comparisons', detail: msg });
     }
@@ -1750,6 +1804,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_workflows', id, `Created workflow: ${name.trim()}`);
       res.status(201).json({ success: true, id });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create workflow', detail: msg });
     }
@@ -1766,8 +1821,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_workflows ORDER BY created_at DESC').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['steps']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list workflows', detail: msg });
     }
@@ -1786,10 +1842,11 @@ router.get(
 
     try {
       const db = getDb();
-      const row = db.prepare('SELECT * FROM firecrawl_workflows WHERE id = ?').get(id);
+      const row = db.prepare('SELECT * FROM firecrawl_workflows WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Workflow not found' }); return; }
-      res.json(row);
+      res.json(parseJsonFields(row, ['steps']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get workflow', detail: msg });
     }
@@ -1894,6 +1951,7 @@ router.post(
         error: runError,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Workflow run error:', msg);
       res.status(500).json({ error: 'Workflow execution failed', detail: msg });
@@ -1916,8 +1974,9 @@ router.get(
       const rows = db.prepare(
         'SELECT * FROM firecrawl_workflow_runs WHERE workflow_id = ? ORDER BY started_at DESC LIMIT 50'
       ).all(id);
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['step_results']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get workflow runs', detail: msg });
     }
@@ -1945,6 +2004,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_workflows', id, `Deleted workflow ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete workflow', detail: msg });
     }
@@ -2042,6 +2102,7 @@ router.post(
         duration_ms: durationMs,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Search engine error:', msg);
       res.status(500).json({ error: 'Search engine query failed', detail: msg });
@@ -2059,8 +2120,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_search_engine_queries ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['results', 'citations']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get search history', detail: msg });
     }
@@ -2216,6 +2278,7 @@ router.post(
 
       res.json({ id: Number(insertResult.lastInsertRowid), ...enrichmentData });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Enrich error:', msg);
       res.status(500).json({ error: 'Enrichment failed', detail: msg });
@@ -2233,8 +2296,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_enrichments ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['tech_stack', 'social_links', 'contact_info', 'funding_info']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get enrichment history', detail: msg });
     }
@@ -2440,6 +2504,7 @@ router.post(
         duration_ms: durationMs,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Research error:', msg);
       res.status(500).json({ error: 'Research session failed', detail: msg });
@@ -2459,6 +2524,7 @@ router.get(
       const rows = db.prepare('SELECT id, topic, depth, synthesis, duration_ms, created_by, created_at FROM firecrawl_research_sessions ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get research history', detail: msg });
     }
@@ -2477,10 +2543,11 @@ router.get(
 
     try {
       const db = getDb();
-      const row = db.prepare('SELECT * FROM firecrawl_research_sessions WHERE id = ?').get(id);
+      const row = db.prepare('SELECT * FROM firecrawl_research_sessions WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Research session not found' }); return; }
-      res.json(row);
+      res.json(parseJsonFields(row, ['questions', 'findings', 'sources']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get research session', detail: msg });
     }
@@ -2562,6 +2629,7 @@ router.post(
         content_length: scrapedContent.length,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Chatbot create error:', msg);
       res.status(500).json({ error: 'Failed to create chatbot', detail: msg });
@@ -2581,6 +2649,7 @@ router.get(
       const rows = db.prepare('SELECT id, name, source_url, description, page_count, created_by, created_at, updated_at FROM firecrawl_chatbots ORDER BY created_at DESC').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list chatbots', detail: msg });
     }
@@ -2603,6 +2672,7 @@ router.get(
       if (!row) { res.status(404).json({ error: 'Chatbot not found' }); return; }
       res.json(row);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get chatbot', detail: msg });
     }
@@ -2666,6 +2736,7 @@ router.post(
 
       res.json({ answer, sources: sourceParts });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Chatbot ask error:', msg);
       res.status(500).json({ error: 'Failed to process question', detail: msg });
@@ -2693,6 +2764,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_chatbots', id, `Deleted chatbot ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete chatbot', detail: msg });
     }
@@ -2749,6 +2821,7 @@ router.post(
         baseline_length: baselineContent.length,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Observer watch error:', msg);
       res.status(500).json({ error: 'Failed to start watching', detail: msg });
@@ -2768,6 +2841,7 @@ router.get(
       const rows = db.prepare('SELECT id, name, url, check_interval_hours, notify_on_change, last_checked_at, status, created_by, created_at, updated_at FROM firecrawl_observers ORDER BY created_at DESC').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list watches', detail: msg });
     }
@@ -2838,6 +2912,7 @@ router.post(
 
       res.json({ changed, changes_summary: changesSummary, diff_sections: diffSections });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Observer check error:', msg);
       res.status(500).json({ error: 'Failed to check for changes', detail: msg });
@@ -2860,8 +2935,9 @@ router.get(
       const rows = db.prepare(
         'SELECT id, observer_id, changes_summary, diff_sections, detected_at FROM firecrawl_observer_changes WHERE observer_id = ? ORDER BY detected_at DESC LIMIT 50'
       ).all(id);
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['diff_sections']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get change history', detail: msg });
     }
@@ -2888,6 +2964,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_observers', id, `Stopped watching ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to stop watching', detail: msg });
     }
@@ -2992,6 +3069,7 @@ router.post(
         duration_ms: durationMs,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] Deep search error:', msg);
       res.status(500).json({ error: 'Deep search failed', detail: msg });
@@ -3009,8 +3087,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_deep_searches ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['results']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get deep search history', detail: msg });
     }
@@ -3135,6 +3214,7 @@ router.post(
         generated_at: generatedAt,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] LLMs.txt error:', msg);
       res.status(500).json({ error: 'Failed to generate llms.txt', detail: msg });
@@ -3154,6 +3234,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_llmstxt ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get llms.txt history', detail: msg });
     }
@@ -3266,6 +3347,7 @@ router.post(
         extracted_entities: extractedEntities,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[FirecrawlTools] PDF inspect error:', msg);
       res.status(500).json({ error: 'Failed to inspect PDF', detail: msg });
@@ -3283,8 +3365,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_pdf_inspections ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['key_sections', 'extracted_entities']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get PDF inspection history', detail: msg });
     }
@@ -3340,6 +3423,7 @@ router.post(
         created_at: now,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create graph', detail: msg });
     }
@@ -3358,6 +3442,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_graphs ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, config: r.config ? JSON.parse(r.config) : null })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list graphs', detail: msg });
     }
@@ -3380,6 +3465,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_graphs', id, `Deleted graph #${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete graph', detail: msg });
     }
@@ -3467,6 +3553,7 @@ router.post(
 
       res.json({ url: url.trim(), extracted_tables: extractedTables.slice(0, 10), suggested_charts: suggestedCharts.slice(0, 5) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to extract data from URL', detail: msg });
     }
@@ -3519,6 +3606,7 @@ router.post(
         created_at: now,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create connector', detail: msg });
     }
@@ -3537,6 +3625,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_connectors ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list connectors', detail: msg });
     }
@@ -3559,6 +3648,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_connectors', id, `Deleted connector #${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete connector', detail: msg });
     }
@@ -3609,6 +3699,7 @@ router.post(
 
       res.json({ id: Number(syncResult.lastInsertRowid), records_fetched: records.length, data: records });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to sync connector', detail: msg });
     }
@@ -3628,6 +3719,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_connector_syncs WHERE connector_id = ? ORDER BY created_at DESC LIMIT 50').all(id);
       res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : null })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get sync history', detail: msg });
     }
@@ -3712,6 +3804,7 @@ router.post(
 
       res.json({ url: url.trim(), evaluations, overall_score: overallScore });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to evaluate RAG quality', detail: msg });
     }
@@ -3734,6 +3827,7 @@ router.get(
         evaluations: r.evaluations ? JSON.parse(r.evaluations) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get RAG eval history', detail: msg });
     }
@@ -3825,6 +3919,7 @@ router.post(
 
       res.json({ domain: domain.trim(), trends, analyzed_at: analyzedAt });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to find trends', detail: msg });
     }
@@ -3847,6 +3942,7 @@ router.get(
         trends: r.trends ? JSON.parse(r.trends) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get trend history', detail: msg });
     }
@@ -3951,6 +4047,7 @@ router.post(
         tailwind_classes: tailwindClasses,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to generate UI', detail: msg });
     }
@@ -3973,6 +4070,7 @@ router.get(
         tailwind_classes: r.tailwind_classes ? JSON.parse(r.tailwind_classes) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get gen-ui history', detail: msg });
     }
@@ -4043,6 +4141,7 @@ router.post(
 
       res.json({ clusters: result, total_questions: questions.length, cluster_count: result.length });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to cluster questions', detail: msg });
     }
@@ -4065,6 +4164,7 @@ router.get(
         clusters: r.clusters ? JSON.parse(r.clusters) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get QA cluster history', detail: msg });
     }
@@ -4165,6 +4265,7 @@ router.post(
 
       res.json({ url: url.trim(), extracted, confidence, fields_found: fieldsFound, fields_missing: fieldsMissing });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to extract data', detail: msg });
     }
@@ -4187,6 +4288,7 @@ router.get(
         extracted: r.extracted ? JSON.parse(r.extracted) : null,
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get extraction history', detail: msg });
     }
@@ -4286,6 +4388,7 @@ router.post(
 
       res.json({ markdown, word_count: wordCount, link_count: linkCount, image_count: imageCount, title: title || null });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to convert HTML to markdown', detail: msg });
     }
@@ -4304,6 +4407,7 @@ router.get(
       const rows = db.prepare('SELECT id, url, word_count, link_count, image_count, title, created_by, created_at FROM firecrawl_html_conversions ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get conversion history', detail: msg });
     }
@@ -4390,6 +4494,7 @@ router.post(
 
       res.json({ brand, coupons: allCoupons, found_count: allCoupons.length });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to find coupons', detail: msg });
     }
@@ -4408,6 +4513,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_coupon_searches ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, coupons: r.coupons ? JSON.parse(r.coupons) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get coupon history', detail: msg });
     }
@@ -4536,6 +4642,7 @@ router.post(
         extension_suggestions: extensionSuggestions,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to analyze brand', detail: msg });
     }
@@ -4562,6 +4669,7 @@ router.get(
         extension_suggestions: r.extension_suggestions ? JSON.parse(r.extension_suggestions) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get brand analysis history', detail: msg });
     }
@@ -4610,6 +4718,7 @@ router.post(
         tools_available: data.tools || ['firecrawl_scrape', 'firecrawl_search'],
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.json({ connected: false, server_url: url, capabilities: [], tools_available: [], error: msg });
     }
@@ -4628,6 +4737,7 @@ router.get(
       const row = db.prepare('SELECT * FROM firecrawl_mcp_config ORDER BY id DESC LIMIT 1').get();
       res.json(row || { server_url: 'http://localhost:3002', enabled: false });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get MCP config', detail: msg });
     }
@@ -4663,6 +4773,7 @@ router.post(
       auditLog(req, 'UPDATE', 'firecrawl_mcp_config', Number(result.lastInsertRowid), 'Updated MCP config');
       res.json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to save MCP config', detail: msg });
     }
@@ -4679,8 +4790,9 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_mcp_logs ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows);
+      res.json(parseJsonRows(rows, ['input', 'output']));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get MCP logs', detail: msg });
     }
@@ -4727,6 +4839,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_examples', Number(result.lastInsertRowid), `Created example: ${name.trim()}`);
       res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to save example', detail: msg });
     }
@@ -4748,6 +4861,7 @@ router.get(
         : db.prepare('SELECT * FROM firecrawl_examples ORDER BY created_at DESC').all();
       res.json(rows.map((r: any) => ({ ...r, config: r.config ? JSON.parse(r.config) : {} })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list examples', detail: msg });
     }
@@ -4770,6 +4884,7 @@ router.get(
       if (!row) { res.status(404).json({ error: 'Example not found' }); return; }
       res.json({ ...row, config: row.config ? JSON.parse(row.config) : {} });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get example', detail: msg });
     }
@@ -4793,6 +4908,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_examples', id, 'Deleted example');
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete example', detail: msg });
     }
@@ -4836,6 +4952,7 @@ router.post(
       auditLog(req, 'EXECUTE', 'firecrawl_examples', id, `Ran example: ${example.name}`);
       res.json({ success: true, example_id: id, result });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to run example', detail: msg });
     }
@@ -4917,6 +5034,7 @@ router.post(
         pages_crawled: allPages.length, total_words: totalWords, generated_at: now,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to generate llms.txt', detail: msg });
     }
@@ -4935,6 +5053,7 @@ router.get(
       const rows = db.prepare('SELECT id, url, pages_crawled, total_words, generated_at, created_by, created_at FROM firecrawl_llmstxt_v2 ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get llmstxt history', detail: msg });
     }
@@ -4999,6 +5118,7 @@ router.post(
         content_length: allContent.length,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create Mendable bot', detail: msg });
     }
@@ -5017,6 +5137,7 @@ router.get(
       const rows = db.prepare('SELECT id, name, source_urls, system_prompt, welcome_message, page_count, created_by, created_at, updated_at FROM firecrawl_mendable_bots ORDER BY created_at DESC').all();
       res.json(rows.map((r: any) => ({ ...r, source_urls: r.source_urls ? JSON.parse(r.source_urls) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list Mendable bots', detail: msg });
     }
@@ -5080,6 +5201,7 @@ router.post(
 
       res.json({ response, sources, conversation_id: convId });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to chat with bot', detail: msg });
     }
@@ -5103,6 +5225,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_mendable_bots', id, 'Deleted Mendable bot');
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete bot', detail: msg });
     }
@@ -5162,6 +5285,7 @@ router.post(
 
       res.json({ topic: topic.trim(), articles, fetched_at: now });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to search news', detail: msg });
     }
@@ -5184,6 +5308,7 @@ router.get(
         articles: r.articles ? JSON.parse(r.articles) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get news history', detail: msg });
     }
@@ -5286,6 +5411,7 @@ router.post(
         word_count: actualWordCount, generated_at: now,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to generate draft', detail: msg });
     }
@@ -5304,6 +5430,7 @@ router.get(
       const rows = db.prepare('SELECT id, topic, type, word_count, generated_at, created_by, created_at FROM firecrawl_drafts ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list drafts', detail: msg });
     }
@@ -5326,6 +5453,7 @@ router.get(
       if (!row) { res.status(404).json({ error: 'Draft not found' }); return; }
       res.json({ ...row, sources_used: row.sources_used ? JSON.parse(row.sources_used) : [] });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get draft', detail: msg });
     }
@@ -5349,6 +5477,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_drafts', id, 'Deleted draft');
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete draft', detail: msg });
     }
@@ -5391,6 +5520,7 @@ router.post(
       auditLog(req, 'UPDATE', 'firecrawl_slack_config', Number(result.lastInsertRowid), 'Configured Slack integration');
       res.json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to save Slack config', detail: msg });
     }
@@ -5410,6 +5540,7 @@ router.get(
       if (!row) { res.json({ configured: false }); return; }
       res.json({ ...row, notify_on: row.notify_on ? JSON.parse(row.notify_on) : [] });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get Slack config', detail: msg });
     }
@@ -5429,6 +5560,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_slack_config', 0, 'Removed Slack integration');
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to remove Slack config', detail: msg });
     }
@@ -5459,6 +5591,7 @@ router.post(
 
       res.json({ success: true, message: 'Test message sent to Slack' });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to send Slack test', detail: msg });
     }
@@ -5497,6 +5630,7 @@ router.post(
       auditLog(req, 'UPDATE', 'firecrawl_discord_config', Number(result.lastInsertRowid), 'Configured Discord integration');
       res.json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to save Discord config', detail: msg });
     }
@@ -5516,6 +5650,7 @@ router.get(
       if (!row) { res.json({ configured: false }); return; }
       res.json({ ...row, notify_on: row.notify_on ? JSON.parse(row.notify_on) : [] });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get Discord config', detail: msg });
     }
@@ -5535,6 +5670,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_discord_config', 0, 'Removed Discord integration');
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to remove Discord config', detail: msg });
     }
@@ -5565,6 +5701,7 @@ router.post(
 
       res.json({ success: true, message: 'Test message sent to Discord' });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to send Discord test', detail: msg });
     }
@@ -5618,6 +5755,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_agents', Number(result.lastInsertRowid), `Created agent: ${name.trim()}`);
       res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create agent', detail: msg });
     }
@@ -5636,6 +5774,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_agents ORDER BY created_at DESC').all();
       res.json(rows.map((r: any) => ({ ...r, tools: r.tools ? JSON.parse(r.tools) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list agents', detail: msg });
     }
@@ -5722,6 +5861,7 @@ router.post(
         agent_id: id, steps, completed: true, result_summary: resultSummary,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to run agent', detail: msg });
     }
@@ -5743,6 +5883,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_agent_runs WHERE agent_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
       res.json(rows.map((r: any) => ({ ...r, steps: r.steps ? JSON.parse(r.steps) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get agent runs', detail: msg });
     }
@@ -5766,6 +5907,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_agents', id, 'Deleted agent');
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete agent', detail: msg });
     }
@@ -5858,6 +6000,7 @@ router.post(
 
       res.json({ url: url.trim(), content, format, tables, images_found: imgCount, metadata });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to extract document', detail: msg });
     }
@@ -5876,6 +6019,7 @@ router.get(
       const rows = db.prepare('SELECT id, url, format, images_found, metadata, created_by, created_at FROM firecrawl_doc_extractions ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, metadata: r.metadata ? JSON.parse(r.metadata) : {} })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get extraction history', detail: msg });
     }
@@ -5989,6 +6133,7 @@ router.post(
 
       res.json({ url: search_url.trim(), matches: matches.slice(0, 50), total_found: matches.length });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to match jobs', detail: msg });
     }
@@ -6011,6 +6156,7 @@ router.get(
         matches: r.matches ? JSON.parse(r.matches) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get job match history', detail: msg });
     }
@@ -6068,6 +6214,7 @@ router.post(
         assets_count: assetsCount, size_bytes: sizeBytes, converted_at: now,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to convert page', detail: msg });
     }
@@ -6086,6 +6233,7 @@ router.get(
       const rows = db.prepare('SELECT id, url, title, assets_count, size_bytes, converted_at, created_by, created_at FROM firecrawl_mhtml_conversions ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get conversion history', detail: msg });
     }
@@ -6121,6 +6269,7 @@ router.post(
       const result = await firecrawlScrape(opts);
       res.json(result);
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Scrape failed', detail: msg });
     }
@@ -6201,6 +6350,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_crawl_jobs', Number(result.lastInsertRowid), `Crawl: ${url.trim()}`);
       res.json({ id: Number(result.lastInsertRowid), pages, total_crawled: pages.length });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Crawl failed', detail: msg });
     }
@@ -6223,6 +6373,7 @@ router.get(
       if (!row) { res.status(404).json({ error: 'Crawl job not found' }); return; }
       res.json({ ...row, pages: row.pages ? JSON.parse(row.pages) : [], include_paths: row.include_paths ? JSON.parse(row.include_paths) : [], exclude_paths: row.exclude_paths ? JSON.parse(row.exclude_paths) : [] });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get crawl job', detail: msg });
     }
@@ -6256,6 +6407,7 @@ router.post(
 
       res.json({ url: url.trim(), sitemap, total_pages: sitemap.length });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to map site', detail: msg });
     }
@@ -6318,6 +6470,7 @@ router.post(
 
       res.json({ command, result, duration_ms: duration });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'CLI command failed', detail: msg });
     }
@@ -6336,6 +6489,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_cli_history ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, args: r.args ? JSON.parse(r.args) : {}, result: r.result ? JSON.parse(r.result) : null })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get CLI history', detail: msg });
     }
@@ -6408,6 +6562,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_grok_enrichments', Number(result.lastInsertRowid), `Grok enrich: ${target}`);
       res.json({ target, type: enrich_type, data: enrichData });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Enrichment failed', detail: msg });
     }
@@ -6426,6 +6581,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_grok_enrichments ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : {} })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get enrichment history', detail: msg });
     }
@@ -6479,6 +6635,7 @@ router.post(
 
       res.json({ query: query.trim(), results });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Docs search failed', detail: msg });
     }
@@ -6530,6 +6687,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_n8n_workflows', Number(result.lastInsertRowid), `Created n8n workflow: ${name.trim()}`);
       res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create workflow', detail: msg });
     }
@@ -6548,6 +6706,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_n8n_workflows ORDER BY created_at DESC').all();
       res.json(rows.map((r: any) => ({ ...r, nodes: r.nodes ? JSON.parse(r.nodes) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list workflows', detail: msg });
     }
@@ -6602,6 +6761,7 @@ router.post(
 
       res.json({ success: true, run_id: Number(runResult.lastInsertRowid), node_results: nodeResults });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to run workflow', detail: msg });
     }
@@ -6623,6 +6783,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_n8n_runs WHERE workflow_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
       res.json(rows.map((r: any) => ({ ...r, node_results: r.node_results ? JSON.parse(r.node_results) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get workflow runs', detail: msg });
     }
@@ -6647,6 +6808,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_n8n_workflows', id, `Deleted n8n workflow ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete workflow', detail: msg });
     }
@@ -6701,6 +6863,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_mendable_indexes', Number(result.lastInsertRowid), `Created Mendable index: ${name.trim()}`);
       res.status(201).json({ success: true, id: Number(result.lastInsertRowid), name: name.trim(), page_count: pageCount });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create index', detail: msg });
     }
@@ -6719,6 +6882,7 @@ router.get(
       const rows = db.prepare('SELECT id, name, urls, page_count, created_by, created_at FROM firecrawl_mendable_indexes ORDER BY created_at DESC').all();
       res.json(rows.map((r: any) => ({ ...r, urls: r.urls ? JSON.parse(r.urls) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list indexes', detail: msg });
     }
@@ -6760,6 +6924,7 @@ router.post(
 
       res.json({ answer, sources });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Query failed', detail: msg });
     }
@@ -6784,6 +6949,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_mendable_indexes', id, `Deleted Mendable index ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete index', detail: msg });
     }
@@ -6853,6 +7019,7 @@ router.post(
         star_count: starCount, last_updated: null,
       });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Code analysis failed', detail: msg });
     }
@@ -6871,6 +7038,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_code_analyses ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, languages: r.languages ? JSON.parse(r.languages) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get code analysis history', detail: msg });
     }
@@ -6934,6 +7102,7 @@ router.post(
 
       res.json({ skill_name: skill_name.trim(), doc_url: doc_url.trim(), generated_skill: generatedSkill });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Skill generation failed', detail: msg });
     }
@@ -6952,6 +7121,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_skill_generations ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, generated_skill: r.generated_skill ? JSON.parse(r.generated_skill) : {} })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get skill gen history', detail: msg });
     }
@@ -7020,6 +7190,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_pipelines', Number(result.lastInsertRowid), `Created pipeline: ${name.trim()}`);
       res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to create pipeline', detail: msg });
     }
@@ -7038,6 +7209,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_pipelines ORDER BY created_at DESC').all();
       res.json(rows.map((r: any) => ({ ...r, steps: r.steps ? JSON.parse(r.steps) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to list pipelines', detail: msg });
     }
@@ -7095,6 +7267,7 @@ router.post(
 
       res.json({ success: true, run_id: Number(runResult.lastInsertRowid), step_results: stepResults });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to run pipeline', detail: msg });
     }
@@ -7116,6 +7289,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_pipeline_runs WHERE pipeline_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
       res.json(rows.map((r: any) => ({ ...r, input: r.input ? JSON.parse(r.input) : {}, step_results: r.step_results ? JSON.parse(r.step_results) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get pipeline runs', detail: msg });
     }
@@ -7140,6 +7314,7 @@ router.delete(
       auditLog(req, 'DELETE', 'firecrawl_pipelines', id, `Deleted pipeline ${id}`);
       res.json({ success: true });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to delete pipeline', detail: msg });
     }
@@ -7166,6 +7341,7 @@ router.get(
       }
       res.json({ ...row, show_labels: !!row.show_labels, compact_mode: !!row.compact_mode });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get theme config', detail: msg });
     }
@@ -7198,6 +7374,7 @@ router.post(
       auditLog(req, 'UPDATE', 'firecrawl_theme_config', Number(result.lastInsertRowid), 'Updated Firecrawl theme');
       res.json({ success: true, id: Number(result.lastInsertRowid) });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to save theme config', detail: msg });
     }
@@ -7254,6 +7431,7 @@ router.post(
 
       res.json({ response, context_used: contextUsed, sources: sources.length > 0 ? sources : undefined });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'AI chat failed', detail: msg });
     }
@@ -7272,6 +7450,7 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_ai_chat_history ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, context_used: !!r.context_used, sources: r.sources ? JSON.parse(r.sources) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get AI chat history', detail: msg });
     }
@@ -7340,6 +7519,7 @@ router.post(
       auditLog(req, 'CREATE', 'firecrawl_pdf_operations', Number(dbResult.lastInsertRowid), `PDF ops: ${url.trim()}`);
       res.json({ url: url.trim(), results });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'PDF manipulation failed', detail: msg });
     }
@@ -7358,6 +7538,7 @@ router.get(
       const rows = db.prepare('SELECT id, url, operations, created_by, created_at FROM firecrawl_pdf_operations ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({ ...r, operations: r.operations ? JSON.parse(r.operations) : [] })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get PDF history', detail: msg });
     }
@@ -7439,6 +7620,7 @@ router.post(
 
       res.json({ answer, sources_used: sourcesUsed, web_searched: webSearched });
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Assistant query failed', detail: msg });
     }
@@ -7461,6 +7643,7 @@ router.get(
         sources_used: r.sources_used ? JSON.parse(r.sources_used) : [],
       })));
     } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Failed to get assistant history', detail: msg });
     }

@@ -66,6 +66,16 @@ export interface FirecrawlSearchResult {
 
 // ── Internal Helpers ─────────────────────────────────────────
 
+export class FirecrawlUnavailableError extends Error {
+  code = 'FIRECRAWL_UNAVAILABLE' as const;
+  originalError?: Error;
+  constructor(cause?: Error) {
+    super('Firecrawl service unavailable — the Docker container is not running. Start it with: docker run -p 3003:3002 firecrawl');
+    this.name = 'FirecrawlUnavailableError';
+    if (cause) this.originalError = cause;
+  }
+}
+
 async function firecrawlFetch<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -89,6 +99,18 @@ async function firecrawlFetch<T>(
     }
 
     return (await res.json()) as T;
+  } catch (err) {
+    // Detect connection-level failures and wrap in a clear error
+    if (err instanceof FirecrawlUnavailableError) throw err;
+    if (err instanceof Error) {
+      const msg = err.message.toLowerCase();
+      if (msg.includes('econnrefused') || msg.includes('enotfound') ||
+          msg.includes('fetch failed') || msg.includes('econnreset') ||
+          msg.includes('socket hang up') || msg.includes('abort')) {
+        throw new FirecrawlUnavailableError(err);
+      }
+    }
+    throw err;
   } finally {
     clearTimeout(timeout);
   }

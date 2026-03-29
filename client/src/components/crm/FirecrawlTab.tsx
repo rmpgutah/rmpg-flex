@@ -82,6 +82,19 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 
+// ── Safe Array Helper ─────────────────────────────────────────
+// Ensures a value that may be a JSON string, undefined, or already an array is always an array
+function safeArr(val: any): any[] {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+}
+function safeObj(val: any): Record<string, any> {
+  if (val && typeof val === 'object' && !Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { const p = JSON.parse(val); return (p && typeof p === 'object') ? p : {}; } catch { return {}; } }
+  return {};
+}
+
 // ── Shared Types ──────────────────────────────────────────────
 
 type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant';
@@ -735,11 +748,11 @@ function AiReadyPanel() {
           </div>
 
           {/* Recommendations */}
-          {result.recommendations && result.recommendations.length > 0 && (
+          {safeArr(result.recommendations).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Recommendations</div>
               <ul className="space-y-0.5">
-                {result.recommendations.map((rec, i) => (
+                {safeArr(result.recommendations).map((rec, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-[10px] text-rmpg-300">
                     <ArrowRight className="w-3 h-3 text-orange-400 shrink-0 mt-0.5" />
                     {rec}
@@ -884,13 +897,13 @@ function ClonerPanel() {
           </div>
 
           {/* Links */}
-          {result.links && result.links.length > 0 && (
+          {safeArr(result.links).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
-                Links ({result.links.length})
+                Links ({safeArr(result.links).length})
               </div>
               <div className="max-h-32 overflow-y-auto scrollbar-dark space-y-0.5">
-                {result.links.map((link, i) => (
+                {safeArr(result.links).map((link, i) => (
                   <div key={i} className="flex items-center gap-1.5">
                     <ExternalLink className="w-2.5 h-2.5 text-rmpg-600 shrink-0" />
                     <a
@@ -1539,7 +1552,7 @@ function WorkflowsPanel() {
                 </button>
                 <StatusLed status={wf.status} />
                 <span className="text-xs font-medium text-white flex-1 truncate">{wf.name}</span>
-                <span className="text-[10px] text-rmpg-400 font-mono">{wf.steps.length} steps</span>
+                <span className="text-[10px] text-rmpg-400 font-mono">{safeArr(wf.steps).length} steps</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(wf.last_run_at)}</span>
                 <SmallBtn onClick={() => runWorkflow(wf.id)} loading={runningIds.has(wf.id)} variant="primary">
                   <Play className="w-3 h-3" /> Run
@@ -1556,7 +1569,7 @@ function WorkflowsPanel() {
                   <div>
                     <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Pipeline Steps</div>
                     <div className="space-y-0.5">
-                      {wf.steps.map((step, i) => (
+                      {safeArr(wf.steps).map((step: any, i: number) => (
                         <div key={i} className="flex items-center gap-2 text-[10px]">
                           <span className="text-rmpg-500 font-mono w-4">{i + 1}.</span>
                           <span className={`font-bold uppercase tracking-wider px-1 py-0 rounded-sm text-[9px] ${
@@ -1590,13 +1603,13 @@ function WorkflowsPanel() {
                             {run.error_message && (
                               <span className="text-red-400 truncate">{run.error_message}</span>
                             )}
-                            {run.results && run.results.length > 0 && (
-                              <span className="text-rmpg-400">{run.results.length} result(s)</span>
+                            {safeArr(run.results).length > 0 && (
+                              <span className="text-rmpg-400">{safeArr(run.results).length} result(s)</span>
                             )}
                           </div>
-                          {run.results && run.results.length > 0 && (
+                          {safeArr(run.results).length > 0 && (
                             <pre className="bg-rmpg-800 border border-rmpg-700 rounded-sm p-1.5 mt-1 text-[9px] text-rmpg-300 font-mono max-h-32 overflow-auto scrollbar-dark whitespace-pre-wrap">
-                              {JSON.stringify(run.results, null, 2)}
+                              {JSON.stringify(safeArr(run.results), null, 2)}
                             </pre>
                           )}
                         </div>
@@ -1736,10 +1749,10 @@ function SearchEnginePanel() {
           </div>
 
           {/* Citations */}
-          {result.citations && result.citations.length > 0 && (
+          {safeArr(result.citations).length > 0 && (
             <div className="space-y-1">
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Sources</div>
-              {result.citations.map(cite => (
+              {safeArr(result.citations).map(cite => (
                 <div key={cite.index} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2 flex items-start gap-2">
                   <span className="text-[9px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded-sm px-1 py-0.5 shrink-0">
                     [{cite.index}]
@@ -1954,11 +1967,11 @@ function EnrichPanel() {
           )}
 
           {/* Tech Stack */}
-          {result.tech_stack && result.tech_stack.length > 0 && (
+          {safeArr(result.tech_stack).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tech Stack</div>
               <div className="flex flex-wrap gap-1">
-                {result.tech_stack.map((tech, i) => (
+                {safeArr(result.tech_stack).map((tech, i) => (
                   <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 bg-brand-500/10 border border-brand-500/30 text-brand-400 rounded-sm">
                     {tech}
                   </span>
@@ -1968,11 +1981,11 @@ function EnrichPanel() {
           )}
 
           {/* Social Links */}
-          {result.social_links && result.social_links.length > 0 && (
+          {safeArr(result.social_links).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Social</div>
               <div className="flex flex-wrap gap-2">
-                {result.social_links.map((sl, i) => (
+                {safeArr(result.social_links).map((sl, i) => (
                   <a
                     key={i}
                     href={sl.url}
@@ -1988,11 +2001,11 @@ function EnrichPanel() {
           )}
 
           {/* Contact Info */}
-          {result.contact_info && result.contact_info.length > 0 && (
+          {safeArr(result.contact_info).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Contact</div>
               <div className="space-y-0.5">
-                {result.contact_info.map((c, i) => (
+                {safeArr(result.contact_info).map((c, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <span className="text-rmpg-500 uppercase font-mono w-14 shrink-0">{c.type}</span>
                     <span className="text-rmpg-300 font-mono truncate">{c.value}</span>
@@ -2177,10 +2190,10 @@ function ResearcherPanel() {
           </div>
 
           {/* Findings */}
-          {result.findings && result.findings.length > 0 && (
+          {safeArr(result.findings).length > 0 && (
             <div className="space-y-1">
-              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Findings ({result.findings.length})</div>
-              {result.findings.map((finding, idx) => (
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Findings ({safeArr(result.findings).length})</div>
+              {safeArr(result.findings).map((finding, idx) => (
                 <div key={idx} className="bg-surface-raised border border-rmpg-600 rounded-sm">
                   <button
                     onClick={() => setExpandedFinding(expandedFinding === idx ? null : idx)}
@@ -2219,11 +2232,11 @@ function ResearcherPanel() {
           )}
 
           {/* Sources */}
-          {result.sources && result.sources.length > 0 && (
+          {safeArr(result.sources).length > 0 && (
             <div>
-              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Sources ({result.sources.length})</div>
+              <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Sources ({safeArr(result.sources).length})</div>
               <div className="space-y-0.5">
-                {result.sources.map((src, i) => (
+                {safeArr(result.sources).map((src, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <div className="w-10 h-1.5 bg-rmpg-700 rounded-full overflow-hidden shrink-0">
                       <div
@@ -2464,9 +2477,9 @@ function ChatbotPanel() {
                             : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-200'
                         }`}>
                           <div className="text-[10px] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
-                          {msg.citations && msg.citations.length > 0 && (
+                          {safeArr(msg.citations).length > 0 && (
                             <div className="mt-1 pt-1 border-t border-rmpg-700 space-y-0.5">
-                              {msg.citations.map((cite, ci) => (
+                              {safeArr(msg.citations).map((cite, ci) => (
                                 <a
                                   key={ci}
                                   href={cite}
@@ -2881,10 +2894,10 @@ function DeepSearchPanel() {
       )}
 
       {/* Results */}
-      {result && result.claims && result.claims.length > 0 && (
+      {result && safeArr(result.claims).length > 0 && (
         <div className="space-y-1">
-          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Claims ({result.claims.length})</div>
-          {result.claims.map((claim, idx) => (
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Claims ({safeArr(result.claims).length})</div>
+          {safeArr(result.claims).map((claim, idx) => (
             <div key={idx} className="bg-surface-raised border border-rmpg-600 rounded-sm">
               <button
                 onClick={() => setExpandedClaim(expandedClaim === idx ? null : idx)}
@@ -2915,12 +2928,12 @@ function DeepSearchPanel() {
               {expandedClaim === idx && (
                 <div className="border-t border-rmpg-700 bg-surface-sunken px-3 py-2 space-y-2">
                   {/* Supporting sources */}
-                  {claim.supporting_sources && claim.supporting_sources.length > 0 && (
+                  {safeArr(claim.supporting_sources).length > 0 && (
                     <div>
                       <div className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                        <CheckCircle className="w-2.5 h-2.5" /> Supporting ({claim.supporting_sources.length})
+                        <CheckCircle className="w-2.5 h-2.5" /> Supporting ({safeArr(claim.supporting_sources).length})
                       </div>
-                      {claim.supporting_sources.map((src, si) => (
+                      {safeArr(claim.supporting_sources).map((src, si) => (
                         <div key={si} className="pl-3 py-0.5">
                           <div className="text-[10px] text-rmpg-300 line-clamp-2">{src.snippet}</div>
                           <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline font-mono truncate block">
@@ -2932,12 +2945,12 @@ function DeepSearchPanel() {
                   )}
 
                   {/* Contradicting sources */}
-                  {claim.contradicting_sources && claim.contradicting_sources.length > 0 && (
+                  {safeArr(claim.contradicting_sources).length > 0 && (
                     <div>
                       <div className="text-[9px] font-bold text-red-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                        <XCircle className="w-2.5 h-2.5" /> Contradicting ({claim.contradicting_sources.length})
+                        <XCircle className="w-2.5 h-2.5" /> Contradicting ({safeArr(claim.contradicting_sources).length})
                       </div>
-                      {claim.contradicting_sources.map((src, ci) => (
+                      {safeArr(claim.contradicting_sources).map((src, ci) => (
                         <div key={ci} className="pl-3 py-0.5">
                           <div className="text-[10px] text-rmpg-300 line-clamp-2">{src.snippet}</div>
                           <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:underline font-mono truncate block">
@@ -3244,11 +3257,11 @@ function PdfInspectPanel() {
           )}
 
           {/* Key Sections */}
-          {result.key_sections && result.key_sections.length > 0 && (
+          {safeArr(result.key_sections).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Key Sections</div>
               <div className="space-y-0.5">
-                {result.key_sections.map((section, i) => (
+                {safeArr(result.key_sections).map((section, i) => (
                   <div key={i} className="flex items-center gap-1.5 text-[10px] text-rmpg-300">
                     <Hash className="w-2.5 h-2.5 text-rmpg-500 shrink-0" />
                     {section}
@@ -3259,11 +3272,11 @@ function PdfInspectPanel() {
           )}
 
           {/* Extracted Entities */}
-          {result.entities && result.entities.length > 0 && (
+          {safeArr(result.entities).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Extracted Entities</div>
               <div className="flex flex-wrap gap-1">
-                {result.entities.map((ent, i) => (
+                {safeArr(result.entities).map((ent, i) => (
                   <span
                     key={i}
                     className={`text-[9px] font-mono px-1.5 py-0.5 rounded-sm border ${entityColor(ent.type)}`}
@@ -3888,7 +3901,7 @@ function RagEvalPanel() {
   const viewHistoryItem = (item: RagEvalResult) => {
     setResult(item);
     setUrl(item.url);
-    setQuestions(item.questions.map(q => q.question).join('\n'));
+    setQuestions(safeArr(item.questions).map(q => q.question).join('\n'));
     setShowHistory(false);
   };
 
@@ -3969,7 +3982,7 @@ function RagEvalPanel() {
 
           {/* Per-question results */}
           <div className="space-y-1.5">
-            {result.questions.map((q, i) => (
+            {safeArr(result.questions).map((q, i) => (
               <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 space-y-1.5">
                 <div className="text-[10px] text-white font-medium">{q.question}</div>
                 {q.answer_snippet && (
@@ -4146,7 +4159,7 @@ function TrendsPanel() {
       {/* Results */}
       {result && (
         <div className="space-y-1.5">
-          {result.trends.map((trend, i) => (
+          {safeArr(result.trends).map((trend, i) => (
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-white font-medium flex-1">{trend.topic}</span>
@@ -4157,9 +4170,9 @@ function TrendsPanel() {
                   {trend.sentiment}
                 </span>
               </div>
-              {trend.source_urls && trend.source_urls.length > 0 && (
+              {safeArr(trend.source_urls).length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {trend.source_urls.map((sUrl, j) => (
+                  {safeArr(trend.source_urls).map((sUrl, j) => (
                     <a
                       key={j}
                       href={sUrl}
@@ -4322,11 +4335,11 @@ function GenUiPanel() {
           </div>
 
           {/* Elements */}
-          {result.elements && result.elements.length > 0 && (
+          {safeArr(result.elements).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Elements</div>
               <div className="flex flex-wrap gap-1">
-                {result.elements.map((el, i) => (
+                {safeArr(result.elements).map((el, i) => (
                   <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-rmpg-700/50 border border-rmpg-600 text-rmpg-300">
                     {el}
                   </span>
@@ -4337,21 +4350,21 @@ function GenUiPanel() {
 
           {/* Colors & Fonts */}
           <div className="flex gap-4">
-            {result.colors && result.colors.length > 0 && (
+            {safeArr(result.colors).length > 0 && (
               <div>
                 <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Colors</div>
                 <div className="flex gap-1">
-                  {result.colors.map((c, i) => (
+                  {safeArr(result.colors).map((c, i) => (
                     <div key={i} className="w-6 h-6 rounded-sm border border-rmpg-600" style={{ backgroundColor: c }} title={c} />
                   ))}
                 </div>
               </div>
             )}
-            {result.fonts && result.fonts.length > 0 && (
+            {safeArr(result.fonts).length > 0 && (
               <div>
                 <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Fonts</div>
                 <div className="flex flex-wrap gap-1">
-                  {result.fonts.map((f, i) => (
+                  {safeArr(result.fonts).map((f, i) => (
                     <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-purple-500/10 border border-purple-500/30 text-purple-400">
                       {f}
                     </span>
@@ -4377,11 +4390,11 @@ function GenUiPanel() {
           )}
 
           {/* Tailwind Classes */}
-          {result.tailwind_classes && result.tailwind_classes.length > 0 && (
+          {safeArr(result.tailwind_classes).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tailwind Classes</div>
               <div className="flex flex-wrap gap-1">
-                {result.tailwind_classes.map((cls, i) => (
+                {safeArr(result.tailwind_classes).map((cls, i) => (
                   <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
                     {cls}
                   </span>
@@ -4536,7 +4549,7 @@ function QaClusterPanel() {
 
           {/* Cluster Cards */}
           <div className="space-y-1.5">
-            {result.clusters.map((cl, idx) => (
+            {safeArr(result.clusters).map((cl, idx) => (
               <div key={idx} className="bg-surface-raised border border-rmpg-600 rounded-sm">
                 <button
                   onClick={() => toggleCluster(idx)}
@@ -4545,12 +4558,12 @@ function QaClusterPanel() {
                   {expandedClusters.has(idx) ? <ChevronDown className="w-3 h-3 text-rmpg-500" /> : <ChevronRight className="w-3 h-3 text-rmpg-500" />}
                   <span className="text-[10px] text-white font-medium flex-1">{cl.theme}</span>
                   <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
-                    {cl.questions.length}
+                    {safeArr(cl.questions).length}
                   </span>
                 </button>
                 {expandedClusters.has(idx) && (
                   <div className="border-t border-rmpg-700 px-3 py-2 space-y-0.5">
-                    {cl.questions.map((q, qi) => (
+                    {safeArr(cl.questions).map((q, qi) => (
                       <div key={qi} className="text-[10px] text-rmpg-300 flex items-start gap-1.5">
                         <span className="text-rmpg-500 shrink-0">{qi + 1}.</span>
                         {q}
@@ -4653,7 +4666,7 @@ function ExtractPanel() {
   const viewHistoryItem = (item: ExtractResult) => {
     setResult(item);
     setUrl(item.url);
-    setFields(item.schema_fields.length > 0 ? item.schema_fields : [{ name: '', type: 'string', description: '' }]);
+    setFields(safeArr(item.schema_fields).length > 0 ? safeArr(item.schema_fields) : [{ name: '', type: 'string', description: '' }]);
     setShowHistory(false);
   };
 
@@ -4769,7 +4782,7 @@ function ExtractPanel() {
                 </tr>
               </thead>
               <tbody>
-                {result.extracted_data.map((d, i) => (
+                {safeArr(result.extracted_data).map((d, i) => (
                   <tr key={i} className="border-b border-rmpg-700 last:border-0 hover:bg-rmpg-700/30">
                     <td className="px-2 py-1 text-white font-mono">{d.key}</td>
                     <td className="px-2 py-1 text-rmpg-300">{d.value}</td>
@@ -5104,7 +5117,7 @@ function CouponsPanel() {
 
           {/* Coupon Cards */}
           <div className="space-y-1.5">
-            {result.coupons.map((coupon, i) => (
+            {safeArr(result.coupons).map((coupon, i) => (
               <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 flex items-start gap-3">
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
@@ -5251,11 +5264,11 @@ function BrandExtendPanel() {
           <div className="text-sm text-white font-bold">{result.brand_name}</div>
 
           {/* Colors */}
-          {result.colors && result.colors.length > 0 && (
+          {safeArr(result.colors).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Colors</div>
               <div className="flex gap-1.5">
-                {result.colors.map((c, i) => (
+                {safeArr(result.colors).map((c, i) => (
                   <div key={i} className="flex flex-col items-center gap-0.5">
                     <div className="w-8 h-8 rounded-sm border border-rmpg-600" style={{ backgroundColor: c }} />
                     <span className="text-[8px] text-rmpg-500 font-mono">{c}</span>
@@ -5266,11 +5279,11 @@ function BrandExtendPanel() {
           )}
 
           {/* Fonts */}
-          {result.fonts && result.fonts.length > 0 && (
+          {safeArr(result.fonts).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Fonts</div>
               <div className="flex flex-wrap gap-1">
-                {result.fonts.map((f, i) => (
+                {safeArr(result.fonts).map((f, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-purple-500/10 border border-purple-500/30 text-purple-400">
                     {f}
                   </span>
@@ -5280,11 +5293,11 @@ function BrandExtendPanel() {
           )}
 
           {/* Tone Keywords */}
-          {result.tone_keywords && result.tone_keywords.length > 0 && (
+          {safeArr(result.tone_keywords).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tone</div>
               <div className="flex flex-wrap gap-1">
-                {result.tone_keywords.map((kw, i) => (
+                {safeArr(result.tone_keywords).map((kw, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
                     {kw}
                   </span>
@@ -5294,11 +5307,11 @@ function BrandExtendPanel() {
           )}
 
           {/* Social Profiles */}
-          {result.social_profiles && result.social_profiles.length > 0 && (
+          {safeArr(result.social_profiles).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Social Profiles</div>
               <div className="flex flex-wrap gap-1.5">
-                {result.social_profiles.map((sp, i) => (
+                {safeArr(result.social_profiles).map((sp, i) => (
                   <a
                     key={i}
                     href={sp.url}
@@ -5314,11 +5327,11 @@ function BrandExtendPanel() {
           )}
 
           {/* Competitors */}
-          {result.competitors && result.competitors.length > 0 && (
+          {safeArr(result.competitors).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Competitors</div>
               <div className="flex flex-wrap gap-1">
-                {result.competitors.map((comp, i) => (
+                {safeArr(result.competitors).map((comp, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-red-500/10 border border-red-500/30 text-red-400">
                     {comp}
                   </span>
@@ -5328,11 +5341,11 @@ function BrandExtendPanel() {
           )}
 
           {/* Extension Suggestions */}
-          {result.extension_suggestions && result.extension_suggestions.length > 0 && (
+          {safeArr(result.extension_suggestions).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Extension Suggestions</div>
               <ul className="space-y-0.5">
-                {result.extension_suggestions.map((sug, i) => (
+                {safeArr(result.extension_suggestions).map((sug, i) => (
                   <li key={i} className="text-[10px] text-rmpg-300 flex items-start gap-1.5">
                     <ArrowRight className="w-2.5 h-2.5 text-orange-400 shrink-0 mt-0.5" />
                     {sug}
@@ -5503,11 +5516,11 @@ function McpPanel() {
             <span className="text-xs text-white font-medium">{connection.connected ? 'Connected' : 'Disconnected'}</span>
             {connection.version && <span className="text-[10px] text-rmpg-500 font-mono">v{connection.version}</span>}
           </div>
-          {connection.capabilities.length > 0 && (
+          {safeArr(connection.capabilities).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Capabilities</div>
               <div className="flex flex-wrap gap-1">
-                {connection.capabilities.map((cap, i) => (
+                {safeArr(connection.capabilities).map((cap, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
                     {cap}
                   </span>
@@ -6122,7 +6135,7 @@ function MendablePanel() {
                 <StatusLed status={bot.status === 'ready' ? 'active' : bot.status} />
                 <Bot className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                 <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
-                <span className="text-[10px] text-rmpg-500">{bot.source_urls.length} source{bot.source_urls.length !== 1 ? 's' : ''}</span>
+                <span className="text-[10px] text-rmpg-500">{safeArr(bot.source_urls).length} source{safeArr(bot.source_urls).length !== 1 ? 's' : ''}</span>
                 <SmallBtn onClick={() => openChat(bot)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={bot.status !== 'ready'}>
                   <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Chat'}
                 </SmallBtn>
@@ -6146,9 +6159,9 @@ function MendablePanel() {
                             : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-200'
                         }`}>
                           <div className="text-[10px] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
-                          {msg.citations && msg.citations.length > 0 && (
+                          {safeArr(msg.citations).length > 0 && (
                             <div className="mt-1 pt-1 border-t border-rmpg-700 space-y-0.5">
-                              {msg.citations.map((cite, ci) => (
+                              {safeArr(msg.citations).map((cite, ci) => (
                                 <a key={ci} href={cite} target="_blank" rel="noopener noreferrer"
                                   className="text-[9px] text-brand-400 hover:underline font-mono block truncate">
                                   [{ci + 1}] {cite}
@@ -6243,7 +6256,7 @@ function NewsPanel() {
         }),
       });
       setResult(data);
-      addToast(`Found ${data.articles.length} articles`, 'success');
+      addToast(`Found ${safeArr(data.articles).length} articles`, 'success');
       loadHistory();
     } catch {
       addToast('News search failed', 'error');
@@ -6314,7 +6327,7 @@ function NewsPanel() {
               >
                 <Newspaper className="w-3 h-3 text-orange-400 shrink-0" />
                 <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.topic}</span>
-                <span className="text-[10px] text-orange-400 shrink-0">{item.articles.length} articles</span>
+                <span className="text-[10px] text-orange-400 shrink-0">{safeArr(item.articles).length} articles</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -6323,9 +6336,9 @@ function NewsPanel() {
       )}
 
       {/* Results */}
-      {result && result.articles.length > 0 && (
+      {result && safeArr(result.articles).length > 0 && (
         <div className="space-y-1.5">
-          {result.articles.map((article, i) => (
+          {safeArr(result.articles).map((article, i) => (
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1">{article.title}</span>
@@ -6510,11 +6523,11 @@ function DraftsPanel() {
             rows={12}
             className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 leading-relaxed resize-y scrollbar-dark focus:outline-none"
           />
-          {result.sources_used.length > 0 && (
+          {safeArr(result.sources_used).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Sources Used</div>
               <div className="space-y-0.5">
-                {result.sources_used.map((src, i) => (
+                {safeArr(result.sources_used).map((src, i) => (
                   <a key={i} href={src} target="_blank" rel="noopener noreferrer"
                     className="text-[9px] text-brand-400 hover:underline font-mono block truncate">
                     <ExternalLink className="w-2.5 h-2.5 inline mr-1" />{src}
@@ -7084,7 +7097,7 @@ function AgentsPanel() {
                 <Cpu className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                 <span className="text-xs font-medium text-white flex-1 truncate">{agent.name}</span>
                 <div className="flex gap-1">
-                  {agent.tools.map(t => (
+                  {safeArr(agent.tools).map(t => (
                     <span key={t} className="text-[8px] px-1 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{t}</span>
                   ))}
                 </div>
@@ -7109,10 +7122,10 @@ function AgentsPanel() {
                         <div className="flex items-center gap-2">
                           <StatusLed status={run.status} />
                           <span className="text-[10px] text-rmpg-400">{fmtDate(run.created_at)}</span>
-                          <span className="text-[10px] text-orange-400">{run.steps.length} steps</span>
+                          <span className="text-[10px] text-orange-400">{safeArr(run.steps).length} steps</span>
                         </div>
                         <div className="space-y-1">
-                          {run.steps.map((step, si) => (
+                          {safeArr(run.steps).map((step, si) => (
                             <div key={si} className="flex items-start gap-2 text-[10px]">
                               <span className="text-rmpg-500 font-mono shrink-0">#{step.step}</span>
                               <span className="text-orange-400 font-mono shrink-0 uppercase">{step.tool}</span>
@@ -7447,7 +7460,7 @@ function JobMatchPanel() {
       {result && (
         <div className="space-y-1.5">
           <div className="text-[10px] text-orange-400 font-medium">{result.total_found} jobs found</div>
-          {result.jobs.map((job, i) => (
+          {safeArr(result.jobs).map((job, i) => (
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1">{job.title}</span>
@@ -7833,11 +7846,11 @@ function ApiConsolePanel() {
               <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-48 overflow-auto scrollbar-dark whitespace-pre-wrap">{scrapeResult.html}</pre>
             </div>
           )}
-          {scrapeResult.links && scrapeResult.links.length > 0 && (
+          {safeArr(scrapeResult.links).length > 0 && (
             <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({scrapeResult.links.length})</div>
+              <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({safeArr(scrapeResult.links).length})</div>
               <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 max-h-48 overflow-auto scrollbar-dark space-y-0.5">
-                {scrapeResult.links.map((link, i) => (
+                {safeArr(scrapeResult.links).map((link, i) => (
                   <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-brand-400 hover:underline font-mono truncate">{link}</a>
                 ))}
               </div>
@@ -7854,7 +7867,7 @@ function ApiConsolePanel() {
             <StatusLed status={crawlResult.status === 'completed' ? 'active' : crawlResult.status} />
           </div>
           <div className="bg-surface-sunken border border-rmpg-700 rounded-sm max-h-64 overflow-auto scrollbar-dark">
-            {crawlResult.pages.map((page, i) => (
+            {safeArr(crawlResult.pages).map((page, i) => (
               <div key={i} className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700 last:border-0">
                 <Globe className="w-3 h-3 text-rmpg-500 shrink-0" />
                 <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{page.url}</span>
@@ -8165,11 +8178,11 @@ function GrokEnrichPanel() {
           {result.description && (
             <div className="text-[10px] text-rmpg-300 leading-relaxed">{result.description}</div>
           )}
-          {result.key_people.length > 0 && (
+          {safeArr(result.key_people).length > 0 && (
             <div>
               <div className="text-[10px] text-rmpg-400 font-medium mb-0.5">Key People</div>
               <div className="flex flex-wrap gap-1">
-                {result.key_people.map((p, i) => (
+                {safeArr(result.key_people).map((p, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 border border-rmpg-600 rounded-sm text-rmpg-300">
                     <Users className="w-2.5 h-2.5 inline mr-0.5" />{p}
                   </span>
@@ -8177,11 +8190,11 @@ function GrokEnrichPanel() {
               </div>
             </div>
           )}
-          {result.products.length > 0 && (
+          {safeArr(result.products).length > 0 && (
             <div>
               <div className="text-[10px] text-rmpg-400 font-medium mb-0.5">Products</div>
               <div className="flex flex-wrap gap-1">
-                {result.products.map((p, i) => (
+                {safeArr(result.products).map((p, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 border border-rmpg-600 rounded-sm text-rmpg-300">
                     <Tag className="w-2.5 h-2.5 inline mr-0.5" />{p}
                   </span>
@@ -8189,21 +8202,21 @@ function GrokEnrichPanel() {
               </div>
             </div>
           )}
-          {result.tech_indicators.length > 0 && (
+          {safeArr(result.tech_indicators).length > 0 && (
             <div>
               <div className="text-[10px] text-rmpg-400 font-medium mb-0.5">Tech Indicators</div>
               <div className="flex flex-wrap gap-1">
-                {result.tech_indicators.map((t, i) => (
+                {safeArr(result.tech_indicators).map((t, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/30 rounded-sm text-emerald-300">{t}</span>
                 ))}
               </div>
             </div>
           )}
-          {result.news_mentions.length > 0 && (
+          {safeArr(result.news_mentions).length > 0 && (
             <div>
               <div className="text-[10px] text-rmpg-400 font-medium mb-0.5">News Mentions</div>
               <div className="space-y-0.5">
-                {result.news_mentions.map((n, i) => (
+                {safeArr(result.news_mentions).map((n, i) => (
                   <div key={i} className="text-[10px] text-rmpg-300">
                     <Newspaper className="w-3 h-3 inline mr-1 text-rmpg-500" />{n}
                   </div>
@@ -8553,7 +8566,7 @@ function N8nPanel() {
                   <span className="text-xs font-medium text-white truncate">{wf.name}</span>
                 </button>
                 <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 border border-rmpg-600 rounded-sm text-rmpg-400">{wf.trigger}</span>
-                <span className="text-[10px] text-rmpg-500">{wf.nodes.length} nodes</span>
+                <span className="text-[10px] text-rmpg-500">{safeArr(wf.nodes).length} nodes</span>
                 <SmallBtn onClick={() => runWorkflow(wf.id)} loading={runningIds.has(wf.id)} variant="primary"><Play className="w-3 h-3" /> Run</SmallBtn>
                 <SmallBtn onClick={() => deleteWorkflow(wf.id)} loading={deletingIds.has(wf.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
               </div>
@@ -8751,10 +8764,10 @@ function MendablePyPanel() {
                       <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2.5">
                         <div className="text-[10px] text-rmpg-200 leading-relaxed whitespace-pre-wrap">{answer.answer}</div>
                       </div>
-                      {answer.sources.length > 0 && (
+                      {safeArr(answer.sources).length > 0 && (
                         <div>
                           <div className="text-[9px] text-rmpg-500 mb-0.5">Sources</div>
-                          {answer.sources.map((src, i) => (
+                          {safeArr(answer.sources).map((src, i) => (
                             <a key={i} href={src} target="_blank" rel="noopener noreferrer"
                               className="block text-[9px] text-brand-400 hover:underline font-mono truncate">
                               [{i + 1}] {src}
@@ -8882,17 +8895,17 @@ function CodeAnalyzePanel() {
           {result.description && <div className="text-[10px] text-rmpg-300">{result.description}</div>}
 
           {/* Language Bars */}
-          {result.languages.length > 0 && (
+          {safeArr(result.languages).length > 0 && (
             <div className="space-y-1">
               <div className="text-[10px] text-rmpg-400 font-medium">Languages</div>
               {/* Full bar */}
               <div className="flex h-2 rounded-sm overflow-hidden">
-                {result.languages.map((lang, i) => (
+                {safeArr(result.languages).map((lang, i) => (
                   <div key={i} className={`${langColors[lang.name] || 'bg-rmpg-500'}`} style={{ width: `${lang.percent}%` }} title={`${lang.name} ${lang.percent}%`} />
                 ))}
               </div>
               <div className="flex flex-wrap gap-2">
-                {result.languages.map((lang, i) => (
+                {safeArr(result.languages).map((lang, i) => (
                   <span key={i} className="flex items-center gap-1 text-[9px] text-rmpg-300">
                     <span className={`w-2 h-2 rounded-full ${langColors[lang.name] || 'bg-rmpg-500'}`} />
                     {lang.name} <span className="text-rmpg-500">{lang.percent}%</span>
@@ -9043,11 +9056,11 @@ function SkillGenPanel() {
           </div>
           {result.description && <div className="text-[10px] text-rmpg-300">{result.description}</div>}
 
-          {result.capabilities.length > 0 && (
+          {safeArr(result.capabilities).length > 0 && (
             <div>
               <div className="text-[10px] text-rmpg-400 font-medium mb-0.5">Capabilities</div>
               <ul className="space-y-0.5">
-                {result.capabilities.map((cap, i) => (
+                {safeArr(result.capabilities).map((cap, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-[10px] text-rmpg-300">
                     <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0 mt-0.5" />{cap}
                   </li>
@@ -9056,20 +9069,20 @@ function SkillGenPanel() {
             </div>
           )}
 
-          {result.example_prompts.length > 0 && (
+          {safeArr(result.example_prompts).length > 0 && (
             <div>
               <div className="text-[10px] text-rmpg-400 font-medium mb-0.5">Example Prompts</div>
-              {result.example_prompts.map((p, i) => (
+              {safeArr(result.example_prompts).map((p, i) => (
                 <div key={i} className="text-[10px] text-orange-200 bg-orange-500/5 border border-orange-500/20 rounded-sm px-2 py-1 mb-0.5 font-mono">{p}</div>
               ))}
             </div>
           )}
 
-          {result.key_apis.length > 0 && (
+          {safeArr(result.key_apis).length > 0 && (
             <div>
               <div className="text-[10px] text-rmpg-400 font-medium mb-0.5">Key APIs</div>
               <div className="flex flex-wrap gap-1">
-                {result.key_apis.map((api, i) => (
+                {safeArr(result.key_apis).map((api, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 border border-rmpg-600 rounded-sm text-rmpg-300 font-mono">{api}</span>
                 ))}
               </div>
@@ -9310,7 +9323,7 @@ function PipelinesPanel() {
                   {expandedId === pl.id ? <ChevronDown className="w-3 h-3 text-rmpg-500 shrink-0" /> : <ChevronRight className="w-3 h-3 text-rmpg-500 shrink-0" />}
                   <span className="text-xs font-medium text-white truncate">{pl.name}</span>
                 </button>
-                <span className="text-[10px] text-rmpg-500">{pl.steps.length} steps</span>
+                <span className="text-[10px] text-rmpg-500">{safeArr(pl.steps).length} steps</span>
                 <SmallBtn onClick={() => runPipeline(pl.id)} loading={runningIds.has(pl.id)} variant="primary"><Play className="w-3 h-3" /> Run</SmallBtn>
                 <SmallBtn onClick={() => deletePipeline(pl.id)} loading={deletingIds.has(pl.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
               </div>
@@ -9573,10 +9586,10 @@ function AiChatPanel() {
                   : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-200'
               }`}>
                 <div className="text-[10px] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
-                {msg.sources && msg.sources.length > 0 && (
+                {safeArr(msg.sources).length > 0 && (
                   <div className="mt-1 pt-1 border-t border-rmpg-700 space-y-0.5">
                     <div className="text-[9px] text-rmpg-500">Sources:</div>
-                    {msg.sources.map((src, si) => (
+                    {safeArr(msg.sources).map((src, si) => (
                       <a key={si} href={src} target="_blank" rel="noopener noreferrer"
                         className="text-[9px] text-brand-400 hover:underline font-mono block truncate">
                         [{si + 1}] {src}
@@ -9754,11 +9767,11 @@ function PdfToolsPanel() {
             </div>
           )}
 
-          {result.links && result.links.length > 0 && (
+          {safeArr(result.links).length > 0 && (
             <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({result.links.length})</div>
+              <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({safeArr(result.links).length})</div>
               <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 max-h-32 overflow-auto scrollbar-dark space-y-0.5">
-                {result.links.map((link, i) => (
+                {safeArr(result.links).map((link, i) => (
                   <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-brand-400 hover:underline font-mono truncate">{link}</a>
                 ))}
               </div>
@@ -9911,10 +9924,10 @@ function AssistantPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="text-[10px] text-rmpg-400 font-medium">Answer</div>
           <div className="text-[10px] text-rmpg-200 leading-relaxed whitespace-pre-wrap bg-surface-sunken border border-rmpg-700 rounded-sm p-2.5">{result.answer}</div>
-          {result.sources.length > 0 && (
+          {safeArr(result.sources).length > 0 && (
             <div>
               <div className="text-[9px] text-rmpg-500 mb-0.5">Sources</div>
-              {result.sources.map((src, i) => (
+              {safeArr(result.sources).map((src, i) => (
                 <a key={i} href={src} target="_blank" rel="noopener noreferrer"
                   className="block text-[9px] text-brand-400 hover:underline font-mono truncate">
                   [{i + 1}] {src}
