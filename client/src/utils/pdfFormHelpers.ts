@@ -310,8 +310,6 @@ export function drawCheckboxGrid(
   // Account for last row
   curY += rowH;
 
-  // No outer border — clean borderless style matching CFS report
-
   return curY;
 }
 
@@ -369,8 +367,6 @@ export function drawCodeReferenceTable(
   }
 
   curY += rowH;
-
-  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
@@ -457,8 +453,10 @@ export function drawFormSection(
 
   if (useBanner) {
     // Enclosing section border around entire section (banner + grid + afterGrid)
-    const totalH = curY - sectionStartY;
-    // No enclosing section border — clean borderless style
+    const sectionH = curY - sectionStartY;
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(gridX, sectionStartY, gridW, sectionH);
   } else {
     // Draw sidebar tab spanning the full section height (legacy mode)
     const sectionH = curY - sectionStartY;
