@@ -441,8 +441,11 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   const startPage = sectionPage ?? currentPage;
 
   if (startPage === currentPage) {
-    // Same page — no extra enclosing border (rows have their own borders)
-    void (contentEndY - sectionY);
+    // Enclosing section border (header bar + content area)
+    const totalHeight = (contentEndY - sectionY) + padding;
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, totalHeight);
   } else {
     // Multi-page section — just ensure we're on the last page
     doc.setPage(currentPage);
