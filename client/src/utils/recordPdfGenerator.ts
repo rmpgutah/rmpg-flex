@@ -984,8 +984,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Flags — before Scene Conditions
   y = checkPageBreak(doc, y, 15, prio);
   { const flagSec = openAutoSection(doc, 'Flags', y);
-    // Tight gap — checkboxes directly below header
-    y = flagSec.sectionY + SPACING.SECTION_HEADER_H + 0.5;
+    // 2mm gap between header bar and first checkbox row
+    y = flagSec.sectionY + SPACING.SECTION_HEADER_H + 2.0;
     const flagCols = 6;
     const flagColW = ffw / flagCols;
     const flagRowH = 3.5;
