@@ -2534,18 +2534,6 @@ router.get('/login-geo', authenticateToken, requireRole('admin', 'manager', 'sup
   }
 });
 
-/** Parse basic browser name from user agent string */
-function parseBrowserFromUA(ua: string): string {
-  if (!ua) return 'Unknown';
-  if (ua.includes('Electron')) return 'RMPG Desktop';
-  if (ua.includes('Edg/')) return 'Edge';
-  if (ua.includes('Chrome/')) return 'Chrome';
-  if (ua.includes('Firefox/')) return 'Firefox';
-  if (ua.includes('Safari/') && !ua.includes('Chrome')) return 'Safari';
-  if (ua.includes('okhttp') || ua.includes('Capacitor')) return 'RMPG Mobile';
-  return 'Other';
-}
-
 // ════════════════════════════════════════════════════════════
 // UPGRADE 4: Security Event Timeline
 // Returns a chronological timeline of all security-relevant
