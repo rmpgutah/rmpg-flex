@@ -90,10 +90,7 @@ export function drawFormCell(
   // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
   if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
-  // Cell border — thin bordered grid style matching data tables
-  doc.setDrawColor(...COLOR.BORDER_FIELD);
-  doc.setLineWidth(BORDER.FIELD);
-  doc.rect(x, y, w, h);
+  // Cell borders drawn by drawFormRow (shared edges prevent double-lines)
 
   // Label (Helvetica Bold, dark gray — above value)
   const labelBaseY = y + pad + 1.2;
@@ -169,12 +166,24 @@ export function drawFormRow(
   if (!cells || cells.length === 0) return y + (rowH || SPACING.FORM_CELL_H);
   const h = rowH || SPACING.FORM_CELL_H;
   const totalRatio = cells.reduce((sum, c) => sum + (c.ratio || 1), 0) || 1;
-  let cellX = x;
 
-  for (const cell of cells) {
-    const ratio = cell.ratio || 1;
+  // Draw outer row border (single shared edge — no doubles)
+  doc.setDrawColor(...COLOR.BORDER_FIELD);
+  doc.setLineWidth(BORDER.FORM_CELL);
+  doc.rect(x, y, totalW, h);
+
+  // Draw cell content + vertical dividers between cells
+  let cellX = x;
+  for (let i = 0; i < cells.length; i++) {
+    const ratio = cells[i].ratio || 1;
     const cellW = (ratio / totalRatio) * totalW;
-    drawFormCell(doc, cell, cellX, y, cellW, h);
+    drawFormCell(doc, cells[i], cellX, y, cellW, h);
+    // Vertical divider (skip last cell — right edge is the row border)
+    if (i < cells.length - 1) {
+      doc.setDrawColor(...COLOR.BORDER_FIELD);
+      doc.setLineWidth(BORDER.FORM_CELL);
+      doc.line(cellX + cellW, y, cellX + cellW, y + h);
+    }
     cellX += cellW;
   }
 
@@ -452,11 +461,7 @@ export function drawFormSection(
   }
 
   if (useBanner) {
-    // Enclosing section border around entire section (banner + grid + afterGrid)
-    const sectionH = curY - sectionStartY;
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(gridX, sectionStartY, gridW, sectionH);
+    // No extra enclosing border — rows already have shared-edge borders
   } else {
     // Draw sidebar tab spanning the full section height (legacy mode)
     const sectionH = curY - sectionStartY;

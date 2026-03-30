@@ -441,11 +441,8 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   const startPage = sectionPage ?? currentPage;
 
   if (startPage === currentPage) {
-    // Same page — draw enclosing section border
-    const totalHeight = (contentEndY - sectionY) + padding;
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN, sectionY, getContentWidth(doc), totalHeight);
+    // Same page — no extra enclosing border (rows have their own borders)
+    void (contentEndY - sectionY);
   } else {
     // Multi-page section — just ensure we're on the last page
     doc.setPage(currentPage);
@@ -511,11 +508,8 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const totalFieldH = labelH + boxH + 1;
   y = checkPageBreak(doc, y, totalFieldH);
 
-  // Value area with cell border
+  // Value area — border drawn by section container, not individual fields
   const boxY = y + labelH;
-  doc.setDrawColor(...COLOR.BORDER_FIELD);
-  doc.setLineWidth(BORDER.FIELD);
-  doc.rect(x, y, maxW, totalFieldH - 1);
 
   // Value text — vertically centered in box
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
