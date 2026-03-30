@@ -1172,10 +1172,14 @@ router.get('/scheduled', (req: Request, res: Response) => {
 router.delete('/scheduled/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
-      .get(req.params.id, req.user!.userId) as any;
+    const row = req.user?.role === 'admin'
+      ? db.prepare('SELECT * FROM scheduled_emails WHERE id = ?').get(req.params.id) as any
+      : db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?').get(req.params.id, req.user!.userId) as any;
     if (!row) { res.status(404).json({ error: 'Scheduled email not found', code: 'SCHEDULED_EMAIL_NOT_FOUND' }); return; }
-    if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails', code: 'CAN_ONLY_CANCEL_PENDING' }); return; }
+    if (row.status !== 'pending' && req.user?.role !== 'admin') { res.status(400).json({ error: 'Can only cancel pending emails', code: 'CAN_ONLY_CANCEL_PENDING' }); return; }
+    if (req.user?.role === 'admin' && row.status !== 'pending') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'scheduled_email', Number(req.params.id), `Admin God Mode: bypassed pending-only cancel restriction (status: ${row.status})`);
+    }
 
     db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
     res.json({ success: true });

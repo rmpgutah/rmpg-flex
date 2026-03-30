@@ -1504,9 +1504,12 @@ router.post('/calls/:id/undo-redispatch', validateParamIdMiddleware, requireRole
     }
 
     // Only allow undo on pending/new calls that haven't been worked yet
-    if (!['pending'].includes(childCall.status)) {
+    if (!['pending'].includes(childCall.status) && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'Can only undo a return visit that is still pending. Once dispatched, it cannot be undone.', code: 'CHILD_NOT_PENDING' });
       return;
+    }
+    if (req.user?.role === 'admin' && !['pending'].includes(childCall.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'call', childCall.id, `Admin God Mode: bypassed pending-only undo-redispatch restriction (status: ${childCall.status})`);
     }
 
     const parentCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(childCall.parent_call_id) as any;

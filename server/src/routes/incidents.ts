@@ -672,9 +672,12 @@ router.put('/:id/submit', (req: Request, res: Response) => {
       return;
     }
 
-    if (!['draft', 'returned'].includes(incident.status)) {
+    if (!['draft', 'returned'].includes(incident.status) && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'Can only submit draft or returned incidents', code: 'CAN_ONLY_SUBMIT_DRAFT' });
       return;
+    }
+    if (req.user?.role === 'admin' && !['draft', 'returned'].includes(incident.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin God Mode: bypassed draft/returned-only submit restriction (status: ${incident.status})`);
     }
 
     if (!incident.narrative || incident.narrative.trim().length === 0) {

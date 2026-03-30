@@ -1265,8 +1265,27 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(targetId) as any;
 
       if (activeEntry) {
-        res.status(400).json({ error: 'Already clocked in', activeEntry });
-        return;
+        // Admin God Mode: force clock-out then clock-in
+        if (req.user?.role === 'admin') {
+          const now2 = localNow();
+          let breakMins2 = Number(activeEntry.break_minutes) || 0;
+          if (activeEntry.status === 'on_break' && activeEntry.break_start) {
+            const bs = new Date(activeEntry.break_start.replace(' ', 'T'));
+            const be = new Date(now2.replace(' ', 'T'));
+            breakMins2 += Math.round(((be.getTime() - bs.getTime()) / 60000) * 10000) / 10000;
+          }
+          const ci = new Date(activeEntry.clock_in.replace(' ', 'T'));
+          const co = new Date(now2.replace(' ', 'T'));
+          const rawH = (co.getTime() - ci.getTime()) / 3600000;
+          const totH = Math.max(0, Math.round((rawH - breakMins2 / 60) * 10000) / 10000);
+          db.prepare(`UPDATE time_entries SET clock_out = ?, total_hours = ?, break_minutes = ?, break_start = NULL, status = 'completed' WHERE id = ?`)
+            .run(now2, totH, breakMins2, activeEntry.id);
+          db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'ADMIN_OVERRIDE', 'time_entry', ?, ?, ?)`)
+            .run(req.user!.userId, activeEntry.id, `Admin God Mode: force clock-out before re-clock-in (was ${activeEntry.status}, hours: ${totH})`, req.ip || 'unknown');
+        } else {
+          res.status(400).json({ error: 'Already clocked in', activeEntry });
+          return;
+        }
       }
 
       const now = localNow();
@@ -1317,6 +1336,22 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(targetId) as any;
 
       if (!activeEntry) {
+        // Admin God Mode: create a completed time entry if not clocked in
+        if (req.user?.role === 'admin') {
+          const now = localNow();
+          const result = db.prepare(`
+            INSERT INTO time_entries (officer_id, clock_in, clock_out, total_hours, status)
+            VALUES (?, ?, ?, 0, 'completed')
+          `).run(targetId, now, now);
+          db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'ADMIN_OVERRIDE', 'time_entry', ?, ?, ?)`)
+            .run(req.user!.userId, result.lastInsertRowid, `Admin God Mode: created completed entry for officer not clocked in`, req.ip || 'unknown');
+          const entry = db.prepare(`
+            SELECT t.*, u.full_name as officer_name, u.badge_number
+            FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
+          `).get(result.lastInsertRowid);
+          res.json(entry);
+          return;
+        }
         res.status(400).json({ error: 'Not currently clocked in', code: 'NOT_CURRENTLY_CLOCKED_IN' });
         return;
       }

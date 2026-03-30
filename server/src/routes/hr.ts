@@ -218,8 +218,11 @@ router.put('/leave/:id', validateParamIdMiddleware, (req: Request, res: Response
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only update own requests', code: 'CAN_ONLY_UPDATE_OWN' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only update pending requests', code: 'CAN_ONLY_UPDATE_PENDING' });
+    if (existing.officer_id !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Can only update own requests', code: 'CAN_ONLY_UPDATE_OWN' });
+    if (existing.status !== 'pending' && user.role !== 'admin') return res.status(400).json({ error: 'Can only update pending requests', code: 'CAN_ONLY_UPDATE_PENDING' });
+    if (user.role === 'admin' && (existing.officer_id !== user.id || existing.status !== 'pending')) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: bypassed leave update restriction (owner: ${existing.officer_id}, status: ${existing.status})`);
+    }
 
     const { type, start_date, end_date, hours_requested, reason } = req.body;
     const now = localNow();
@@ -248,7 +251,10 @@ router.post('/leave/:id/approve', validateParamIdMiddleware, requireRole('admin'
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only approve pending requests', code: 'CAN_ONLY_APPROVE_PENDING' });
+    if (existing.status !== 'pending' && req.user?.role !== 'admin') return res.status(400).json({ error: 'Can only approve pending requests', code: 'CAN_ONLY_APPROVE_PENDING' });
+    if (req.user?.role === 'admin' && existing.status !== 'pending') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: bypassed pending-only approve restriction (status: ${existing.status})`);
+    }
 
     const now = localNow();
 
@@ -292,7 +298,10 @@ router.post('/leave/:id/deny', validateParamIdMiddleware, requireRole('admin', '
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only deny pending requests', code: 'CAN_ONLY_DENY_PENDING' });
+    if (existing.status !== 'pending' && req.user?.role !== 'admin') return res.status(400).json({ error: 'Can only deny pending requests', code: 'CAN_ONLY_DENY_PENDING' });
+    if (req.user?.role === 'admin' && existing.status !== 'pending') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: bypassed pending-only deny restriction (status: ${existing.status})`);
+    }
 
     const now = localNow();
     db.prepare(
@@ -358,8 +367,11 @@ router.delete('/leave/:id', validateParamIdMiddleware, (req: Request, res: Respo
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only cancel own requests', code: 'CAN_ONLY_CANCEL_OWN' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only cancel pending requests', code: 'CAN_ONLY_CANCEL_PENDING' });
+    if (existing.officer_id !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Can only cancel own requests', code: 'CAN_ONLY_CANCEL_OWN' });
+    if (existing.status !== 'pending' && user.role !== 'admin') return res.status(400).json({ error: 'Can only cancel pending requests', code: 'CAN_ONLY_CANCEL_PENDING' });
+    if (user.role === 'admin' && (existing.officer_id !== user.id || existing.status !== 'pending')) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: bypassed leave cancel restriction (owner: ${existing.officer_id}, status: ${existing.status})`);
+    }
 
     const now = localNow();
     db.prepare(`UPDATE leave_requests SET status = 'cancelled', updated_at = ? WHERE id = ?`).run(now, id);
@@ -746,7 +758,7 @@ router.put('/reviews/:id', validateParamIdMiddleware, (req: Request, res: Respon
     if (!existing) return res.status(404).json({ error: 'Review not found', code: 'REVIEW_NOT_FOUND' });
 
     // Managers/admins/supervisors can update any; officers can only update own drafts
-    if (!isManagerOrAbove(user.role)) {
+    if (!isManagerOrAbove(user.role) && user.role !== 'admin') {
       if (existing.officer_id !== user.id || existing.status !== 'draft') {
         return res.status(403).json({ error: 'Can only update own draft reviews', code: 'CAN_ONLY_UPDATE_OWN' });
       }
@@ -818,7 +830,10 @@ router.delete('/reviews/:id', validateParamIdMiddleware, requireRole('admin'), (
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Review not found', code: 'REVIEW_NOT_FOUND' });
-    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only delete draft reviews', code: 'CAN_ONLY_DELETE_DRAFT' });
+    if (existing.status !== 'draft' && req.user?.role !== 'admin') return res.status(400).json({ error: 'Can only delete draft reviews', code: 'CAN_ONLY_DELETE_DRAFT' });
+    if (req.user?.role === 'admin' && existing.status !== 'draft') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'performance_review', id, `Admin God Mode: bypassed draft-only delete restriction (status: ${existing.status})`);
+    }
 
     db.prepare('DELETE FROM performance_reviews WHERE id = ?').run(id);
 
@@ -918,7 +933,10 @@ router.delete('/payroll/periods/:id', validateParamIdMiddleware, requireRole('ad
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Pay period not found', code: 'PAY_PERIOD_NOT_FOUND' });
-    if (existing.status !== 'open') return res.status(400).json({ error: 'Can only delete open pay periods', code: 'CAN_ONLY_DELETE_OPEN' });
+    if (existing.status !== 'open' && req.user?.role !== 'admin') return res.status(400).json({ error: 'Can only delete open pay periods', code: 'CAN_ONLY_DELETE_OPEN' });
+    if (req.user?.role === 'admin' && existing.status !== 'open') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'hr_pay_period', id, `Admin God Mode: bypassed open-only delete restriction (status: ${existing.status})`);
+    }
 
     db.prepare('DELETE FROM hr_payroll_entries WHERE pay_period_id = ?').run(id);
     db.prepare('DELETE FROM hr_pay_periods WHERE id = ?').run(id);
@@ -1146,7 +1164,10 @@ router.post('/payroll/periods/:id/populate', validateParamIdMiddleware, requireR
     const id = Number(req.params.id);
     const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
     if (!period) return res.status(404).json({ error: 'Pay period not found', code: 'PAY_PERIOD_NOT_FOUND' });
-    if (period.status !== 'open') return res.status(400).json({ error: 'Can only populate open pay periods', code: 'CAN_ONLY_POPULATE_OPEN' });
+    if (period.status !== 'open' && req.user?.role !== 'admin') return res.status(400).json({ error: 'Can only populate open pay periods', code: 'CAN_ONLY_POPULATE_OPEN' });
+    if (req.user?.role === 'admin' && period.status !== 'open') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'hr_pay_period', id, `Admin God Mode: bypassed open-only populate restriction (status: ${period.status})`);
+    }
 
     // Get all active employees with pay rates
     const activeUsers = db.prepare(`

@@ -317,8 +317,11 @@ router.post('/:id/generate', (req: Request, res: Response) => {
     const now = localNow();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
     if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
-    if (invoice.status !== 'draft') {
+    if (invoice.status !== 'draft' && req.user?.role !== 'admin') {
       return res.status(400).json({ error: 'Can only generate line items for draft invoices', code: 'CAN_ONLY_GENERATE_LINE' });
+    }
+    if (req.user?.role === 'admin' && invoice.status !== 'draft') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'invoice', Number(req.params.id), `Admin God Mode: bypassed draft-only generate restriction (status: ${invoice.status})`);
     }
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(invoice.client_id) as any;

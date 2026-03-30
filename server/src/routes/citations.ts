@@ -476,6 +476,15 @@ router.delete('/:id', (req: Request, res: Response) => {
       return;
     }
 
+    // Admin God Mode: hard delete option
+    if (req.user?.role === 'admin' && req.query.hard === 'true') {
+      db.prepare('DELETE FROM citations WHERE id = ?').run(id);
+      auditLog(req, 'ADMIN_OVERRIDE', 'citation', id, `Hard-deleted citation #${citation.citation_number}`);
+      broadcastCitationUpdate({ type: 'citation_voided', id: citation.id });
+      res.json({ success: true, hard_deleted: true });
+      return;
+    }
+
     db.prepare(`
       UPDATE citations SET status = 'voided', updated_at = ? WHERE id = ?
     `).run(localNow(), req.params.id);

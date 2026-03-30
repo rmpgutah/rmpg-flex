@@ -416,9 +416,12 @@ router.put('/:id/review', (req: Request, res: Response) => {
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
-    if (existing.status !== 'submitted') {
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
       return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
     }
 
     const now = localNow();
@@ -613,9 +616,12 @@ router.put('/:id/review', (req: Request, res: Response) => {
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
-    if (existing.status !== 'submitted') {
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
       return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
     }
 
     const now = localNow();
@@ -810,9 +816,12 @@ router.put('/:id/review', (req: Request, res: Response) => {
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
-    if (existing.status !== 'submitted') {
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
       return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
     }
 
     const now = localNow();
@@ -1038,9 +1047,12 @@ router.put('/:id/review', (req: Request, res: Response) => {
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
-    if (existing.status !== 'submitted') {
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
       return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
     }
 
     const now = localNow();
@@ -1235,9 +1247,12 @@ router.put('/:id/review', (req: Request, res: Response) => {
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
-    if (existing.status !== 'submitted') {
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
       return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
     }
 
     const now = localNow();
