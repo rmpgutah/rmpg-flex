@@ -1459,7 +1459,7 @@ export default function IncidentsPage() {
           count={detailPersons.length}
           defaultOpen
           actions={
-            (isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
+            (isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
               <button type="button" onClick={() => setShowLinkPersonModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
                 <Plus className="w-3 h-3" /> Link
               </button>
@@ -1489,7 +1489,7 @@ export default function IncidentsPage() {
                         );
                       })}
                     </div>
-                    {(isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
+                    {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
                       <button type="button"
                         onClick={() => handleUnlinkPerson(lp.person_id)}
                         className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
@@ -1514,7 +1514,7 @@ export default function IncidentsPage() {
           count={detailVehicles.length}
           defaultOpen
           actions={
-            (isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
+            (isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
               <button type="button" onClick={() => setShowLinkVehicleModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
                 <Plus className="w-3 h-3" /> Link
               </button>
@@ -1539,7 +1539,7 @@ export default function IncidentsPage() {
                       <span className="text-[11px] text-rmpg-400">Owner: {lv.owner_first_name} {lv.owner_last_name}</span>
                     )}
                   </div>
-                  {(isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
+                  {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
                     <button type="button"
                       onClick={() => handleUnlinkVehicle(lv.vehicle_id)}
                       className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
@@ -1563,7 +1563,7 @@ export default function IncidentsPage() {
           count={detailEvidence.length}
           defaultOpen
           actions={
-            (isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
+            (isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
               <button type="button" onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
                 <Plus className="w-3 h-3" /> Add
               </button>
@@ -1738,7 +1738,7 @@ export default function IncidentsPage() {
                       </details>
                     )}
                     <div className="flex items-center gap-2 mt-2 ml-9">
-                      {(sup.status === 'draft' || isGodMode) && (
+                      {(sup.status === 'draft' || isAdmin || isGodMode) && (
                         <>
                           <button type="button" onClick={() => handleSubmitSupplement(String(sup.id))} className="toolbar-btn text-[9px]" style={{ padding: '2px 8px' }}>
                             <ChevronRight className="w-2.5 h-2.5 inline -ml-0.5 mr-0.5" />Submit for Review
@@ -1746,7 +1746,7 @@ export default function IncidentsPage() {
                           <button type="button" onClick={() => handleDeleteSupplement(String(sup.id))} className="toolbar-btn toolbar-btn-danger text-[9px]" style={{ padding: '2px 8px' }}>Delete Draft</button>
                         </>
                       )}
-                      {(sup.status === 'submitted' || isGodMode) && (
+                      {(sup.status === 'submitted' || isAdmin || isGodMode) && (
                         <button type="button" onClick={() => handleApproveSupplement(String(sup.id))} className="toolbar-btn toolbar-btn-success text-[9px]" style={{ padding: '2px 8px' }}>
                           <Shield className="w-2.5 h-2.5 inline -ml-0.5 mr-0.5" />Approve
                         </button>
@@ -1809,7 +1809,7 @@ export default function IncidentsPage() {
                 <Trash2 className="w-3.5 h-3.5" /> Delete
               </button>
             )}
-            {(isGodMode || selectedIncident.status === 'submitted' || selectedIncident.status === 'under_review') && (
+            {(isAdmin || isGodMode || selectedIncident.status === 'submitted' || selectedIncident.status === 'under_review') && (
               <>
                 <button type="button"
                   className="toolbar-btn toolbar-btn-success"
@@ -1828,7 +1828,7 @@ export default function IncidentsPage() {
               </>
             )}
             {/* Archive / Unarchive */}
-            {!showArchived && (isGodMode || ['approved', 'closed'].includes(selectedIncident.status)) && (
+            {!showArchived && (isAdmin || isGodMode || ['approved', 'closed'].includes(selectedIncident.status)) && (
               <button type="button"
                 onClick={() => handleArchiveIncident(selectedIncident)}
                 className="toolbar-btn"
@@ -1861,7 +1861,7 @@ export default function IncidentsPage() {
               )}
               {selectedIncident && ['submitted', 'approved'].includes(selectedIncident.status) ? 'Save Changes' : 'Save Draft'}
             </button>
-            {selectedIncident && (isGodMode || ['draft', 'returned'].includes(selectedIncident.status)) && (
+            {selectedIncident && (isAdmin || isGodMode || ['draft', 'returned'].includes(selectedIncident.status)) && (
               <button type="button"
                 className="toolbar-btn toolbar-btn-success"
                 onClick={handleSubmitForReview}
@@ -1979,7 +1979,7 @@ export default function IncidentsPage() {
         isSaving={isSubmitting}
         saveLabel={selectedIncident && ['submitted', 'approved'].includes(selectedIncident.status) ? 'Save Changes' : 'Save Draft'}
         extraActions={
-          selectedIncident && (isGodMode || ['draft', 'returned'].includes(selectedIncident.status)) ? (
+          selectedIncident && (isAdmin || isGodMode || ['draft', 'returned'].includes(selectedIncident.status)) ? (
             <button type="button"
               className="toolbar-btn toolbar-btn-success"
               onClick={handleSubmitForReview}

@@ -24,6 +24,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -181,6 +182,7 @@ export function useEvidenceTab(props: EvidenceTabProps): EvidenceTabState {
 // ════════════════════════════════════════════════════
 
 export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
+  const { user } = useAuth();
   const {
     filteredEvidence, selectedEvidence, setSelectedEvidence,
     searchQuery, setSearchQuery, showArchived,
@@ -276,12 +278,12 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                     <span className="text-[9px] text-rmpg-500 font-mono">S/N: {ev.serial_number}</span>
                   )}
                   <div className="flex items-center gap-1">
-                    {!showArchived && (
+                    {(!showArchived || user?.role === 'admin') && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     )}
-                    {!showArchived && (
+                    {(!showArchived || user?.role === 'admin') && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('evidence', ev.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
                         <Archive className="w-3 h-3" />
                       </button>

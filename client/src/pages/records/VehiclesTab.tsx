@@ -18,6 +18,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -443,6 +444,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
 // ════════════════════════════════════════════════════
 
 export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
+  const { user } = useAuth();
   const {
     filteredVehicles, selectedVehicle, setSelectedVehicle,
     searchQuery, setSearchQuery, showArchived,
@@ -556,7 +558,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                   </div>
                 )}
                 <div className="flex items-center gap-1">
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
@@ -564,12 +566,12 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                   <button type="button" onClick={(e) => { e.stopPropagation(); openRecordWindow('vehicle', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Open in Window">
                     <ExternalLink className="w-3 h-3" />
                   </button>
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vehicle', id: v.id, label: `${v.license_plate} ${v.make} ${v.model}` }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   )}
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
                       <Archive className="w-3 h-3" />
                     </button>

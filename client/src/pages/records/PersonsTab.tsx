@@ -20,6 +20,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -374,6 +375,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 // ════════════════════════════════════════════════════
 
 export function PersonsTabList({ state }: { state: PersonsTabState }) {
+  const { user } = useAuth();
   const {
     filteredPersons, selectedPerson, setSelectedPerson, setSSNRevealed,
     searchQuery, setSearchQuery, showArchived,
@@ -501,7 +503,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   </div>
                 )}
                 <div className="flex items-center gap-1">
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
@@ -517,7 +519,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   >
                     <ExternalLink className="w-3 h-3" />
                   </button>
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'person', id: person.id, label: `${person.first_name} ${person.last_name}` }); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
@@ -526,7 +528,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                       <Trash2 className="w-3 h-3" />
                     </button>
                   )}
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); handleArchive('persons', person.id); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"

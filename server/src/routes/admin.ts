@@ -2654,4 +2654,230 @@ router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response)
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Restore Deleted/Archived Records
+// ════════════════════════════════════════════════════════════
+
+// POST /admin/records/restore — Restore a soft-deleted or archived record
+router.post('/records/restore', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, target_status = 'active' } = req.body;
+    if (!table || !id) { res.status(400).json({ error: 'table and id required' }); return; }
+
+    // Whitelist allowed tables
+    const allowedTables = [
+      'persons', 'vehicles', 'properties', 'calls_for_service', 'incidents',
+      'citations', 'arrests', 'warrants', 'field_interviews', 'trespass_orders',
+      'cases', 'evidence_items', 'bolos', 'code_violations', 'invoices',
+      'leave_requests', 'performance_reviews', 'daily_activity_reports',
+    ];
+    if (!allowedTables.includes(table)) {
+      res.status(400).json({ error: `Table '${table}' not allowed for restore` }); return;
+    }
+
+    // Try to restore by updating status
+    const statusFields = ['status', 'record_status'];
+    let restored = false;
+    for (const field of statusFields) {
+      try {
+        const result = db.prepare(`UPDATE "${table}" SET "${field}" = ?, updated_at = ? WHERE id = ?`).run(target_status, new Date().toISOString(), id);
+        if (result.changes > 0) { restored = true; break; }
+      } catch {}
+    }
+
+    if (!restored) {
+      res.status(404).json({ error: 'Record not found or no status field to update' }); return;
+    }
+
+    auditLog(req, 'ADMIN_OVERRIDE', table, id, `Restored ${table} #${id} to status: ${target_status}`);
+    res.json({ success: true, table, id, new_status: target_status });
+  } catch (error: any) {
+    console.error('Restore record error:', error);
+    res.status(500).json({ error: 'Restore failed' });
+  }
+});
+
+// POST /admin/records/field-update — Update any field on any record
+router.post('/records/field-update', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, field, value } = req.body;
+    if (!table || !id || !field) { res.status(400).json({ error: 'table, id, and field required' }); return; }
+
+    // Whitelist allowed tables (same as restore)
+    const allowedTables = [
+      'persons', 'vehicles', 'properties', 'calls_for_service', 'incidents',
+      'citations', 'arrests', 'warrants', 'field_interviews', 'trespass_orders',
+      'cases', 'evidence_items', 'bolos', 'code_violations', 'invoices',
+      'leave_requests', 'performance_reviews', 'daily_activity_reports',
+      'users', 'serve_queue', 'offender_alerts',
+    ];
+    if (!allowedTables.includes(table)) {
+      res.status(400).json({ error: `Table '${table}' not allowed` }); return;
+    }
+
+    // Block dangerous fields
+    const blockedFields = ['password_hash', 'totp_secret_enc'];
+    if (blockedFields.includes(field)) {
+      res.status(403).json({ error: `Field '${field}' cannot be modified via this endpoint` }); return;
+    }
+
+    // Get old value for audit
+    let oldValue: any = null;
+    try {
+      const row = db.prepare(`SELECT "${field}" FROM "${table}" WHERE id = ?`).get(id) as any;
+      oldValue = row?.[field];
+    } catch {}
+
+    const result = db.prepare(`UPDATE "${table}" SET "${field}" = ?, updated_at = ? WHERE id = ?`).run(
+      value === null ? null : value,
+      new Date().toISOString(),
+      id
+    );
+
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'Record not found' }); return;
+    }
+
+    auditLog(req, 'ADMIN_OVERRIDE', table, id,
+      `Direct field update: ${table}.${field} on #${id} changed from "${oldValue}" to "${value}"`);
+
+    res.json({ success: true, table, id, field, old_value: oldValue, new_value: value });
+  } catch (error: any) {
+    console.error('Field update error:', error);
+    res.status(500).json({ error: 'Field update failed', detail: error.message });
+  }
+});
+
+// POST /admin/records/batch-field-update — Update same field on multiple records
+router.post('/records/batch-field-update', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, ids, field, value } = req.body;
+    if (!table || !Array.isArray(ids) || !ids.length || !field) {
+      res.status(400).json({ error: 'table, ids array, and field required' }); return;
+    }
+
+    const allowedTables = [
+      'persons', 'vehicles', 'properties', 'calls_for_service', 'incidents',
+      'citations', 'arrests', 'warrants', 'field_interviews', 'trespass_orders',
+      'cases', 'evidence_items', 'bolos', 'code_violations', 'invoices',
+      'leave_requests', 'performance_reviews', 'daily_activity_reports',
+      'users', 'serve_queue', 'offender_alerts',
+    ];
+    if (!allowedTables.includes(table)) {
+      res.status(400).json({ error: `Table '${table}' not allowed` }); return;
+    }
+
+    const blockedFields = ['password_hash', 'totp_secret_enc'];
+    if (blockedFields.includes(field)) {
+      res.status(403).json({ error: `Field '${field}' cannot be modified` }); return;
+    }
+
+    const now = new Date().toISOString();
+    const update = db.prepare(`UPDATE "${table}" SET "${field}" = ?, updated_at = ? WHERE id = ?`);
+    let updated = 0;
+
+    const tx = db.transaction(() => {
+      for (const id of ids) {
+        const r = update.run(value === null ? null : value, now, id);
+        updated += r.changes;
+      }
+    });
+    tx();
+
+    auditLog(req, 'ADMIN_OVERRIDE', table, 0,
+      `Batch field update: ${table}.${field} = "${value}" on ${updated}/${ids.length} records`);
+
+    res.json({ success: true, updated, total: ids.length });
+  } catch (error: any) {
+    console.error('Batch field update error:', error);
+    res.status(500).json({ error: 'Batch update failed' });
+  }
+});
+
+// POST /admin/records/clone — Clone a record
+router.post('/records/clone', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, overrides = {} } = req.body;
+    if (!table || !id) { res.status(400).json({ error: 'table and id required' }); return; }
+
+    const allowedTables = [
+      'persons', 'vehicles', 'calls_for_service', 'incidents', 'citations',
+      'field_interviews', 'trespass_orders', 'cases', 'bolos', 'code_violations',
+    ];
+    if (!allowedTables.includes(table)) {
+      res.status(400).json({ error: `Table '${table}' not allowed for cloning` }); return;
+    }
+
+    const original = db.prepare(`SELECT * FROM "${table}" WHERE id = ?`).get(id) as any;
+    if (!original) { res.status(404).json({ error: 'Record not found' }); return; }
+
+    // Remove id and apply overrides
+    const clone = { ...original, ...overrides };
+    delete clone.id;
+    clone.created_at = new Date().toISOString();
+    clone.updated_at = new Date().toISOString();
+
+    const columns = Object.keys(clone);
+    const placeholders = columns.map(() => '?').join(', ');
+    const values = columns.map(c => clone[c]);
+
+    const result = db.prepare(`INSERT INTO "${table}" (${columns.map(c => `"${c}"`).join(', ')}) VALUES (${placeholders})`).run(...values);
+
+    auditLog(req, 'ADMIN_OVERRIDE', table, Number(result.lastInsertRowid),
+      `Cloned ${table} #${id} → #${result.lastInsertRowid}`);
+
+    res.json({ success: true, original_id: id, new_id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Clone record error:', error);
+    res.status(500).json({ error: 'Clone failed', detail: error.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Database Table Schema Inspector
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/schema/:table — Get table schema (columns, types)
+router.get('/schema/:table', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const table = req.params.table;
+    const columns = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '')}")`).all() as any[];
+    if (!columns.length) { res.status(404).json({ error: 'Table not found' }); return; }
+
+    const indexes = db.prepare(`PRAGMA index_list("${table.replace(/"/g, '')}")`).all() as any[];
+    const rowCount = db.prepare(`SELECT COUNT(*) as count FROM "${table.replace(/"/g, '')}"`).get() as any;
+
+    res.json({
+      table,
+      columns: columns.map((c: any) => ({
+        name: c.name,
+        type: c.type,
+        notnull: !!c.notnull,
+        default_value: c.dflt_value,
+        pk: !!c.pk,
+      })),
+      indexes,
+      row_count: rowCount?.count || 0,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Schema lookup failed' });
+  }
+});
+
+// GET /admin/schema — List all tables
+router.get('/schema', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as any[];
+    res.json({ tables: tables.map((t: any) => t.name) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Schema listing failed' });
+  }
+});
+
 export default router;
