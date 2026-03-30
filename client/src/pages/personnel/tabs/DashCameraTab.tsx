@@ -121,7 +121,7 @@ export default function DashCameraTab({
 
   function formatDateTime(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleString('en-US', {
+    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -129,7 +129,7 @@ export default function DashCameraTab({
 
   function formatDate(dateStr?: string | null): string {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
     });
   }

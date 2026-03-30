@@ -271,7 +271,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
 
     const lastRow = db.prepare('SELECT last_insert_rowid() as id').get() as { id: number } | undefined;
 
-    auditLog(req, 'CREATE', 'user', req.user!.userId, `Registered WebAuthn security key: ${credName}`);
+    auditLog(req, 'CREATE', 'user', req.user!.userId, `WEBAUTHN_REGISTER: Registered security key "${credName}" (credentialId: ${credential.id})`);
 
     res.json({
       success: true,
@@ -335,7 +335,7 @@ router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, 
       req.ip || 'unknown',
     );
 
-    auditLog(req, 'DELETE', 'user', credId, `Removed WebAuthn security key: ${cred.name}`);
+    auditLog(req, 'DELETE', 'user', credId, `WEBAUTHN_DELETE: Removed security key "${cred.name}" (credentialId: ${credId})`);
 
     res.json({ message: 'Security key removed' });
   } catch (error: any) {
@@ -481,6 +481,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     } | undefined;
 
     if (!cred) {
+      auditLog(req, 'user_login', 'user', decoded.userId, `WEBAUTHN_AUTH_FAILED: Security key not recognized (credentialId: ${credentialIdBase64})`);
       res.status(400).json({ error: 'Security key not recognized', code: 'SECURITY_KEY_NOT_RECOGNIZED' });
       return;
     }
@@ -502,6 +503,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     challengeStore.delete(challengeId);
 
     if (!verification.verified) {
+      auditLog(req, 'user_login', 'user', decoded.userId, `WEBAUTHN_AUTH_FAILED: Security key verification failed (credentialId: ${cred.credential_id})`);
       res.status(401).json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' });
       return;
     }
@@ -582,7 +584,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
     `).run(localNow(), user.id);
 
-    auditLog(req, 'user_login', 'user', user.id, `WebAuthn 2FA login completed for ${user.username}`);
+    auditLog(req, 'user_login', 'user', user.id, `WEBAUTHN_AUTH: 2FA login completed for ${user.username} (credentialId: ${cred.credential_id})`);
 
     res.json({
       token: accessToken,

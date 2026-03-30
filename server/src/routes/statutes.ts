@@ -22,7 +22,7 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const { q, category, title, offense_level, subcategory, limit = '50', offset = '0' } = req.query;
     const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 50), 200);
-    const offsetNum = Math.max(0, parseInt(offset as string, 10) || 0);
+    const offsetNum = Math.min(50000, Math.max(0, parseInt(offset as string, 10) || 0));
 
     let where = 'WHERE is_active = 1';
     const params: any[] = [];

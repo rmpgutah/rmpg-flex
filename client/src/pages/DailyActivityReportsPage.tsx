@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
-// ExportButton omitted — no dedicated export endpoint
+import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -48,6 +48,7 @@ export default function DailyActivityReportsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [dars, setDars] = useState<DailyActivityReport[]>([]);
   const [selected, setSelected] = useState<DailyActivityReport | null>(null);
@@ -224,6 +225,7 @@ export default function DailyActivityReportsPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
+          <ExportButton exportUrl="/api/dar/export/csv" exportFilename="daily_activity_reports_export.csv" />
           <button type="button" onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)">
             <RefreshCw style={{ width: 11, height: 11 }} />
           </button>
@@ -305,12 +307,12 @@ export default function DailyActivityReportsPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
-              {selected.status === 'draft' && (
+              {(selected.status === 'draft' || isGodMode) && (
                 <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <Send style={{ width: 11, height: 11 }} /> Submit
                 </button>
               )}
-              {selected.status === 'submitted' && isAdmin && (
+              {(isGodMode || (selected.status === 'submitted' && isAdmin)) && (
                 <>
                   <button type="button" onClick={handleApprove} className="toolbar-btn" style={{ color: '#22c55e' }}>
                     <CheckCircle style={{ width: 11, height: 11 }} /> Approve

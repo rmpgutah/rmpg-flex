@@ -1,5 +1,5 @@
 // ============================================================
-// RMPG Flex — Skip Tracer Page
+// RMPG Flex — Skip Tracker Page
 // Standalone skip-tracing search against the RapidAPI Skip
 // Tracing Working API. Supports search by name, address,
 // phone, email, and combined name+address queries.
@@ -18,6 +18,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
+import { safeDateStr } from '../utils/dateUtils';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
@@ -217,11 +218,11 @@ export default function SkipTracerPage() {
   };
 
   // Set document title
-  useEffect(() => { document.title = 'Skip Tracer \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Skip Tracker \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      <PanelTitleBar title="SKIP TRACER" icon={Search}>
+      <PanelTitleBar title="SKIP TRACKER" icon={Search}>
         <ExportButton exportUrl="/api/skiptracer/export/csv" exportFilename="skip-traces.csv" />
       </PanelTitleBar>
 
@@ -387,7 +388,7 @@ export default function SkipTracerPage() {
                     </div>
                     <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
                       <span className="uppercase">{entry.mode}</span>
-                      <span>{new Date(entry.date).toLocaleDateString()}</span>
+                      <span>{safeDateStr(entry.date)}</span>
                     </div>
                   </button>
                 ))}
@@ -443,7 +444,7 @@ export default function SkipTracerPage() {
           {!selected && !personDetail && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Search className="w-12 h-12 text-rmpg-700 mb-3" />
-              <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Skip Tracer</p>
+              <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Skip Tracker</p>
               <p className="text-[10px] text-rmpg-600 mt-1 max-w-xs">
                 Search for individuals by name, address, phone, or email.
                 Select a result to view detailed information.

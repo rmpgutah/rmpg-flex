@@ -73,7 +73,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 function formatDate(iso: string | null): string {
   if (!iso) return '-';
   try {
-    const d = new Date(iso);
+    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,

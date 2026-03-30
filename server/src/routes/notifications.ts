@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -508,6 +509,105 @@ router.post('/delete-read', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Delete read error:', error);
     res.status(500).json({ error: 'Failed to delete read notifications', code: 'DELETE_READ_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Admin Notification Control
+// ════════════════════════════════════════════════════════════
+
+// GET /notifications/admin/all — View all users' notifications
+router.get('/admin/all', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(String(req.query.limit || '100'), 10), 1000);
+    const offset = parseInt(String(req.query.offset || '0'), 10);
+    const userId = req.query.user_id ? parseInt(String(req.query.user_id), 10) : null;
+
+    let where = '1=1';
+    const params: any[] = [];
+    if (userId) { where += ' AND n.user_id = ?'; params.push(userId); }
+
+    const rows = db.prepare(`
+      SELECT n.*, u.username, u.full_name
+      FROM notifications n
+      LEFT JOIN users u ON n.user_id = u.id
+      WHERE ${where}
+      ORDER BY n.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM notifications n WHERE ${where}`).get(...params) as any)?.count || 0;
+
+    res.json({ notifications: rows, total, limit, offset });
+  } catch (error: any) {
+    console.error('Admin notifications error:', error);
+    res.status(500).json({ error: 'Failed to get notifications' });
+  }
+});
+
+// DELETE /notifications/admin/bulk — Bulk delete notifications
+router.delete('/admin/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id, before_date, type } = req.body || {};
+
+    let where = '1=1';
+    const params: any[] = [];
+    if (user_id) { where += ' AND user_id = ?'; params.push(user_id); }
+    if (before_date) { where += ' AND created_at < ?'; params.push(before_date); }
+    if (type) { where += ' AND type = ?'; params.push(type); }
+
+    const result = db.prepare(`DELETE FROM notifications WHERE ${where}`).run(...params);
+
+    auditLog(req, 'ADMIN_BULK_DELETE_NOTIFICATIONS', 'notification', 0,
+      `Bulk deleted ${result.changes} notifications (user_id:${user_id || 'all'}, before:${before_date || 'any'}, type:${type || 'all'})`);
+
+    res.json({ success: true, deleted: result.changes });
+  } catch (error: any) {
+    console.error('Bulk delete notifications error:', error);
+    res.status(500).json({ error: 'Failed to bulk delete' });
+  }
+});
+
+// POST /notifications/admin/broadcast — Send notification to all users or specific roles
+router.post('/admin/broadcast', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { title, message, type = 'admin_broadcast', priority = 'normal', target_roles } = req.body;
+
+    if (!title || !message) { res.status(400).json({ error: 'Title and message required' }); return; }
+
+    let users;
+    if (target_roles && Array.isArray(target_roles) && target_roles.length > 0) {
+      const placeholders = target_roles.map(() => '?').join(',');
+      users = db.prepare(`SELECT id FROM users WHERE status = 'active' AND role IN (${placeholders})`).all(...target_roles) as any[];
+    } else {
+      users = db.prepare("SELECT id FROM users WHERE status = 'active'").all() as any[];
+    }
+
+    const now = localNow();
+    const insert = db.prepare(`INSERT INTO notifications (user_id, type, title, body, priority, is_read, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)`);
+
+    const tx = db.transaction(() => {
+      for (const u of users) {
+        insert.run(u.id, type, title, message, priority, now);
+      }
+    });
+    tx();
+
+    auditLog(req, 'ADMIN_BROADCAST_NOTIFICATION', 'notification', 0,
+      `Broadcast to ${users.length} users: "${title}" (roles: ${target_roles?.join(',') || 'all'})`);
+
+    // Also broadcast via WebSocket
+    try {
+      broadcast('notifications', 'notification:broadcast', { title, message, type, priority, from: req.user!.username });
+    } catch {}
+
+    res.json({ success: true, sent_to: users.length });
+  } catch (error: any) {
+    console.error('Broadcast notification error:', error);
+    res.status(500).json({ error: 'Broadcast failed' });
   }
 });
 

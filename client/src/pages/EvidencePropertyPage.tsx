@@ -20,6 +20,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 import type { BodyCamVideo } from '../types';
 
 // ─── Constants ─────────────────────────────────────────
@@ -79,6 +80,8 @@ const timeAgo = (date: string): string => {
 export default function EvidencePropertyPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Data
   const [items, setItems] = useState<any[]>([]);
@@ -758,11 +761,18 @@ export default function EvidencePropertyPage() {
                         </div>
                       </div>
                     ) : selected.release_status === 'released' ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] px-2 py-0.5 border bg-green-900/50 text-green-400 border-green-700/50 font-bold">RELEASED</span>
-                        {selected.release_to && <span className="text-[10px] text-rmpg-300">To: {selected.release_to}</span>}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-2 py-0.5 border bg-green-900/50 text-green-400 border-green-700/50 font-bold">RELEASED</span>
+                          {selected.release_to && <span className="text-[10px] text-rmpg-300">To: {selected.release_to}</span>}
+                        </div>
+                        {isAdmin && (
+                          <button type="button" onClick={() => setReleaseOpen(true)} className="toolbar-btn text-amber-400 border-amber-700/50 hover:bg-amber-900/30 text-[10px]">
+                            <RefreshCw style={{ width: 10, height: 10 }} /> Re-open Release (Admin)
+                          </button>
+                        )}
                       </div>
-                    ) : selected.status !== 'released' && selected.status !== 'disposed' ? (
+                    ) : selected.status !== 'released' && selected.status !== 'disposed' || isAdmin ? (
                       <div>
                         {!releaseOpen ? (
                           <button type="button" onClick={() => setReleaseOpen(true)} className="toolbar-btn text-[10px]">

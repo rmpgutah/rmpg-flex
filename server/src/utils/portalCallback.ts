@@ -115,6 +115,20 @@ export async function notifyPortalStatusUpdate(callData: any): Promise<void> {
       callData.process_service_result || null,
     );
 
+    // Look up linked serve_queue entry for enhanced status data
+    let serveStatus: string | null = null;
+    let serveAttempts = 0;
+    try {
+      const db = getDb();
+      const serveJob = db.prepare('SELECT id, status, attempt_count FROM serve_queue WHERE call_id = ?').get(callData.id) as any;
+      if (serveJob) {
+        serveStatus = serveJob.status || null;
+        serveAttempts = serveJob.attempt_count || 0;
+      }
+    } catch (serveErr) {
+      console.error('[PortalCallback] Failed to look up serve_queue for call:', serveErr instanceof Error ? serveErr.message : serveErr);
+    }
+
     const payload = {
       case_id: sourceId,
       status: portalStatus,
@@ -122,6 +136,8 @@ export async function notifyPortalStatusUpdate(callData: any): Promise<void> {
       notes: callData.notes || null,
       served_at: callData.process_served_at || null,
       attempts: callData.process_attempts || 0,
+      serve_status: serveStatus,
+      serve_attempts: serveAttempts,
     };
 
     const response = await fetch(`${portalConfig.url}/api/external/cases/update`, {

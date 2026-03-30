@@ -478,4 +478,56 @@ router.post(
   },
 );
 
+// ── GET /monitors ──────────────────────────────────────────
+// List CRM web monitors
+
+router.get(
+  '/monitors',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='crm_monitors'").get();
+      if (!tableExists) { res.json([]); return; }
+      const monitors = db.prepare('SELECT * FROM crm_monitors ORDER BY created_at DESC').all();
+      res.json(monitors);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[CRM] List monitors error:', msg);
+      res.status(500).json({ error: 'Failed to list monitors', detail: msg });
+    }
+  },
+);
+
+// ── POST /monitors ─────────────────────────────────────────
+// Create a new CRM web monitor
+
+router.post(
+  '/monitors',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      // Ensure table exists
+      db.exec(`CREATE TABLE IF NOT EXISTS crm_monitors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL,
+        name TEXT,
+        check_interval INTEGER DEFAULT 86400,
+        last_checked_at TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+      const { url, name, check_interval } = req.body;
+      if (!url) { res.status(400).json({ error: 'URL required' }); return; }
+      const result = db.prepare('INSERT INTO crm_monitors (url, name, check_interval) VALUES (?, ?, ?)').run(url, name || null, check_interval || 86400);
+      res.status(201).json({ success: true, id: result.lastInsertRowid });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[CRM] Create monitor error:', msg);
+      res.status(500).json({ error: 'Failed to create monitor', detail: msg });
+    }
+  },
+);
+
 export default router;

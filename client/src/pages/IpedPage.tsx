@@ -106,7 +106,7 @@ function formatDuration(startedAt: string | null, completedAt: string | null): s
 
 function formatDate(d: string | null): string {
   if (!d) return '--';
-  return new Date(d).toLocaleString('en-US', {
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }

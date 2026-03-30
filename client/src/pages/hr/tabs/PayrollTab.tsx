@@ -10,6 +10,7 @@ import {
   Banknote, TrendingUp, FileText, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { localToday } from '../../../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -96,7 +97,7 @@ function formatCurrency(amount: number): string {
 
 function formatDate(d: string): string {
   if (!d) return '—';
-  const date = new Date(d + 'T00:00:00');
+  const date = new Date(d.includes('T') ? d : d + 'T00:00:00');
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -405,7 +406,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const periodName = (selectedPeriod.name || 'period').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = localToday();
     const a = document.createElement('a');
     a.href = url;
     a.download = `payroll-${periodName}-${dateStr}.csv`;

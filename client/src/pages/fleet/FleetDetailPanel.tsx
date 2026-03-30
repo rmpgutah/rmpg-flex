@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
@@ -96,10 +97,11 @@ interface Props {
 }
 
 // ── Fleet Print Menu (dropdown to select report type) ──
-function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
+function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
   detail: FleetVehicle;
   fuelLogs: FleetFuelLog[];
   maintenance: FleetMaintenance[];
+  fuelSummary?: FleetFuelSummary | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -133,7 +135,22 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
       fuel_type: f.fuel_type,
       distance: f.distance,
       efficiency: f.efficiency,
+      mpg: f.mpg,
+      calc_distance: f.calc_distance,
+      cost_per_mile: f.cost_per_mile,
+      running_avg_mpg: f.running_avg_mpg,
     })),
+    fuel_summary: fuelSummary ? {
+      total_gallons: fuelSummary.total_gallons,
+      total_cost: fuelSummary.total_cost,
+      avg_mpg: fuelSummary.avg_mpg,
+      avg_cost_per_gallon: fuelSummary.avg_cost_per_gallon,
+      best_mpg: fuelSummary.best_mpg,
+      worst_mpg: fuelSummary.worst_mpg,
+      total_distance: fuelSummary.total_distance,
+      cost_per_mile: fuelSummary.cost_per_mile,
+      fuel_cost_per_day: fuelSummary.fuel_cost_per_day,
+    } : undefined,
     maintenance_logs: maintenance.map((m: any) => ({
       service_date: m.service_date,
       service_type: m.service_type,
@@ -181,6 +198,8 @@ export default function FleetDetailPanel({
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
   onClose,
 }: Props) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Detail header */}
@@ -254,7 +273,7 @@ export default function FleetDetailPanel({
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5">
-          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} />
+          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} fuelSummary={fuelSummary} />
           {!isArchived && (
             <>
               <button type="button" className="toolbar-btn" onClick={onEditVehicle}>
@@ -279,6 +298,11 @@ export default function FleetDetailPanel({
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </>
+          )}
+          {!isArchived && isAdmin && (
+            <button type="button" className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Admin: Delete this vehicle">
+              <Trash2 className="w-3 h-3" /> Delete
+            </button>
           )}
           <button type="button"
             className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"

@@ -41,7 +41,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
     try {
       const data = await apiFetch<Tire[]>(`/fleet/${vehicleId}/tires`);
       setTires(data);
-    } catch { /* handled */ } finally { setLoading(false); }
+    } catch { addToast('Failed to load tires', 'error'); } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [vehicleId]);

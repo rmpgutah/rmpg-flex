@@ -12,6 +12,7 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate } from '../utils/websocket';
 import {
@@ -192,6 +193,30 @@ router.get('/sync-log', requireRole('admin'), (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Jail Roster API] Error getting sync log:', (err as Error).message);
     res.status(500).json({ error: 'Failed to get sync log', code: 'FAILED_TO_GET_SYNC' });
+  }
+});
+
+// ── DELETE /record/:id ──────────────────────────────────────
+// Delete an individual jail roster record (admin only)
+
+router.delete('/record/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid record ID', code: 'INVALID_RECORD_ID' });
+      return;
+    }
+    const result = db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+      return;
+    }
+    auditLog(req, 'DELETE', 'arrest_record', id, `Deleted jail roster entry #${id}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Jail Roster API] Error deleting record:', (err as Error).message);
+    res.status(500).json({ error: 'Delete failed', code: 'DELETE_RECORD_FAILED' });
   }
 });
 

@@ -21,6 +21,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { safeDateTimeStr } from '../utils/dateUtils';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -574,7 +575,7 @@ export default function WebResearchPage() {
                     {/* Query + timestamp */}
                     <div className="flex items-center gap-3 text-[10px] text-rmpg-500 font-mono">
                       <span>Query: "{result.query}"</span>
-                      <span>{new Date(result.created_at).toLocaleString()}</span>
+                      <span>{safeDateTimeStr(result.created_at)}</span>
                     </div>
                   </div>
 

@@ -1,13 +1,30 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
+import { config } from '../config';
 
 const router = Router();
+
+// ── Encryption helper for API key decryption ──
+function decryptApiKey(stored: string): string {
+  const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
+  const parts = stored.split(':');
+  if (parts.length < 3) throw new Error('Malformed encrypted value');
+  const [ivHex, authTagHex, ciphertext] = parts;
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
 
 /**
  * Screen a person against the OFAC consolidated sanctions list.
@@ -132,7 +149,7 @@ router.get('/persons/search', (req: Request, res: Response) => {
 });
 
 // GET /api/records/persons/export - Export persons as CSV
-router.get('/persons/export', (req: Request, res: Response) => {
+router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { flags } = req.query;
@@ -736,7 +753,7 @@ router.get('/vehicles/search', (req: Request, res: Response) => {
 });
 
 // GET /api/records/vehicles/export - Export vehicles as CSV
-router.get('/vehicles/export', (req: Request, res: Response) => {
+router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -1463,6 +1480,7 @@ router.get('/evidence/locations', (req: Request, res: Response) => {
     `).all();
     res.json({ data: locations });
   } catch (error: any) {
+    console.error('Get evidence storage locations error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
@@ -1929,18 +1947,21 @@ router.get('/evidence/:id/linked-records', (req: Request, res: Response) => {
       SELECT fc.id, fc.lab_number, fc.title, fc.status, fc.case_type
       FROM forensic_cases fc
       WHERE fc.linked_incident_id = ? OR fc.linked_case_id IN (
-        SELECT id FROM cases WHERE incident_id = ?
+        SELECT id FROM cases WHERE linked_incidents LIKE ?
       )
       LIMIT 20
-    `).all(evidence.incident_id || 0, evidence.incident_id || 0);
+    `).all(evidence.incident_id || 0, `%${evidence.incident_id || 0}%`);
     links.forensic_cases = forensicLinks;
 
-    // Find cases linked to same incident
+    // Find cases linked to same incident (cases use linked_incidents JSON, not incident_id)
     if (evidence.incident_id) {
-      const cases = db.prepare(`
-        SELECT id, case_number, case_type, status FROM cases WHERE incident_id = ? LIMIT 20
-      `).all(evidence.incident_id);
-      links.cases = cases;
+      try {
+        const cases = db.prepare(`
+          SELECT id, case_number, case_type, status FROM cases
+          WHERE linked_incidents LIKE ? LIMIT 20
+        `).all(`%${evidence.incident_id}%`);
+        links.cases = cases;
+      } catch (e) { console.error('[Evidence] Cases link query error:', e instanceof Error ? e.message : e); }
     }
 
     res.json({ data: links });
@@ -4101,6 +4122,176 @@ router.get('/persons/stats/completeness', (req: Request, res: Response) => {
     incomplete.sort((a, b) => a.score - b.score);
     res.json({ data: { total_persons: totalPersons, avg_completeness: totalPersons > 0 ? Math.round(avgScore / totalPersons) : 0, incomplete_count: incomplete.length, most_incomplete: incomplete.slice(0, 20) } });
   } catch (error: any) { console.error('Get completeness stats error:', error); res.status(500).json({ error: 'Failed to get completeness stats', code: 'GET_COMPLETENESS_STATS_ERROR' }); }
+});
+
+// ═════════════════════════════════════════════════════════════
+// PLATE CHECK — Multi-Source Vehicle Lookup by License Plate
+// ═════════════════════════════════════════════════════════════
+
+// POST /api/records/plate-check — Look up a vehicle by license plate across all sources
+router.post('/plate-check', async (req: Request, res: Response) => {
+  try {
+    const { plate, state } = req.body;
+
+    if (!plate || !plate.trim()) {
+      res.status(400).json({ error: 'License plate number is required' }); return;
+    }
+
+    const db = getDb();
+    const plateClean = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const stateClean = (state || '').trim().toUpperCase();
+
+    // 1. Check local vehicles_records table
+    let localResults: any[] = [];
+    try {
+      const localWhere = stateClean
+        ? "UPPER(REPLACE(plate_number, ' ', '')) = ? AND UPPER(state) = ?"
+        : "UPPER(REPLACE(plate_number, ' ', '')) = ?";
+      const localParams = stateClean ? [plateClean, stateClean] : [plateClean];
+      localResults = db.prepare(`SELECT * FROM vehicles_records WHERE ${localWhere}`).all(...localParams) as any[];
+    } catch { /* vehicles_records table may not exist */ }
+
+    // 2. Check fleet vehicles
+    let fleetResults: any[] = [];
+    try {
+      const fleetWhere = stateClean
+        ? "UPPER(REPLACE(license_plate, ' ', '')) = ? AND UPPER(registration_state) = ?"
+        : "UPPER(REPLACE(license_plate, ' ', '')) = ?";
+      const fleetParams = stateClean ? [plateClean, stateClean] : [plateClean];
+      fleetResults = db.prepare(`SELECT * FROM fleet_vehicles WHERE ${fleetWhere}`).all(...fleetParams) as any[];
+    } catch { /* fleet table may not exist */ }
+
+    // 3. Check people_index for vehicles (skip tracker data)
+    let indexResults: any[] = [];
+    try {
+      const rows = db.prepare(
+        "SELECT vehicles FROM people_index WHERE vehicles LIKE ? LIMIT 10"
+      ).all(`%${plateClean}%`) as any[];
+      for (const row of rows) {
+        try {
+          const vehicles = JSON.parse(row.vehicles || '[]');
+          for (const v of vehicles) {
+            const vPlate = (v.plate || v.plateNumber || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+            if (vPlate === plateClean) {
+              indexResults.push(v);
+            }
+          }
+        } catch { /* bad JSON */ }
+      }
+    } catch { /* people_index may not exist */ }
+
+    // 4. Call RapidAPI Plate Check for external data
+    let apiResults: any[] = [];
+    try {
+      let apiKey: string | null = null;
+      const keyRow = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = 'plate_check_rapidapi_key' AND is_active = 1 LIMIT 1"
+      ).get() as { config_value: string } | undefined;
+
+      if (keyRow?.config_value) {
+        try { apiKey = decryptApiKey(keyRow.config_value); } catch { apiKey = keyRow.config_value; }
+      }
+      if (!apiKey) {
+        const fallback = db.prepare(
+          "SELECT config_value FROM system_config WHERE config_key = 'skiptracer_api_key' AND is_active = 1 LIMIT 1"
+        ).get() as { config_value: string } | undefined;
+        if (fallback?.config_value) {
+          try { apiKey = decryptApiKey(fallback.config_value); } catch { apiKey = fallback.config_value; }
+        }
+      }
+
+      if (apiKey) {
+        const params = new URLSearchParams({ plate: plateClean });
+        if (stateClean) params.set('state', stateClean);
+
+        const apiRes = await fetch(`https://plate-check.p.rapidapi.com/plate-check?${params}`, {
+          method: 'GET',
+          headers: {
+            'x-rapidapi-key': apiKey,
+            'x-rapidapi-host': 'plate-check.p.rapidapi.com',
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (apiRes.ok) {
+          const apiData = await apiRes.json() as any;
+          // Map API response to our format
+          const vehicle = apiData?.vehicle || apiData?.result || apiData?.data || apiData;
+          if (vehicle && (vehicle.vin || vehicle.make || vehicle.model)) {
+            apiResults.push({
+              vin: vehicle.vin || vehicle.VIN || '',
+              plate_number: plateClean,
+              plate_state: stateClean || vehicle.state || '',
+              year: vehicle.year || vehicle.model_year || '',
+              make: vehicle.make || '',
+              model: vehicle.model || '',
+              trim: vehicle.trim || '',
+              color: vehicle.color || vehicle.exterior_color || '',
+              body_type: vehicle.body_type || vehicle.style || '',
+              drivetrain: vehicle.drivetrain || '',
+              engine: vehicle.engine || vehicle.engine_description || '',
+              fuel_type: vehicle.fuel_type || '',
+              transmission: vehicle.transmission || '',
+              doors: vehicle.doors || '',
+              registered_owner: vehicle.owner || vehicle.registered_owner || '',
+              vehicle_type: vehicle.vehicle_type || vehicle.type || '',
+              source: 'rapidapi_plate_check',
+            });
+          }
+        } else {
+          console.warn(`[Plate Check] RapidAPI returned ${apiRes.status}`);
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[Plate Check] RapidAPI call failed:', apiErr);
+    }
+
+    const allResults = [
+      ...localResults.map(r => ({ ...r, source: 'local_vehicles' })),
+      ...fleetResults.map(r => ({
+        vin: r.vin,
+        plate_number: r.license_plate,
+        plate_state: r.registration_state,
+        year: r.year,
+        make: r.make,
+        model: r.model,
+        color: r.color,
+        registered_owner: r.assigned_officer_name || null,
+        vehicle_type: r.vehicle_type,
+        status: r.status,
+        source: 'fleet',
+      })),
+      ...indexResults.map(r => ({
+        vin: r.vin,
+        plate_number: r.plate || r.plateNumber,
+        plate_state: r.plateState,
+        year: r.year,
+        make: r.make,
+        model: r.model,
+        color: r.color,
+        registered_owner: r.registeredOwner,
+        source: 'skip_tracker',
+      })),
+      ...apiResults,
+    ];
+
+    // Audit log
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'plate_check', 'vehicle', 0, ?, ?)"
+    ).run(req.user!.userId, `Plate check: ${plateClean} ${stateClean || 'ANY'}`, req.ip || 'unknown');
+
+    res.json({
+      hit: allResults.length > 0,
+      plate: plateClean,
+      state: stateClean || null,
+      results: allResults,
+      resultCount: allResults.length,
+      sources: [...new Set(allResults.map(r => r.source))],
+    });
+  } catch (err: any) {
+    console.error('[Plate Check] Error:', err);
+    res.status(500).json({ error: 'Plate check failed', code: 'PLATE_CHECK_ERROR' });
+  }
 });
 
 export default router;

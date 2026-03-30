@@ -211,6 +211,8 @@ export interface CallNote {
   author: string;
   text: string;
   timestamp: string;
+  edited_at?: string | null;
+  edited_by?: string | null;
 }
 
 export interface CallForService {
@@ -1317,6 +1319,13 @@ export interface FleetFuelLog {
   notes?: string;
   created_by?: string;
   created_at: string;
+  distance?: number;
+  efficiency?: number;
+  // Computed efficiency fields from backend
+  mpg?: number | null;
+  calc_distance?: number | null;
+  cost_per_mile?: number | null;
+  running_avg_mpg?: number | null;
 }
 
 export interface FleetFuelSummary {
@@ -1325,6 +1334,11 @@ export interface FleetFuelSummary {
   avg_mpg: number | null;
   avg_cost_per_gallon: number;
   log_count: number;
+  best_mpg?: number | null;
+  worst_mpg?: number | null;
+  total_distance?: number | null;
+  cost_per_mile?: number | null;
+  fuel_cost_per_day?: number | null;
 }
 
 // --- Fleet Inspections ---
@@ -1413,11 +1427,52 @@ export interface FleetAnalytics {
   fleet_summary: {
     total_vehicles: number;
     avg_mileage: number;
+    avg_mpg: number | null;
     total_maintenance_cost: number;
     total_fuel_cost: number;
     vehicles_needing_service: number;
     inspections_failing: number;
   };
+  cost_per_mile_ranking?: Array<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    current_mileage: number; maintenance_cost: number; fuel_cost: number;
+    total_cost: number; cost_per_mile: number | null;
+  }>;
+  service_compliance?: { compliant: number; overdue: number; rate: number };
+  inspection_pass_rate?: { total: number; passed: number; failed: number; rate: number };
+  fuel_economy_ranking?: Array<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    avg_mpg: number; total_gallons: number; total_miles: number;
+  }>;
+  utilization?: { assigned: number; unassigned: number; rate: number };
+  daily_usage?: Array<{ date: string; active_vehicles: number; total_pings: number; moving_pings: number }>;
+  maintenance_forecast?: Array<{
+    id: number; vehicle_number: string; current_mileage: number; next_service_due: number;
+    avg_daily_miles: number; miles_until_service: number; est_days_until_service: number | null;
+  }>;
+  oldest_vehicle_year?: number | null;
+  avg_daily_miles?: number;
+  top_issues?: Array<{ type: string; count: number; total_cost: number }>;
+}
+
+export interface FleetServiceAlert {
+  vehicle_id: number;
+  vehicle_number: string;
+  make: string;
+  model: string;
+  year: number;
+  issue: string;
+  due_date: string;
+  severity: 'critical' | 'warning';
+}
+
+export interface FleetServiceAlerts {
+  overdue_service: FleetServiceAlert[];
+  upcoming_service: FleetServiceAlert[];
+  expired_registration: FleetServiceAlert[];
+  expired_insurance: FleetServiceAlert[];
+  failed_inspections: FleetServiceAlert[];
+  all_alerts: FleetServiceAlert[];
 }
 
 // --- Record Alerts ---

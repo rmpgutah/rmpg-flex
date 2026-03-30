@@ -32,13 +32,13 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
@@ -117,6 +117,7 @@ export default function LeaveTab() {
   const userRole = user?.role ?? 'officer';
   const userId = user?.id ?? '';
   const isManager = MANAGER_ROLES.includes(userRole);
+  const isGodMode = userRole === 'admin'; // Admin God Mode — unrestricted access
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -237,6 +238,18 @@ export default function LeaveTab() {
     .filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i)
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // Set document title
+  useEffect(() => { document.title = 'HR - Leave \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRequest(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // ─── Loading State ─────────────────────────────────────
 
   if (loading && requests.length === 0) {
@@ -325,7 +338,7 @@ export default function LeaveTab() {
                     <td className="px-3 py-2"><StatusBadge status={req.status} /></td>
                     <td className="px-3 py-2 text-rmpg-400">{formatDateTime(req.created_at)}</td>
                     <td className="px-3 py-2 text-right">
-                      {req.status === 'pending' && (
+                      {(req.status === 'pending' || isGodMode) && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button"
                             onClick={() => { setEditRequest(req); setModalOpen(true); }}
@@ -362,18 +375,6 @@ export default function LeaveTab() {
   }
 
   // ─── Manager View ──────────────────────────────────────
-
-  // Set document title
-  useEffect(() => { document.title = 'HR - Leave \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setModalOpen(false); setEditRequest(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="p-4 space-y-4">
@@ -583,15 +584,26 @@ export default function LeaveTab() {
                     <td className="px-3 py-2"><StatusBadge status={req.status} /></td>
                     <td className="px-3 py-2 text-rmpg-400">{formatDateTime(req.created_at)}</td>
                     <td className="px-3 py-2 text-right">
-                      {req.status === 'pending' && String(req.officer_id) === String(userId) && (
-                        <button type="button"
-                          onClick={() => handleCancel(req.id)}
-                          className="toolbar-btn text-xs text-red-400 hover:text-red-300"
-                          title="Cancel request"
-                        >
-                          <X size={12} />
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {isGodMode && (
+                          <button type="button"
+                            onClick={() => { setEditRequest(req); setModalOpen(true); }}
+                            className="toolbar-btn text-xs"
+                            title="Admin: Edit leave request"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {(req.status === 'pending' && String(req.officer_id) === String(userId)) && (
+                          <button type="button"
+                            onClick={() => handleCancel(req.id)}
+                            className="toolbar-btn text-xs text-red-400 hover:text-red-300"
+                            title="Cancel request"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

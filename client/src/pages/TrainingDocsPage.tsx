@@ -21,6 +21,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
+import { safeDateStr } from '../utils/dateUtils';
 
 // ── Category config ─────────────────────────────────────────
 const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
@@ -80,6 +81,7 @@ export default function TrainingDocsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,7 +281,7 @@ export default function TrainingDocsPage() {
 
                   <div className="flex items-center gap-3 text-[10px] text-rmpg-500">
                     {doc.creator_name && <span>By {doc.creator_name}</span>}
-                    <span title={new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}>{timeAgo(doc.created_at)}</span>
+                    <span title={safeDateStr(doc.created_at)}>{timeAgo(doc.created_at)}</span>
                     {doc.file_size > 0 && <span>{formatFileSize(doc.file_size)}</span>}
                   </div>
                 </div>

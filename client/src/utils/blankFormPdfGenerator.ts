@@ -21,6 +21,7 @@ import {
   setActiveFormKey,
   setActiveCaseNumber,
   setGenerationTimestamp,
+  sanitizePdfText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -64,10 +65,13 @@ function addLinedArea(doc: jsPDF, y: number, lineCount: number, indent = 0): num
   const lx = getLeftX() + indent;
   const ffw = getFullFieldWidth(doc) - indent;
   const lineGap = 8; // spacing between lines for handwriting
+  // Check for at least 3 lines or the full block, whichever is smaller
+  const minCheckH = Math.min(lineCount * lineGap, lineGap * 3 + 4);
+  y = checkPageBreak(doc, y, minCheckH);
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
   for (let i = 0; i < lineCount; i++) {
-    y = checkPageBreak(doc, y, lineGap + 2);
+    y = checkPageBreak(doc, y, lineGap + LAYOUT.FOOTER_HEIGHT);
     doc.line(lx, y, lx + ffw, y);
     y += lineGap;
   }
@@ -117,12 +121,14 @@ function addCheckboxRow(doc: jsPDF, labels: string[], y: number): number {
   const maxX = getLeftX() + getFullFieldWidth(doc);
   const rowH = 5;
   for (const label of labels) {
-    const nextX = addCheckboxField(doc, label, false, x, y);
+    const safeLabel = sanitizePdfText(label);
+    const nextX = addCheckboxField(doc, safeLabel, false, x, y);
     if (nextX > maxX && x > getLeftX()) {
       // Wrap to next line
       y += rowH;
+      y = checkPageBreak(doc, y, rowH + LAYOUT.FOOTER_HEIGHT);
       x = getLeftX();
-      x = addCheckboxField(doc, label, false, x, y);
+      x = addCheckboxField(doc, safeLabel, false, x, y);
     } else {
       x = nextX;
     }
@@ -505,6 +511,7 @@ function generateBlankCitationForm(doc: jsPDF) {
   // Signatures — officer + subject
   y = checkPageBreak(doc, y, 60);
   y = addSignatureBlock(doc, 'Issuing Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+  y = checkPageBreak(doc, y, 30);
   y = addSignatureBlock(doc, 'Subject Acknowledgment', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
 }
 

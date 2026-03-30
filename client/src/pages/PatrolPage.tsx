@@ -28,6 +28,7 @@ import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
 import { useToast } from '../components/ToastProvider';
 
@@ -744,7 +745,7 @@ const PatrolPage: React.FC = () => {
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {patrolLog.entries?.map((e: any, i: number) => (
               <div key={i} className="flex gap-2">
-                <span className="text-rmpg-500 w-24">{new Date(e.time).toLocaleTimeString()}</span>
+                <span className="text-rmpg-500 w-24">{safeTimeStr(e.time)}</span>
                 <span className="text-white flex-1">{e.checkpoint}</span>
                 <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status}</span>
                 {e.time_since_prev_min != null && <span className="text-rmpg-500">{e.time_since_prev_min}m</span>}
@@ -777,7 +778,7 @@ const PatrolPage: React.FC = () => {
           <div className="max-h-24 overflow-y-auto space-y-0.5">
             {exceptions.late_scans?.slice(0, 10).map((ls: any) => (
               <div key={ls.id} className="text-[10px] flex gap-2">
-                <span className="text-rmpg-500">{new Date(ls.scanned_at).toLocaleDateString()}</span>
+                <span className="text-rmpg-500">{safeDateStr(ls.scanned_at)}</span>
                 <span className="text-amber-300">{ls.checkpoint_name}</span>
                 <span className="text-rmpg-500">{ls.officer_name}</span>
               </div>

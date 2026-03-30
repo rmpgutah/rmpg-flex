@@ -417,7 +417,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (skipResult.status === 'fulfilled') {
             xref.skipTracerPeople = skipResult.value.PeopleDetails || [];
           } else {
-            xref.errors.push('SKIP TRACER QUERY FAILED');
+            xref.errors.push('SKIP TRACKER QUERY FAILED');
           }
 
           // ── Cross-load: enrich empty sections from person records ──
@@ -680,7 +680,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         }
 
         case 'QS': {
-          // Skip Tracer — RapidAPI skip tracing lookup
+          // Skip Tracker — RapidAPI skip tracing lookup
           // Supports: QS NAME  |  QS ADDR:123 Main St  |  QS PHONE:8015551234  |  QS EMAIL:john@example.com
           let stPath = '/skiptracer/search/byname';
           let stParams: Record<string, string> = {};
@@ -712,7 +712,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           const stPeople = stData.PeopleDetails || [];
 
           if (stPeople.length === 0) {
-            response = formatNoRecord('SKIP TRACER', queryText);
+            response = formatNoRecord('SKIP TRACKER', queryText);
           } else {
             response = formatSkipTracerResponse(stPeople, queryText, stData.Records, stType);
             hasHit = true;
@@ -787,7 +787,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QA <address>  Query Address / Premise   ║
 ║  QO <name>     Query OFAC Watchlist      ║
 ║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracer         ║
+║  QS <name>     Query Skip Tracker        ║
 ║  QB <name>     Query Background Check    ║
 ║  QC <name>     Query Utah Courts (web)   ║
 ╚══════════════════════════════════════════╝`}</pre>
@@ -867,7 +867,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QA <address>  Query Address / Premise   ║
 ║  QO <name>     Query OFAC Watchlist      ║
 ║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracer         ║
+║  QS <name>     Query Skip Tracker        ║
 ║  QB <name>     Query Background Check    ║
 ║  QC <name>     Query Utah Courts (web)   ║
 ╚══════════════════════════════════════════╝`}</pre>

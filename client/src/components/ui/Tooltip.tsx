@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // Feature 24: Reusable Tooltip Component
-// Shows on hover with configurable position
+// Shows on hover (desktop) and long-press (touch/iOS)
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -20,40 +20,61 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const touchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const computeCoords = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    let x = 0, y = 0;
+
+    switch (position) {
+      case 'top':
+        x = rect.left + rect.width / 2;
+        y = rect.top - 6;
+        break;
+      case 'bottom':
+        x = rect.left + rect.width / 2;
+        y = rect.bottom + 6;
+        break;
+      case 'left':
+        x = rect.left - 6;
+        y = rect.top + rect.height / 2;
+        break;
+      case 'right':
+        x = rect.right + 6;
+        y = rect.top + rect.height / 2;
+        break;
+    }
+
+    setCoords({ x, y });
+  }, [position]);
 
   const show = useCallback(() => {
     timerRef.current = setTimeout(() => {
-      if (!triggerRef.current) return;
-      const rect = triggerRef.current.getBoundingClientRect();
-      let x = 0, y = 0;
-
-      switch (position) {
-        case 'top':
-          x = rect.left + rect.width / 2;
-          y = rect.top - 6;
-          break;
-        case 'bottom':
-          x = rect.left + rect.width / 2;
-          y = rect.bottom + 6;
-          break;
-        case 'left':
-          x = rect.left - 6;
-          y = rect.top + rect.height / 2;
-          break;
-        case 'right':
-          x = rect.right + 6;
-          y = rect.top + rect.height / 2;
-          break;
-      }
-
-      setCoords({ x, y });
+      computeCoords();
       setVisible(true);
     }, delay);
-  }, [delay, position]);
+  }, [delay, computeCoords]);
 
   const hide = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
     setVisible(false);
+  }, []);
+
+  // Touch support: show tooltip on long-press (500ms), auto-hide after 2s
+  const handleTouchStart = useCallback(() => {
+    touchTimerRef.current = setTimeout(() => {
+      computeCoords();
+      setVisible(true);
+      // Auto-hide after 2 seconds on touch
+      touchTimerRef.current = setTimeout(() => setVisible(false), 2000);
+    }, 500);
+  }, [computeCoords]);
+
+  const handleTouchEnd = useCallback(() => {
+    // Cancel the long-press timer if touch ends early
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
   }, []);
 
   const positionStyles: Record<TooltipPosition, React.CSSProperties> = {
@@ -69,6 +90,9 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
         ref={triggerRef}
         onMouseEnter={show}
         onMouseLeave={hide}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         onFocus={show}
         onBlur={hide}
         className="inline-flex"

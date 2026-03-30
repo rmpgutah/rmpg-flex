@@ -71,7 +71,7 @@ function channelBg(ch?: string): string {
 
 function formatDate(d?: string): string {
   if (!d) return '-';
-  return new Date(d).toLocaleDateString('en-US', {
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -114,6 +114,7 @@ export default function DashCamerasPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── State ────────────────────────────────
   const [videos, setVideos] = useState<DashCamVideo[]>([]);

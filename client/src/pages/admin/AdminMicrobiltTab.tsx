@@ -258,6 +258,9 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
     }
   };
 
+  // Set document title — MUST be before any early returns (React hooks rules)
+  useEffect(() => { document.title = 'Admin - MicroBilt \u2014 RMPG Flex'; }, []);
+
   const filteredCatalog = productSearch
     ? PRODUCT_CATALOG.map(cat => ({
         ...cat,
@@ -267,10 +270,6 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
         ),
       })).filter(cat => cat.products.length > 0)
     : PRODUCT_CATALOG;
-
-  // Set document title
-  useEffect(() => { document.title = 'Admin - MicroBilt \u2014 RMPG Flex'; }, []);
-
 
   if (loading) return <LoadingSpinner />;
 

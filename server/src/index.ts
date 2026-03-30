@@ -21,6 +21,7 @@ import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
+import { scheduleArrestSync } from './utils/arrestScraper';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -102,6 +103,7 @@ import ttsRoutes from './routes/tts';
 import voiceRoutes from './routes/voice';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
+import firecrawlToolsRoutes from './routes/firecrawlTools';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
@@ -287,7 +289,6 @@ app.get('/api/presence', (_req, res) => {
 // ── Feature 25: System status page (public) ────────────────────
 app.get('/api/system-status', (_req, res) => {
   try {
-    const { getDb } = require('./models/database');
     const db = getDb();
     const uptime = process.uptime();
 
@@ -388,6 +389,7 @@ app.use('/api/tts', ttsRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
+app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
@@ -595,6 +597,14 @@ try {
       scheduleUtahWarrantSync();
     } catch (err: any) {
       console.warn('[Utah Warrants] Failed to start scheduler:', err?.message || err);
+    }
+
+    // Start arrest records auto-sync (JailBase API, hourly with exponential backoff)
+    try {
+      scheduleArrestSync();
+      console.log('[Arrests] Auto-sync scheduler started');
+    } catch (err: any) {
+      console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s

@@ -122,7 +122,6 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename="warrants_export_${new Date().toISOString().slice(0,10)}.csv"`);
     res.send(csv);
   } catch (error: any) {
@@ -650,7 +649,7 @@ router.get('/watch/runs', (req: Request, res: Response) => {
     res.json({ data: runs });
   } catch (error: any) {
     console.error('Watch runs error:', error);
-    res.status(500).json({ error: 'Failed to watch runs', code: 'WATCH_RUNS_ERROR' });
+    res.status(500).json({ error: 'Failed to get watch runs', code: 'WATCH_RUNS_ERROR' });
   }
 });
 
@@ -696,7 +695,7 @@ router.post('/check/:personId', (req: Request, res: Response) => {
       });
     } catch (error: any) {
       console.error('Manual warrant check error:', error);
-      res.status(500).json({ error: 'Failed to manual warrant check', code: 'MANUAL_WARRANT_CHECK_ERROR' });
+      res.status(500).json({ error: 'Failed to perform manual warrant check', code: 'MANUAL_WARRANT_CHECK_ERROR' });
     }
   })();
 });
@@ -731,7 +730,7 @@ router.get('/scan/status', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Scan status error:', error);
-    res.status(500).json({ error: 'Failed to scan status', code: 'SCAN_STATUS_ERROR' });
+    res.status(500).json({ error: 'Failed to get scan status', code: 'SCAN_STATUS_ERROR' });
   }
 });
 
@@ -927,10 +926,15 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
       return;
     }
 
-    // Only allow updating non-served warrants
-    if (warrant.status === 'served') {
-      res.status(403).json({ error: 'Cannot update a served warrant', code: 'CANNOT_UPDATE_A_SERVED' });
-      return;
+    // God Mode: admin bypass — can update served warrants
+    if (req.user?.role !== 'admin') {
+      // Only allow updating non-served warrants
+      if (warrant.status === 'served') {
+        res.status(403).json({ error: 'Cannot update a served warrant', code: 'CANNOT_UPDATE_A_SERVED' });
+        return;
+      }
+    } else if (warrant.status === 'served') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'warrant', warrant.id, 'Admin God Mode: bypassed served warrant update restriction');
     }
 
     // Validate subject person exists if provided
@@ -957,6 +961,8 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
       notes: v => v ?? null,
       statute_id: v => v || null,
       statute_citation: v => v ?? null,
+      // God Mode: admin can change warrant number
+      ...(req.user?.role === 'admin' ? { warrant_number: (v: any) => v || null } : {}),
     };
 
     const setClauses: string[] = [];
@@ -1085,9 +1091,14 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
     if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
-    if (warrant.status === 'active') {
-      res.status(400).json({ error: 'Cannot delete an active warrant. Change status first.', code: 'CANNOT_DELETE_AN_ACTIVE' });
-      return;
+    // God Mode: admin bypass — can delete active warrants
+    if (req.user?.role !== 'admin') {
+      if (warrant.status === 'active') {
+        res.status(400).json({ error: 'Cannot delete an active warrant. Change status first.', code: 'CANNOT_DELETE_AN_ACTIVE' });
+        return;
+      }
+    } else if (warrant.status === 'active') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'warrant', warrant.id, 'Admin God Mode: bypassed active warrant delete restriction');
     }
 
     const delTx = db.transaction(() => {
@@ -1372,7 +1383,7 @@ router.get('/person-intel', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Person intel error:', error);
-    res.status(500).json({ error: 'Failed to person intel', code: 'PERSON_INTEL_ERROR' });
+    res.status(500).json({ error: 'Failed to get person intel', code: 'PERSON_INTEL_ERROR' });
   }
 });
 

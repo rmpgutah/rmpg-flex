@@ -14,6 +14,7 @@ import {
   User,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall } from '../../types';
+import { safeDateStr } from '../../utils/dateUtils';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -27,13 +28,13 @@ interface ServeJobCardProps {
   onToggleExpand?: () => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-blue-500',
-  in_progress: 'bg-amber-500',
-  served: 'bg-green-500',
-  failed: 'bg-red-500',
-  skipped: 'bg-rmpg-500',
-  archived: 'bg-rmpg-600',
+const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
+  pending: { bg: 'bg-blue-500', glow: 'shadow-[0_0_6px_rgba(59,130,246,0.5)]' },
+  in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]' },
+  served: { bg: 'bg-green-500', glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]' },
+  failed: { bg: 'bg-red-500', glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]' },
+  skipped: { bg: 'bg-rmpg-500', glow: 'shadow-[0_0_6px_rgba(107,114,128,0.5)]' },
+  archived: { bg: 'bg-rmpg-600', glow: 'shadow-[0_0_6px_rgba(75,85,99,0.5)]' },
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -107,11 +108,13 @@ export default React.memo(function ServeJobCard({
   return (
     <div
       role="article"
+      tabIndex={0}
       aria-label={`Serve job: ${job.recipient_name}`}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand?.(); } }}
       className={`
         panel-beveled rounded-[2px] transition-all duration-150 hover:bg-[#1e2d3f] hover:shadow-md
         ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
-        ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.1)]' : ''}
+        ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
       `}
       style={{ background: '#1a2636', borderColor: '#1e3048' }}
     >
@@ -128,7 +131,7 @@ export default React.memo(function ServeJobCard({
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2 min-w-0">
             {/* Status LED */}
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 shadow-[0_0_4px_currentColor] ${STATUS_COLORS[job.status] || 'bg-rmpg-500'}`} aria-label={`Status: ${job.status}`} />
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[job.status]?.bg || 'bg-rmpg-500'} ${STATUS_COLORS[job.status]?.glow || ''}`} aria-label={`Status: ${job.status}`} />
             <span className="text-sm font-bold text-white truncate">{job.recipient_name}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -157,7 +160,7 @@ export default React.memo(function ServeJobCard({
           </span>
 
           {/* Priority */}
-          <span className={`text-[9px] font-bold font-mono border px-1 py-0 ${PRIORITY_STYLES[job.priority] || PRIORITY_STYLES.normal}`}>
+          <span className={`text-[9px] font-bold font-mono border rounded-sm px-1 py-0 ${PRIORITY_STYLES[job.priority] || PRIORITY_STYLES.normal}`}>
             {job.priority.toUpperCase()}
           </span>
 
@@ -193,7 +196,7 @@ export default React.memo(function ServeJobCard({
           {linkedCall && (
             <div className="p-2 rounded-[2px] border mb-2" style={{ background: '#1a5a9e10', borderColor: '#1a5a9e30' }}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-[#1a5a9e] uppercase tracking-wider">Dispatch Link</span>
+                <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Dispatch Link</span>
                 <button type="button"
                   className="text-[10px] text-blue-400 hover:text-blue-300 underline"
                   onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
@@ -219,7 +222,7 @@ export default React.memo(function ServeJobCard({
                   return (
                     <div className="mt-1 flex items-center gap-1 text-[9px]">
                       <span className="text-rmpg-400">Compliance:</span>
-                      <span className="font-mono" style={{ color: met === 4 ? '#4ade80' : '#fbbf24' }}>{met}/4 windows</span>
+                      <span className="font-mono tabular-nums" style={{ color: met === 4 ? '#4ade80' : '#fbbf24' }}>{met}/4 windows</span>
                     </div>
                   );
                 } catch { return null; }
@@ -228,12 +231,13 @@ export default React.memo(function ServeJobCard({
           )}
 
           {/* Case / court / jurisdiction */}
+          <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Case Details</span>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-rmpg-300">
             {job.case_number && (
               <div className="flex items-center gap-1">
                 <Briefcase className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Case:</span>
-                <span className="font-mono text-cyan-400">{job.case_number}</span>
+                <span className="font-mono tabular-nums text-cyan-400">{job.case_number}</span>
               </div>
             )}
             {job.court_name && (
@@ -268,7 +272,7 @@ export default React.memo(function ServeJobCard({
                 <Calendar className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Deadline:</span>
                 <span className={isDueSoon || isOverdue ? 'text-red-400 font-bold' : ''}>
-                  {new Date(job.deadline).toLocaleDateString()}
+                  {safeDateStr(job.deadline)}
                 </span>
               </div>
             )}
@@ -277,7 +281,7 @@ export default React.memo(function ServeJobCard({
           {/* Service instructions */}
           {job.service_instructions && (
             <div>
-              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Instructions</span>
+              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Instructions</span>
               <p className="text-rmpg-300 mt-0.5">{job.service_instructions}</p>
             </div>
           )}
@@ -285,7 +289,7 @@ export default React.memo(function ServeJobCard({
           {/* Prior attempts timeline */}
           {job.attempts && job.attempts.length > 0 && (
             <div>
-              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Prior Attempts</span>
+              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Prior Attempts</span>
               <div className="mt-1 space-y-1">
                 {job.attempts.map((attempt) => (
                   <div
@@ -293,7 +297,7 @@ export default React.memo(function ServeJobCard({
                     className="flex items-start gap-2 pl-2 border-l-2 border-rmpg-600/50"
                   >
                     <span className="text-[10px] font-mono text-rmpg-400 flex-shrink-0 w-16">
-                      {new Date(attempt.attempt_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {safeDateStr(attempt.attempt_at)}
                     </span>
                     <span className="text-[10px] font-mono text-amber-300 flex-shrink-0 w-14">
                       {attempt.attempt_type}
@@ -315,7 +319,7 @@ export default React.memo(function ServeJobCard({
           {/* Notes */}
           {job.notes && (
             <div>
-              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Notes</span>
+              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Notes</span>
               <p className="text-rmpg-300 mt-0.5">{job.notes}</p>
             </div>
           )}
@@ -326,7 +330,7 @@ export default React.memo(function ServeJobCard({
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-all duration-150 focus:outline-none focus:bg-blue-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-blue-900/20"
           title="Navigate"
           aria-label={`Navigate to ${job.recipient_name}`}
         >
@@ -335,7 +339,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onAttempt(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-all duration-150 focus:outline-none focus:bg-green-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-green-900/20"
           title="Attempt Service"
           aria-label={`Attempt service for ${job.recipient_name}`}
         >
@@ -344,7 +348,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-all duration-150 focus:outline-none focus:bg-cyan-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-cyan-900/20"
           title="Skip Trace"
           aria-label={`Skip trace for ${job.recipient_name}`}
         >
@@ -353,7 +357,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onFlagAddress(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-all duration-150 focus:outline-none focus:bg-amber-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-amber-900/20"
           title="Flag Bad Address"
           aria-label={`Flag bad address for ${job.recipient_name}`}
         >

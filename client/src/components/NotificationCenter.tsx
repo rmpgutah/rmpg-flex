@@ -44,7 +44,7 @@ const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig>
 // ============================================================
 
 function formatTimestamp(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   if (isNaN(date.getTime())) return 'UNKNOWN';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -484,7 +484,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         lineHeight: '14px',
                       }}
                     >
-                      {notification.title}
+                      {typeof notification.title === 'string' ? notification.title : JSON.stringify(notification.title)}
                     </div>
                     {notification.body && (
                       <div
@@ -495,7 +495,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                           marginTop: '1px',
                         }}
                       >
-                        {notification.body}
+                        {typeof notification.body === 'string' ? notification.body : JSON.stringify(notification.body)}
                       </div>
                     )}
                     <div

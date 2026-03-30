@@ -315,7 +315,7 @@ export default function AIDevChatPanel() {
 
     try {
       // Get auth token
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('rmpg_token');
 
       const response = await fetch('/api/ai/dev-chat/chat/stream', {
         method: 'POST',

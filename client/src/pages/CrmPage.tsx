@@ -26,12 +26,14 @@ import {
   FileSignature,
   Globe,
   Eye,
+  Flame,
 } from 'lucide-react';
 import LeadsTab from '../components/crm/LeadsTab';
 import ProposalsTab from '../components/crm/ProposalsTab';
 import ReportsTab from '../components/crm/ReportsTab';
 import WebIntelPanel from '../components/crm/WebIntelPanel';
 import CompetitorMonitorPanel from '../components/crm/CompetitorMonitorPanel';
+import FirecrawlTab from '../components/crm/FirecrawlTab';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
@@ -49,7 +51,7 @@ import type {
   CrmDashboardStats,
 } from '../types';
 
-type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors';
+type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors' | 'firecrawl';
 
 const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -63,6 +65,7 @@ const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'webintel', label: 'Web Intel', icon: Globe },
   { id: 'competitors', label: 'Competitors', icon: Eye },
+  { id: 'firecrawl', label: 'Firecrawl', icon: Flame },
 ];
 
 const TASK_TYPES = ['follow_up', 'site_visit', 'contract_renewal', 'billing', 'other'] as const;
@@ -77,12 +80,12 @@ function formatCurrency(val: number): string {
 
 function formatDate(d?: string): string {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string): string {
   if (!d) return '—';
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function toDisplayLabel(s: string): string {
@@ -494,6 +497,7 @@ export default function CrmPage() {
         {activeSection === 'reports' && <ReportsTab />}
         {activeSection === 'webintel' && <WebIntelPanel />}
         {activeSection === 'competitors' && <CompetitorMonitorPanel />}
+        {activeSection === 'firecrawl' && <FirecrawlTab />}
       </div>
 
       {/* ── Task Modal ────────────────────────────────── */}

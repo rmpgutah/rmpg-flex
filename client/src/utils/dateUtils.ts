@@ -71,7 +71,14 @@ export function parseTimestamp(dateStr: string | null | undefined): Date {
     return new Date(dateStr.replace(' ', 'T') + '-07:00');
   }
 
-  // Date-only "YYYY-MM-DD" or other formats — let the browser handle it
+  // Date-only "YYYY-MM-DD" — append T00:00:00 to force LOCAL timezone parsing
+  // Without this, `new Date('2026-03-28')` is parsed as UTC midnight, which
+  // in Mountain Time (UTC-7) becomes 2026-03-27T17:00:00 — the PREVIOUS day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'T00:00:00');
+  }
+
+  // Other formats — let the browser handle it
   const result = new Date(dateStr);
   return isNaN(result.getTime()) ? new Date() : result;
 }
@@ -108,6 +115,29 @@ export function formatDate(dateStr: string | null | undefined): string {
 export function formatDateLong(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ── Safe formatting for inline JSX (returns '—' for null/invalid) ───
+
+/** Safe locale date string — replaces `new Date(x).toLocaleDateString()` */
+export function safeDateStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+}
+
+/** Safe locale date+time string — replaces `new Date(x).toLocaleString()` */
+export function safeDateTimeStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
+/** Safe locale time string — replaces `new Date(x).toLocaleTimeString()` */
+export function safeTimeStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 /**

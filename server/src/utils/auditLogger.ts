@@ -143,7 +143,7 @@ export type AuditAction =
   | 'UPDATE'
   | 'DELETE'
   | 'EXPORT'
-  // Skip Tracer
+  // Skip Tracker
   | 'skiptracer_search'
   | 'skiptracer_config_updated'
   | 'skiptracer_config_cleared'

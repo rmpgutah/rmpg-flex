@@ -53,7 +53,8 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
     let callsToArchive: any[] = [];
 
     if (call_ids && Array.isArray(call_ids) && call_ids.length > 0) {
-      if (call_ids.length > 500) {
+      // God Mode: admin bypass
+      if (req.user?.role !== 'admin' && call_ids.length > 500) {
         res.status(400).json({ error: 'Cannot archive more than 500 calls at once', code: 'CANNOT_ARCHIVE_MORE_THAN' });
         return;
       }
@@ -227,6 +228,18 @@ router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'man
       try { db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify incidents FK:', e instanceof Error ? e.message : e); }
       try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify units FK:', e instanceof Error ? e.message : e); }
       try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch (e) { console.error('[CallLifecycle] Failed to delete record_links:', e instanceof Error ? e.message : e); }
+
+      // Delete child rows from non-cascading FK tables
+      try { db.prepare('DELETE FROM call_visit_history WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_visit_history:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM call_persons WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_persons:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM call_vehicles WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_vehicles:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM call_units WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_units:', e instanceof Error ? e.message : e); }
+      try { db.prepare("DELETE FROM dashcam_video_links WHERE entity_type = 'call' AND entity_id = ?").run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete dashcam_video_links:', e instanceof Error ? e.message : e); }
+      // Additional FK tables
+      try { db.prepare('DELETE FROM alarm_responses WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete alarm_responses:', e instanceof Error ? e.message : e); }
+      try { db.prepare('UPDATE body_camera_recordings SET call_id = NULL WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify body_camera_recordings FK:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM serve_queue WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete serve_queue:', e instanceof Error ? e.message : e); }
+      try { db.prepare('UPDATE calls_for_service SET parent_call_id = NULL WHERE parent_call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify child call parent_call_id:', e instanceof Error ? e.message : e); }
 
       // Delete related activity log entries
       try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete activity_log entries:', e instanceof Error ? e.message : e); }
@@ -403,6 +416,36 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
       `Generated ${incidentNumber} from call ${call.call_number}`,
       req.ip || 'unknown'
     );
+
+    // ── Link all chained calls to this incident report ──
+    // Find root call (trace up through parent_call_id)
+    let rootId = call.id;
+    if (call.parent_call_id) {
+      const root = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(call.parent_call_id) as any;
+      if (root) rootId = root.id;
+    }
+    // Find all calls in the chain (root + all children)
+    const chainedCalls = db.prepare(`
+      SELECT id, call_number FROM calls_for_service
+      WHERE id = ? OR parent_call_id = ?
+      ORDER BY id ASC
+    `).all(rootId, rootId) as any[];
+
+    if (chainedCalls.length > 1) {
+      const incidentId = Number(result.lastInsertRowid);
+      const updateCase = db.prepare('UPDATE calls_for_service SET case_number = ? WHERE id = ? AND (case_number IS NULL OR case_number = ?)');
+      const linkNarrative: string[] = [`\n--- Linked Calls (${chainedCalls.length} in chain) ---`];
+      for (const cc of chainedCalls) {
+        // Set case_number on all calls in chain so they're cross-referenced
+        updateCase.run(incidentNumber, cc.id, '');
+        if (cc.id !== call.id) {
+          linkNarrative.push(`  ${cc.call_number} (linked)`);
+        }
+      }
+      // Append chain info to the incident narrative
+      db.prepare('UPDATE incidents SET narrative = narrative || ?, linked_incidents = ? WHERE id = ?')
+        .run(linkNarrative.join('\n'), JSON.stringify(chainedCalls.map((c: any) => c.call_number)), incidentId);
+    }
 
     res.status(201).json(incident);
   } catch (error: any) {

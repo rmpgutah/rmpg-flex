@@ -11,9 +11,10 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { generateCallNumber, generateCaseNumber } from '../utils/caseNumbers';
-import { broadcastDispatchUpdate } from '../utils/websocket';
+import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { auditLogSystem } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
+import { createServeQueueFromCall } from '../utils/serveQueueLinker';
 
 const router = Router();
 
@@ -79,7 +80,7 @@ function validateBearerToken(req: Request, res: Response): ApiKeyRow | null {
   }
 
   if (!row.is_active) {
-    res.status(403).json({ error: 'API key has been revoked.', code: 'API_KEY_HAS_BEEN' });
+    res.status(403).json({ error: 'API key has been revoked.', code: 'API_KEY_REVOKED' });
     return null;
   }
 
@@ -92,7 +93,7 @@ function validateBearerToken(req: Request, res: Response): ApiKeyRow | null {
   }
 
   if (!scopes.includes('service_request')) {
-    res.status(403).json({ error: 'API key does not have the required scope: service_request', code: 'API_KEY_DOES_NOT' });
+    res.status(403).json({ error: 'API key does not have the required scope: service_request', code: 'API_KEY_INSUFFICIENT_SCOPE' });
     return null;
   }
 
@@ -277,6 +278,19 @@ router.post('/', (req: Request, res: Response) => {
       `Process service intake via API (${apiKeyRow.name}): ${call_number} — Serve ${body.subject_name || 'unknown'} at ${body.subject_address || 'unknown address'}`,
     );
 
+    // Auto-send to serve queue for process service calls
+    let serveJobId: number | null = null;
+    try {
+      const fullCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      serveJobId = createServeQueueFromCall(db, fullCall);
+      if (serveJobId) {
+        broadcast('serve', 'serve_created', { id: serveJobId, call_id: callId });
+        console.log(`[Intake] Auto-sent to serve queue: serve_id=${serveJobId} call_id=${callId}`);
+      }
+    } catch (serveErr) {
+      console.error('[Intake] Auto-send to serve queue failed (non-fatal):', serveErr instanceof Error ? serveErr.message : serveErr);
+    }
+
     console.log(`[Intake] Process service received: ${call_number} (source_id: ${body.source_id}, key: ${apiKeyRow.name})`);
 
     res.status(201).json({
@@ -285,6 +299,7 @@ router.post('/', (req: Request, res: Response) => {
       call_number,
       case_number,
       status: 'pending',
+      serve_queue_id: serveJobId || undefined,
       message: 'Process service request received and dispatched',
     });
   } catch (error: any) {

@@ -65,7 +65,7 @@ function textToEmailHtml(text: string, signature?: string): string {
   escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
   escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, (_match, linkText, url) => {
     // Only allow safe URL schemes — block javascript:, data:, vbscript: etc.
-    const trimmedUrl = url.trim().toLowerCase();
+    const trimmedUrl = (url || '').trim().toLowerCase();
     if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('mailto:')) {
       // Escape URL for safe insertion into href attribute — prevents attribute injection
       const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -587,7 +587,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     const client = await getGraphClient();
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
-      .select('id,name,contentType,size,isInline,contentId')
+      .select('id,name,contentType,size,isInline')
       .get();
 
     res.json((result.value || []).map((a: any) => ({
@@ -596,7 +596,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
       contentType: a.contentType,
       size: a.size,
       isInline: a.isInline || false,
-      contentId: a.contentId,
+      contentId: a.contentId || a.id,
     })));
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -943,7 +943,11 @@ router.delete('/templates/:id', validateParamIdMiddleware, requireRole('admin', 
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
     if (!template) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
-    if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates', code: 'CANNOT_DELETE_SYSTEM_TEMPLATES' }); return; }
+    // God Mode: admin bypass — can delete system templates
+    if (template.is_system && req.user?.role !== 'admin') { res.status(400).json({ error: 'Cannot delete system templates', code: 'CANNOT_DELETE_SYSTEM_TEMPLATES' }); return; }
+    if (template.is_system && req.user?.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'email_template', parseInt(String(req.params.id), 10), `Admin God Mode: deleting system template ${template.name}`);
+    }
 
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
     auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);
@@ -1000,7 +1004,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // De-duplicate by email
     const seen = new Set<string>();
     const unique = results.filter(r => {
-      const key = r.email.toLowerCase();
+      const key = (r.email || '').toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -1168,10 +1172,14 @@ router.get('/scheduled', (req: Request, res: Response) => {
 router.delete('/scheduled/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
-      .get(req.params.id, req.user!.userId) as any;
+    const row = req.user?.role === 'admin'
+      ? db.prepare('SELECT * FROM scheduled_emails WHERE id = ?').get(req.params.id) as any
+      : db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?').get(req.params.id, req.user!.userId) as any;
     if (!row) { res.status(404).json({ error: 'Scheduled email not found', code: 'SCHEDULED_EMAIL_NOT_FOUND' }); return; }
-    if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails', code: 'CAN_ONLY_CANCEL_PENDING' }); return; }
+    if (row.status !== 'pending' && req.user?.role !== 'admin') { res.status(400).json({ error: 'Can only cancel pending emails', code: 'CAN_ONLY_CANCEL_PENDING' }); return; }
+    if (req.user?.role === 'admin' && row.status !== 'pending') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'scheduled_email', Number(req.params.id), `Admin God Mode: bypassed pending-only cancel restriction (status: ${row.status})`);
+    }
 
     db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
     res.json({ success: true });

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
 import fs from 'fs';
@@ -269,7 +270,7 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let processCount: number | null = null;
     try {
       const psOutput = execSync("ps aux --no-heading 2>/dev/null | wc -l || ps aux | wc -l", { encoding: 'utf-8', timeout: 3000 });
-      processCount = parseInt(psOutput.trim(), 10) || null;
+      const pid = parseInt(psOutput.trim(), 10); processCount = isNaN(pid) ? null : pid;
     } catch { /* ignore */ }
 
     // Read version from changelog
@@ -880,17 +881,28 @@ router.delete('/departments/:id', requireRole('admin'), (req: Request, res: Resp
     }
 
     // Check if any users are assigned to this department
+    // God Mode: admin bypass — reassign users to null dept, reparent children
     const userCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE department = ?").get(existing.name) as any;
     if (userCount.count > 0) {
-      res.status(400).json({ error: `Cannot delete department with ${userCount.count} assigned user(s)` });
-      return;
+      if (req.user?.role !== 'admin') {
+        res.status(400).json({ error: `Cannot delete department with ${userCount.count} assigned user(s)` });
+        return;
+      } else {
+        db.prepare("UPDATE users SET department = NULL WHERE department = ?").run(existing.name);
+        auditLog(req, 'ADMIN_OVERRIDE', 'department', existing.id, `Admin God Mode: reassigned ${userCount.count} user(s) to null department before deleting ${existing.name}`);
+      }
     }
 
     // Check if any child departments reference this as parent
     const childCount = db.prepare('SELECT COUNT(*) as count FROM departments WHERE parent_id = ?').get(existing.id) as any;
     if (childCount.count > 0) {
-      res.status(400).json({ error: `Cannot delete department with ${childCount.count} child department(s)` });
-      return;
+      if (req.user?.role !== 'admin') {
+        res.status(400).json({ error: `Cannot delete department with ${childCount.count} child department(s)` });
+        return;
+      } else {
+        db.prepare('UPDATE departments SET parent_id = NULL WHERE parent_id = ?').run(existing.id);
+        auditLog(req, 'ADMIN_OVERRIDE', 'department', existing.id, `Admin God Mode: reparented ${childCount.count} child department(s) before deleting ${existing.name}`);
+      }
     }
 
     db.prepare('DELETE FROM departments WHERE id = ?').run(existing.id);

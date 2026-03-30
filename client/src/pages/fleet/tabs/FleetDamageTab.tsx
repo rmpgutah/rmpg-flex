@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Plus, Wrench } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { localToday } from '../../../utils/dateUtils';
 
 interface DamageReport {
   id: number;
@@ -50,7 +51,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    damage_date: new Date().toISOString().slice(0, 10), damage_type: '', location_on_vehicle: '',
+    damage_date: localToday(), damage_type: '', location_on_vehicle: '',
     severity: 'minor', description: '', repair_estimate: '',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -59,7 +60,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     setLoading(true);
     try {
       const data = await apiFetch<DamageReport[]>(`/fleet/${vehicleId}/damage-reports`); setReports(data);
-    } finally { setLoading(false); }
+    } catch { addToast('Failed to load damage reports', 'error'); } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [vehicleId]);

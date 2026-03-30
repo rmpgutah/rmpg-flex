@@ -1,17 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
-  Loader2, Navigation, Clock, DollarSign, Gauge,
+  Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../../utils/googleMapsLoader';
+import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────
+
+interface OfficerOption {
+  id: number;
+  name: string;
+}
 
 interface ServeRoutePlannerProps {
   isOpen: boolean;
   onClose: () => void;
   jobs: ServeJob[];
+  officers?: OfficerOption[];
+  currentUserId?: number;
   onRouteOptimized: (orderedJobIds: number[], routeData: {
     totalDistance: number; // miles
     totalDuration: number; // minutes
@@ -163,6 +171,8 @@ export default function ServeRoutePlanner({
   isOpen,
   onClose,
   jobs,
+  officers,
+  currentUserId,
   onRouteOptimized,
 }: ServeRoutePlannerProps) {
   // Filter to jobs with valid coords
@@ -175,6 +185,12 @@ export default function ServeRoutePlanner({
   const [totalDuration, setTotalDuration] = useState(0); // minutes
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOfficerId, setSelectedOfficerId] = useState<number>(currentUserId || 0);
+  const [routeDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [savedRouteLoaded, setSavedRouteLoaded] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -213,6 +229,41 @@ export default function ServeRoutePlanner({
       { enableHighAccuracy: true, timeout: 10000 },
     );
   }, [isOpen]);
+
+  // Load saved route on open (Step 3.3)
+  useEffect(() => {
+    if (!isOpen || savedRouteLoaded) return;
+    const officerId = selectedOfficerId || currentUserId;
+    if (!officerId) { setSavedRouteLoaded(true); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const saved = await apiFetch<any>(`/process-server/routes/${routeDate}?officer_id=${officerId}`);
+        if (cancelled || !saved?.optimized_order_json) return;
+        const orderJson = typeof saved.optimized_order_json === 'string'
+          ? JSON.parse(saved.optimized_order_json)
+          : saved.optimized_order_json;
+        if (Array.isArray(orderJson) && orderJson.length > 0) {
+          // Reorder stops to match saved ordering
+          setStops(prev => {
+            const idToStop = new Map(prev.map(s => [s.job.id, s]));
+            const ordered: StopItem[] = [];
+            for (const id of orderJson) {
+              const s = idToStop.get(id);
+              if (s) { ordered.push({ ...s, selected: true }); idToStop.delete(id); }
+            }
+            // Append remaining stops not in saved order
+            for (const s of idToStop.values()) ordered.push(s);
+            return ordered.map((s, i) => ({ ...s, order: i }));
+          });
+        }
+        if (saved.total_distance_miles) setTotalDistance(saved.total_distance_miles);
+        if (saved.total_time_minutes) setTotalDuration(saved.total_time_minutes);
+      } catch { /* no saved route — that's fine */ }
+      setSavedRouteLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, savedRouteLoaded, selectedOfficerId, currentUserId, routeDate]);
 
   // Initialize Google Maps
   useEffect(() => {
@@ -504,15 +555,40 @@ export default function ServeRoutePlanner({
     }
   }, [stops, mapReady, currentLocation]);
 
-  const handleApplyAndClose = useCallback(() => {
-    const selectedIds = stops.filter(s => s.selected).map(s => s.job.id);
+  const handleApplyAndClose = useCallback(async () => {
+    const selectedStops = stops.filter(s => s.selected);
+    const selectedIds = selectedStops.map(s => s.job.id);
     onRouteOptimized(selectedIds, {
       totalDistance,
       totalDuration,
       fuelCost: totalDistance * IRS_MILEAGE_RATE,
     });
+
+    // Persist route to server (Step 3.2)
+    const officerId = selectedOfficerId || currentUserId;
+    if (officerId && selectedIds.length > 0) {
+      try {
+        const waypoints = selectedStops
+          .filter(s => s.job.recipient_lat != null && s.job.recipient_lng != null)
+          .map(s => ({ id: s.job.id, lat: s.job.recipient_lat, lng: s.job.recipient_lng, name: s.job.recipient_name }));
+        await apiFetch('/process-server/routes', {
+          method: 'POST',
+          body: JSON.stringify({
+            officer_id: officerId,
+            route_date: routeDate,
+            optimized_order_json: JSON.stringify(selectedIds),
+            waypoints_json: JSON.stringify(waypoints),
+            total_distance_miles: totalDistance,
+            total_time_minutes: totalDuration,
+          }),
+        });
+      } catch {
+        // Route save failed — non-fatal, local state still applied
+      }
+    }
+
     onClose();
-  }, [stops, totalDistance, totalDuration, onRouteOptimized, onClose]);
+  }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, onRouteOptimized, onClose]);
 
   // ─── Render ─────────────────────────────────────────────────────────
 
@@ -522,16 +598,32 @@ export default function ServeRoutePlanner({
   const fuelCost = totalDistance * IRS_MILEAGE_RATE;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
       <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl shadow-black/40 animate-in zoom-in-95 duration-200">
         {/* ─── Header ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-[#d4a017]" />
-            <h2 className="text-sm font-semibold text-white tracking-wide">Route Planner</h2>
+            <h2 className="text-sm font-semibold text-white tracking-wider">ROUTE PLANNER</h2>
             <span className="text-[11px] text-rmpg-500 ml-2">
               {selectedCount} of {stops.length} stops selected
             </span>
+            {/* Officer selector (Step 3.1) */}
+            {officers && officers.length > 0 && (
+              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#1e3048]">
+                <User size={12} className="text-rmpg-400" />
+                <select
+                  value={selectedOfficerId || ''}
+                  onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
+                  className="px-2 py-0.5 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                  aria-label="Select officer for route"
+                >
+                  {officers.map(o => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button type="button"
@@ -559,14 +651,14 @@ export default function ServeRoutePlanner({
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={selectAll}
-                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                 >
                   Select All
                 </button>
                 <span className="text-rmpg-600">|</span>
                 <button type="button"
                   onClick={deselectAll}
-                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                 >
                   Deselect All
                 </button>
@@ -574,7 +666,7 @@ export default function ServeRoutePlanner({
               <button type="button"
                 onClick={optimizeRoute}
                 disabled={optimizing || selectedCount < 2}
-                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-rmpg-700 disabled:text-rmpg-500 rounded-[2px] border border-emerald-500 disabled:border-rmpg-600 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 hover:shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-[#d4a017] hover:bg-[#d4a017]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 rounded-[2px] border border-[#d4a017] disabled:border-rmpg-600 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.2)]"
               >
                 {optimizing ? (
                   <><Loader2 size={12} className="animate-spin" /> Optimizing...</>
@@ -604,7 +696,7 @@ export default function ServeRoutePlanner({
                     key={stop.job.id}
                     className={`flex items-center gap-2 px-3 py-2 border-b border-[#1a2636]/50 hover:bg-[#1a2636]/60 transition-all duration-100 ${
                       !stop.selected ? 'opacity-40' : ''
-                    }`}
+                    } ${stop.job.status === 'served' ? 'bg-green-900/10' : ''}`}
                   >
                     {/* Checkbox */}
                     <button type="button" onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white transition-colors" aria-label={stop.selected ? 'Deselect stop' : 'Select stop'}>
@@ -616,8 +708,8 @@ export default function ServeRoutePlanner({
                     </button>
 
                     {/* Order Number */}
-                    <span className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold text-white"
-                      style={{ backgroundColor: stop.selected ? markerColor(stop.job.status) : '#374151' }}
+                    <span className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold text-[#d4a017] tabular-nums"
+                      style={{ backgroundColor: stop.selected ? markerColor(stop.job.status) : '#374151', boxShadow: stop.selected ? `0 0 6px ${markerColor(stop.job.status)}80` : 'none' }}
                     >
                       {idx + 1}
                     </span>
@@ -627,7 +719,7 @@ export default function ServeRoutePlanner({
                       <div className="text-xs font-medium text-white truncate">
                         {stop.job.recipient_name}
                       </div>
-                      <div className="text-[10px] text-rmpg-500 truncate">
+                      <div className={`text-[10px] text-rmpg-500 truncate ${stop.job.status === 'served' ? 'line-through' : ''}`}>
                         {stop.job.recipient_address || 'No address'}
                         {stop.job.recipient_city ? `, ${stop.job.recipient_city}` : ''}
                       </div>
@@ -642,14 +734,14 @@ export default function ServeRoutePlanner({
                       <button type="button"
                         onClick={() => moveStop(idx, -1)}
                         disabled={idx === 0}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                       >
                         <ChevronUp size={12} />
                       </button>
                       <button type="button"
                         onClick={() => moveStop(idx, 1)}
                         disabled={idx === stops.length - 1}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                       >
                         <ChevronDown size={12} />
                       </button>
@@ -679,19 +771,19 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-1.5 text-rmpg-400">
             <MapPin size={12} className="text-blue-400" />
             <span>Total stops:</span>
-            <span className="text-white font-medium">{selectedCount}</span>
+            <span className="text-white font-medium tabular-nums font-mono">{selectedCount}</span>
           </div>
           <div className="flex items-center gap-1.5 text-rmpg-400">
             <Gauge size={12} className="text-emerald-400" />
             <span>Distance:</span>
-            <span className="text-white font-medium">
+            <span className="text-white font-medium tabular-nums font-mono">
               {totalDistance > 0 ? `${totalDistance.toFixed(1)} mi` : '--'}
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-rmpg-400">
             <Clock size={12} className="text-amber-400" />
             <span>Est. time:</span>
-            <span className="text-white font-medium">
+            <span className="text-white font-medium tabular-nums font-mono">
               {totalDuration > 0
                 ? `${Math.floor(totalDuration / 60)} hr ${Math.round(totalDuration % 60)} min`
                 : '--'}
@@ -700,7 +792,7 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-1.5 text-rmpg-400">
             <DollarSign size={12} className="text-green-400" />
             <span>Fuel cost:</span>
-            <span className="text-white font-medium">
+            <span className="text-white font-medium tabular-nums font-mono">
               {fuelCost > 0 ? `$${fuelCost.toFixed(2)}` : '--'}
             </span>
           </div>

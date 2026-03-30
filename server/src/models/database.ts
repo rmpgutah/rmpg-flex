@@ -52,6 +52,7 @@ export function initDatabase(): Database.Database {
 
   createTables();
   migrateSchema();
+  ensureRequiredColumns();
   createIndexes();
   seedData();
   seedUtahStatutes(db);
@@ -3376,6 +3377,12 @@ function migrateSchema(): void {
   // ── Feature 3: Call tag system ──
   addCol('calls_for_service', 'tags', "TEXT DEFAULT '[]'");
 
+  // ── Dispatch analytics columns ──
+  addCol('calls_for_service', 'priority_score', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'response_time_seconds', 'REAL');
+  addCol('calls_for_service', 'status_changed_at', 'TEXT');
+  addCol('calls_for_service', 'onscene_duration_seconds', 'REAL');
+
   // ── Feature 5: Shift handoff notes ──
   // Stored in system_config table with config_key='shift_handoff_notes'
 
@@ -3765,6 +3772,33 @@ async function backfillBreadcrumbRoads(): Promise<void> {
     }
   } catch (err) {
     console.error('[backfill] Breadcrumb road backfill error:', (err as Error).message);
+  }
+}
+
+/** Ensure critical columns exist — prevents "no such column" runtime crashes */
+function ensureRequiredColumns(): void {
+  const required: Record<string, string[]> = {
+    calls_for_service: ['priority_score', 'response_time_seconds', 'status_changed_at'],
+  };
+  for (const [table, columns] of Object.entries(required)) {
+    const existing = new Set(
+      (db.prepare(`PRAGMA table_info(${table})`).all() as any[]).map(r => r.name)
+    );
+    for (const col of columns) {
+      if (!existing.has(col)) {
+        const colType = col.includes('score') ? 'INTEGER DEFAULT 0'
+          : col.includes('seconds') ? 'REAL DEFAULT NULL'
+          : 'TEXT';
+        try {
+          db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${colType}`).run();
+          console.log(`[Schema] Added missing column ${table}.${col} (${colType})`);
+        } catch (e: any) {
+          if (!e?.message?.includes('duplicate column')) {
+            console.error(`[Schema] Failed to add ${table}.${col}:`, e?.message);
+          }
+        }
+      }
+    }
   }
 }
 

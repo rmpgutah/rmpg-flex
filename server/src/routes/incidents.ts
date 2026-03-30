@@ -207,7 +207,7 @@ router.get('/stats', (req: Request, res: Response) => {
 });
 
 // GET /api/incidents/export - Export incidents as CSV
-router.get('/export', (req: Request, res: Response) => {
+router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, officerId, startDate, endDate } = req.query;
@@ -434,7 +434,8 @@ router.post('/', (req: Request, res: Response) => {
         road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
         patient_status, ems_transport, patient_vitals, treatment_rendered,
         trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
-        force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts)
+        force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
+        created_at)
       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
@@ -445,7 +446,8 @@ router.post('/', (req: Request, res: Response) => {
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?, ?)
+        ?, ?, ?, ?, ?,
+        ?)
     `).run(
       incidentNumber, call_id || null, incident_type, priority || 'P3',
       location_address || null, property_id || null, latitude || null,
@@ -463,7 +465,12 @@ router.post('/', (req: Request, res: Response) => {
       patient_status || null, ems_transport || null, patient_vitals || null, treatment_rendered || null,
       trespass_warning_issued ? 1 : 0, trespass_effective_date || null, trespass_expiry_date || null, property_boundaries || null,
       force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
+      (req.user?.role === 'admin' && req.body.created_at) ? req.body.created_at : localNow(),
     );
+
+    if (req.user?.role === 'admin' && req.body.created_at) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', 0, `Admin God Mode: overrode created_at to ${req.body.created_at} on new incident`);
+    }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
 
@@ -556,11 +563,23 @@ router.put('/:id', (req: Request, res: Response) => {
       }
     }
 
+    // Admin can override updated_at timestamp
+    const effectiveUpdatedAt = (req.user?.role === 'admin' && req.body.updated_at) ? req.body.updated_at : localNow();
+
     if (iFields.length > 0) {
       iFields.push("updated_at = ?");
-      iValues.push(localNow());
+      iValues.push(effectiveUpdatedAt);
       iValues.push(req.params.id);
       db.prepare(`UPDATE incidents SET ${iFields.join(', ')} WHERE id = ?`).run(...iValues);
+      if (req.user?.role === 'admin' && req.body.updated_at) {
+        auditLog(req, 'ADMIN_OVERRIDE', 'incident', Number(req.params.id), `Admin God Mode: overrode updated_at to ${req.body.updated_at}`);
+      }
+    }
+
+    // Admin can override incident_number
+    if (req.user?.role === 'admin' && req.body.incident_number) {
+      db.prepare('UPDATE incidents SET incident_number = ? WHERE id = ?').run(req.body.incident_number, req.params.id);
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', Number(req.params.id), `Admin God Mode: overrode incident_number to ${req.body.incident_number}`);
     }
 
     // Activity log
@@ -587,9 +606,14 @@ router.delete('/:id', (req: Request, res: Response) => {
       return;
     }
 
-    if (incident.status !== 'draft') {
-      res.status(403).json({ error: 'Can only delete draft incidents', code: 'CAN_ONLY_DELETE_DRAFT' });
-      return;
+    // God Mode: admin bypass — can delete any incident regardless of status
+    if (req.user?.role !== 'admin') {
+      if (incident.status !== 'draft') {
+        res.status(403).json({ error: 'Can only delete draft incidents', code: 'CAN_ONLY_DELETE_DRAFT' });
+        return;
+      }
+    } else if (incident.status !== 'draft') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin God Mode: bypassed draft-only delete restriction (status: ${incident.status})`);
     }
 
     if (incident.officer_id !== req.user!.userId && !['admin', 'manager'].includes(req.user!.role)) {
@@ -624,8 +648,11 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) { res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }); return; }
     if (incident.archived_at) { res.status(400).json({ error: 'Incident is already archived', code: 'INCIDENT_IS_ALREADY_ARCHIVED' }); return; }
-    if (['draft', 'submitted'].includes(incident.status)) {
+    if (['draft', 'submitted'].includes(incident.status) && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'Can only archive approved or closed incidents', code: 'CAN_ONLY_ARCHIVE_APPROVED' }); return;
+    }
+    if (req.user?.role === 'admin' && ['draft', 'submitted'].includes(incident.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin God Mode: bypassed archive status restriction (status: ${incident.status})`);
     }
     const now = localNow();
     db.prepare('UPDATE incidents SET archived_at = ? WHERE id = ?').run(now, incident.id);
@@ -667,9 +694,12 @@ router.put('/:id/submit', (req: Request, res: Response) => {
       return;
     }
 
-    if (!['draft', 'returned'].includes(incident.status)) {
+    if (!['draft', 'returned'].includes(incident.status) && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'Can only submit draft or returned incidents', code: 'CAN_ONLY_SUBMIT_DRAFT' });
       return;
+    }
+    if (req.user?.role === 'admin' && !['draft', 'returned'].includes(incident.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin God Mode: bypassed draft/returned-only submit restriction (status: ${incident.status})`);
     }
 
     if (!incident.narrative || incident.narrative.trim().length === 0) {

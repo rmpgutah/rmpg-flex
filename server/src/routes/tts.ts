@@ -38,12 +38,12 @@ router.post('/', async (req: Request, res: Response) => {
     const { text, urgent } = req.body;
 
     if (!text || typeof text !== 'string') {
-      res.status(400).json({ error: 'text is required and must be a string' });
+      res.status(400).json({ error: 'text is required and must be a string', code: 'TTS_MISSING_TEXT' });
       return;
     }
 
     if (text.length > 1500) {
-      res.status(400).json({ error: 'text must be 1500 characters or less' });
+      res.status(400).json({ error: 'text must be 1500 characters or less', code: 'TTS_TEXT_TOO_LONG' });
       return;
     }
 
@@ -81,7 +81,7 @@ router.post('/', async (req: Request, res: Response) => {
     const audioBuffer = Buffer.concat(buffers);
 
     if (audioBuffer.length === 0) {
-      res.status(502).json({ error: 'TTS engine returned no audio' });
+      res.status(502).json({ error: 'TTS engine returned no audio', code: 'TTS_NO_AUDIO' });
       return;
     }
 
@@ -93,7 +93,7 @@ router.post('/', async (req: Request, res: Response) => {
     res.send(audioBuffer);
   } catch (err: any) {
     console.error('[TTS] Edge-TTS error:', err?.message || err);
-    res.status(500).json({ error: 'TTS generation failed' });
+    res.status(500).json({ error: 'TTS generation failed', code: 'TTS_GENERATION_ERROR' });
   }
 });
 

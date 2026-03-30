@@ -96,7 +96,7 @@ interface PersonHistoryPanelProps {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

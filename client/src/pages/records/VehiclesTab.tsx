@@ -18,6 +18,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -291,7 +292,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
 // Feature 22: Plate Lookup Panel
 // ════════════════════════════════════════════════════
 
-function PlateLookupPanel() {
+function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>) => void }) {
   const [plate, setPlate] = useState('');
   const [plateState, setPlateState] = useState('');
   const [results, setResults] = useState<any[]>([]);
@@ -299,24 +300,55 @@ function PlateLookupPanel() {
   const [expanded, setExpanded] = useState(false);
   // Feature 32: BOLO matches
   const [boloMatches, setBoloMatches] = useState<any[]>([]);
+  // Multi-source plate check results
+  const [plateCheckResults, setPlateCheckResults] = useState<any[]>([]);
+  const [plateCheckSources, setPlateCheckSources] = useState<string[]>([]);
 
   const handleLookup = async () => {
     if (plate.trim().length < 2) return;
     setLoading(true);
     try {
-      const [vehicleRes, boloRes] = await Promise.all([
+      const [vehicleRes, boloRes, plateCheckRes] = await Promise.all([
         apiFetch<any[]>(`/records/vehicles/plate-lookup?plate=${encodeURIComponent(plate.trim())}${plateState ? `&state=${encodeURIComponent(plateState)}` : ''}`),
         apiFetch<any>(`/records/vehicles/bolo-check?plate=${encodeURIComponent(plate.trim())}`),
+        apiFetch<any>('/records/plate-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plate: plate.trim(), state: plateState || undefined }),
+        }).catch(() => null),
       ]);
       setResults(Array.isArray(vehicleRes) ? vehicleRes : []);
       setBoloMatches(boloRes?.matches || []);
+      setPlateCheckResults(plateCheckRes?.results || []);
+      setPlateCheckSources(plateCheckRes?.sources || []);
     } catch {
       setResults([]);
       setBoloMatches([]);
+      setPlateCheckResults([]);
+      setPlateCheckSources([]);
     } finally {
       setLoading(false);
     }
   };
+
+  const handleAutoFillFromResult = (v: any) => {
+    if (!onAutoFill) return;
+    onAutoFill({
+      license_plate: v.plate_number || v.license_plate || '',
+      plate_state: v.state || v.plate_state || '',
+      make: v.make || '',
+      model: v.model || '',
+      year: v.year || 0,
+      color: v.color || '',
+      vin: v.vin || '',
+      owner_name: v.registered_owner || (v.owner_first_name ? `${v.owner_first_name} ${v.owner_last_name || ''}`.trim() : ''),
+      body_style: v.vehicle_type || v.body_style || '',
+      notes: v.source ? `Auto-filled from ${v.source}` : '',
+    } as Partial<Vehicle>);
+  };
+
+  // Merge all results for display, dedup by plate+source
+  const allDisplayResults = [...results.map(r => ({ ...r, source: 'local' })), ...plateCheckResults.filter(pc => pc.source !== 'local_vehicles')];
 
   return (
     <div className="border-b border-rmpg-600">
@@ -325,7 +357,10 @@ function PlateLookupPanel() {
         className="w-full px-3 py-1.5 flex items-center gap-2 text-[10px] text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30 transition-colors"
       >
         <Shield className="w-3 h-3" />
-        <span className="font-bold">Plate Lookup / BOLO Check</span>
+        <span className="font-bold">Plate Check / BOLO Check</span>
+        {plateCheckSources.length > 0 && (
+          <span className="text-[8px] px-1 py-0.5 bg-green-900/30 text-green-400 rounded-sm">{plateCheckSources.length} sources</span>
+        )}
         <span className="ml-auto">{expanded ? '−' : '+'}</span>
       </button>
       {expanded && (
@@ -349,7 +384,7 @@ function PlateLookupPanel() {
               onChange={(e) => setPlateState(e.target.value.toUpperCase())}
             />
             <button type="button" onClick={handleLookup} className="toolbar-btn text-[9px]" disabled={loading || plate.trim().length < 2}>
-              {loading ? '...' : 'Search'}
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Search'}
             </button>
           </div>
           {/* BOLO Warning */}
@@ -365,20 +400,38 @@ function PlateLookupPanel() {
               ))}
             </div>
           )}
-          {/* Results */}
-          {results.length > 0 && (
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {results.map((v: any) => (
-                <div key={v.id} className="text-[10px] p-1.5 bg-surface-sunken border border-rmpg-600 rounded-sm">
-                  <div className="font-bold text-green-400 font-mono">{v.plate_number} {v.state}</div>
+          {/* Multi-source Results */}
+          {allDisplayResults.length > 0 && (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {allDisplayResults.map((v: any, idx: number) => (
+                <div key={`${v.source}-${v.id || idx}`} className="text-[10px] p-1.5 bg-surface-sunken border border-rmpg-600 rounded-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[8px] px-1 py-0.5 bg-[#1a2636] text-rmpg-400 rounded-sm">{v.source}</span>
+                      {onAutoFill && (
+                        <button
+                          type="button"
+                          onClick={() => handleAutoFillFromResult(v)}
+                          className="text-[8px] px-1.5 py-0.5 bg-brand-600/30 hover:bg-brand-600/50 text-brand-300 rounded-sm transition-colors"
+                          title="Auto-fill new vehicle form with this data"
+                        >
+                          Auto-Fill
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div className="text-rmpg-300">{v.year} {v.make} {v.model} {v.color}</div>
-                  {v.owner_first_name && <div className="text-rmpg-400">Owner: {v.owner_first_name} {v.owner_last_name}</div>}
+                  {(v.registered_owner || v.owner_first_name) && (
+                    <div className="text-rmpg-400">Owner: {v.registered_owner || `${v.owner_first_name} ${v.owner_last_name || ''}`}</div>
+                  )}
+                  {v.vin && <div className="text-rmpg-500 font-mono text-[9px]">VIN: {v.vin}</div>}
                 </div>
               ))}
             </div>
           )}
-          {results.length === 0 && plate.trim().length >= 2 && !loading && (
-            <div className="text-[9px] text-rmpg-500">No records found</div>
+          {allDisplayResults.length === 0 && plate.trim().length >= 2 && !loading && (
+            <div className="text-[9px] text-rmpg-500">No records found across any source</div>
           )}
         </div>
       )}
@@ -391,6 +444,7 @@ function PlateLookupPanel() {
 // ════════════════════════════════════════════════════
 
 export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
+  const { user } = useAuth();
   const {
     filteredVehicles, selectedVehicle, setSelectedVehicle,
     searchQuery, setSearchQuery, showArchived,
@@ -419,8 +473,18 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
         </div>
       </div>
 
-      {/* Feature 22: Plate Lookup Section */}
-      <PlateLookupPanel />
+      {/* Feature 22: Plate Lookup / Plate Check Section */}
+      <PlateLookupPanel onAutoFill={(data) => {
+        // Open the vehicle form modal pre-filled with plate check data
+        openEditVehicle({
+          id: '', license_plate: data.license_plate || '', plate_state: data.plate_state || 'UT',
+          make: data.make || '', model: data.model || '', year: data.year || 0,
+          color: data.color || '', vin: data.vin || '',
+          notes: data.notes || '',
+          secondary_color: '', body_style: (data as any).vehicle_type || '',
+          incident_ids: [], flags: [], created_at: '', updated_at: '',
+        } as Vehicle);
+      }} />
 
       {/* Vehicle List */}
       <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Vehicle records">
@@ -494,7 +558,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                   </div>
                 )}
                 <div className="flex items-center gap-1">
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
@@ -502,12 +566,12 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                   <button type="button" onClick={(e) => { e.stopPropagation(); openRecordWindow('vehicle', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Open in Window">
                     <ExternalLink className="w-3 h-3" />
                   </button>
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vehicle', id: v.id, label: `${v.license_plate} ${v.make} ${v.model}` }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   )}
-                  {!showArchived && (
+                  {(!showArchived || user?.role === 'admin') && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
                       <Archive className="w-3 h-3" />
                     </button>

@@ -81,9 +81,9 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
 
   useEffect(() => {
     if (!detail?.id) return;
-    apiFetch<any>(`/api/fleet/${detail.id}/fuel-efficiency`).then((d: any) => d && setFuelEfficiency(d)).catch(() => {});
-    apiFetch<any>(`/api/fleet/${detail.id}/maintenance-costs`).then((d: any) => d && setMaintenanceCosts(d)).catch(() => {});
-    apiFetch<any>(`/api/fleet/${detail.id}/mileage-history`).then((d: any) => Array.isArray(d) && setMileageHistory(d)).catch(() => {});
+    apiFetch<any>(`/fleet/${detail.id}/fuel-efficiency`).then((d: any) => d && setFuelEfficiency(d)).catch(() => {});
+    apiFetch<any>(`/fleet/${detail.id}/maintenance-costs`).then((d: any) => d && setMaintenanceCosts(d)).catch(() => {});
+    apiFetch<any>(`/fleet/${detail.id}/mileage-history`).then((d: any) => Array.isArray(d) && setMileageHistory(d)).catch(() => {});
   }, [detail?.id]);
 
   return (

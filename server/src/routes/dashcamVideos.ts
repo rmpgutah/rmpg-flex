@@ -954,4 +954,18 @@ router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'su
   }
 });
 
+// POST /api/fleet/dashcam-videos/:id/burn — Queue HUD burn for a video
+router.post('/:id/burn', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    db.prepare("UPDATE dashcam_videos SET burn_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(id);
+    res.json({ success: true, message: 'HUD burn queued' });
+  } catch (error: any) {
+    console.error('Dashcam burn error:', error);
+    res.status(500).json({ error: 'Failed to queue burn', code: 'DASHCAM_BURN_ERROR' });
+  }
+});
+
 export default router;

@@ -10,6 +10,7 @@ import { AlertTriangle, Shield, FileWarning, User, Scale, Ban, MapPin } from 'lu
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
 import { announceScreeningAlerts } from '../utils/voiceAlerts';
+import { safeDateStr } from '../utils/dateUtils';
 
 interface ScreeningPerson {
   person: {
@@ -178,7 +179,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
               </span>
               {item.person.dob && (
                 <span className="text-[10px] text-rmpg-400">
-                  DOB: {new Date(item.person.dob).toLocaleDateString()}
+                  DOB: {safeDateStr(item.person.dob)}
                 </span>
               )}
             </div>

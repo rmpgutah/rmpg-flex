@@ -7,9 +7,10 @@ import { sendCsv } from '../../utils/csvExport';
 import { localNow, localToday } from '../../utils/timeUtils';
 import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
-import { broadcastDispatchUpdate } from '../../utils/websocket';
+import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
+import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
 import { findNearestUnits } from '../../utils/proximityAlerts';
@@ -322,7 +323,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     }
 
     // Fix 51: Normalize incident_type for consistent heatmap grouping (trim, lowercase)
-    const normalizedIncidentType = String(incident_type).trim().toLowerCase().replace(/\s+/g, '_');
+    const normalizedIncidentType = String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_');
 
     // Generate call number: YY-CFS#####
     const callNumber = generateCallNumber(db);
@@ -352,11 +353,30 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     const status = customStatus && validStatuses.includes(customStatus) ? customStatus : 'pending';
 
-    // Auto-resolve client_id from property if not provided
+    // Auto-resolve client_id, lat/lng, and address from property if not provided
     let resolvedClientId = requestClientId || null;
-    if (!resolvedClientId && property_id) {
-      const prop = db.prepare('SELECT client_id FROM properties WHERE id = ?').get(property_id) as any;
-      if (prop) resolvedClientId = prop.client_id;
+    let resolvedLat = latitude != null ? Number(latitude) : null;
+    let resolvedLng = longitude != null ? Number(longitude) : null;
+    let resolvedAddress = location_address;
+    if (property_id) {
+      const prop = db.prepare('SELECT client_id, latitude, longitude, address, name, gate_code, alarm_code, access_instructions, hazard_notes FROM properties WHERE id = ?').get(property_id) as any;
+      if (prop) {
+        if (!resolvedClientId) resolvedClientId = prop.client_id;
+        // Auto-fill coordinates from property if not explicitly provided
+        if (resolvedLat == null && prop.latitude != null) resolvedLat = Number(prop.latitude);
+        if (resolvedLng == null && prop.longitude != null) resolvedLng = Number(prop.longitude);
+        // Auto-fill address from property if not explicitly provided
+        if (!resolvedAddress && prop.address) resolvedAddress = prop.address;
+        // Auto-populate description with property details for dispatch reference
+        if (!description && (prop.gate_code || prop.alarm_code || prop.access_instructions || prop.hazard_notes)) {
+          const details: string[] = [];
+          if (prop.gate_code) details.push(`Gate: ${prop.gate_code}`);
+          if (prop.alarm_code) details.push(`Alarm: ${prop.alarm_code}`);
+          if (prop.access_instructions) details.push(`Access: ${prop.access_instructions}`);
+          if (prop.hazard_notes) details.push(`HAZARD: ${prop.hazard_notes}`);
+          req.body.description = details.join(' | ');
+        }
+      }
     }
 
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier dispatch districts ──
@@ -369,9 +389,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let autoZoneName: string | null = null;
     let autoBeatName: string | null = null;
     let autoBeatDescriptor: string | null = null;
-    if (latitude != null && longitude != null) {
+    if (resolvedLat != null && resolvedLng != null) {
       try {
-        const beat = identifyBeat(Number(latitude), Number(longitude));
+        const beat = identifyBeat(resolvedLat, resolvedLng);
         if (beat) {
           if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
 
@@ -459,11 +479,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         caller_phone: caller_phone || null,
         caller_relationship: caller_relationship || null,
         caller_address: caller_address || null,
-        location_address,
+        location_address: resolvedAddress,
         property_id: property_id || null,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
-        description: description || null,
+        latitude: resolvedLat ?? null,
+        longitude: resolvedLng ?? null,
+        description: req.body.description || description || null,
         notes: notes || null,
         source: source || 'phone',
         dispatcher_id: req.user!.userId,
@@ -629,6 +649,19 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         `${call.incident_type} — ${call.location_address || 'No address'}`,
         'call', call.id, 'critical', 'dispatch.call_priority_p1', req.user!.userId,
       );
+    }
+
+    // Auto-send to serve queue for PSO / process service calls
+    if (['pso_client_request', 'process_service'].includes(normalizedIncidentType)) {
+      try {
+        const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) as any;
+        const serveJobId = createServeQueueFromCall(db, newCall, req.user!.userId);
+        if (serveJobId) {
+          broadcast('serve', 'serve_created', { id: serveJobId, call_id: call.id });
+        }
+      } catch (serveErr) {
+        console.error('[Dispatch] Auto-send to serve queue failed (non-fatal):', serveErr instanceof Error ? serveErr.message : serveErr);
+      }
     }
 
     // Upgrade 13: Include duplicate warning and estimated response time in response
@@ -870,6 +903,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       cross_street, location_building, location_floor, location_room,
       weapons_involved, injuries_reported, num_subjects,
       subject_description, vehicle_description, direction_of_travel,
+      case_number, case_id,
       source, caller_address, zone_beat, section_id, zone_id, beat_id, responding_officer, secondary_type,
       contact_method, scene_safety, weather_conditions, lighting_conditions,
       num_victims, alcohol_involved, drugs_involved, domestic_violence,
@@ -965,13 +999,18 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
         return;
       }
       // Prevent backward transitions from terminal states via direct PUT
+      // God Mode: admin bypass — can change status from archived
       const TERMINAL_STATUSES = ['archived'];
       if (TERMINAL_STATUSES.includes(call.status) && status !== 'closed') {
-        res.status(400).json({
-          error: `Cannot change status from '${call.status}' to '${status}' via update. Use the unarchive endpoint instead.`,
-          code: 'INVALID_STATUS_TRANSITION',
-        });
-        return;
+        if (req.user?.role !== 'admin') {
+          res.status(400).json({
+            error: `Cannot change status from '${call.status}' to '${status}' via update. Use the unarchive endpoint instead.`,
+            code: 'INVALID_STATUS_TRANSITION',
+          });
+          return;
+        } else {
+          auditLog(req, 'ADMIN_OVERRIDE', 'call', call.id, `Admin God Mode: bypassed archived status transition (${call.status} -> ${status})`);
+        }
       }
     }
 
@@ -1001,8 +1040,13 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('caller_relationship', caller_relationship);
     addField('location_address', location_address);
     addField('property_id', property_id);
-    addField('latitude', latitude);
-    addField('longitude', longitude);
+    // Protect lat/lng from being wiped — only update if a real numeric value is provided
+    if (latitude !== undefined && latitude !== null && latitude !== '') {
+      updates.push('latitude = ?'); params.push(Number(latitude));
+    }
+    if (longitude !== undefined && longitude !== null && longitude !== '') {
+      updates.push('longitude = ?'); params.push(Number(longitude));
+    }
     addField('description', description);
     addField('notes', notes);
     addField('disposition', disposition);
@@ -1057,6 +1101,8 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('le_notified', le_notified !== undefined ? toBoolInt(le_notified) : undefined);
     addField('le_agency', le_agency === 'None' ? null : le_agency);
     addField('le_case_number', le_case_number);
+    addField('case_number', case_number);
+    addField('case_id', case_id);
     addField('damage_estimate', damage_estimate);
     addField('damage_description', damage_description);
     addField('action_taken', action_taken);
@@ -1094,6 +1140,19 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('process_served_at', process_served_at);
     addField('process_service_result', process_service_result);
     addField('client_id', resolvedUpdateClientId);
+
+    // ── Admin/Manager timeline override: allow editing dispatch timestamps ──
+    if (['admin', 'manager'].includes(req.user?.role || '')) {
+      const { dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, created_at: created_at_override, received_at } = req.body;
+      const isValidIso = (v: any) => typeof v === 'string' && v.length >= 10 && !isNaN(new Date(v).getTime());
+      if (received_at !== undefined) { if (received_at === null || received_at === '') { updates.push('received_at = NULL'); } else if (isValidIso(received_at)) { addField('received_at', received_at); } }
+      if (dispatched_at !== undefined) { if (dispatched_at === null || dispatched_at === '') { updates.push('dispatched_at = NULL'); } else if (isValidIso(dispatched_at)) { addField('dispatched_at', dispatched_at); } }
+      if (enroute_at !== undefined) { if (enroute_at === null || enroute_at === '') { updates.push('enroute_at = NULL'); } else if (isValidIso(enroute_at)) { addField('enroute_at', enroute_at); } }
+      if (onscene_at !== undefined) { if (onscene_at === null || onscene_at === '') { updates.push('onscene_at = NULL'); } else if (isValidIso(onscene_at)) { addField('onscene_at', onscene_at); } }
+      if (cleared_at !== undefined) { if (cleared_at === null || cleared_at === '') { updates.push('cleared_at = NULL'); } else if (isValidIso(cleared_at)) { addField('cleared_at', cleared_at); } }
+      if (closed_at !== undefined) { if (closed_at === null || closed_at === '') { updates.push('closed_at = NULL'); } else if (isValidIso(closed_at)) { addField('closed_at', closed_at); } }
+      if (created_at_override !== undefined && isValidIso(created_at_override)) { addField('created_at', created_at_override); }
+    }
 
     // Upgrade 17: Track status_changed_at on every status change
     if (status !== undefined && status !== call.status) {
@@ -1134,7 +1193,24 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       VALUES (?, 'call_updated', 'call', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Updated call ${call.call_number}: ${changedFields.join(', ')} (${changedFields.length} field(s))`, req.ip || 'unknown');
 
-    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    // Return the full enriched row (same JOINs as GET /calls/:id) so the client gets
+    // computed fields like property_name, client_name, dispatcher_name, incident_number
+    const updated = db.prepare(`
+      SELECT c.*, p.name as property_name, p.address as property_address,
+        u.full_name as dispatcher_name,
+        cl.name as client_name,
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number,
+        (SELECT COUNT(*) FROM call_persons cp
+          JOIN persons per ON cp.person_id = per.id
+          WHERE cp.call_id = c.id
+            AND per.flags IS NOT NULL
+            AND per.flags LIKE '%ACTIVE_WARRANT%') as has_active_warrant
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.id = ?
+    `).get(req.params.id) as any;
 
     // If location changed but no coordinates provided, geocode asynchronously
     if (location_address && latitude == null && longitude == null) {
@@ -1185,59 +1261,55 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
   }
 });
 
-// POST /api/dispatch/calls/:id/redispatch - Re-dispatch a PSO call (increment attempt)
+// POST /api/dispatch/calls/:id/redispatch - Re-dispatch creates a NEW linked call
 router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
-  // Note: primary handler is now at top-level in index.ts — this is a fallback
   try {
     const db = getDb();
-    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) {
+    const parentCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!parentCall) {
       res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
-    // Only allow re-dispatch on PSO Client Request incidents
-    if (call.incident_type !== 'pso_client_request') {
-      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request calls', code: 'REDISPATCH_IS_ONLY_AVAILABLE' });
+    // Allow re-dispatch on PSO and process_service calls
+    if (!['pso_client_request', 'process_service'].includes(parentCall.incident_type)) {
+      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' });
       return;
     }
 
     // Only allow re-dispatch on completed/inactive calls
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
-      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_CLEARED' });
+    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(parentCall.status)) {
+      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' });
       return;
     }
 
     const now = localNow();
-    const currentAttempt = call.pso_attempt_number || 1;
+    const currentAttempt = parentCall.pso_attempt_number || 1;
     const newAttempt = currentAttempt + 1;
 
-    // Ordinal suffix for note
-    const ordinal = (n: number) => {
-      const s = ['th', 'st', 'nd', 'rd'];
-      const v = n % 100;
-      if (v >= 11 && v <= 13) return n + 'th';
-      return n + (s[n % 10] || s[0]);
-    };
+    // Find the root call in the chain (trace back through parent_call_id)
+    let rootCallId = parentCall.id;
+    let rootCallNumber = parentCall.call_number;
+    if (parentCall.parent_call_id) {
+      const rootCall = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(parentCall.parent_call_id) as any;
+      if (rootCall) { rootCallId = rootCall.id; rootCallNumber = rootCall.call_number; }
+    }
 
-    // ── Snapshot current visit into history BEFORE resetting ──
-    // Get assigned unit call signs for the snapshot
+    // Snapshot current visit into visit history for the parent call
     let assignedCallSigns: string[] = [];
     try {
-      const parsedIds = JSON.parse(call.assigned_unit_ids || '[]');
+      const parsedIds = JSON.parse(parentCall.assigned_unit_ids || '[]');
       const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
       if (unitIds.length) {
-        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})
-          LIMIT 1000
-        `).all(...unitIds) as any[];
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')}) LIMIT 100`).all(...unitIds) as any[];
         assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
       }
     } catch (parseErr) { console.error(`[Calls] Failed to parse assigned_unit_ids for redispatch:`, parseErr instanceof Error ? parseErr.message : parseErr); }
 
-    // Classify this visit's time window for PSO compliance tracking
-    const attemptTime = call.onscene_at || call.cleared_at || call.closed_at || now;
+    const attemptTime = parentCall.onscene_at || parentCall.cleared_at || parentCall.closed_at || now;
     const { window: timeWindow, isWeekend } = classifyServiceWindow(attemptTime);
 
+    // Save visit history snapshot
     db.prepare(`
       INSERT INTO call_visit_history
         (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
@@ -1245,65 +1317,257 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
          time_window, is_weekend)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      req.params.id, currentAttempt, call.status,
-      call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at,
-      JSON.stringify(assignedCallSigns), call.responding_vehicle_id || null,
-      call.starting_mileage ?? null, call.ending_mileage ?? null,
-      call.disposition || null, null, req.user?.fullName || 'Dispatch', now,
+      parentCall.id, currentAttempt, parentCall.status,
+      parentCall.dispatched_at, parentCall.enroute_at, parentCall.onscene_at, parentCall.cleared_at, parentCall.closed_at,
+      JSON.stringify(assignedCallSigns), parentCall.responding_vehicle_id || null,
+      parentCall.starting_mileage ?? null, parentCall.ending_mileage ?? null,
+      parentCall.disposition || null, null, req.user?.fullName || 'Dispatch', now,
       timeWindow, isWeekend ? 1 : 0
     );
 
-    // Parse existing notes to append re-dispatch note
-    let notes: any[] = [];
-    if (call.notes) {
-      try { notes = JSON.parse(call.notes); } catch { notes = []; }
+    // Generate new call number
+    const year = new Date().getFullYear().toString().slice(-2);
+    const lastCall = db.prepare(`SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`).get(`${year}-CFS%`) as any;
+    let nextSeq = 1;
+    if (lastCall?.call_number) {
+      const parsed = parseInt(lastCall.call_number.replace(`${year}-CFS`, ''), 10);
+      if (!isNaN(parsed)) nextSeq = parsed + 1;
     }
+    const newCallNumber = `${year}-CFS${String(nextSeq).padStart(5, '0')}`;
+
     const { scheduled_note } = req.body || {};
+    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n%100; return n + (v>=11&&v<=13 ? 'th' : (s[n%10]||s[0])); };
     const noteText = scheduled_note
-      ? `Re-dispatched — ${ordinal(newAttempt)} visit. Note: ${scheduled_note}`
-      : `Re-dispatched — ${ordinal(newAttempt)} visit`;
-    notes.push({
+      ? `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt. Note: ${scheduled_note}`
+      : `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt`;
+
+    const initialNotes = JSON.stringify([{
       id: String(Date.now()),
       author: req.user?.fullName || 'Dispatch',
       text: noteText,
       timestamp: now,
-      created_at: now,
+    }]);
+
+    // Create the NEW call linked to parent — copy ALL relevant fields
+    const result = db.prepare(`
+      INSERT INTO calls_for_service (
+        call_number, incident_type, priority, status, source,
+        caller_name, caller_phone, caller_relationship, caller_address,
+        location_address, property_id, client_id, latitude, longitude,
+        cross_street, location_building, location_floor, location_room,
+        description, notes, parent_call_id, pso_attempt_number,
+        pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+        pso_service_type, pso_billing_code, pso_authorization,
+        pso_service_windows,
+        process_service_type, process_served_to, process_served_address,
+        dispatch_code, section_id, section_name, zone_id, zone_name,
+        beat_id, beat_name, beat_descriptor, contract_id,
+        num_subjects, num_victims, direction_of_travel,
+        subject_description, vehicle_description,
+        scene_safety, weather_conditions, lighting_conditions,
+        injuries_reported, alcohol_involved, domestic_violence, drugs_involved,
+        weapons_involved, mental_health_crisis, juvenile_involved,
+        felony_in_progress, officer_safety_caution, gang_related,
+        k9_requested, ems_requested, fire_requested, hazmat,
+        case_number, le_agency, le_case_number, le_notified,
+        secondary_type, contact_method, tags,
+        dispatcher_id, created_at, updated_at, received_at
+      ) VALUES (
+        ?, ?, ?, 'pending', ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?
+      )
+    `).run(
+      newCallNumber, parentCall.incident_type, parentCall.priority, parentCall.source || 'dispatch',
+      parentCall.caller_name, parentCall.caller_phone, parentCall.caller_relationship, parentCall.caller_address,
+      parentCall.location_address, parentCall.property_id, parentCall.client_id, parentCall.latitude, parentCall.longitude,
+      parentCall.cross_street, parentCall.location_building, parentCall.location_floor, parentCall.location_room,
+      parentCall.description, initialNotes, rootCallId, newAttempt,
+      parentCall.pso_requestor_name, parentCall.pso_requestor_phone, parentCall.pso_requestor_email,
+      parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
+      parentCall.pso_service_windows,
+      parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
+      parentCall.dispatch_code, parentCall.section_id, parentCall.section_name, parentCall.zone_id, parentCall.zone_name,
+      parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
+      parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
+      parentCall.subject_description, parentCall.vehicle_description,
+      parentCall.scene_safety, parentCall.weather_conditions, parentCall.lighting_conditions,
+      parentCall.injuries_reported, parentCall.alcohol_involved, parentCall.domestic_violence, parentCall.drugs_involved,
+      parentCall.weapons_involved, parentCall.mental_health_crisis, parentCall.juvenile_involved,
+      parentCall.felony_in_progress, parentCall.officer_safety_caution, parentCall.gang_related,
+      parentCall.k9_requested, parentCall.ems_requested, parentCall.fire_requested, parentCall.hazmat,
+      parentCall.case_number, parentCall.le_agency, parentCall.le_case_number, parentCall.le_notified,
+      parentCall.secondary_type, parentCall.contact_method, parentCall.tags,
+      req.user!.userId, now, now, now
+    );
+
+    const newCallId = result.lastInsertRowid;
+
+    // Copy linked persons from parent call
+    try {
+      const parentPersons = db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(parentCall.id) as any[];
+      const insertPerson = db.prepare('INSERT INTO call_persons (call_id, person_id, role, notes) VALUES (?, ?, ?, ?)');
+      for (const p of parentPersons) {
+        try { insertPerson.run(newCallId, p.person_id, p.role, p.notes); } catch { /* skip duplicates */ }
+      }
+    } catch (e) { console.error('[Calls] Copy linked persons for redispatch:', e instanceof Error ? e.message : e); }
+
+    // Copy linked vehicles from parent call
+    try {
+      const parentVehicles = db.prepare('SELECT vehicle_id, role, notes FROM call_vehicles WHERE call_id = ?').all(parentCall.id) as any[];
+      const insertVehicle = db.prepare('INSERT INTO call_vehicles (call_id, vehicle_id, role, notes) VALUES (?, ?, ?, ?)');
+      for (const v of parentVehicles) {
+        try { insertVehicle.run(newCallId, v.vehicle_id, v.role, v.notes); } catch { /* skip duplicates */ }
+      }
+    } catch (e) { console.error('[Calls] Copy linked vehicles for redispatch:', e instanceof Error ? e.message : e); }
+
+    // Mark parent call with a back-link note
+    let parentNotes: any[] = [];
+    try { parentNotes = JSON.parse(parentCall.notes || '[]'); } catch { parentNotes = []; }
+    parentNotes.push({
+      id: String(Date.now() + 1),
+      author: 'System',
+      text: `Re-dispatched → new call ${newCallNumber}`,
+      timestamp: now,
     });
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(parentNotes), now, parentCall.id);
 
-    // Reset status to pending, clear dispatch timestamps + mileage, increment attempt
-    db.prepare(`
-      UPDATE calls_for_service SET
-        status = 'pending',
-        dispatched_at = NULL,
-        enroute_at = NULL,
-        onscene_at = NULL,
-        cleared_at = NULL,
-        closed_at = NULL,
-        starting_mileage = NULL,
-        ending_mileage = NULL,
-        responding_vehicle_id = NULL,
-        pso_attempt_number = ?,
-        pso_72hr_notified = NULL,
-        notes = ?,
-        updated_at = ?
-      WHERE id = ?
-    `).run(newAttempt, JSON.stringify(notes), now, req.params.id);
-
-    // Activity log
+    // Activity log for both calls
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'call_redispatched', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown');
+    `).run(req.user!.userId, parentCall.id, `Re-dispatched → ${newCallNumber} (${ordinal(newAttempt)} attempt)`, req.ip || 'unknown');
 
-    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    // Attach visit history to the response
-    const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
-    broadcastDispatchUpdate({ action: 'call_updated', call: { ...updated, visit_history: visitHistory } });
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_created_from_redispatch', 'call', ?, ?, ?)
+    `).run(req.user!.userId, newCallId, `Created from re-dispatch of ${parentCall.call_number} (${ordinal(newAttempt)} attempt)`, req.ip || 'unknown');
 
-    res.json({ ...updated, visit_history: visitHistory });
+    // Auto-send to serve queue if applicable
+    try {
+      const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId) as any;
+      if (newCall) createServeQueueFromCall(db, newCall, req.user!.userId);
+    } catch (e) { console.error('[Calls] Auto-send to serve queue error:', e instanceof Error ? e.message : e); }
+
+    const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId) as any;
+    // Collect full chain for response
+    const chainCalls = db.prepare(`
+      SELECT id, call_number, status, pso_attempt_number, created_at, cleared_at, disposition, parent_call_id
+      FROM calls_for_service WHERE id = ? OR parent_call_id = ? ORDER BY pso_attempt_number ASC, id ASC
+    `).all(rootCallId, rootCallId) as any[];
+
+    broadcastDispatchUpdate({ action: 'call_created', call: newCall });
+    broadcastDispatchUpdate({ action: 'call_updated', call: parentCall }); // update parent notes
+
+    res.status(201).json({
+      ...newCall,
+      chain: chainCalls,
+      parent_call_number: parentCall.call_number,
+    });
   } catch (error: any) {
     console.error('Re-dispatch call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to re-dispatch call', code: 'REDISPATCH_CALL_ERROR' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/undo-redispatch - Undo a return visit (delete child, restore parent)
+router.post('/calls/:id/undo-redispatch', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const childCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!childCall) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    if (!childCall.parent_call_id) {
+      res.status(400).json({ error: 'This call is not a re-dispatch — it has no parent call', code: 'NOT_A_REDISPATCH' });
+      return;
+    }
+
+    // Only allow undo on pending/new calls that haven't been worked yet
+    if (!['pending'].includes(childCall.status) && req.user?.role !== 'admin') {
+      res.status(400).json({ error: 'Can only undo a return visit that is still pending. Once dispatched, it cannot be undone.', code: 'CHILD_NOT_PENDING' });
+      return;
+    }
+    if (req.user?.role === 'admin' && !['pending'].includes(childCall.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'call', childCall.id, `Admin God Mode: bypassed pending-only undo-redispatch restriction (status: ${childCall.status})`);
+    }
+
+    const parentCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(childCall.parent_call_id) as any;
+    if (!parentCall) {
+      res.status(404).json({ error: 'Parent call not found', code: 'PARENT_NOT_FOUND' });
+      return;
+    }
+
+    const now = localNow();
+
+    const undoTx = db.transaction(() => {
+      // Delete the child call's related records
+      db.prepare('DELETE FROM call_persons WHERE call_id = ?').run(childCall.id);
+      db.prepare('DELETE FROM call_vehicles WHERE call_id = ?').run(childCall.id);
+      db.prepare('DELETE FROM call_units WHERE call_id = ?').run(childCall.id);
+      db.prepare('DELETE FROM serve_queue WHERE call_id = ?').run(childCall.id);
+
+      // Delete the child call itself
+      db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(childCall.id);
+
+      // Remove the last visit history entry for the parent (the snapshot created during redispatch)
+      const lastVisit = db.prepare(
+        'SELECT id FROM call_visit_history WHERE call_id = ? ORDER BY visit_number DESC LIMIT 1'
+      ).get(parentCall.id) as any;
+      if (lastVisit) {
+        db.prepare('DELETE FROM call_visit_history WHERE id = ?').run(lastVisit.id);
+      }
+
+      // Remove the "Re-dispatched → new call" note from parent
+      let parentNotes: any[] = [];
+      try { parentNotes = JSON.parse(parentCall.notes || '[]'); } catch { parentNotes = []; }
+      parentNotes = parentNotes.filter((n: any) => !n.text?.includes(`Re-dispatched → new call ${childCall.call_number}`));
+      parentNotes.push({
+        id: String(Date.now()),
+        author: req.user?.fullName || 'System',
+        text: `Return visit ${childCall.call_number} was undone`,
+        timestamp: now,
+      });
+      db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(parentNotes), now, parentCall.id);
+
+      // Activity log
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'undo_redispatch', 'call', ?, ?, ?)
+      `).run(req.user!.userId, parentCall.id, `Undid return visit ${childCall.call_number} for ${parentCall.call_number}`, req.ip || 'unknown');
+    });
+    undoTx();
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(parentCall.id) as any;
+    broadcastDispatchUpdate({ action: 'call_deleted', call: { id: childCall.id, call_number: childCall.call_number } });
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+
+    res.json({ success: true, parent: updated, deleted_call: childCall.call_number });
+  } catch (error: any) {
+    console.error('Undo redispatch error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to undo return visit', code: 'UNDO_REDISPATCH_ERROR' });
   }
 });
 
@@ -1455,7 +1719,8 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
       res.status(400).json({ error: 'call_ids array is required', code: 'CALLIDS_REQUIRED' });
       return;
     }
-    if (call_ids.length > 200) {
+    // God Mode: admin bypass
+    if (req.user?.role !== 'admin' && call_ids.length > 200) {
       res.status(400).json({ error: 'Cannot update more than 200 calls at once', code: 'TOO_MANY_CALLS' });
       return;
     }

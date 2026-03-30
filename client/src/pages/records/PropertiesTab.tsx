@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import PropertyFormModal from '../../components/PropertyFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -339,6 +340,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
 // ════════════════════════════════════════════════════
 
 export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
+  const { user } = useAuth();
   const {
     selectedProperty, showArchived,
     openEditProperty, setDeleteTarget, handleArchive, handleUnarchive,
@@ -371,7 +373,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           {selectedProperty.hazard_notes && <AlertTriangle className="w-3.5 h-3.5 text-red-400" />}
           {/* Inline action buttons for properties (edit/delete/archive in detail header) */}
           <div className="ml-auto flex items-center gap-1">
-            {!showArchived && (
+            {(!showArchived || user?.role === 'admin') && (
               <>
                 <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />

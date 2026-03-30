@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Utah Business Entity Search Adapter
+// Skip Tracker 3.5 — Utah Business Entity Search Adapter
 // ============================================================
 // Searches the Utah Division of Corporations & Commercial Code
 // business entity database.

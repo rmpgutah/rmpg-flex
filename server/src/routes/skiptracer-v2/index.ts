@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Search Orchestrator Route
+// Skip Tracker 3.5 — Search Orchestrator Route
 // ============================================================
 // Main Express router that orchestrates multi-source searches,
 // manages dossiers, and tracks search history / statistics.
@@ -95,7 +95,7 @@ function buildSearchQuery(params: {
 
 router.get('/search', async (req: Request, res: Response) => {
   try {
-    const { q, name, firstName, lastName, phone, email, address, type, categories } = req.query as Record<string, string | undefined>;
+    const { q, name, firstName, lastName, phone, email, address, type, categories, engine: engineParam } = req.query as Record<string, string | undefined>;
 
     if (!q && !name && !firstName && !lastName && !phone && !email && !address) {
       res.status(400).json({ error: 'At least one search parameter is required (q, name, firstName, lastName, phone, email, or address)', code: 'AT_LEAST_ONE_SEARCH' });
@@ -110,6 +110,17 @@ router.get('/search', async (req: Request, res: Response) => {
       const allowed = categories.split(',').map(c => c.trim().toLowerCase());
       sources = sources.filter(s => allowed.includes(s.category));
     }
+
+    // Engine filtering — determines which paid source to use
+    const engine = (engineParam || 'microbilt').toLowerCase();
+    if (engine === 'microbilt') {
+      // Use MicroBilt + all free sources (exclude RapidAPI)
+      sources = sources.filter(s => s.name !== 'rapidapi');
+    } else if (engine === 'rapidapi') {
+      // Use RapidAPI + all free sources (exclude MicroBilt)
+      sources = sources.filter(s => s.name !== 'microbilt');
+    }
+    // engine === 'all' → keep all sources
     const searchId = randomUUID();
     const startTime = Date.now();
 
@@ -174,7 +185,7 @@ router.get('/search', async (req: Request, res: Response) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         searchType,
-        JSON.stringify(query),
+        JSON.stringify({ ...query, _engine: engine }),
         JSON.stringify(sourcesQueried),
         JSON.stringify(sourcesResponded),
         profiles.length,
@@ -184,14 +195,14 @@ router.get('/search', async (req: Request, res: Response) => {
         localNow(),
       );
     } catch (err) {
-      console.error('[SkipTracer-v2] Failed to persist search:', err);
+      console.error('[Skip Tracker 3.5] Failed to persist search:', err);
     }
 
-    auditLog(req, 'skiptracer_search', 'skiptracer', searchId, `Skip Tracer v2 ${searchType} search: ${profiles.length} results from ${sourcesResponded.length}/${sourcesQueried.length} sources`);
+    auditLog(req, 'skiptracer_search', 'skiptracer', searchId, `Skip Tracker 3.5 ${searchType} search (engine=${engine}): ${profiles.length} results from ${sourcesResponded.length}/${sourcesQueried.length} sources`);
 
     res.json(result);
   } catch (err) {
-    console.error('[SkipTracer-v2] Search error:', err);
+    console.error('[Skip Tracker 3.5] Search error:', err);
     res.status(500).json({ error: 'Search failed', code: 'SEARCH_FAILED' });
   }
 });
@@ -221,7 +232,7 @@ router.get('/sources', async (_req: Request, res: Response) => {
 
     res.json(sourceList);
   } catch (err) {
-    console.error('[SkipTracer-v2] Sources list error:', err);
+    console.error('[Skip Tracker 3.5] Sources list error:', err);
     res.status(500).json({ error: 'Failed to list sources', code: 'FAILED_TO_LIST_SOURCES' });
   }
 });
@@ -242,11 +253,20 @@ router.put('/sources/:name/config', requireRole('admin'), (req: Request, res: Re
       return;
     }
 
+    // Helper: upsert into system_config using correct column names
+    const upsertConfig = (configKey: string, configValue: string) => {
+      const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(configKey) as { id: number } | undefined;
+      if (existing) {
+        db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = ?").run(configValue, localNow(), configKey);
+      } else {
+        db.prepare(
+          "INSERT INTO system_config (config_key, config_value, category, is_active, updated_at) VALUES (?, ?, 'integrations', 1, ?)"
+        ).run(configKey, configValue, localNow());
+      }
+    };
+
     if (typeof enabled === 'boolean') {
-      db.prepare(
-        `INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-      ).run(`skipv2_${name}_enabled`, enabled ? '1' : '0', localNow());
+      upsertConfig(`skipv2_${name}_enabled`, enabled ? '1' : '0');
     }
 
     if (typeof apiKey === 'string') {
@@ -259,24 +279,18 @@ router.put('/sources/:name/config', requireRole('admin'), (req: Request, res: Re
       const authTag = cipher.getAuthTag().toString('hex');
       const encryptedValue = `${iv.toString('hex')}:${authTag}:${encrypted}`;
 
-      db.prepare(
-        `INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-      ).run(`skipv2_${name}_api_key`, encryptedValue, localNow());
+      upsertConfig(`skipv2_${name}_api_key`, encryptedValue);
     }
 
     if (sourceConfig && typeof sourceConfig === 'object') {
-      db.prepare(
-        `INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-      ).run(`skipv2_${name}_config`, JSON.stringify(sourceConfig), localNow());
+      upsertConfig(`skipv2_${name}_config`, JSON.stringify(sourceConfig));
     }
 
-    auditLog(req, 'skiptracer_config_updated', 'integration', 0, `Skip Tracer v2 source "${name}" configuration updated`);
+    auditLog(req, 'skiptracer_config_updated', 'integration', 0, `Skip Tracker 3.5 source "${name}" configuration updated`);
 
     res.json({ success: true });
   } catch (err) {
-    console.error('[SkipTracer-v2] Source config error:', err);
+    console.error('[Skip Tracker 3.5] Source config error:', err);
     res.status(500).json({ error: 'Failed to update source configuration', code: 'FAILED_TO_UPDATE_SOURCE' });
   }
 });
@@ -321,7 +335,7 @@ router.get('/dossiers', (req: Request, res: Response) => {
 
     res.json({ dossiers: rows, total, limit, offset });
   } catch (err) {
-    console.error('[SkipTracer-v2] Dossiers list error:', err);
+    console.error('[Skip Tracker 3.5] Dossiers list error:', err);
     res.status(500).json({ error: 'Failed to list dossiers', code: 'FAILED_TO_LIST_DOSSIERS' });
   }
 });
@@ -378,7 +392,7 @@ router.post('/dossiers', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     res.json(dossier || { success: true, id });
   } catch (err) {
-    console.error('[SkipTracer-v2] Dossier create error:', err);
+    console.error('[Skip Tracker 3.5] Dossier create error:', err);
     res.status(500).json({ error: 'Failed to create dossier', code: 'FAILED_TO_CREATE_DOSSIER' });
   }
 });
@@ -406,7 +420,7 @@ router.get('/dossiers/:id', (req: Request, res: Response) => {
 
     res.json(dossier);
   } catch (err) {
-    console.error('[SkipTracer-v2] Dossier get error:', err);
+    console.error('[Skip Tracker 3.5] Dossier get error:', err);
     res.status(500).json({ error: 'Failed to get dossier', code: 'FAILED_TO_GET_DOSSIER' });
   }
 });
@@ -450,7 +464,7 @@ router.put('/dossiers/:id', requireRole('admin', 'manager', 'supervisor', 'offic
     const updated = db.prepare('SELECT * FROM dossiers WHERE id = ?').get(id);
     res.json(updated);
   } catch (err) {
-    console.error('[SkipTracer-v2] Dossier update error:', err);
+    console.error('[Skip Tracker 3.5] Dossier update error:', err);
     res.status(500).json({ error: 'Failed to update dossier', code: 'FAILED_TO_UPDATE_DOSSIER' });
   }
 });
@@ -477,7 +491,7 @@ router.delete('/dossiers/:id', requireRole('admin'), (req: Request, res: Respons
 
     res.json({ success: true });
   } catch (err) {
-    console.error('[SkipTracer-v2] Dossier delete error:', err);
+    console.error('[Skip Tracker 3.5] Dossier delete error:', err);
     res.status(500).json({ error: 'Failed to archive dossier', code: 'FAILED_TO_ARCHIVE_DOSSIER' });
   }
 });
@@ -515,7 +529,7 @@ router.get('/history', requireRole('admin', 'manager', 'supervisor'), (req: Requ
 
     res.json({ searches: rows, total, limit, offset });
   } catch (err) {
-    console.error('[SkipTracer-v2] History error:', err);
+    console.error('[Skip Tracker 3.5] History error:', err);
     res.status(500).json({ error: 'Failed to get search history', code: 'FAILED_TO_GET_SEARCH' });
   }
 });
@@ -596,7 +610,7 @@ router.get('/stats', (req: Request, res: Response) => {
       searchesByDay,
     });
   } catch (err) {
-    console.error('[SkipTracer-v2] Stats error:', err);
+    console.error('[Skip Tracker 3.5] Stats error:', err);
     res.status(500).json({ error: 'Failed to get statistics', code: 'FAILED_TO_GET_STATISTICS' });
   }
 });
@@ -858,7 +872,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="Dossier_${safeName}_${generatedAt.split(' ')[0] || generatedAt}.pdf"`);
     res.send(pdfBuffer);
   } catch (err) {
-    console.error('[SkipTracer-v2] PDF export error:', err);
+    console.error('[Skip Tracker 3.5] PDF export error:', err);
     res.status(500).json({ error: 'Failed to export dossier PDF', code: 'FAILED_TO_EXPORT_DOSSIER' });
   }
 });

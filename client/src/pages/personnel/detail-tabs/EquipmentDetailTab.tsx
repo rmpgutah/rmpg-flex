@@ -7,6 +7,7 @@ import { Package, Plus, Edit2, Trash2, Loader2, Box, LogIn, LogOut, Clock } from
 import type { OfficerEquipment } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
+import { safeDateTimeStr } from '../../../utils/dateUtils';
 
 interface Props {
   equipment: OfficerEquipment[];
@@ -268,7 +269,7 @@ export default function EquipmentDetailTab({
                         <span className={log.action === 'checkout' ? 'text-green-400' : 'text-blue-400'}>
                           {log.action === 'checkout' ? 'OUT' : 'IN'}
                         </span>
-                        <span className="text-rmpg-400">{new Date(log.created_at).toLocaleString()}</span>
+                        <span className="text-rmpg-400">{safeDateTimeStr(log.created_at)}</span>
                         <span className="text-rmpg-300">by {log.checked_by_name || 'Unknown'}</span>
                         {log.notes && <span className="text-rmpg-500 italic">{log.notes}</span>}
                       </div>

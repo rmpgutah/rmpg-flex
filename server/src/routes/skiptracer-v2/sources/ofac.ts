@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — OFAC Sanctions Adapter
+// Skip Tracker 3.5 — OFAC Sanctions Adapter
 // ============================================================
 // Searches the locally-synced OFAC SDN entries and aliases.
 // Data is synced daily from treasury.gov by ofacScraper.ts.

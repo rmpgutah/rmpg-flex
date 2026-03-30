@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
@@ -228,6 +228,11 @@ router.put('/:id', (req: Request, res: Response) => {
     let completed_date = existing.completed_date;
     let released_date = existing.released_date;
 
+    // God Mode: admin can release evidence without supervisor approval
+    if (user.role === 'admin' && newStatus === 'released' && existing.status !== 'released') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'forensic_case', existing.id, `Admin God Mode: releasing forensic case ${existing.lab_number} without supervisor approval`);
+    }
+
     if (newStatus === 'analysis_complete' && !completed_date) completed_date = now;
     if (newStatus === 'released' && !released_date) released_date = now;
 
@@ -423,6 +428,12 @@ router.delete('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
     if (!existing) return res.status(404).json({ error: 'Exhibit not found', code: 'EXHIBIT_NOT_FOUND' });
+
+    // God Mode: admin can delete evidence items
+    if (user.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'forensic_exhibit', existing.id, `Admin God Mode: deleting exhibit ${existing.exhibit_number}`);
+    }
+
     db.prepare('DELETE FROM forensic_exhibits WHERE id = ?').run(req.params.exhibitId);
     logActivity(parseInt(req.params.caseId as string), 'exhibit_deleted', `Exhibit ${existing.exhibit_number} deleted`, user.id, user.full_name);
     res.json({ message: 'Exhibit deleted' });
@@ -443,8 +454,13 @@ router.post('/:caseId/exhibits/:exhibitId/custody', (req: Request, res: Response
     const { action, notes: custodyNotes } = req.body;
     if (!action) return res.status(400).json({ error: 'Action is required', code: 'ACTION_IS_REQUIRED' });
 
+    // God Mode: admin can break chain of custody (add any action without supervisor approval)
+    if (user.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'forensic_exhibit', existing.id, `Admin God Mode: chain of custody action "${action}" on exhibit ${existing.exhibit_number} (no supervisor approval required)`);
+    }
+
     const chain = JSON.parse(existing.chain_of_custody || '[]');
-    chain.push({ action, by: user.full_name, at: localNow(), notes: custodyNotes || '' });
+    chain.push({ action, by: user.full_name, at: localNow(), notes: custodyNotes || '', admin_override: user.role === 'admin' });
 
     db.prepare('UPDATE forensic_exhibits SET chain_of_custody = ?, updated_at = ? WHERE id = ?')
       .run(JSON.stringify(chain), localNow(), existing.id);
@@ -1483,6 +1499,39 @@ router.get('/metrics/backlog', (_req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Forensic backlog error:', error);
     res.status(500).json({ error: 'Failed to get backlog metrics', code: 'BACKLOG_METRICS_ERROR' });
+  }
+});
+
+// ── Forensic Lab CSV Export ───────────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fc.lab_number, fc.case_number, fc.case_type, fc.status, fc.priority,
+             fc.submitted_by_name, fc.lead_examiner_name, fc.description,
+             fc.received_date, fc.due_date, fc.completed_date, fc.created_at,
+             (SELECT COUNT(*) FROM forensic_exhibits WHERE forensic_case_id = fc.id) as exhibit_count
+      FROM forensic_cases fc
+      ORDER BY fc.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['Lab #', 'Case #', 'Case Type', 'Status', 'Priority', 'Submitted By', 'Lead Examiner', 'Description', 'Received Date', 'Due Date', 'Completed Date', 'Exhibits', 'Created'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.lab_number, r.case_number, r.case_type, r.status, r.priority,
+        (r.submitted_by_name || '').replace(/"/g, '""'),
+        (r.lead_examiner_name || '').replace(/"/g, '""'),
+        (r.description || '').replace(/"/g, '""'),
+        r.received_date, r.due_date, r.completed_date, r.exhibit_count, r.created_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="forensic_cases_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Forensics CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export forensic cases', code: 'FORENSICS_EXPORT_ERROR' });
   }
 });
 

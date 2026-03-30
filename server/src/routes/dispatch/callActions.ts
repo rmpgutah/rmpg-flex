@@ -9,6 +9,7 @@ import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
 import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
 import { auditLog } from '../../utils/auditLogger';
+import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { sendCsv } from '../../utils/csvExport';
 import { isLegalTransition, LEGAL_TRANSITIONS } from './callLifecycle';
 import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
@@ -85,7 +86,8 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
       return;
     }
     // Validate all unit_ids are positive integers and limit count
-    if (unit_ids.length > 50) {
+    // God Mode: admin bypass
+    if (req.user?.role !== 'admin' && unit_ids.length > 50) {
       res.status(400).json({ error: 'Cannot dispatch more than 50 units at once', code: 'CANNOT_DISPATCH_MORE_THAN' });
       return;
     }
@@ -399,7 +401,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       const allowed = LEGAL_TRANSITIONS[call.status] || [];
       res.status(400).json({
         error: `Cannot transition from '${call.status}' to '${status}'`,
-        code: 'ILLEGAL_TRANSITION',
+        code: 'ILLEGAL_STATUS_TRANSITION',
         currentStatus: call.status,
         allowedTransitions: allowed,
       });
@@ -577,8 +579,8 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         try {
           const parsed = JSON.parse(call.assigned_unit_ids || '[]');
           unitIds = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          console.warn(`[Dispatch] Corrupted assigned_unit_ids for call ${call.call_number}: ${call.assigned_unit_ids}`);
+        } catch (parseErr) {
+          console.error(`[Dispatch] Corrupted assigned_unit_ids for call ${call.call_number}: ${call.assigned_unit_ids}`, parseErr instanceof Error ? parseErr.message : parseErr);
         }
 
         for (const unitId of unitIds) {
@@ -1354,77 +1356,18 @@ router.post('/calls/:id/send-to-serve', validateParamIdMiddleware, requireRole('
       return;
     }
 
-    const now = localNow();
+    // Use shared utility for the actual serve queue creation
+    const serveJobId = createServeQueueFromCall(db, call, req.user!.userId);
+    if (!serveJobId) {
+      res.status(500).json({ error: 'Failed to create serve queue entry', code: 'FAILED_TO_CREATE_SERVE' });
+      return;
+    }
 
-    // Use process_served_to, or fall back to reporting party / caller name / subject
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(serveJobId);
     const recipientName = call.process_served_to || call.reporting_party || call.caller_name || call.subject || 'Unknown';
 
-    // Parse address into components if possible (simple comma split)
-    const addrParts = (call.process_served_address || call.location_address || '').split(',').map((s: string) => s.trim());
-    const recipientAddress = addrParts[0] || call.location_address || '';
-    const recipientCity = addrParts[1] || '';
-    const recipientState = addrParts[2] || 'UT';
-    const recipientZip = addrParts[3] || '';
-
-    // Try to get assigned officer
-    let officerId: number | null = null;
-    try {
-      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-      if (Array.isArray(unitIds) && unitIds.length > 0) {
-        const unit = db.prepare('SELECT officer_id FROM units WHERE id = ?').get(unitIds[0]) as any;
-        if (unit?.officer_id) officerId = unit.officer_id;
-      }
-    } catch (parseErr) { console.error('[CallActions] Failed to parse assigned_unit_ids for serve queue:', parseErr instanceof Error ? parseErr.message : parseErr); }
-
-    // Map document type
-    const docTypeMap: Record<string, string> = {
-      subpoena: 'subpoena', summons: 'summons', complaint: 'complaint',
-      eviction: 'eviction', restraining_order: 'restraining_order',
-      writ: 'writ', order: 'order', notice: 'notice', petition: 'petition',
-    };
-    const documentType = docTypeMap[call.process_service_type] || call.process_service_type || 'civil';
-
-    // Map dispatch priority (P1-P5) to serve queue priority (low/normal/high/rush)
-    const priorityMap: Record<string, string> = { P1: 'rush', P2: 'high', P3: 'normal', P4: 'low', P5: 'low' };
-    const servePriority = priorityMap[call.priority] || 'normal';
-
-    const info = db.prepare(`
-      INSERT INTO serve_queue (
-        call_id, officer_id, serve_date, recipient_name,
-        recipient_address, recipient_city, recipient_state, recipient_zip,
-        recipient_lat, recipient_lng, document_type, case_number,
-        client_name, priority, max_attempts, service_instructions, notes,
-        status, attempt_count, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
-    `).run(
-      call.id, officerId,
-      localToday(),
-      recipientName,
-      recipientAddress, recipientCity, recipientState, recipientZip,
-      call.latitude || null, call.longitude || null,
-      documentType, call.case_number || '',
-      call.pso_requestor_name || '', servePriority,
-      3, '', `From dispatch ${call.call_number}`,
-      now, now,
-    );
-
-    const id = info.lastInsertRowid;
-    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
-
-    auditLog(req, 'CREATE', 'serve_queue', String(id), `Sent dispatch call ${call.call_number} to serve queue for ${recipientName}`);
+    auditLog(req, 'CREATE', 'serve_queue', String(serveJobId), `Sent dispatch call ${call.call_number} to serve queue for ${recipientName}`);
     broadcast('serve', 'serve_created', job);
-
-    // Also update the call's activity log
-    try {
-      const activities = JSON.parse(call.activity_log || '[]');
-      activities.push({
-        action: 'sent_to_serve_queue',
-        timestamp: now,
-        user_id: req.user!.userId,
-        details: `Sent to serve queue (ID: ${id})`,
-      });
-      db.prepare('UPDATE calls_for_service SET activity_log = ? WHERE id = ?').run(JSON.stringify(activities), call.id);
-    } catch (logErr) { console.error('[CallActions] Failed to update activity_log for serve queue:', logErr instanceof Error ? logErr.message : logErr); }
 
     broadcastDispatchUpdate({ action: 'call_updated', call: db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) });
 
@@ -1746,6 +1689,88 @@ router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole(
   } catch (error: any) {
     console.error('Broadcast note error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' });
+  }
+});
+
+// PUT /api/dispatch/calls/:id/notes/:noteId — Edit a note (admin/manager only)
+router.put('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const { text } = req.body;
+    if (!text || typeof text !== 'string' || text.trim().length < 1) {
+      res.status(400).json({ error: 'text is required', code: 'TEXT_REQUIRED' });
+      return;
+    }
+
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+
+    const noteIdx = notes.findIndex((n: any) => String(n.id) === String(req.params.noteId));
+    if (noteIdx === -1) { res.status(404).json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    notes[noteIdx].text = text.trim();
+    notes[noteIdx].edited_at = now;
+    notes[noteIdx].edited_by = req.user?.username || 'admin';
+
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
+
+    auditLog(req, 'note_edited', 'call', call.id, null, `Edited note ${req.params.noteId} on call ${call.call_number}`);
+
+    const updated = db.prepare(`
+      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.id = ?
+    `).get(call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Edit note error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to edit note', code: 'EDIT_NOTE_ERROR' });
+  }
+});
+
+// DELETE /api/dispatch/calls/:id/notes/:noteId — Delete a note (admin/manager only)
+router.delete('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+
+    const noteIdx = notes.findIndex((n: any) => String(n.id) === String(req.params.noteId));
+    if (noteIdx === -1) { res.status(404).json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }); return; }
+
+    const deletedNote = notes.splice(noteIdx, 1)[0];
+    const now = localNow();
+
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
+
+    auditLog(req, 'note_deleted', 'call', call.id, null, `Deleted note "${(deletedNote.text || '').slice(0, 50)}..." from call ${call.call_number}`);
+
+    const updated = db.prepare(`
+      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.id = ?
+    `).get(call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Delete note error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to delete note', code: 'DELETE_NOTE_ERROR' });
   }
 });
 

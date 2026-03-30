@@ -24,6 +24,8 @@ import {
   Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateStr } from '../../utils/dateUtils';
+import { useAuth } from '../../context/AuthContext';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -181,6 +183,7 @@ export function useEvidenceTab(props: EvidenceTabProps): EvidenceTabState {
 // ════════════════════════════════════════════════════
 
 export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
+  const { user } = useAuth();
   const {
     filteredEvidence, selectedEvidence, setSelectedEvidence,
     searchQuery, setSearchQuery, showArchived,
@@ -276,12 +279,12 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                     <span className="text-[9px] text-rmpg-500 font-mono">S/N: {ev.serial_number}</span>
                   )}
                   <div className="flex items-center gap-1">
-                    {!showArchived && (
+                    {(!showArchived || user?.role === 'admin') && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     )}
-                    {!showArchived && (
+                    {(!showArchived || user?.role === 'admin') && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('evidence', ev.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
                         <Archive className="w-3 h-3" />
                       </button>
@@ -504,7 +507,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
       {selectedEvidence.retention_until && new Date(selectedEvidence.retention_until) < new Date() && !selectedEvidence.disposition && (
         <div className="px-4 py-2 bg-red-950/30 border-b border-red-800/40 flex items-center gap-2 text-[11px] text-red-400 font-bold flex-shrink-0">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-pulse" />
-          RETENTION OVERDUE — Past retention date ({new Date(selectedEvidence.retention_until).toLocaleDateString()})
+          RETENTION OVERDUE — Past retention date ({safeDateStr(selectedEvidence.retention_until)})
           — Evidence requires disposition
         </div>
       )}

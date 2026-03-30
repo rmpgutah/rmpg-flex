@@ -48,7 +48,7 @@ let callbacks: StatementCallbacks | null = null;
 // ─── Server persistence ─────────────────────────────────────
 
 async function saveToServer(callId: number, transcript: string, isFinal = false): Promise<void> {
-  const token = localStorage.getItem('rmpg-token');
+  const token = localStorage.getItem('rmpg_token');
   await fetch('/api/voice/statement', {
     method: 'POST',
     headers: {

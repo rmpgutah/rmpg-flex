@@ -3,6 +3,7 @@ import {
   Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap, Bell, Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { dateToLocalYMD } from '../../utils/dateUtils';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area,
 } from 'recharts';
@@ -75,7 +76,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now); d.setDate(d.getDate() - i);
-      days[d.toISOString().slice(0, 10)] = 0;
+      days[dateToLocalYMD(d)] = 0;
     }
     timeEntries.forEach(t => {
       const date = (t.clock_in || '').slice(0, 10);

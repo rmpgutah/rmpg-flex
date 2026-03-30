@@ -26,6 +26,9 @@ import {
   Activity,
   ChevronRight,
   Zap,
+  Printer,
+  Download,
+  UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
@@ -43,6 +46,8 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import EmptyState from '../components/EmptyState';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
+import { downloadRecordPdf } from '../utils/recordPdfGenerator';
+import type { WarrantPdfData } from '../utils/recordPdfGenerator';
 
 // ============================================================
 // Types
@@ -405,6 +410,7 @@ export default function WarrantsPage() {
   const serveTitleId = useId();
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
@@ -526,6 +532,11 @@ export default function WarrantsPage() {
   const [utahSearching, setUtahSearching] = useState(false);
   const [utahResults, setUtahResults] = useState<UtahSearchResults | null>(null);
   const [utahSearchHistory, setUtahSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
+
+  // Utah warrant detail modal
+  const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
+  const [addingToLocal, setAddingToLocal] = useState(false);
+  const [addedToLocal, setAddedToLocal] = useState(false);
 
   // ============================================================
   // WATCH LIST TAB STATE
@@ -714,6 +725,93 @@ export default function WarrantsPage() {
     } catch { /* error handled by apiFetch */ }
     finally { setUtahSearching(false); }
   }, [utahSearchFirst, utahSearchLast]);
+
+  // ── Utah Warrant Detail Modal Handlers ──
+
+  const openUtahDetail = useCallback((w: UtahWarrantResult, source: 'utah' | 'local' | 'scraped') => {
+    setUtahDetailWarrant({ ...w, _source: source });
+    setAddedToLocal(false);
+  }, []);
+
+  const handleUtahPrint = useCallback(async () => {
+    if (!utahDetailWarrant) return;
+    const w = utahDetailWarrant;
+    const pdfData: WarrantPdfData = {
+      warrant_number: w.case_id || w.warrant_id || w.utah_warrant_id || 'UTAH-SEARCH',
+      type: w.warrant_type || 'arrest',
+      status: w.status || 'active',
+      offense_level: w.offense_level || '',
+      charge_description: w.charges || w.charge_description || '',
+      subject_first_name: w.first_name || '',
+      subject_last_name: w.last_name || '',
+      subject_dob: '',
+      subject_gender: '',
+      subject_race: '',
+      subject_height: '',
+      subject_weight: '',
+      subject_hair_color: '',
+      subject_eye_color: '',
+      subject_address: w.city || '',
+      issuing_court: w.court_name || '',
+      issuing_judge: '',
+      bail_amount: w.bail_amount ?? undefined,
+      expires_at: '',
+      entered_by_name: '',
+      created_at: w.issue_date || new Date().toISOString(),
+      notes: `Source: ${w._source === 'utah' ? 'Utah State Warrants API' : w._source === 'scraped' ? `Multi-Source (${w.source_key || 'scraped'})` : 'Local System'}\nSearch Date: ${new Date().toLocaleString()}`,
+      // Extended fields for source/verification
+      county: w.city || '',
+      case_number: w.case_id || '',
+      filing_date: w.issue_date || '',
+      data_source: w._source === 'utah' ? 'Utah State Warrants API (warrants.utah.gov)' : w._source === 'scraped' ? `Multi-Source Database (${w.source_key || 'scraped'})` : 'RMPG Local System',
+      search_date: new Date().toLocaleString(),
+    };
+    try {
+      await downloadRecordPdf('warrant', pdfData, pdfData.warrant_number);
+    } catch (err) {
+      console.error('Warrant PDF failed:', err);
+    }
+  }, [utahDetailWarrant]);
+
+  const handleAddToLocal = useCallback(async () => {
+    if (!utahDetailWarrant || addingToLocal) return;
+    setAddingToLocal(true);
+    try {
+      const w = utahDetailWarrant;
+      await apiFetch('/warrants/ingest-utah', {
+        method: 'POST',
+        body: JSON.stringify({
+          warrants: [{
+            utah_warrant_id: w.utah_warrant_id || w.warrant_id || `manual-${Date.now()}`,
+            charges: w.charges || w.charge_description || 'Utah warrant',
+            court_name: w.court_name || null,
+            first_name: w.first_name,
+            last_name: w.last_name,
+            bail_amount: w.bail_amount,
+            offense_level: w.offense_level,
+            case_id: w.case_id,
+            issue_date: w.issue_date,
+          }],
+        }),
+      });
+      setAddedToLocal(true);
+      // Refresh warrants list if on warrants tab
+      fetchWarrants({ silent: true });
+    } catch (err: any) {
+      setError(err?.message || 'Failed to add to local records');
+    } finally {
+      setAddingToLocal(false);
+    }
+  }, [utahDetailWarrant, addingToLocal, fetchWarrants]);
+
+  const handleCheckPerson = useCallback(() => {
+    if (!utahDetailWarrant) return;
+    // Switch to utah search with this person's name
+    setUtahSearchFirst(utahDetailWarrant.first_name);
+    setUtahSearchLast(utahDetailWarrant.last_name);
+    setUtahDetailWarrant(null);
+    setTimeout(() => runUtahSearch(), 100);
+  }, [utahDetailWarrant, runUtahSearch]);
 
   // ── Auto-Poll Status ──
   const fetchAutoPollStatus = useCallback(async () => {
@@ -1002,7 +1100,7 @@ export default function WarrantsPage() {
             {showArchived ? 'Showing Archived' : 'Archives'}
           </button>
         )}
-        {activeTab === 'sources' && isAdminOrManager && (
+        {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
           <>
             <button type="button"
               onClick={handleTriggerScan}
@@ -1028,7 +1126,7 @@ export default function WarrantsPage() {
       {/* ---- TAB BAR ---- */}
       <div className={`tab-bar ${isMobile ? 'overflow-x-auto' : ''}`}>
         {TABS.map((tab) => {
-          if (tab.roleGated && !isAdminOrManager) return null;
+          if (tab.roleGated && !isGodMode && !isAdminOrManager) return null;
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -1352,7 +1450,7 @@ export default function WarrantsPage() {
             )}
 
             {/* Batch Actions Bar */}
-            {batchSelected.size > 0 && isAdminOrManager && (
+            {batchSelected.size > 0 && (isGodMode || isAdminOrManager) && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
                 <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
                 <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
@@ -1422,7 +1520,7 @@ export default function WarrantsPage() {
                 <table className="table-dark">
                   <thead className="sticky top-0 z-10 bg-[#0d1520]">
                     <tr>
-                      {isAdminOrManager && (
+                      {(isGodMode || isAdminOrManager) && (
                         <th style={{ width: 30 }}>
                           <input type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
                         </th>
@@ -1445,7 +1543,7 @@ export default function WarrantsPage() {
                         onClick={() => fetchWarrantDetail(w.id)}
                         className={`cursor-pointer hover:bg-[#1a2636]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
-                        {isAdminOrManager && (
+                        {(isGodMode || isAdminOrManager) && (
                           <td onClick={e => e.stopPropagation()}>
                             <input type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
                           </td>
@@ -1840,7 +1938,7 @@ export default function WarrantsPage() {
                     </div>
                     <div className="divide-y divide-surface-border">
                       {utahResults.utahResults.map((w, i) => (
-                        <div key={`utah-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors">
+                        <div key={`utah-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'utah')}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -1892,7 +1990,7 @@ export default function WarrantsPage() {
                     </div>
                     <div className="divide-y divide-surface-border">
                       {utahResults.localWarrants.map((w) => (
-                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors">
+                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-white">{w.warrant_number}</span>
                             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
@@ -1925,7 +2023,7 @@ export default function WarrantsPage() {
                     </div>
                     <div className="divide-y divide-surface-border">
                       {utahResults.scrapedWarrants.map((w, i) => (
-                        <div key={`scraped-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors">
+                        <div key={`scraped-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'scraped')}>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
                             {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
@@ -2174,7 +2272,7 @@ export default function WarrantsPage() {
       {/* ================================================================
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
-      {activeTab === 'sources' && isAdminOrManager && (
+      {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
         <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {/* Coverage Section */}
@@ -2795,6 +2893,229 @@ export default function WarrantsPage() {
         confirmVariant="danger"
         isLoading={deleteLoading}
       />
+
+      {/* ================================================================
+          UTAH WARRANT DETAIL MODAL
+         ================================================================ */}
+      {utahDetailWarrant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setUtahDetailWarrant(null)}>
+          <div
+            className="bg-[#0d1520] border border-[#1e3048] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048] bg-[#141e2b]">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <span className="text-base font-bold text-white truncate">
+                  {utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}
+                </span>
+                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border flex-shrink-0 ${
+                  utahDetailWarrant._source === 'utah' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                  utahDetailWarrant._source === 'local' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50' :
+                  'bg-amber-900/50 text-amber-400 border-amber-700/50'
+                }`}>
+                  {utahDetailWarrant._source === 'utah' ? 'UTAH STATE' : utahDetailWarrant._source === 'local' ? 'LOCAL' : 'SCRAPED'}
+                </span>
+              </div>
+              <button type="button" onClick={() => setUtahDetailWarrant(null)} className="text-rmpg-400 hover:text-white p-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* SUBJECT INFORMATION */}
+              <div>
+                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                  <span className="text-[10px] font-bold text-white uppercase tracking-widest">Subject Information</span>
+                </div>
+                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Full Name</span>
+                      <div className="font-mono text-white mt-0.5">{utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}</div>
+                    </div>
+                    {utahDetailWarrant.age != null && (
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Age</span>
+                        <div className="font-mono text-white mt-0.5">{utahDetailWarrant.age}</div>
+                      </div>
+                    )}
+                    {utahDetailWarrant.city && (
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">City</span>
+                        <div className="font-mono text-white mt-0.5">{utahDetailWarrant.city}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* WARRANT DETAILS */}
+              <div>
+                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                  <span className="text-[10px] font-bold text-white uppercase tracking-widest">Warrant Details</span>
+                </div>
+                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                    {(utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id) && (
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Warrant ID</span>
+                        <div className="font-mono text-white mt-0.5">{utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id}</div>
+                      </div>
+                    )}
+                    {utahDetailWarrant.warrant_type && (
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Type</span>
+                        <div className="font-mono text-white mt-0.5 uppercase">{utahDetailWarrant.warrant_type}</div>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Status</span>
+                      <div className="mt-0.5">
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${
+                          (utahDetailWarrant.status || 'active') === 'active' ? 'bg-red-900/50 text-red-400 border-red-700/50' : 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                        }`}>{utahDetailWarrant.status || 'ACTIVE'}</span>
+                      </div>
+                    </div>
+                    {utahDetailWarrant.offense_level && (
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Offense Level</span>
+                        <div className="mt-0.5">
+                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${
+                            utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                            utahDetailWarrant.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                            'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                          }`}>{utahDetailWarrant.offense_level}</span>
+                        </div>
+                      </div>
+                    )}
+                    {utahDetailWarrant.bail_amount != null && utahDetailWarrant.bail_amount > 0 && (
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Bail Amount</span>
+                        <div className="font-mono text-amber-400 font-bold mt-0.5 tabular-nums">${Number(utahDetailWarrant.bail_amount).toLocaleString()}</div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Charges - full width */}
+                  {(utahDetailWarrant.charges || utahDetailWarrant.charge_description) && (
+                    <div className="mt-3">
+                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Offense / Charges</span>
+                      <div className="font-mono text-white mt-0.5 text-xs whitespace-pre-wrap">{utahDetailWarrant.charges || utahDetailWarrant.charge_description}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* COURT INFORMATION */}
+              {(utahDetailWarrant.court_name || utahDetailWarrant.case_id || utahDetailWarrant.issue_date) && (
+                <div>
+                  <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Court Information</span>
+                  </div>
+                  <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                      {utahDetailWarrant.court_name && (
+                        <div>
+                          <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Issuing Court</span>
+                          <div className="font-mono text-white mt-0.5">{utahDetailWarrant.court_name}</div>
+                        </div>
+                      )}
+                      {utahDetailWarrant.case_id && (
+                        <div>
+                          <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Case Number</span>
+                          <div className="font-mono text-white mt-0.5">{utahDetailWarrant.case_id}</div>
+                        </div>
+                      )}
+                      {utahDetailWarrant.issue_date && (
+                        <div>
+                          <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Issue Date</span>
+                          <div className="font-mono text-white mt-0.5">{utahDetailWarrant.issue_date}</div>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">State</span>
+                        <div className="font-mono text-white mt-0.5">UTAH</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SOURCE / VERIFICATION */}
+              <div>
+                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                  <span className="text-[10px] font-bold text-white uppercase tracking-widest">Source / Verification</span>
+                </div>
+                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Data Source</span>
+                      <div className="font-mono text-white mt-0.5">
+                        {utahDetailWarrant._source === 'utah' ? 'Utah State Warrants API' :
+                         utahDetailWarrant._source === 'local' ? 'RMPG Local System' :
+                         `Multi-Source (${utahDetailWarrant.source_key || 'scraped'})`}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Search Date</span>
+                      <div className="font-mono text-white mt-0.5">{new Date().toLocaleString()}</div>
+                    </div>
+                    {utahDetailWarrant.fetched_at && (
+                      <div>
+                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Fetched At</span>
+                        <div className="font-mono text-white mt-0.5">{formatDateTime(utahDetailWarrant.fetched_at)}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#1e3048] bg-[#141e2b] flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleUtahPrint}
+                  className="toolbar-btn text-xs bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]/40 hover:bg-[#d4a017]/30"
+                >
+                  <Printer className="w-3 h-3" />
+                  <span className="ml-1">PRINT WARRANT</span>
+                </button>
+                {utahDetailWarrant._source !== 'local' && (
+                  <button
+                    type="button"
+                    onClick={handleAddToLocal}
+                    disabled={addingToLocal || addedToLocal}
+                    className={`toolbar-btn text-xs ${addedToLocal
+                      ? 'bg-green-900/30 text-green-400 border-green-700/50'
+                      : 'bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30'
+                    } disabled:opacity-60`}
+                  >
+                    {addingToLocal ? <Loader2 className="w-3 h-3 animate-spin" /> : addedToLocal ? <CheckCircle className="w-3 h-3" /> : <Download className="w-3 h-3" />}
+                    <span className="ml-1">{addedToLocal ? 'ADDED' : 'ADD TO LOCAL RECORDS'}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleCheckPerson}
+                  className="toolbar-btn text-xs bg-purple-900/30 text-purple-400 border-purple-700/50 hover:bg-purple-900/50"
+                >
+                  <UserCheck className="w-3 h-3" />
+                  <span className="ml-1">CHECK PERSON</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUtahDetailWarrant(null)}
+                className="toolbar-btn text-xs"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

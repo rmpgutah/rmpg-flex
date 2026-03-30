@@ -49,7 +49,7 @@ function formatCurrency(val: number | null | undefined): string {
 
 function formatDate(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function toDisplayLabel(s: string): string {

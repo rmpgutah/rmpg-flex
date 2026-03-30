@@ -31,6 +31,7 @@ import {
   Thermometer,
   Undo2,
   Edit,
+  Pencil,
   Search,
   Building2,
   Terminal,
@@ -77,6 +78,7 @@ import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
+import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
@@ -93,7 +95,82 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 
+// Label maps for human-readable display of stored values
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  process_service: 'Process Service (General)',
+  subpoena_service: 'Subpoena Service',
+  summons_service: 'Summons & Complaint',
+  eviction_service: 'Eviction / Unlawful Detainer',
+  restraining_order_service: 'Protective Order Service',
+  writ_service: 'Writ Service',
+  court_filing: 'Court Filing / Delivery',
+  skip_trace: 'Skip Trace & Locate',
+  stake_out: 'Stake Out / Surveillance',
+  rush_service: 'Rush / Same-Day Service',
+  patrol: 'Patrol',
+  static_guard: 'Static Guard',
+  escort: 'Escort',
+  event_security: 'Event Security',
+  surveillance: 'Surveillance',
+  access_control: 'Access Control',
+  other: 'Other',
+};
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  // Civil Process
+  subpoena: 'Subpoena',
+  summons: 'Summons & Complaint',
+  complaint: 'Complaint',
+  civil_summons: 'Civil Summons',
+  small_claims: 'Small Claims',
+  garnishment: 'Garnishment',
+  writ_of_execution: 'Writ of Execution',
+  writ_of_restitution: 'Writ of Restitution',
+  writ_of_garnishment: 'Writ of Garnishment',
+  writ_of_attachment: 'Writ of Attachment',
+  // Family / Domestic
+  restraining_order: 'Protective / Restraining Order',
+  divorce_papers: 'Divorce Papers',
+  custody_order: 'Custody Order',
+  child_support: 'Child Support Order',
+  stalking_injunction: 'Stalking Injunction',
+  // Real Property
+  eviction: 'Eviction Notice',
+  unlawful_detainer: 'Unlawful Detainer',
+  notice_to_quit: 'Notice to Quit',
+  foreclosure: 'Foreclosure Notice',
+  // Court Orders
+  court_order: 'Court Order',
+  temporary_order: 'Temporary Order',
+  motion: 'Motion / Petition',
+  notice_of_hearing: 'Notice of Hearing',
+  order_to_show_cause: 'Order to Show Cause',
+  // Other
+  demand_letter: 'Demand Letter',
+  cease_and_desist: 'Cease & Desist',
+  civil: 'Civil Papers',
+  writ: 'Writ',
+  order: 'Court Order',
+  notice: 'Notice',
+  petition: 'Petition',
+  levy: 'Levy',
+  other: 'Other',
+};
+
+function formatServiceType(val: string | undefined | null): string {
+  if (!val) return '';
+  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatDocumentType(val: string | undefined | null): string {
+  if (!val) return '';
+  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export default function DispatchPage() {
+  const { user } = useAuth();
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -110,6 +187,8 @@ export default function DispatchPage() {
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -134,6 +213,8 @@ export default function DispatchPage() {
   const [ncicInitialQuery, setNcicInitialQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   // Timeline / activity log entries for selected call
   const [activityEntries, setActivityEntries] = useState<any[]>([]);
+  // Timeline editing (admin/manager only)
+  const [editingTimestamp, setEditingTimestamp] = useState<string | null>(null);
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Record<string, any>>({});
@@ -680,6 +761,24 @@ export default function DispatchPage() {
       announcePanicAlert(data.user_name || data.userName);
     });
 
+    // Listen for serve queue events — update gold serve status panel in real time
+    const unsubServeCreated = subscribe('serve:created', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+        setServeLink(data);
+      }
+    });
+    const unsubServeAttempt = subscribe('serve:attempt', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+        // Refresh serve link to get updated attempt count + status
+        const callId = selectedCallRef.current!.id;
+        apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
+          if (res) setServeLink(res);
+        }).catch(() => {});
+      }
+    });
+
     // Listen for warrant alerts on linked persons
     const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -688,7 +787,7 @@ export default function DispatchPage() {
       fetchData({ silent: true });
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubWarrant(); };
+    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // When switching to the archived tab, fetch archived calls if not loaded
@@ -851,7 +950,7 @@ export default function DispatchPage() {
       }
       try {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
-        if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings : []);
+        if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings.filter((w: any) => typeof w?.label === 'string') : []);
       } catch { if (!cancelled) setCallWarnings([]); }
       // Fetch serve queue link for PSO calls
       if (selectedCall.incident_type === 'pso_client_request') {
@@ -1236,6 +1335,25 @@ export default function DispatchPage() {
     }
   };
 
+  // ── Admin timeline edit handler ──
+  const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
+    if (!selectedCall || !isAdminOrManager) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [field]: value || null }),
+      });
+      const updated = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+      setSelectedCall(updated);
+      addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
+    } catch (err) {
+      console.error('Failed to update timeline:', err);
+      addToast('Failed to update timeline', 'error');
+    }
+    setEditingTimestamp(null);
+  }, [selectedCall, isAdminOrManager, addToast]);
+
   // Parse simple markdown markers into React elements for display
   const renderFormattedText = useCallback((text: string) => {
     if (!text) return text;
@@ -1324,6 +1442,39 @@ export default function DispatchPage() {
     } catch (err) {
       console.error('Failed to add note:', err);
       addToast('Failed to save note', 'error');
+    }
+  };
+
+  const handleEditNote = async (noteId: string, text: string) => {
+    if (!selectedCall || !text.trim()) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ text: text.trim() }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      setEditingNoteId(null);
+      setEditingNoteText('');
+      addToast('Note updated', 'success');
+    } catch {
+      addToast('Failed to edit note', 'error');
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!selectedCall) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
+        method: 'DELETE',
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      addToast('Note deleted', 'success');
+    } catch {
+      addToast('Failed to delete note', 'error');
     }
   };
 
@@ -1510,7 +1661,7 @@ export default function DispatchPage() {
       location: selectedCall.location || '',
       latitude: selectedCall.latitude ?? null,
       longitude: selectedCall.longitude ?? null,
-      property_id: selectedCall.property_id || null,
+      property_id: selectedCall.property_id ?? null,
       description: selectedCall.description || '',
       source: selectedCall.source || 'phone',
       disposition: selectedCall.disposition || '',
@@ -1539,7 +1690,7 @@ export default function DispatchPage() {
       le_notified: !!selectedCall.le_notified,
       le_agency: selectedCall.le_agency || '',
       le_case_number: selectedCall.le_case_number || '',
-      damage_estimate: selectedCall.damage_estimate || '',
+      damage_estimate: selectedCall.damage_estimate ?? '',
       damage_description: selectedCall.damage_description || '',
       action_taken: selectedCall.action_taken || '',
       responding_officer: selectedCall.responding_officer || '',
@@ -1615,7 +1766,7 @@ export default function DispatchPage() {
         le_notified: editData.le_notified,
         le_agency: editData.le_agency,
         le_case_number: editData.le_case_number,
-        damage_estimate: editData.damage_estimate ? Number(editData.damage_estimate) : null,
+        damage_estimate: editData.damage_estimate !== '' && editData.damage_estimate != null ? Number(editData.damage_estimate) : null,
         damage_description: editData.damage_description,
         action_taken: editData.action_taken,
         responding_officer: editData.responding_officer,
@@ -1970,7 +2121,7 @@ export default function DispatchPage() {
             { id: 'serve', label: 'Serve', count: tabCounts.serve },
             { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
           ] as const).map((tab) => (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setFilterTab(tab.id as FilterTab)}
               className={`mobile-pill-tab ${filterTab === tab.id ? 'active' : ''}`}
@@ -2062,7 +2213,7 @@ export default function DispatchPage() {
               {/* Mobile Status Action Buttons — large touch targets for gloved use */}
               <div className="flex flex-wrap gap-2">
                 {selectedCall.status === 'pending' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
@@ -2071,7 +2222,7 @@ export default function DispatchPage() {
                   </button>
                 )}
                 {selectedCall.status === 'dispatched' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
@@ -2080,7 +2231,7 @@ export default function DispatchPage() {
                   </button>
                 )}
                 {selectedCall.status === 'enroute' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
@@ -2090,21 +2241,21 @@ export default function DispatchPage() {
                 )}
                 {['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
                   <>
-                    <button
+                    <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleHoldCall(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
                     >
                       ⏸ Hold
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a' }}
@@ -2114,7 +2265,7 @@ export default function DispatchPage() {
                   </>
                 )}
                 {selectedCall.status === 'on_hold' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000' }}
@@ -2124,14 +2275,14 @@ export default function DispatchPage() {
                 )}
                 {selectedCall.status === 'cleared' && (
                   <>
-                    <button
+                    <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#374151', border: '1px solid #4b5563', color: '#d1d5db' }}
                     >
                       Close
                     </button>
-                    <button
+                    <button type="button"
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
@@ -2143,7 +2294,7 @@ export default function DispatchPage() {
                   </>
                 )}
                 {selectedCall.status === 'closed' && (
-                  <button
+                  <button type="button"
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
@@ -2154,7 +2305,7 @@ export default function DispatchPage() {
                   </button>
                 )}
                 {['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
-                  <button
+                  <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
@@ -2163,7 +2314,7 @@ export default function DispatchPage() {
                   </button>
                 )}
                 {selectedCall.status !== 'archived' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
@@ -2172,7 +2323,7 @@ export default function DispatchPage() {
                   </button>
                 )}
                 {selectedCall.status === 'archived' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
@@ -2209,38 +2360,60 @@ export default function DispatchPage() {
                   </div>
                 )}
 
-                {/* Timestamps */}
+                {/* Timestamps — editable by admin/manager */}
                 <div className="panel-inset p-3">
-                  <div className="field-label mb-2">Timeline</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="field-label">Timeline</div>
+                    {isAdminOrManager && <span className="text-[8px] text-rmpg-500 font-mono">CLICK TO EDIT</span>}
+                  </div>
                   <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-rmpg-400">Created</span>
-                      <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.created_at)}</span>
-                    </div>
-                    {selectedCall.dispatched_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Dispatched</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.dispatched_at)}</span>
+                    {([
+                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#9ca3af' },
+                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
+                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
+                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
+                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
+                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
+                    ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
+                      <div key={ts.field} className="flex justify-between items-center group">
+                        <span className="text-rmpg-400 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ts.color, boxShadow: ts.value ? `0 0 4px ${ts.color}80` : 'none' }} />
+                          {ts.label}
+                        </span>
+                        {editingTimestamp === ts.field ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="datetime-local"
+                              step="1"
+                              className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
+                              defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                if (e.key === 'Escape') setEditingTimestamp(null);
+                              }}
+                              onBlur={(e) => {
+                                if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                else setEditingTimestamp(null);
+                              }}
+                            />
+                            {ts.value && ts.field !== 'created_at' && (
+                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span
+                            className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                            onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                            title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
+                          >
+                            {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {selectedCall.enroute_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Enroute</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.enroute_at)}</span>
-                      </div>
-                    )}
-                    {selectedCall.onscene_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">On Scene</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.onscene_at)}</span>
-                      </div>
-                    )}
-                    {selectedCall.cleared_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Cleared</span>
-                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.cleared_at)}</span>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </div>
 
@@ -2292,7 +2465,7 @@ export default function DispatchPage() {
                       onChange={(e) => setNewNote(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddNote(); } }}
                     />
-                    <button
+                    <button type="button"
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
                       className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
@@ -2308,14 +2481,33 @@ export default function DispatchPage() {
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
-                      {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
-                          VISIT #{selectedCall.pso_attempt_number}
-                        </span>
+                      {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                        isAdminOrManager ? (
+                          <select
+                            className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
+                            style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
+                            value={selectedCall.pso_attempt_number || 1}
+                            onChange={async (e) => {
+                              const val = parseInt(e.target.value, 10);
+                              try {
+                                const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ pso_attempt_number: val }) });
+                                const updated = mapDbCall(result);
+                                setCalls(prev => prev.map(c => String(c.id) === String(updated.id) ? { ...c, ...updated } : c));
+                                setSelectedCall(prev => prev ? { ...prev, ...updated } : updated);
+                              } catch { addToast('Failed to update visit number', 'error'); }
+                            }}
+                          >
+                            {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>VISIT #{n}</option>)}
+                          </select>
+                        ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                            VISIT #{selectedCall.pso_attempt_number}
+                          </span>
+                        ) : null
                       )}
                     </div>
                     <div className="space-y-1 text-xs text-rmpg-200">
-                      {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {selectedCall.pso_service_type.replace(/_/g, ' ')}</div>}
+                      {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</div>}
                       {selectedCall.pso_requestor_name && <div><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</div>}
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
@@ -2323,36 +2515,91 @@ export default function DispatchPage() {
                       {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
                     </div>
 
-                    {/* Serve Queue Integration */}
+                    {/* Serve Queue Integration — Gold Status Panel */}
                     {(
                       <div className="mt-2 pt-2 border-t border-rmpg-600">
                         {serveLink ? (
-                          <div className="space-y-1">
+                          <div
+                            className="rounded-[2px] p-2 space-y-1.5"
+                            style={{
+                              border: '1px solid #d4a017',
+                              background: '#d4a01708',
+                            }}
+                            role="status"
+                            aria-label={`Serve status: ${serveLink.status}`}
+                          >
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{
-                                background: serveLink.status === 'served' ? '#22c55e' : serveLink.status === 'failed' ? '#ef4444' : '#f59e0b'
-                              }} />
-                              <span className="text-[10px] font-bold text-rmpg-300 uppercase">Serve Queue</span>
-                              <span className="text-[10px] font-mono text-cyan-400">
-                                {serveLink.attempt_count}/{serveLink.max_attempts} attempts
+                              {/* LED indicator */}
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{
+                                  background: serveLink.status === 'served' ? '#22c55e'
+                                    : serveLink.status === 'failed' ? '#ef4444'
+                                    : serveLink.status === 'in_progress' ? '#eab308'
+                                    : '#f59e0b',
+                                  boxShadow: `0 0 4px ${
+                                    serveLink.status === 'served' ? '#22c55e'
+                                    : serveLink.status === 'failed' ? '#ef4444'
+                                    : serveLink.status === 'in_progress' ? '#eab308'
+                                    : '#f59e0b'
+                                  }`,
+                                }}
+                              />
+                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+                                Serve Queue
                               </span>
-                              <span className="text-[10px] font-mono px-1 rounded-sm" style={{
-                                background: serveLink.status === 'served' ? '#22c55e20' : serveLink.status === 'failed' ? '#dc262620' : '#f59e0b20',
-                                color: serveLink.status === 'served' ? '#4ade80' : serveLink.status === 'failed' ? '#f87171' : '#fbbf24',
-                              }}>
-                                {serveLink.status?.toUpperCase()}
+                              {serveLink.auto_sent && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded-sm" style={{ background: '#d4a01720', border: '1px solid #d4a01740', color: '#d4a017' }}>
+                                  AUTO-SENT
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* Status badge */}
+                              <span
+                                className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-[2px] uppercase"
+                                style={{
+                                  background: serveLink.status === 'served' ? '#22c55e20'
+                                    : serveLink.status === 'failed' ? '#dc262620'
+                                    : serveLink.status === 'in_progress' ? '#eab30820'
+                                    : '#f59e0b20',
+                                  color: serveLink.status === 'served' ? '#4ade80'
+                                    : serveLink.status === 'failed' ? '#f87171'
+                                    : serveLink.status === 'in_progress' ? '#facc15'
+                                    : '#fbbf24',
+                                  border: `1px solid ${
+                                    serveLink.status === 'served' ? '#22c55e40'
+                                    : serveLink.status === 'failed' ? '#dc262640'
+                                    : serveLink.status === 'in_progress' ? '#eab30840'
+                                    : '#f59e0b40'
+                                  }`,
+                                }}
+                              >
+                                {serveLink.status === 'in_progress' ? 'IN PROGRESS' : serveLink.status?.toUpperCase()}
+                              </span>
+                              {/* Attempt counter */}
+                              <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>
+                                Attempts: {serveLink.attempt_count}/{serveLink.max_attempts}
                               </span>
                             </div>
-                            <button
-                              className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                            {/* View in Process Server link */}
+                            <button type="button"
+                              className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgba(212,160,23,0.2)]"
+                              style={{
+                                background: '#d4a01715',
+                                border: '1px solid #d4a01740',
+                                color: '#d4a017',
+                              }}
                               onClick={() => navigate('/serve')}
+                              aria-label="View in Process Server"
                             >
+                              <Briefcase style={{ width: 10, height: 10 }} />
                               View in Process Server
                             </button>
                           </div>
                         ) : (
-                          <button
-                            className="w-full py-2 px-3 text-xs font-semibold rounded-sm flex items-center justify-center gap-2 transition-colors"
+                          <button type="button"
+                            className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
                             style={{
                               background: sendingToServe ? '#374151' : '#7c3aed20',
                               border: '1px solid #7c3aed50',
@@ -2376,6 +2623,7 @@ export default function DispatchPage() {
                                 setSendingToServe(false);
                               }
                             }}
+                            aria-label="Send to Serve Queue"
                           >
                             <Briefcase style={{ width: 14, height: 14 }} />
                             {sendingToServe ? 'Sending...' : 'Send to Serve Queue'}
@@ -2482,7 +2730,7 @@ export default function DispatchPage() {
 
                     {/* Schedule Return Visit button (mobile) */}
                     {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
-                      <button
+                      <button type="button"
                         className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: '#d4a01730', border: '1px solid #d4a01760', color: '#d4a017' }}
                         onClick={async () => {
@@ -2496,15 +2744,38 @@ export default function DispatchPage() {
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
+                              setCalls(prev => [mapped, ...prev]);
                               setSelectedCall(mapped);
-                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched — ${ordinal} visit`, 'success');
+                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
                             }
                           } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
                       >
                         <RotateCcw style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
                         Schedule Return Visit
+                      </button>
+                    )}
+
+                    {/* Undo Return Visit button (mobile) — only on pending child calls */}
+                    {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                      <button type="button"
+                        className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
+                        style={{ background: '#ef444420', border: '1px solid #ef444450', color: '#ef4444' }}
+                        onClick={async () => {
+                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
+                          try {
+                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                            if (result?.parent) {
+                              const mapped = mapDbCall(result.parent);
+                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                              setSelectedCall(mapped);
+                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                      >
+                        <Undo2 style={{ width: 12, height: 12, display: 'inline', marginRight: 6 }} />
+                        Undo Return Visit
                       </button>
                     )}
                   </div>
@@ -2515,14 +2786,14 @@ export default function DispatchPage() {
         </MobileDetailView>
 
         {/* FABs — New Call + PSO */}
-        <button
+        <button type="button"
           className="mobile-fab"
           onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
           aria-label="New Call"
         >
           <Plus style={{ width: 24, height: 24 }} />
         </button>
-        <button
+        <button type="button"
           className="mobile-fab"
           onClick={() => setShowQuickPsoModal(true)}
           aria-label="Quick PSO"
@@ -2569,7 +2840,7 @@ export default function DispatchPage() {
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           <RmpgLogo height={16} iconOnly />
           {/* Feature 1: Sound alert mute toggle */}
-          <button
+          <button type="button"
             onClick={toggleSoundAlerts}
             className={`toolbar-btn ${soundAlertsMuted ? 'text-red-400' : 'text-green-400'}`}
             title={soundAlertsMuted ? 'Sound alerts: MUTED' : 'Sound alerts: ON'}
@@ -2578,7 +2849,7 @@ export default function DispatchPage() {
             {soundAlertsMuted ? 'Muted' : 'Sound'}
           </button>
           {/* Feature 5: Shift handoff notes */}
-          <button
+          <button type="button"
             onClick={() => { setShowHandoffNotes(true); fetchHandoffNotes(); }}
             className="toolbar-btn"
             title="Shift Handoff Notes"
@@ -2589,7 +2860,7 @@ export default function DispatchPage() {
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {tabCounts.cleared > 0 && (
-            <button
+            <button type="button"
               onClick={handleBulkArchive}
               disabled={isBulkArchiving}
               className="toolbar-btn"
@@ -2609,7 +2880,7 @@ export default function DispatchPage() {
               className="input-dark text-xs w-full pl-6 pr-6"
             />
             {searchQuery && (
-              <button
+              <button type="button"
                 onClick={() => setSearchQuery('')}
                 className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#6b7280] hover:text-white transition-colors"
                 title="Clear search"
@@ -2618,13 +2889,13 @@ export default function DispatchPage() {
               </button>
             )}
           </div>
-          <button onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 10, height: 10 }} />
             New Call
           </button>
           {/* Quick Dispatch dropdown */}
           <div className="relative" ref={templateDropdownRef} style={{ display: 'inline-block' }}>
-            <button
+            <button type="button"
               onClick={() => setShowTemplateDropdown((prev) => !prev)}
               className="toolbar-btn"
               title="Quick Dispatch — create call from template"
@@ -2684,7 +2955,7 @@ export default function DispatchPage() {
               </div>
             )}
           </div>
-          <button
+          <button type="button"
             onClick={() => setShowQuickPsoModal(true)}
             className="toolbar-btn"
             title="Quick PSO Client Request (P)"
@@ -2815,7 +3086,7 @@ export default function DispatchPage() {
                  'Press N to create a new call'}
               </p>
               {filterTab === 'all' && (
-                <button
+                <button type="button"
                   onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
                   className="mt-4 toolbar-btn toolbar-btn-primary text-[10px]"
                 >
@@ -2862,15 +3133,75 @@ export default function DispatchPage() {
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
                   <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
-                  {selectedCall.case_number && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 whitespace-nowrap">
-                      CASE {selectedCall.case_number}
-                    </span>
+                  {/* Case Number — editable by admin/manager */}
+                  {(selectedCall.case_number || isAdminOrManager) && (
+                    editingTimestamp === 'case_number' ? (
+                      <input
+                        type="text"
+                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[140px]"
+                        defaultValue={selectedCall.case_number || ''}
+                        placeholder="Case #"
+                        autoFocus
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
+                            } catch { addToast('Failed to update case number', 'error'); }
+                            setEditingTimestamp(null);
+                          }
+                          if (e.key === 'Escape') setEditingTimestamp(null);
+                        }}
+                        onBlur={() => setEditingTimestamp(null)}
+                      />
+                    ) : (
+                      <span
+                        className={`text-[10px] font-bold font-mono px-1.5 py-0.5 whitespace-nowrap ${selectedCall.case_number ? 'text-amber-300 bg-amber-900/30 border border-amber-700/40' : 'text-rmpg-600 border border-dashed border-rmpg-600/40'} ${isAdminOrManager ? 'cursor-pointer hover:brightness-125' : ''}`}
+                        onClick={() => isAdminOrManager && setEditingTimestamp('case_number')}
+                        title={isAdminOrManager ? 'Click to edit case number' : undefined}
+                      >
+                        {selectedCall.case_number ? `CASE ${selectedCall.case_number}` : isAdminOrManager ? '+ CASE #' : ''}
+                      </span>
+                    )
                   )}
-                  {selectedCall.incident_number && (
-                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap">
-                      INC {selectedCall.incident_number}
-                    </span>
+                  {/* Incident Number — editable by admin/manager */}
+                  {(selectedCall.incident_number || isAdminOrManager) && (
+                    editingTimestamp === 'incident_number' ? (
+                      <input
+                        type="text"
+                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
+                        defaultValue={(selectedCall as any).incident_number || ''}
+                        placeholder="Incident #"
+                        autoFocus
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
+                            } catch { addToast('Failed to update incident link', 'error'); }
+                            setEditingTimestamp(null);
+                          }
+                          if (e.key === 'Escape') setEditingTimestamp(null);
+                        }}
+                        onBlur={() => setEditingTimestamp(null)}
+                      />
+                    ) : selectedCall.incident_number ? (
+                      <span
+                        className={`text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap ${isAdminOrManager ? 'cursor-pointer hover:brightness-125' : ''}`}
+                        onClick={() => isAdminOrManager && setEditingTimestamp('incident_number')}
+                        title={isAdminOrManager ? 'Click to edit incident link' : undefined}
+                      >
+                        INC {selectedCall.incident_number}
+                      </span>
+                    ) : null
                   )}
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
@@ -2929,7 +3260,7 @@ export default function DispatchPage() {
                         })),
                         // Build narrative from notes for PDF
                         narrative: selectedCall?.notes?.map((n: any) =>
-                          `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+                          `[${n.timestamp ? formatTime(n.timestamp) : ''}] ${n.author || 'System'}: ${n.text || ''}`
                         ).join('\n') || '',
                       }}
                       identifier={selectedCall?.call_number}
@@ -2939,23 +3270,23 @@ export default function DispatchPage() {
                     />
                     {/* Edit toggle */}
                     {!isEditing && (
-                      <button onClick={startEditing} className="toolbar-btn" title="Edit call details">
+                      <button type="button" onClick={startEditing} className="toolbar-btn" title="Edit call details">
                         <Edit3 style={{ width: 10, height: 10 }} /> Edit
                       </button>
                     )}
                     {isEditing && (
                       <>
-                        <button onClick={saveEditing} disabled={isSaving} className="toolbar-btn toolbar-btn-primary">
+                        <button type="button" onClick={saveEditing} disabled={isSaving} className="toolbar-btn toolbar-btn-primary">
                           {isSaving ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Save style={{ width: 10, height: 10 }} />} Save
                         </button>
-                        <button onClick={cancelEditing} disabled={isSaving} className="toolbar-btn">
+                        <button type="button" onClick={cancelEditing} disabled={isSaving} className="toolbar-btn">
                           <X style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
                     )}
                     {/* NCIC Terminal button */}
                     {!isEditing && (
-                      <button
+                      <button type="button"
                         onClick={() => setShowNcicPanel(true)}
                         className="toolbar-btn"
                         title="NCIC / NLETS Query Terminal"
@@ -2964,9 +3295,9 @@ export default function DispatchPage() {
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
                     )}
-                    {/* Schedule Return Visit — PSO calls in completed states */}
-                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
-                      <button
+                    {/* Schedule Return Visit — PSO/Process Service calls in completed states */}
+                    {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
                         className="toolbar-btn"
                         style={{ background: '#d4a01725', borderColor: '#d4a01750', color: '#d4a017' }}
                         onClick={async () => {
@@ -2980,20 +3311,42 @@ export default function DispatchPage() {
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
+                              setCalls(prev => [mapped, ...prev]);
                               setSelectedCall(mapped);
-                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched as ${ordinal} visit`, 'success');
+                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
                             }
                           } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
-                        title="Schedule a return visit for this PSO call"
+                        title="Schedule a return visit — creates a new linked call"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
                     )}
+                    {/* Undo Return Visit — only on pending child calls */}
+                    {!isEditing && (selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: '#ef444420', borderColor: '#ef444450', color: '#ef4444' }}
+                        onClick={async () => {
+                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
+                          try {
+                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                            if (result?.parent) {
+                              const mapped = mapDbCall(result.parent);
+                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                              setSelectedCall(mapped);
+                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                        title="Undo this return visit and delete this call"
+                      >
+                        <Undo2 style={{ width: 10, height: 10 }} /> Undo Visit
+                      </button>
+                    )}
                     {/* Send to Serve Queue — PSO calls */}
                     {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
-                      <button
+                      <button type="button"
                         className="toolbar-btn"
                         style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
                         disabled={sendingToServe}
@@ -3021,7 +3374,7 @@ export default function DispatchPage() {
                     )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
-                      <button
+                      <button type="button"
                         onClick={() => handleRevertStatus(selectedCall.id)}
                         className="toolbar-btn"
                         title={`Revert to previous status`}
@@ -3032,58 +3385,58 @@ export default function DispatchPage() {
                     )}
                     {/* Status action toolbar buttons */}
                     {!isEditing && selectedCall.status === 'pending' && (
-                      <button onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
                         <Send style={{ width: 10, height: 10 }} /> Dispatch
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'dispatched' && (
-                      <button onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
                         <Navigation style={{ width: 10, height: 10 }} /> En Route
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'enroute' && (
-                      <button onClick={() => handleStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
                         <Eye style={{ width: 10, height: 10 }} /> On Scene
                       </button>
                     )}
                     {!isEditing && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
                       <>
-                        <button onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
+                        <button type="button" onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
                           <CheckCircle style={{ width: 10, height: 10 }} /> Clear
                         </button>
-                        <button onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                        <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
                           ⏸ Hold
                         </button>
-                        <button onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#ef7a7a' }}>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#ef7a7a' }}>
                           <XCircle style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'on_hold' && (
-                      <button onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: '#f59e0b', color: '#000' }}>
+                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: '#f59e0b', color: '#000' }}>
                         ▶ Resume
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'cleared' && (
                       <>
-                        <button onClick={() => handleStatusChange(selectedCall.id, 'closed')} className="toolbar-btn">
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'closed')} className="toolbar-btn">
                           Close
                         </button>
-                        <button onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
+                        <button type="button" onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
                           {isGenerating ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
                           Report
                         </button>
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'closed' && (
-                      <button onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
                         {isGenerating ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
                         Report
                       </button>
                     )}
                     {/* LE Notification */}
                     {!isEditing && !selectedCall.le_notified && selectedCall.status !== 'archived' && (
-                      <button onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                      <button type="button" onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
                         <Radio style={{ width: 10, height: 10 }} /> Notify LE
                       </button>
                     )}
@@ -3095,18 +3448,18 @@ export default function DispatchPage() {
                     )}
                     {/* Archive — available on any non-archived status */}
                     {!isEditing && selectedCall.status !== 'archived' && (
-                      <button onClick={() => handleArchive(selectedCall.id)} className="toolbar-btn" title="Archive this call">
+                      <button type="button" onClick={() => handleArchive(selectedCall.id)} className="toolbar-btn" title="Archive this call">
                         <Archive style={{ width: 10, height: 10 }} /> Archive
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'archived' && (
-                      <button onClick={() => handleUnarchive(selectedCall.id)} className="toolbar-btn">
+                      <button type="button" onClick={() => handleUnarchive(selectedCall.id)} className="toolbar-btn">
                         <RotateCcw style={{ width: 10, height: 10 }} /> Restore
                       </button>
                     )}
                     {/* Delete — available on any call */}
                     {!isEditing && (
-                      <button onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
+                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
                         <Trash2 style={{ width: 10, height: 10 }} /> Delete
                       </button>
                     )}
@@ -3142,7 +3495,7 @@ export default function DispatchPage() {
                   const count = counts[tab];
                   const isActive = detailTab === tab;
                   return (
-                    <button
+                    <button type="button"
                       key={tab}
                       onClick={() => setDetailTab(tab)}
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
@@ -3346,51 +3699,62 @@ export default function DispatchPage() {
                       )}
                     </div>
 
-                    {/* Timeline */}
+                    {/* Timeline — editable by admin/manager */}
                     <div>
-                      <label className="field-label">Timeline:</label>
+                      <div className="flex items-center justify-between">
+                        <label className="field-label">Timeline:</label>
+                        {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
+                      </div>
                       <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #1e3048' }}>
-                        <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                          <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
-                          <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Created</span>
-                          <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.created_at)}</span>
-                          <span className="text-[#4b5563] text-[9px] font-mono tabular-nums">({formatElapsed(selectedCall.created_at)})</span>
-                        </div>
-                        {selectedCall.dispatched_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#f59e0b', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Dispatched</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.dispatched_at)}</span>
+                        {([
+                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#6b7280', showElapsed: true },
+                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
+                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
+                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
+                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
+                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
+                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#6b7280' },
+                        ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
+                          <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#1e3048', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
+                            {editingTimestamp === ts.field ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="datetime-local"
+                                  step="1"
+                                  className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
+                                  defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                    if (e.key === 'Escape') setEditingTimestamp(null);
+                                  }}
+                                  onBlur={(e) => {
+                                    if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                    else setEditingTimestamp(null);
+                                  }}
+                                />
+                                {ts.value && ts.field !== 'created_at' && (
+                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span
+                                className={`text-white font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                                onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                                title={isAdminOrManager ? 'Click to edit' : undefined}
+                              >
+                                {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic text-[9px]">— not set —</span>}
+                              </span>
+                            )}
+                            {ts.showElapsed && ts.value && !editingTimestamp && (
+                              <span className="text-[#4b5563] text-[9px] font-mono tabular-nums">({formatElapsed(ts.value)})</span>
+                            )}
                           </div>
-                        )}
-                        {selectedCall.enroute_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#3b82f6', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>En Route</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.enroute_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.onscene_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#a855f7', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>On Scene</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.onscene_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.cleared_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#22c55e', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Cleared</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.cleared_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.archived_at && (
-                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Archived</span>
-                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.archived_at)}</span>
-                          </div>
-                        )}
+                        ))}
                       </div>
                     </div>
 
@@ -3398,9 +3762,9 @@ export default function DispatchPage() {
                     <div>
                       <div className="flex items-center justify-between">
                         <label className="field-label">Assigned Units:</label>
-                        {!isEditing && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                        {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                           <div className="relative" ref={attachUnitDropdownRef} style={{ display: 'inline-block' }}>
-                            <button
+                            <button type="button"
                               onClick={() => setShowAttachUnitDropdown((prev) => !prev)}
                               className="toolbar-btn"
                               style={{ padding: '1px 6px', fontSize: '9px' }}
@@ -3432,9 +3796,9 @@ export default function DispatchPage() {
                         )}
                       </div>
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
-                      {!isEditing && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">
-                          <button
+                          <button type="button"
                             onClick={() => handleAutoAssign(selectedCall.id)}
                             className="toolbar-btn text-[8px]"
                             style={{ padding: '1px 4px' }}
@@ -3494,7 +3858,7 @@ export default function DispatchPage() {
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
                                 {!isEditing && unitObj && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleUnassignUnit(unitObj.id)}
                                     className="ml-0.5 hover:text-red-400 transition-colors"
                                     title={`Detach ${displayName}`}
@@ -3683,7 +4047,7 @@ export default function DispatchPage() {
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
-                                  <button onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button type="button" onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -3693,7 +4057,7 @@ export default function DispatchPage() {
                             {showPersonDropdown && personSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {personSearchResults.map((p: any) => (
-                                  <button key={p.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                                  <button type="button" key={p.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                                     linkPersonToCall(selectedCall.id, p.id, linkPersonRole);
                                     const desc = `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').replace(/,\s*$/, '') + (p.dob ? ` DOB:${p.dob}` : '');
                                     updateEditField('subject_description', desc);
@@ -3733,7 +4097,7 @@ export default function DispatchPage() {
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cv.role || '').replace(/_/g, ' ')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
-                                  <button onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button type="button" onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -3743,7 +4107,7 @@ export default function DispatchPage() {
                             {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {vehicleSearchResults.map((v: any) => (
-                                  <button key={v.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                                  <button type="button" key={v.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                                     linkVehicleToCall(selectedCall.id, v.id, linkVehicleRole);
                                     const desc = [v.color, v.year, v.make, v.model].filter(Boolean).join(' ') + (v.plate_number ? ` PLT:${v.plate_number}` : '') + (v.plate_state ? `/${v.plate_state}` : '');
                                     updateEditField('vehicle_description', desc);
@@ -3813,7 +4177,7 @@ export default function DispatchPage() {
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cv.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
-                                {cv.stolen_status && cv.stolen_status !== 'none' && <span className="text-red-400 font-bold uppercase">STOLEN</span>}
+                                {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{cv.stolen_status.replace(/_/g, ' ')}</span>}
                               </div>
                             ))}
                           </div>
@@ -3917,10 +4281,36 @@ export default function DispatchPage() {
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
-                        {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                          <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
-                            {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
-                          </span>
+                        {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                          isAdminOrManager && !isEditing ? (
+                            <select
+                              className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
+                              style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
+                              value={selectedCall.pso_attempt_number || 1}
+                              onChange={async (e) => {
+                                const newAttempt = parseInt(e.target.value, 10);
+                                try {
+                                  const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ pso_attempt_number: newAttempt }),
+                                  });
+                                  const updated = mapDbCall(result);
+                                  setCalls(prev => prev.map(c => String(c.id) === String(updated.id) ? { ...c, ...updated } : c));
+                                  setSelectedCall(prev => prev ? { ...prev, ...updated } : updated);
+                                  addToast(`Attempt number set to ${newAttempt}`, 'success');
+                                } catch (err) { addToast('Failed to update attempt number', 'error'); }
+                              }}
+                              title="Admin: change attempt number"
+                            >
+                              {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                                <option key={n} value={n}>{n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`} ATTEMPT</option>
+                              ))}
+                            </select>
+                          ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
+                            <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                              {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
+                            </span>
+                          ) : null
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
@@ -3946,7 +4336,7 @@ export default function DispatchPage() {
                         return null;
                       })()}
                       {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
-                        <button
+                        <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: '#d4a01720', borderColor: '#d4a01740', color: '#d4a017' }}
                           onClick={async () => {
@@ -3984,14 +4374,30 @@ export default function DispatchPage() {
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Service Type</label>
                             <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
-                              <option value="">— Select —</option>
-                              <option value="patrol">Patrol</option>
-                              <option value="static_guard">Static Guard</option>
-                              <option value="escort">Escort</option>
-                              <option value="event_security">Event Security</option>
-                              <option value="surveillance">Surveillance</option>
-                              <option value="access_control">Access Control</option>
-                              <option value="other">Other</option>
+                              <option value="">— Select Service Type —</option>
+                              <optgroup label="Process Service">
+                                <option value="process_service">Process Service (General)</option>
+                                <option value="subpoena_service">Subpoena Service</option>
+                                <option value="summons_service">Summons &amp; Complaint</option>
+                                <option value="eviction_service">Eviction / Unlawful Detainer</option>
+                                <option value="restraining_order_service">Protective Order Service</option>
+                                <option value="writ_service">Writ Service</option>
+                                <option value="court_filing">Court Filing / Delivery</option>
+                                <option value="skip_trace">Skip Trace &amp; Locate</option>
+                                <option value="stake_out">Stake Out / Surveillance</option>
+                                <option value="rush_service">Rush / Same-Day Service</option>
+                              </optgroup>
+                              <optgroup label="Security Services">
+                                <option value="patrol">Patrol</option>
+                                <option value="static_guard">Static Guard</option>
+                                <option value="escort">Escort</option>
+                                <option value="event_security">Event Security</option>
+                                <option value="surveillance">Surveillance</option>
+                                <option value="access_control">Access Control</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                           <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
@@ -4003,7 +4409,7 @@ export default function DispatchPage() {
                         {selectedCall.pso_requestor_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</span>}
                         {selectedCall.pso_requestor_phone && <span className="text-rmpg-200"><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</span>}
                         {selectedCall.pso_requestor_email && <span className="text-rmpg-200"><span className="text-rmpg-400">Email:</span> {selectedCall.pso_requestor_email}</span>}
-                        {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {selectedCall.pso_service_type}</span>}
+                        {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
                         {selectedCall.pso_billing_code && <span className="text-rmpg-200"><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</span>}
                         {selectedCall.pso_authorization && <span className="text-rmpg-200"><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</span>}
                         {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
@@ -4056,10 +4462,10 @@ export default function DispatchPage() {
                   </div>
                 )}
 
-                {/* ── PROCESS SERVICE DETAILS — Info tab ─── */}
+                {/* ── PROCESS SERVICE DETAILS — Info tab (always visible for PSO/process calls) ─── */}
                 {detailTab === 'info' && (isEditing
-                  ? editData.pso_service_type === 'process_service'
-                  : (selectedCall.pso_service_type === 'process_service' || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
+                  ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
+                  : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
                   <div className="border-t border-[#1e3048] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
@@ -4087,13 +4493,44 @@ export default function DispatchPage() {
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
                             <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
-                              <option value="">— Select —</option>
-                              <option value="subpoena">Subpoena</option>
-                              <option value="summons">Summons</option>
-                              <option value="complaint">Complaint</option>
-                              <option value="eviction">Eviction</option>
-                              <option value="restraining_order">Restraining Order</option>
-                              <option value="other">Other</option>
+                              <option value="">— Select Document Type —</option>
+                              <optgroup label="Civil Process">
+                                <option value="subpoena">Subpoena</option>
+                                <option value="summons">Summons &amp; Complaint</option>
+                                <option value="complaint">Complaint</option>
+                                <option value="civil_summons">Civil Summons</option>
+                                <option value="small_claims">Small Claims</option>
+                                <option value="garnishment">Garnishment</option>
+                                <option value="writ_of_execution">Writ of Execution</option>
+                                <option value="writ_of_restitution">Writ of Restitution</option>
+                                <option value="writ_of_garnishment">Writ of Garnishment</option>
+                                <option value="writ_of_attachment">Writ of Attachment</option>
+                              </optgroup>
+                              <optgroup label="Family / Domestic">
+                                <option value="restraining_order">Protective / Restraining Order</option>
+                                <option value="divorce_papers">Divorce Papers</option>
+                                <option value="custody_order">Custody Order</option>
+                                <option value="child_support">Child Support Order</option>
+                                <option value="stalking_injunction">Stalking Injunction</option>
+                              </optgroup>
+                              <optgroup label="Real Property">
+                                <option value="eviction">Eviction Notice</option>
+                                <option value="unlawful_detainer">Unlawful Detainer</option>
+                                <option value="notice_to_quit">Notice to Quit</option>
+                                <option value="foreclosure">Foreclosure Notice</option>
+                              </optgroup>
+                              <optgroup label="Court Orders">
+                                <option value="court_order">Court Order</option>
+                                <option value="temporary_order">Temporary Order</option>
+                                <option value="motion">Motion / Petition</option>
+                                <option value="notice_of_hearing">Notice of Hearing</option>
+                                <option value="order_to_show_cause">Order to Show Cause</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="demand_letter">Demand Letter</option>
+                                <option value="cease_and_desist">Cease &amp; Desist</option>
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                           <div>
@@ -4112,23 +4549,41 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Served At</label>
-                            <input type="datetime-local" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
+                            <input type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Service Result</label>
                             <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
-                              <option value="served">Served</option>
-                              <option value="unable_to_serve">Unable to Serve</option>
-                              <option value="refused">Refused</option>
-                              <option value="substitute_service">Substitute Service</option>
+                              <optgroup label="Successful">
+                                <option value="served">Personal Service</option>
+                                <option value="substitute_service">Substitute Service</option>
+                                <option value="abode_service">Abode / Dwelling Service</option>
+                                <option value="posted">Posted (Nail &amp; Mail)</option>
+                                <option value="left_with">Left With (Co-Resident)</option>
+                              </optgroup>
+                              <optgroup label="Unsuccessful">
+                                <option value="no_answer">No Answer / Not Home</option>
+                                <option value="unable_to_locate">Unable to Locate</option>
+                                <option value="refused">Refused Service</option>
+                                <option value="evasion">Evasion / Avoiding Service</option>
+                                <option value="bad_address">Bad / Invalid Address</option>
+                                <option value="moved">Subject Moved</option>
+                                <option value="deceased">Subject Deceased</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="non_est">Non Est Inventus (Not Found)</option>
+                                <option value="unable_to_serve">Unable to Serve (General)</option>
+                                <option value="returned_to_attorney">Returned to Attorney</option>
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                         </div>
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.process_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Document:</span> {selectedCall.process_service_type.replace(/_/g, ' ')}</span>}
+                        {selectedCall.process_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Document:</span> {formatDocumentType(selectedCall.process_service_type)}</span>}
                         {selectedCall.process_served_to && <span className="text-rmpg-200"><span className="text-rmpg-400">Serve To:</span> {selectedCall.process_served_to}</span>}
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {selectedCall.process_served_at}</span>}
@@ -4233,7 +4688,7 @@ export default function DispatchPage() {
                       ] as const).map(({ field, label, onBg, onBorder, onText }) => {
                         const isOn = !!(selectedCall as any)[field];
                         return (
-                          <button
+                          <button type="button"
                             key={field}
                             className="px-2 py-0.5 text-[9px] font-semibold rounded-sm transition-colors border"
                             style={isOn
@@ -4268,7 +4723,7 @@ export default function DispatchPage() {
                     <label className="field-label !flex items-center gap-1.5" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Activity Log
                     </label>
-                    <button onClick={() => setShowAddTimeline(!showAddTimeline)} className="toolbar-btn" style={{ padding: '1px 6px', fontSize: '9px' }}>
+                    <button type="button" onClick={() => setShowAddTimeline(!showAddTimeline)} className="toolbar-btn" style={{ padding: '1px 6px', fontSize: '9px' }}>
                       <PlusCircle style={{ width: 9, height: 9 }} /> Add Entry
                     </button>
                   </div>
@@ -4278,7 +4733,7 @@ export default function DispatchPage() {
                         onChange={(e) => setNewTimelineText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddTimeline(); }}
                       />
-                      <button onClick={handleAddTimeline} className="toolbar-btn toolbar-btn-primary" style={{ fontSize: '9px' }} disabled={!newTimelineText.trim()}>Add</button>
+                      <button type="button" onClick={handleAddTimeline} className="toolbar-btn toolbar-btn-primary" style={{ fontSize: '9px' }} disabled={!newTimelineText.trim()}>Add</button>
                     </div>
                   )}
                   {activityEntries.length > 0 ? (
@@ -4304,10 +4759,10 @@ export default function DispatchPage() {
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
                               />
-                              <button onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button type="button" onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
                                 <Save style={{ width: 8, height: 8 }} />
                               </button>
-                              <button onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button type="button" onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
                                 <X style={{ width: 8, height: 8 }} />
                               </button>
                             </div>
@@ -4315,10 +4770,10 @@ export default function DispatchPage() {
                             <>
                               <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
+                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
+                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -4355,10 +4810,28 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
                         <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
-                        <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}</span>
+                        {editingNoteId === note.id ? (
+                          <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <div className="flex gap-1">
+                              <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
+                              <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
+                            {isAdminOrManager && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#60a5fa] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                       ))
                     )}
@@ -4388,7 +4861,7 @@ export default function DispatchPage() {
                           if (e.key === 'u' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('__'); }
                         }}
                       />
-                      <button onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary self-end" disabled={!newNote.trim()}>
+                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary self-end" disabled={!newNote.trim()}>
                         Add
                       </button>
                     </div>
@@ -4404,7 +4877,7 @@ export default function DispatchPage() {
                           onChange={(e) => setBroadcastNoteText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBroadcastNote(); } }}
                         />
-                        <button
+                        <button type="button"
                           onClick={handleBroadcastNote}
                           className="toolbar-btn self-end"
                           disabled={!broadcastNoteText.trim()}
@@ -4570,7 +5043,7 @@ export default function DispatchPage() {
               {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
             </span>
             <span className="toolbar-separator" />
-            <button onClick={() => setShowCreateUnitModal(true)} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={() => setShowCreateUnitModal(true)} className="toolbar-btn toolbar-btn-primary">
               <Plus style={{ width: 10, height: 10 }} /> New Unit
             </button>
           </PanelTitleBar>
@@ -4605,52 +5078,52 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-            style={{ background: '#1a2636', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', backdropFilter: 'blur(8px)' }}
+            style={{ background: '#1a2636', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
-              <button className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
                 <Send style={{ width: 12, height: 12 }} /> Dispatch
               </button>
             )}
             {contextMenu.call.status === 'dispatched' && (
-              <button className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
                 <Navigation style={{ width: 12, height: 12 }} /> En Route
               </button>
             )}
             {contextMenu.call.status === 'enroute' && (
-              <button className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
                 <Eye style={{ width: 12, height: 12 }} /> On Scene
               </button>
             )}
             {['dispatched', 'enroute', 'onscene'].includes(contextMenu.call.status) && (
               <>
-                <button className="context-menu-item" onClick={() => { handleClearWithDisposition(contextMenu.call.id); setContextMenu(null); }}>
+                <button type="button" className="context-menu-item" onClick={() => { handleClearWithDisposition(contextMenu.call.id); setContextMenu(null); }}>
                   <CheckCircle style={{ width: 12, height: 12 }} /> Clear
                 </button>
-                <button className="context-menu-item" onClick={() => { handleHoldCall(contextMenu.call.id); setContextMenu(null); }}>
+                <button type="button" className="context-menu-item" onClick={() => { handleHoldCall(contextMenu.call.id); setContextMenu(null); }}>
                   ⏸ Hold
                 </button>
               </>
             )}
             {contextMenu.call.status === 'on_hold' && (
-              <button className="context-menu-item" onClick={() => { handleResumeCall(contextMenu.call.id); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleResumeCall(contextMenu.call.id); setContextMenu(null); }}>
                 ▶ Resume
               </button>
             )}
             {contextMenu.call.status !== 'archived' && (
               <>
                 <div className="border-t border-rmpg-600 my-1" />
-                <button className="context-menu-item" onClick={() => { handleArchive(contextMenu.call.id); setContextMenu(null); }}>
+                <button type="button" className="context-menu-item" onClick={() => { handleArchive(contextMenu.call.id); setContextMenu(null); }}>
                   <Archive style={{ width: 12, height: 12 }} /> Archive
                 </button>
               </>
             )}
             <div className="border-t border-rmpg-600 my-1" />
-            <button className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
+            <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
               Copy Call Number
             </button>
-            <button className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
+            <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
               <Trash2 style={{ width: 12, height: 12 }} /> Delete
             </button>
           </div>
@@ -4659,7 +5132,7 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised animate-in rounded-sm"
             style={{ width: '440px', border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
@@ -4790,14 +5263,14 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
           <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
-              <button onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
+              <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
@@ -4845,10 +5318,10 @@ export default function DispatchPage() {
                 </select>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
+                <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   onClick={handleSaveUnit}
                   disabled={!newUnitCallSign.trim() || unitCreating}
                   className="toolbar-btn toolbar-btn-primary"
@@ -5023,14 +5496,14 @@ export default function DispatchPage() {
 
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
           <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
                 <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
               </div>
-              <button onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-3 flex-1 overflow-auto">
               {handoffMeta.updated_by && (
@@ -5047,8 +5520,8 @@ export default function DispatchPage() {
               />
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowHandoffNotes(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={saveHandoffNotes} disabled={savingHandoff} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowHandoffNotes(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={saveHandoffNotes} disabled={savingHandoff} className="toolbar-btn toolbar-btn-primary">
                 {savingHandoff ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 Save Notes
               </button>

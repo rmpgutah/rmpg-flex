@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import path from 'path';
+import fs from 'fs';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
@@ -441,6 +443,15 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
       return;
     }
 
+    // God Mode: admin can edit BOLOs in any status (cancelled, expired, archived)
+    if (req.user?.role === 'admin' && ['cancelled', 'expired'].includes(bolo.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: editing ${bolo.status} BOLO "${bolo.title}"`);
+    }
+    // God Mode: admin can reactivate expired BOLOs
+    if (req.user?.role === 'admin' && req.body.status === 'active' && ['expired', 'cancelled'].includes(bolo.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: reactivating ${bolo.status} BOLO "${bolo.title}"`);
+    }
+
     const {
       title, description, subject_description, vehicle_description,
       photo_url, status, priority, expires_at,
@@ -519,7 +530,10 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
     if (!bolo) { res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }); return; }
-    if (bolo.archived_at) { res.status(400).json({ error: 'BOLO is already archived', code: 'BOLO_IS_ALREADY_ARCHIVED' }); return; }
+    if (bolo.archived_at && req.user?.role !== 'admin') { res.status(400).json({ error: 'BOLO is already archived', code: 'BOLO_IS_ALREADY_ARCHIVED' }); return; }
+    if (bolo.archived_at && req.user?.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: re-archiving already archived BOLO`);
+    }
 
     const now = localNow();
     db.prepare('UPDATE bolos SET archived_at = ? WHERE id = ?').run(now, bolo.id);
@@ -1133,8 +1147,7 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
     if (!entry) { res.status(404).json({ error: 'Audio entry not found', code: 'AUDIO_ENTRY_NOT_FOUND' }); return; }
 
     if (entry.audio_path) {
-      const path = require('path');
-      const fs = require('fs');
+      // path, fs imported at top of file
       const audioPath = path.resolve(entry.audio_path);
       if (fs.existsSync(audioPath)) {
         res.sendFile(audioPath);
@@ -1419,4 +1432,37 @@ router.get('/bolos/watch-list', (req: Request, res: Response) => {
   }
 });
 
+// ── Communications CSV Export ─────────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT b.bolo_number, b.type, b.priority, b.status, b.title,
+             b.subject_description, b.vehicle_description,
+             b.broadcast_count, b.expires_at,
+             u.full_name as issued_by_name, b.created_at, b.updated_at
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      ORDER BY b.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['BOLO #', 'Type', 'Priority', 'Status', 'Title', 'Subject Description', 'Vehicle Description', 'Broadcasts', 'Expires', 'Issued By', 'Created', 'Updated'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.bolo_number, r.type, r.priority, r.status,
+        (r.title || '').replace(/"/g, '""'),
+        (r.subject_description || '').replace(/"/g, '""'),
+        (r.vehicle_description || '').replace(/"/g, '""'),
+        r.broadcast_count, r.expires_at, r.issued_by_name, r.created_at, r.updated_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="communications_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Comms CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export communications', code: 'COMMS_EXPORT_ERROR' });
+  }
+});
 export default router;

@@ -26,7 +26,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
-import { localToday } from '../utils/dateUtils';
+import { localToday, safeTimeStr } from '../utils/dateUtils';
 
 // ============================================================
 // RMPG Flex — RadioPage
@@ -490,7 +490,7 @@ export default function RadioPage() {
                   className="flex items-start gap-2 py-1.5 border-b border-rmpg-800/50"
                 >
                   <span className="text-[9px] font-mono text-rmpg-600 flex-shrink-0 mt-px">
-                    {new Date(entry.transmitted_at).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {safeTimeStr(entry.transmitted_at)}
                   </span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1">

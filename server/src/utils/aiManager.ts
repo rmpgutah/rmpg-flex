@@ -53,6 +53,7 @@ export interface BehaviorConfig {
   retryCount: number;
 }
 
+
 export interface AIActivityEntry {
   id: string;
   timestamp: string;
@@ -189,8 +190,8 @@ function rateLimitOk(): boolean {
 const CONFIG_PATH = path.join(__dirname, '../../data/ai-config.json');
 
 const DEFAULT_CONFIG: AIConfig = {
-  provider: 'ollama',
-  autoFallback: false,
+  provider: 'groq',
+  autoFallback: true,
   features: {
     callAnalysis: true,
     narrativeAssist: true,
@@ -215,7 +216,7 @@ const DEFAULT_CONFIG: AIConfig = {
     dataCleanup: { provider: 'auto' },
     general: { provider: 'auto' },
   },
-  providerPriority: ['ollama'],
+  providerPriority: ['groq', 'gemini', 'openai', 'ollama'],
   defaultParams: { temperature: 0.3, maxTokens: 500, topP: 0.9, repeatPenalty: 1.1 },
   featureParams: {},
   behavior: {
@@ -393,6 +394,7 @@ async function chat(
     jsonMode: options?.jsonMode,
   };
 
+
   // Prepend masterPrompt to system prompt if set and not already included
   let finalSystemPrompt = systemPrompt;
   if (cfg.masterPrompt && !systemPrompt.includes(cfg.masterPrompt)) {
@@ -418,6 +420,7 @@ async function chat(
       finalSystemPrompt += '\n\n' + extras.join(' ');
     }
   }
+
 
   // Build ordered list of providers to try
   let ordered: AIProvider[] = [];

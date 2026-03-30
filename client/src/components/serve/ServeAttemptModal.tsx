@@ -243,9 +243,9 @@ export default function ServeAttemptModal({
           <div className="flex flex-col items-center gap-1">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
               i < step
-                ? 'bg-green-600 border-green-500 text-white shadow-[0_0_6px_rgba(34,197,94,0.3)]'
+                ? 'bg-green-600 border-green-500 text-white shadow-[0_0_6px_rgba(34,197,94,0.5)]'
                 : i === step
-                  ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white shadow-[0_0_6px_rgba(26,90,158,0.3)]'
+                  ? 'bg-[#d4a017] border-[#d4a017] text-white shadow-[0_0_6px_#d4a017]'
                   : 'bg-rmpg-700 border-rmpg-500 text-rmpg-400'
             }`}>
               {i < step ? <CheckCircle className="w-4 h-4" /> : i + 1}
@@ -297,7 +297,10 @@ export default function ServeAttemptModal({
 
             {gps.loading ? (
               <div className="flex flex-col items-center gap-3 py-8 text-rmpg-400">
-                <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
+                <div className="relative">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#1a5a9e]" />
+                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
+                </div>
                 <span className="text-sm">Acquiring GPS position...</span>
               </div>
             ) : gps.error ? (
@@ -363,7 +366,7 @@ export default function ServeAttemptModal({
       case 1:
         return (
           <div className="space-y-4 p-4">
-            <h3 className="text-sm font-bold text-rmpg-200">Select Attempt Type</h3>
+            <h3 className="text-sm font-bold text-[#d4a017]">Select Attempt Type</h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {typeCards.map((card) => (
@@ -374,12 +377,12 @@ export default function ServeAttemptModal({
                       setAttemptType(card.type);
                       if (card.type !== 'failed') setFailedReason(null);
                     }}
-                    className={`w-full text-left p-3 rounded-[2px] border-2 transition-all duration-150 ${
+                    className={`w-full text-left p-3 rounded-[2px] border-2 transition-all duration-150 panel-beveled ${
                       card.disabled
                         ? 'opacity-40 cursor-not-allowed border-rmpg-700 bg-rmpg-800'
                         : attemptType === card.type
-                          ? 'border-[#1a5a9e] bg-[#1a5a9e]/10 shadow-[0_0_8px_rgba(26,90,158,0.15)]'
-                          : 'border-rmpg-600 bg-[#0d1520] hover:border-rmpg-400 hover:bg-[#141e2b]'
+                          ? 'border-[#d4a017] bg-[#d4a017]/5 shadow-[0_0_8px_rgba(212,160,23,0.15)]'
+                          : 'border-[#1e3048] bg-[#0d1520] hover:border-[#d4a017] hover:bg-[#141e2b]'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -439,7 +442,7 @@ export default function ServeAttemptModal({
       case 2:
         return (
           <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
-            <h3 className="text-sm font-bold text-rmpg-200">Documentation</h3>
+            <h3 className="text-sm font-bold text-[#d4a017]">Documentation</h3>
 
             {/* Camera input */}
             <div className="space-y-2">
@@ -585,7 +588,7 @@ export default function ServeAttemptModal({
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Observations about the location, people present, etc."
                 rows={3}
-                className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500 resize-none"
+                className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
               />
             </div>
 
@@ -642,7 +645,7 @@ export default function ServeAttemptModal({
               </div>
             ) : (
               <>
-                <h3 className="text-sm font-bold text-rmpg-200">Review & Submit</h3>
+                <h3 className="text-sm font-bold text-[#d4a017]">Review & Submit</h3>
 
                 {/* Summary card */}
                 <div className="bg-[#0d1520] border border-[#1e3048] rounded-[2px] p-3 space-y-2 text-sm">
@@ -721,10 +724,10 @@ export default function ServeAttemptModal({
                   <button type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-semibold bg-green-700 hover:bg-green-600 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-green-500/50 hover:shadow-[0_0_8px_rgba(34,197,94,0.2)]"
+                    className="px-4 py-2 text-sm font-semibold bg-[#d4a017] hover:bg-[#d4a017]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.3)]"
                   >
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    Submit Attempt
+                    Record Service
                   </button>
                 </div>
               </>

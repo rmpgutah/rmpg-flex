@@ -294,7 +294,7 @@ function delay(ms: number): Promise<void> {
 // ─── Server API Helpers ─────────────────────────────────────
 
 function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('rmpg-token');
+  const token = localStorage.getItem('rmpg_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

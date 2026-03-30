@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import type { OffenderAlert, OffenderAlertType, AlertSeverity } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
-// ExportButton omitted — no dedicated export endpoint
+import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -368,6 +368,7 @@ export default function OffenderRegistryPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Known Offender Registry" icon={UserX}>
+          <ExportButton exportUrl="/api/offender-registry/export/csv" exportFilename="offender_alerts_export.csv" />
           <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New Alert
           </button>

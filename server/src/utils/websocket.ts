@@ -29,6 +29,10 @@ interface WSClient {
   privateCallId: string | null;
   /** Client ID of private call partner */
   privateCallPartner: string | null;
+  /** IP address of the connected client */
+  ip?: string;
+  /** ISO timestamp when the client connected */
+  connectedAt: string;
 }
 
 const clients: Map<string, WSClient> = new Map();
@@ -78,6 +82,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     }
 
     const clientId = generateClientId();
+    const clientIp = req.headers['x-forwarded-for']
+      ? String(req.headers['x-forwarded-for']).split(',')[0].trim()
+      : req.socket?.remoteAddress || 'unknown';
     const client: WSClient = {
       ws,
       authenticated: false,
@@ -85,6 +92,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       radioChannel: null,
       privateCallId: null,
       privateCallPartner: null,
+      ip: clientIp,
+      connectedAt: new Date().toISOString(),
     };
     clients.set(clientId, client);
 
@@ -539,6 +548,22 @@ export function getConnectedUsers(): { userId: number; username: string; role: s
   });
 
   return users;
+}
+
+export function getConnectedClients(): { userId: number; username: string; role: string; connectedAt: string; ip: string }[] {
+  const result: { userId: number; username: string; role: string; connectedAt: string; ip: string }[] = [];
+  clients.forEach((client) => {
+    if (client.authenticated && client.userId) {
+      result.push({
+        userId: client.userId,
+        username: client.username || 'Unknown',
+        role: client.role || 'unknown',
+        connectedAt: client.connectedAt,
+        ip: client.ip || 'unknown',
+      });
+    }
+  });
+  return result;
 }
 
 // ─── Radio System ─────────────────────────────────────────────

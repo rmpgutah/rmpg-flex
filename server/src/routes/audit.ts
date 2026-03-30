@@ -240,7 +240,8 @@ router.get('/export', (req: Request, res: Response) => {
 // ══════════════════════════════════════════════════════════════════
 
 // ── Upgrade 31: Audit log retention policy enforcement ──────────
-router.post('/retention/enforce', (req: Request, res: Response) => {
+// God Mode: admin-only — destructive retention enforcement
+router.post('/retention/enforce', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { retention_days = 365 } = req.body;
@@ -302,7 +303,8 @@ router.get('/retention/policy', (req: Request, res: Response) => {
   }
 });
 
-router.put('/retention/policy', (req: Request, res: Response) => {
+// God Mode: admin-only — retention policy changes
+router.put('/retention/policy', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { retention_days, auto_enforce } = req.body;

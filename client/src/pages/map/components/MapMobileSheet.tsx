@@ -178,6 +178,7 @@ export default function MapMobileSheet({
                           ? 'bg-cyan-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
+                      style={{ minHeight: 44 }}
                     >
                       {h}h
                     </button>
@@ -193,6 +194,7 @@ export default function MapMobileSheet({
                           ? 'bg-cyan-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
+                      style={{ minHeight: 44 }}
                     >
                       {label}
                     </button>
@@ -216,6 +218,7 @@ export default function MapMobileSheet({
                           ? 'bg-brand-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
+                      style={{ minHeight: 44 }}
                     >
                       {label}
                     </button>

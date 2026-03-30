@@ -21,7 +21,7 @@ export function getNcicLineClass(line: string): string {
   if (t.startsWith('*** NCIC RESPONSE') || t.startsWith('*** END OF')) return 'ncic-c-header';
   if (t.startsWith('HDR/') || t.startsWith('ORI/')) return 'ncic-c-header';
   if (t.startsWith('*** UTAH COURTS') || t.startsWith('*** DL MANUAL')) return 'ncic-c-header';
-  if (t.startsWith('*** END OF BACKGROUND') || t.startsWith('*** END OF ARREST') || t.startsWith('*** END OF SKIP TRACER')) return 'ncic-c-header';
+  if (t.startsWith('*** END OF BACKGROUND') || t.startsWith('*** END OF ARREST') || t.startsWith('*** END OF SKIP TRACKER')) return 'ncic-c-header';
 
   // Cached result indicator — amber
   if (t.startsWith('CACHED RESULT FROM')) return 'ncic-c-caution';
@@ -786,10 +786,10 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     lines.push('');
   }
 
-  // ── Section 6: Skip Tracer (RapidAPI)
+  // ── Section 6: Skip Tracker (RapidAPI)
   if (results.skipTracerPeople && results.skipTracerPeople.length > 0) {
     totalHits += results.skipTracerPeople.length;
-    lines.push(`  ═══ SKIP TRACER — ${results.skipTracerPeople.length} MATCH(ES) ═══`);
+    lines.push(`  ═══ SKIP TRACKER — ${results.skipTracerPeople.length} MATCH(ES) ═══`);
     lines.push(`  SRC/RAPIDAPI SKIP TRACING`);
     for (const p of results.skipTracerPeople.slice(0, 5)) {
       if (p.Name) lines.push(`  NAM/${p.Name.toUpperCase()}`);
@@ -807,7 +807,7 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
       lines.push('');
     }
   } else {
-    lines.push('  ═══ SKIP TRACER ═══');
+    lines.push('  ═══ SKIP TRACKER ═══');
     lines.push('  NO RECORD FOUND');
     lines.push('');
   }
@@ -1024,7 +1024,7 @@ export function formatArrestResponse(records: NcicArrestRecord[], searchTerm: st
   return lines.join('\n');
 }
 
-// ─── Skip Tracer Query Response ─────────────────────────────
+// ─── Skip Tracker Query Response ─────────────────────────────
 
 export interface SkipTracerPerson {
   Name?: string;
@@ -1042,12 +1042,12 @@ export function formatSkipTracerResponse(
   totalRecords?: number,
   searchType?: string,
 ): string {
-  if (!people || people.length === 0) return noRecord('SKIP TRACER', searchTerm);
+  if (!people || people.length === 0) return noRecord('SKIP TRACKER', searchTerm);
 
-  const lines: string[] = [header('SKIP TRACER', 'QS')];
+  const lines: string[] = [header('SKIP TRACKER', 'QS')];
 
   lines.push('');
-  lines.push(`  SKIP TRACER — ${totalRecords || people.length} RESULT(S)`);
+  lines.push(`  SKIP TRACKER — ${totalRecords || people.length} RESULT(S)`);
   lines.push(`  SRC/RAPIDAPI SKIP TRACING  TYP/${(searchType || 'NAME').toUpperCase()}`);
   lines.push(`  ${'─'.repeat(56)}`);
 
@@ -1073,7 +1073,7 @@ export function formatSkipTracerResponse(
   }
 
   lines.push('');
-  lines.push('*** END OF SKIP TRACER ***');
+  lines.push('*** END OF SKIP TRACKER ***');
   return lines.join('\n');
 }
 

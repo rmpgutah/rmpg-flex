@@ -470,7 +470,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {onStatusChange && !['closed', 'cancelled', 'archived'].includes(call.status) && (
         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5 z-10"
           onClick={(e) => e.stopPropagation()}
-          style={{ backdropFilter: 'blur(2px)' }}
+          style={{ WebkitBackdropFilter: 'blur(2px)', backdropFilter: 'blur(2px)' }}
         >
           {call.status === 'pending' && (
             <button type="button" onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch" aria-label="Dispatch call">D</button>

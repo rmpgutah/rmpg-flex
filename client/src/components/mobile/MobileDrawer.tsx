@@ -117,6 +117,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/evidence', icon: Package, label: 'Evidence / Property' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
       { path: '/dl-search', icon: IdCard, label: 'DL Search' },
+      { path: '/microbilt', icon: Crosshair, label: 'MicroBilt' },
     ],
   },
   {
@@ -130,7 +131,6 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
       { path: '/sex-offender-registry', icon: ShieldAlert, label: 'Sex Offender Registry' },
-      { path: '/skip-tracer', icon: Crosshair, label: 'Skip Tracer' },
     ],
   },
   {
@@ -339,7 +339,7 @@ export default function MobileDrawer({
         </div>
 
         {/* ── Navigation Groups ── */}
-        <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+        <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100dvh - 200px)' }}>
           {NAV_GROUPS.map((group) => {
             const isClientViewer = user?.role === 'client_viewer';
             const visibleItems = group.items.filter((item) => {

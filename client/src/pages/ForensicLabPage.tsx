@@ -21,6 +21,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
+import { safeDateTimeStr } from '../utils/dateUtils';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -1081,7 +1082,7 @@ export default function ForensicLabPage() {
                                 </div>
                                 {ev.notes && <p className="text-[10px] text-rmpg-400 mt-0.5">{ev.notes}</p>}
                                 <div className="text-[9px] text-rmpg-500 font-mono mt-0.5">
-                                  {new Date(ev.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  {safeDateTimeStr(ev.timestamp)}
                                 </div>
                               </div>
                             </div>

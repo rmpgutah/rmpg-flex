@@ -41,6 +41,7 @@ export default function BodyCamerasPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = user?.role === 'admin';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ----------------------------------------------------------
   // State
@@ -101,14 +102,14 @@ export default function BodyCamerasPage() {
     const fetchUpgradeData = async () => {
       try {
         const [ret, rev, red] = await Promise.all([
-          apiFetch<any>('/personnel/bodycam-videos/retention/report').catch(() => null),
-          apiFetch<any>('/personnel/bodycam-videos/reviews/pending').catch(() => null),
-          apiFetch<any>('/personnel/bodycam-videos/redaction-requests').catch(() => null),
+          apiFetch<any>('/personnel/bodycam-videos/retention/report').catch((err) => { console.warn('[BodyCameras] retention report fetch failed:', err); return null; }),
+          apiFetch<any>('/personnel/bodycam-videos/reviews/pending').catch((err) => { console.warn('[BodyCameras] pending reviews fetch failed:', err); return null; }),
+          apiFetch<any>('/personnel/bodycam-videos/redaction-requests').catch((err) => { console.warn('[BodyCameras] redaction requests fetch failed:', err); return null; }),
         ]);
         if (ret) setRetentionStats({ total_expired: ret.total_expired, total_storage_gb: ret.total_storage_gb });
         if (rev) setPendingReviews(rev.count || 0);
         if (red) setPendingRedactions((red.data || []).filter((r: any) => r.status === 'pending').length);
-      } catch { /* silent */ }
+      } catch (err) { console.warn('[BodyCameras] upgrade data fetch failed:', err); }
     };
     fetchUpgradeData();
   }, [fetchData]);

@@ -19,7 +19,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
     setError(null);
     setPreview(null);
     try {
-      const token = localStorage.getItem('rmpg-token');
+      const token = localStorage.getItem('rmpg_token');
       const res = await fetch('/api/ai/narrative', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

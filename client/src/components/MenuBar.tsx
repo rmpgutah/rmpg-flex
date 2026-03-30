@@ -79,6 +79,11 @@ import {
   MicOff,
   Video,
   ClipboardCheck,
+  Contrast,
+  Droplets,
+  Flame,
+  Leaf,
+  Tv,
   Brain,
   SlidersHorizontal,
   AudioLines,
@@ -134,6 +139,7 @@ interface MenuDefinition {
 interface MenuBarProps {
   isAdmin: boolean;
   isConnected: boolean;
+  onlineCount?: number;
   onLogout: () => void;
   onSearch: () => void;
   onShowShortcuts: () => void;
@@ -147,6 +153,7 @@ interface MenuBarProps {
 export default function MenuBar({
   isAdmin,
   isConnected,
+  onlineCount = 0,
   onLogout,
   onSearch,
   onShowShortcuts,
@@ -162,6 +169,12 @@ export default function MenuBar({
   const [scanLinesEnabled, setScanLinesEnabled] = useState(() => {
     return localStorage.getItem('rmpg-scanlines') !== 'false';
   });
+  const [vignetteEnabled, setVignetteEnabled] = useState(() => localStorage.getItem('rmpg-fx-vignette') === 'true');
+  const [bloomEnabled, setBloomEnabled] = useState(() => localStorage.getItem('rmpg-fx-bloom') === 'true');
+  const [amberTintEnabled, setAmberTintEnabled] = useState(() => localStorage.getItem('rmpg-fx-amber') === 'true');
+  const [greenPhosphorEnabled, setGreenPhosphorEnabled] = useState(() => localStorage.getItem('rmpg-fx-green') === 'true');
+  const [highContrastEnabled, setHighContrastEnabled] = useState(() => localStorage.getItem('rmpg-fx-highcontrast') === 'true');
+  const [noiseEnabled, setNoiseEnabled] = useState(() => localStorage.getItem('rmpg-fx-noise') === 'true');
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem('rmpg-sound') !== 'false';
   });
@@ -244,12 +257,66 @@ export default function MenuBar({
   }, [closeMenus]);
 
   // Toggle helpers
+  // Apply persisted display effects on mount
+  useEffect(() => {
+    if (vignetteEnabled) document.body.classList.add('fx-vignette');
+    if (bloomEnabled) document.body.classList.add('fx-bloom');
+    if (amberTintEnabled) document.body.classList.add('fx-amber');
+    if (greenPhosphorEnabled) document.body.classList.add('fx-green');
+    if (highContrastEnabled) document.body.classList.add('fx-highcontrast');
+    if (noiseEnabled) document.body.classList.add('fx-noise');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggleScanLines = useCallback(() => {
     const next = !scanLinesEnabled;
     setScanLinesEnabled(next);
     localStorage.setItem('rmpg-scanlines', String(next));
     document.body.classList.toggle('no-scanlines', !next);
   }, [scanLinesEnabled]);
+
+  const toggleVignette = useCallback(() => {
+    const next = !vignetteEnabled;
+    setVignetteEnabled(next);
+    localStorage.setItem('rmpg-fx-vignette', String(next));
+    document.body.classList.toggle('fx-vignette', next);
+  }, [vignetteEnabled]);
+
+  const toggleBloom = useCallback(() => {
+    const next = !bloomEnabled;
+    setBloomEnabled(next);
+    localStorage.setItem('rmpg-fx-bloom', String(next));
+    document.body.classList.toggle('fx-bloom', next);
+  }, [bloomEnabled]);
+
+  const toggleNoise = useCallback(() => {
+    const next = !noiseEnabled;
+    setNoiseEnabled(next);
+    localStorage.setItem('rmpg-fx-noise', String(next));
+    document.body.classList.toggle('fx-noise', next);
+  }, [noiseEnabled]);
+
+  const toggleAmber = useCallback(() => {
+    const next = !amberTintEnabled;
+    setAmberTintEnabled(next);
+    localStorage.setItem('rmpg-fx-amber', String(next));
+    document.body.classList.toggle('fx-amber', next);
+    if (next) { setGreenPhosphorEnabled(false); localStorage.setItem('rmpg-fx-green', 'false'); document.body.classList.remove('fx-green'); }
+  }, [amberTintEnabled]);
+
+  const toggleGreen = useCallback(() => {
+    const next = !greenPhosphorEnabled;
+    setGreenPhosphorEnabled(next);
+    localStorage.setItem('rmpg-fx-green', String(next));
+    document.body.classList.toggle('fx-green', next);
+    if (next) { setAmberTintEnabled(false); localStorage.setItem('rmpg-fx-amber', 'false'); document.body.classList.remove('fx-amber'); }
+  }, [greenPhosphorEnabled]);
+
+  const toggleHighContrast = useCallback(() => {
+    const next = !highContrastEnabled;
+    setHighContrastEnabled(next);
+    localStorage.setItem('rmpg-fx-highcontrast', String(next));
+    document.body.classList.toggle('fx-highcontrast', next);
+  }, [highContrastEnabled]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
@@ -475,9 +542,17 @@ export default function MenuBar({
       {
         type: 'submenu',
         label: 'Display Effects',
-        icon: Monitor,
+        icon: Tv,
         items: [
           { type: 'toggle', label: 'CRT Scan Lines', icon: Activity, checked: scanLinesEnabled, action: toggleScanLines },
+          { type: 'toggle', label: 'CRT Vignette', icon: Eye, checked: vignetteEnabled, action: toggleVignette },
+          { type: 'toggle', label: 'Phosphor Bloom', icon: Sparkles, checked: bloomEnabled, action: toggleBloom },
+          { type: 'toggle', label: 'Film Grain', icon: Droplets, checked: noiseEnabled, action: toggleNoise },
+          { type: 'separator' },
+          { type: 'toggle', label: 'Amber Phosphor', icon: Flame, checked: amberTintEnabled, action: toggleAmber },
+          { type: 'toggle', label: 'Green Phosphor', icon: Leaf, checked: greenPhosphorEnabled, action: toggleGreen },
+          { type: 'separator' },
+          { type: 'toggle', label: 'High Contrast', icon: Contrast, checked: highContrastEnabled, action: toggleHighContrast },
         ],
       },
       {
@@ -572,6 +647,7 @@ export default function MenuBar({
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
           { type: 'separator' },
+          { type: 'action', label: 'MicroBilt', icon: Search, action: () => navigate('/microbilt') },
           { type: 'action', label: 'Web Research', icon: Globe, action: () => navigate('/web-research') },
         ],
       },
@@ -670,6 +746,7 @@ export default function MenuBar({
         icon: isConnected ? Wifi : WifiOff,
         items: [
           { type: 'action', label: `WebSocket: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`, icon: isConnected ? Wifi : WifiOff, disabled: true, action: () => {} },
+          { type: 'action', label: `Users Online: ${onlineCount}`, icon: Users, disabled: true, action: () => {} },
           { type: 'action', label: 'Server: RMPG-FLEX-01', icon: Server, disabled: true, action: () => {} },
           { type: 'action', label: `Page: ${currentPage}`, icon: Globe, disabled: true, action: () => {} },
           { type: 'separator' },

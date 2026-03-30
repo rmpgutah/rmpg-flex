@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { safeTimeStr } from '../utils/dateUtils';
 
 interface DuplicateCall {
   id: number;
@@ -72,7 +73,7 @@ export default function DuplicateCallWarning({ address }: DuplicateCallWarningPr
             <span className="text-rmpg-500">({(d.status || '').toUpperCase()})</span>
             <span className="text-rmpg-500 flex items-center gap-0.5">
               <Clock style={{ width: 8, height: 8 }} />
-              {new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {safeTimeStr(d.created_at)}
             </span>
           </div>
         ))}

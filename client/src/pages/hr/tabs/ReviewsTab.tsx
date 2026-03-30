@@ -60,7 +60,7 @@ const STATUS_LABELS: Record<ReviewStatus, string> = {
 
 function formatDate(d: string | null): string {
   if (!d) return '--';
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -76,6 +76,7 @@ interface ReviewsTabProps {
 
 export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const isManager = MANAGER_ROLES.includes(userRole);
+  const isGodMode = userRole === 'admin'; // Admin God Mode — unrestricted access
   const { addToast } = useToast();
 
   const [reviews, setReviews] = useState<PerformanceReview[]>([]);
@@ -561,19 +562,19 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
-                {(review.status === 'draft' || review.status === 'submitted') && (
+                {(review.status === 'draft' || review.status === 'submitted' || isGodMode) && (
                   <button type="button"
                     onClick={() => {
                       setEditReview(review);
                       setModalOpen(true);
                     }}
                     className="p-1.5 text-rmpg-400 hover:text-white transition-colors"
-                    title="Edit"
+                    title={isGodMode ? 'Admin: Edit review (any status)' : 'Edit'}
                   >
                     <Pencil size={14} />
                   </button>
                 )}
-                {userRole === 'admin' && review.status === 'draft' && (
+                {userRole === 'admin' && (review.status === 'draft' || isGodMode) && (
                   <button type="button"
                     onClick={() => handleDelete(review.id)}
                     className="p-1.5 text-rmpg-400 hover:text-red-400 transition-colors"

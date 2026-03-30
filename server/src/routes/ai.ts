@@ -54,7 +54,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ success: true, config: masked });
   } catch (err: any) {
     console.error('[AI] PUT /config error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to save AI configuration' });
+    res.status(500).json({ error: 'Failed to save AI configuration', code: 'AI_CONFIG_SAVE_ERROR' });
   }
 });
 
@@ -65,7 +65,7 @@ router.get('/test/:provider', requireRole('admin'), async (req: Request, res: Re
     res.json(result);
   } catch (err: any) {
     console.error('[AI] /test error:', err?.message || err);
-    res.status(500).json({ ok: false, latencyMs: 0, error: 'Test failed unexpectedly' });
+    res.status(500).json({ ok: false, latencyMs: 0, error: 'Test failed unexpectedly', code: 'AI_TEST_ERROR' });
   }
 });
 
@@ -80,7 +80,7 @@ router.post('/analyze', requireRole('admin', 'manager', 'supervisor', 'dispatche
     const { incident_type, description, notes, location_address, existing_flags } = req.body;
 
     if (!incident_type) {
-      res.status(400).json({ error: 'incident_type is required' });
+      res.status(400).json({ error: 'incident_type is required', code: 'AI_MISSING_INCIDENT_TYPE' });
       return;
     }
 
@@ -88,7 +88,7 @@ router.post('/analyze', requireRole('admin', 'manager', 'supervisor', 'dispatche
     res.json({ available: isAIAvailable(), result });
   } catch (err: any) {
     console.error('[AI] /analyze error:', err?.message || err);
-    res.status(500).json({ error: 'AI analysis failed' });
+    res.status(500).json({ error: 'AI analysis failed', code: 'AI_ANALYSIS_ERROR' });
   }
 });
 
@@ -98,7 +98,7 @@ router.post('/narrative', requireRole('admin', 'manager', 'supervisor', 'dispatc
     const { notes, incident_type, location_address } = req.body;
 
     if (!notes || typeof notes !== 'string' || !notes.trim()) {
-      res.status(400).json({ error: 'notes must be a non-empty string' });
+      res.status(400).json({ error: 'notes must be a non-empty string', code: 'AI_MISSING_NOTES' });
       return;
     }
 
@@ -106,7 +106,7 @@ router.post('/narrative', requireRole('admin', 'manager', 'supervisor', 'dispatc
     res.json({ available: isAIAvailable(), narrative });
   } catch (err: any) {
     console.error('[AI] /narrative error:', err?.message || err);
-    res.status(500).json({ error: 'Narrative generation failed' });
+    res.status(500).json({ error: 'Narrative generation failed', code: 'AI_NARRATIVE_ERROR' });
   }
 });
 
@@ -116,7 +116,7 @@ router.post('/suggest-units', requireRole('admin', 'manager', 'supervisor', 'dis
     const { call, units } = req.body;
 
     if (!call || !Array.isArray(units)) {
-      res.status(400).json({ error: 'call object and units array are required' });
+      res.status(400).json({ error: 'call object and units array are required', code: 'AI_MISSING_CALL_OR_UNITS' });
       return;
     }
 
@@ -124,7 +124,7 @@ router.post('/suggest-units', requireRole('admin', 'manager', 'supervisor', 'dis
     res.json({ available: isAIAvailable(), suggestions });
   } catch (err: any) {
     console.error('[AI] /suggest-units error:', err?.message || err);
-    res.status(500).json({ error: 'Unit suggestion failed' });
+    res.status(500).json({ error: 'Unit suggestion failed', code: 'AI_SUGGEST_UNITS_ERROR' });
   }
 });
 
@@ -164,7 +164,7 @@ router.put('/master-config', requireRole('admin'), (req: Request, res: Response)
     res.json({ success: true });
   } catch (err: any) {
     console.error('[AI] PUT /master-config error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to save master AI configuration' });
+    res.status(500).json({ error: 'Failed to save master AI configuration', code: 'AI_MASTER_CONFIG_SAVE_ERROR' });
   }
 });
 
@@ -182,7 +182,7 @@ router.get('/health', requireRole('admin'), async (_req: Request, res: Response)
     res.json({ ...report, aiSummary: summary });
   } catch (err: any) {
     console.error('[AI] /health error:', err?.message || err);
-    res.status(500).json({ error: 'Health check failed' });
+    res.status(500).json({ error: 'Health check failed', code: 'AI_HEALTH_CHECK_ERROR' });
   }
 });
 
@@ -193,7 +193,7 @@ router.get('/cleanup/scan', requireRole('admin'), async (_req: Request, res: Res
     res.json(report);
   } catch (err: any) {
     console.error('[AI] /cleanup/scan error:', err?.message || err);
-    res.status(500).json({ error: 'Data cleanup scan failed' });
+    res.status(500).json({ error: 'Data cleanup scan failed', code: 'AI_CLEANUP_SCAN_ERROR' });
   }
 });
 
@@ -203,7 +203,7 @@ router.post('/cleanup/fix', requireRole('admin'), async (req: Request, res: Resp
     const { type, id, action } = req.body;
 
     if (!type || !id) {
-      res.status(400).json({ error: 'type and id are required' });
+      res.status(400).json({ error: 'type and id are required', code: 'AI_CLEANUP_MISSING_PARAMS' });
       return;
     }
 
@@ -211,25 +211,25 @@ router.post('/cleanup/fix', requireRole('admin'), async (req: Request, res: Resp
 
     if (type === 'stale_call') {
       if (!['clear', 'close', 'escalate'].includes(action)) {
-        res.status(400).json({ error: 'action must be clear, close, or escalate' });
+        res.status(400).json({ error: 'action must be clear, close, or escalate', code: 'AI_CLEANUP_INVALID_ACTION' });
         return;
       }
       success = await autoFixStaleCall(Number(id), action);
     } else if (type === 'orphaned_unit') {
       success = await autoFixOrphanedUnit(Number(id));
     } else {
-      res.status(400).json({ error: 'type must be stale_call or orphaned_unit' });
+      res.status(400).json({ error: 'type must be stale_call or orphaned_unit', code: 'AI_CLEANUP_INVALID_TYPE' });
       return;
     }
 
     if (success) {
       res.json({ success: true, message: `${type} #${id} fixed with action: ${action || 'reset'}` });
     } else {
-      res.status(404).json({ error: `${type} #${id} not found` });
+      res.status(404).json({ error: `${type} #${id} not found`, code: 'AI_CLEANUP_NOT_FOUND' });
     }
   } catch (err: any) {
     console.error('[AI] /cleanup/fix error:', err?.message || err);
-    res.status(500).json({ error: 'Fix action failed' });
+    res.status(500).json({ error: 'Fix action failed', code: 'AI_CLEANUP_FIX_ERROR' });
   }
 });
 
@@ -247,7 +247,7 @@ router.get('/cleanup/history', requireRole('admin'), (_req: Request, res: Respon
     res.json(rows);
   } catch (err: any) {
     console.error('[AI] /cleanup/history error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to fetch cleanup history' });
+    res.status(500).json({ error: 'Failed to fetch cleanup history', code: 'AI_CLEANUP_HISTORY_ERROR' });
   }
 });
 
@@ -256,7 +256,7 @@ router.post('/smart-search', requireRole('admin', 'manager', 'supervisor', 'offi
   try {
     const { query, searchType } = req.body;
     if (!query || typeof query !== 'string' || !query.trim()) {
-      res.status(400).json({ error: 'query is required' });
+      res.status(400).json({ error: 'query is required', code: 'AI_SMART_SEARCH_MISSING_QUERY' });
       return;
     }
 
@@ -289,7 +289,7 @@ router.post('/smart-search', requireRole('admin', 'manager', 'supervisor', 'offi
     }
   } catch (err: any) {
     console.error('[AI] /smart-search error:', err?.message || err);
-    res.status(500).json({ error: 'Smart search failed' });
+    res.status(500).json({ error: 'Smart search failed', code: 'AI_SMART_SEARCH_ERROR' });
   }
 });
 
@@ -442,6 +442,7 @@ router.put('/activity-log/:id/rate', requireRole('admin'), (req: Request, res: R
   database.prepare('UPDATE ai_activity_log SET rating = ? WHERE id = ?').run(rating, req.params.id);
   res.json({ success: true });
 });
+
 
 // ─── Helpers ───
 

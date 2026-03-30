@@ -25,6 +25,8 @@ import {
   getCountyRecordCounts,
   discoverUtahSources,
   UTAH_COUNTY_DEFAULTS,
+  scheduleArrestSync,
+  stopArrestSync,
 } from '../utils/arrestScraper';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
@@ -276,6 +278,11 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
 
     db.prepare(`UPDATE arrest_records SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
+    // God Mode: admin can change status to anything, edit booking number — log override
+    if (req.user?.role === 'admin' && (b.status !== undefined || b.booking_number !== undefined)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'arrest_record', id, `Admin God Mode: updated arrest record #${id} (status/booking_number change)`);
+    }
+
     auditLog(req, 'arrest_updated', 'arrest_record', id, `Updated arrest record #${id}`);
     broadcastRecordUpdate({ type: 'arrest_updated', id });
 
@@ -294,6 +301,11 @@ router.delete('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'ma
 
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    // God Mode: admin can delete any arrest record regardless of status
+    if (req.user?.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'arrest_record', id, `Admin God Mode: deleting arrest record #${id} (bypassed restrictions)`);
+    }
 
     // Delete cross-links first (FK cascade should handle, but be explicit)
     db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
@@ -538,6 +550,29 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true, enabled: !!enabled });
   } catch (err: any) {
     console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// ── POST /poller/restart — Restart the arrest sync poller ────
+router.post('/poller/restart', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    stopArrestSync();
+    scheduleArrestSync();
+    res.json({ success: true, message: 'Arrest sync poller restarted' });
+  } catch (err: any) {
+    console.error('[Arrests] Failed to restart poller:', err?.message || err);
+    res.status(500).json({ error: 'Failed to restart poller', code: 'POLLER_RESTART_ERROR' });
+  }
+});
+
+// ── POST /poller/stop — Stop the arrest sync poller ────
+router.post('/poller/stop', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    stopArrestSync();
+    res.json({ success: true, message: 'Arrest sync poller stopped' });
+  } catch (err: any) {
+    console.error('[Arrests] Failed to stop poller:', err?.message || err);
+    res.status(500).json({ error: 'Failed to stop poller', code: 'POLLER_STOP_ERROR' });
   }
 });
 

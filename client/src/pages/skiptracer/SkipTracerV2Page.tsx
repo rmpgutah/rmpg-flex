@@ -1,5 +1,5 @@
 // ============================================================
-// RMPG Flex — Skip Tracer v2 — Enhanced Dossier Builder
+// RMPG Flex — Skip Tracker 3.5 — Enhanced Dossier Builder
 // Three-panel: Navigation tabs (top) + Search/Results (left) + Dossier/Content (right)
 // Tabs: Search, Saved Dossiers, History, Sources, Stats
 // ============================================================
@@ -433,6 +433,9 @@ export default function SkipTracerV2Page() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Search engine selection
+  const [searchEngine, setSearchEngine] = useState<'microbilt' | 'rapidapi' | 'all'>('microbilt');
+
   // Load sources on mount
   useEffect(() => {
     loadSources();
@@ -504,6 +507,7 @@ export default function SkipTracerV2Page() {
       if (selectedCategories.size > 0) {
         params.set('categories', Array.from(selectedCategories).join(','));
       }
+      params.set('engine', searchEngine);
       const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
       setResult(data);
       if (data.profiles?.length === 1) setSelected(data.profiles[0]);
@@ -512,7 +516,7 @@ export default function SkipTracerV2Page() {
     } finally {
       setLoading(false);
     }
-  }, [query, advancedFields]);
+  }, [query, advancedFields, searchEngine]);
 
   const searchAssociate = useCallback((name: string) => {
     setQuery(name);
@@ -548,7 +552,7 @@ export default function SkipTracerV2Page() {
   const handleExportPdf = useCallback(async (dossierId: number) => {
     try {
       const resp = await fetch(`/api/skiptracer-v2/dossiers/${dossierId}/pdf`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem('rmpg_token')}` },
       });
       if (!resp.ok) throw new Error('Export failed');
       const blob = await resp.blob();
@@ -624,6 +628,7 @@ export default function SkipTracerV2Page() {
         if (selectedCategories.size > 0) {
           params.set('categories', Array.from(selectedCategories).join(','));
         }
+        params.set('engine', searchEngine);
         const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
         if (data.profiles) allProfiles.push(...data.profiles);
         data.sourcesQueried.forEach(s => allSourcesQueried.add(s));
@@ -830,7 +835,7 @@ export default function SkipTracerV2Page() {
   // ─── Search Panel (left side for search tab) ──────────────
   const searchPanel = (
     <div className={`flex flex-col ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1e2d40] bg-[#141e2b]`}>
-      <PanelTitleBar title="Skip Tracer v2" icon={Search} statusLed="blue" ledPulse={loading}>
+      <PanelTitleBar title="MicroBilt" icon={Search} statusLed="blue" ledPulse={loading}>
         {result && (
           <span className="text-[9px] font-mono text-[#556677]">
             {result.totalResults} result{result.totalResults !== 1 ? 's' : ''} &middot; {result.durationMs}ms
@@ -882,6 +887,31 @@ export default function SkipTracerV2Page() {
           >
             <List size={12} />
           </button>
+        </div>
+
+        {/* Engine selector */}
+        <div className="flex items-center gap-1 mt-1">
+          <span className="text-[8px] font-bold text-[#556677] uppercase tracking-wider mr-1">Engine:</span>
+          {([
+            { id: 'microbilt' as const, label: 'MicroBilt', desc: 'Primary — Full background + SSN trace', color: '#22c55e' },
+            { id: 'rapidapi' as const, label: 'RapidAPI', desc: 'Secondary — Basic skip trace', color: '#f59e0b' },
+            { id: 'all' as const, label: 'All Sources', desc: 'Query all enabled engines', color: '#8b5cf6' },
+          ]).map(eng => (
+            <button
+              key={eng.id}
+              type="button"
+              onClick={() => setSearchEngine(eng.id)}
+              className={`px-2 py-1 rounded-sm text-[9px] font-bold uppercase tracking-wider transition-all ${
+                searchEngine === eng.id
+                  ? 'text-white shadow-sm'
+                  : 'text-[#556677] hover:text-[#8899aa] bg-[#0d1520] border border-[#1e2d40]'
+              }`}
+              style={searchEngine === eng.id ? { backgroundColor: eng.color + '33', color: eng.color, border: `1px solid ${eng.color}55` } : undefined}
+              title={eng.desc}
+            >
+              {eng.label}
+            </button>
+          ))}
         </div>
 
         {/* Batch search textarea */}
@@ -1892,7 +1922,7 @@ export default function SkipTracerV2Page() {
   // ─── Main Layout ──────────────────────────────────────────
 
   // Set document title
-  useEffect(() => { document.title = 'Skip Tracer V2 \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'MicroBilt \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#0d1520]">

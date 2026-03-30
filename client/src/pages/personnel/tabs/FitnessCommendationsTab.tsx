@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Activity, Award, Plus, TrendingUp, Star, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { localToday } from '../../../utils/dateUtils';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
@@ -32,8 +33,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
   const [commendations, setCommendations] = useState<Commendation[]>([]);
   const [showFitnessForm, setShowFitnessForm] = useState(false);
   const [showCommForm, setShowCommForm] = useState(false);
-  const [fitnessForm, setFitnessForm] = useState({ date: new Date().toISOString().slice(0, 10), score: '', run_time: '', pushups: '', situps: '', notes: '' });
-  const [commForm, setCommForm] = useState({ date: new Date().toISOString().slice(0, 10), type: 'commendation', description: '' });
+  const [fitnessForm, setFitnessForm] = useState({ date: localToday(), score: '', run_time: '', pushups: '', situps: '', notes: '' });
+  const [commForm, setCommForm] = useState({ date: localToday(), type: 'commendation', description: '' });
   const [submittingFitness, setSubmittingFitness] = useState(false);
   const [submittingComm, setSubmittingComm] = useState(false);
 
@@ -71,7 +72,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
   const submitComm = async () => {
     if (!commForm.description.trim()) { addToast('Description is required', 'error'); return; }
     setSubmittingComm(true);
-    try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: new Date().toISOString().slice(0, 10), type: 'commendation', description: '' }); loadCommendations(); } catch { addToast('Failed to add commendation', 'error'); } finally { setSubmittingComm(false); }
+    try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: localToday(), type: 'commendation', description: '' }); loadCommendations(); } catch { addToast('Failed to add commendation', 'error'); } finally { setSubmittingComm(false); }
   };
 
   // Set document title

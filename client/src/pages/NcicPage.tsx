@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Terminal } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import NcicQueryPanel from '../components/NcicQueryPanel';
@@ -11,6 +12,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function NcicPage() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
 
   useEffect(() => { document.title = 'NCIC / NLETS Terminal \u2014 RMPG Flex'; }, []);
 
@@ -22,7 +24,7 @@ export default function NcicPage() {
         </PanelTitleBar>
       )}
       <div className="flex-1 overflow-hidden print:overflow-visible">
-        <NcicQueryPanel isOpen={true} onClose={() => {}} embedded={true} />
+        <NcicQueryPanel isOpen={true} onClose={() => navigate(-1)} embedded={true} />
       </div>
     </div>
   );

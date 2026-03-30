@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Arrest Records Adapter
+// Skip Tracker 3.5 — Arrest Records Adapter
 // ============================================================
 // Searches the local arrest_records table (synced from JailBase
 // and county booking feeds). Always configured, zero cost.

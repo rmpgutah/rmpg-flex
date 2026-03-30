@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Source Registry
+// Skip Tracker 3.5 — Source Registry
 // ============================================================
 // Central registry of all data source adapters. Each source
 // is instantiated once and shared across all searches.

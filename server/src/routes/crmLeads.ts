@@ -93,7 +93,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -129,7 +129,7 @@ router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json({ ...lead, activity });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -218,7 +218,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       res.status(400).json({ error: err.message }); return;
     }
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -283,7 +283,7 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -306,7 +306,7 @@ router.delete('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'man
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -359,7 +359,7 @@ router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', '
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -403,7 +403,7 @@ router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -473,7 +473,7 @@ router.post('/leads/:id/convert', validateParamIdMiddleware, requireRole('admin'
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -529,7 +529,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
     res.json({ success: true, updated });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -548,7 +548,7 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -571,7 +571,7 @@ router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_m
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -610,7 +610,7 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
     res.json(activity);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -622,7 +622,7 @@ router.get('/scrape-sources', requireRole('admin', 'manager', 'contract_manager'
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -657,7 +657,7 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
     res.json(source);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -680,7 +680,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     res.json(result);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -706,7 +706,7 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 

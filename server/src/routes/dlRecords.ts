@@ -9,10 +9,313 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { storeDlRecord } from '../utils/dlRecordStore';
 import { getDb } from '../models/database';
+import { config } from '../config';
 import type { DlRecordSubject } from '../utils/dlRecordStore';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = Router();
 router.use(authenticateToken);
+
+// ── Multer for DL image uploads ──
+const uploadDir = path.resolve(__dirname, '../../uploads/dl-scans');
+try { fs.mkdirSync(uploadDir, { recursive: true }); } catch { /* exists */ }
+
+const dlUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.jpg';
+      cb(null, `dl-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext) || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are accepted'));
+    }
+  },
+});
+
+// ── Encryption helpers for API key storage ──
+function deriveKey(): Buffer {
+  return crypto.createHash('sha256').update(config.jwt.secret).digest();
+}
+function decryptConfig(stored: string): string {
+  const key = deriveKey();
+  const parts = stored.split(':');
+  if (parts.length < 3) throw new Error('Malformed encrypted value');
+  const [ivHex, authTagHex, ciphertext] = parts;
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+// POST /api/dl-records/ocr-scan — Upload DL image for OCR extraction
+router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.single('image'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'No image file uploaded', code: 'NO_IMAGE' });
+      return;
+    }
+
+    // Get RapidAPI key from system_config
+    const db = getDb();
+    let apiKey: string | null = null;
+
+    // Try DL OCR specific key first, then fall back to general skip tracer key
+    const ocrKeyRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'dl_ocr_rapidapi_key' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+
+    if (ocrKeyRow?.config_value) {
+      try { apiKey = decryptConfig(ocrKeyRow.config_value); } catch { apiKey = ocrKeyRow.config_value; }
+    }
+
+    if (!apiKey) {
+      // Fall back to general skip tracer RapidAPI key
+      const skipKeyRow = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = 'skiptracer_api_key' AND is_active = 1 LIMIT 1"
+      ).get() as { config_value: string } | undefined;
+      if (skipKeyRow?.config_value) {
+        try { apiKey = decryptConfig(skipKeyRow.config_value); } catch { apiKey = skipKeyRow.config_value; }
+      }
+    }
+
+    if (!apiKey) {
+      // Clean up uploaded file
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      res.status(503).json({ error: 'DL OCR API key not configured. Set it in Admin → Integrations.', code: 'OCR_NOT_CONFIGURED' });
+      return;
+    }
+
+    // Read image file
+    const imageBuffer = fs.readFileSync(req.file.path);
+
+    // Call RapidAPI U.S. Driver License OCR using native FormData (Node 18+)
+    const blob = new Blob([imageBuffer], { type: req.file.mimetype || 'image/jpeg' });
+    const formData = new FormData();
+    formData.append('image', blob, req.file.originalname || 'dl-scan.jpg');
+
+    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/extract', {
+      method: 'POST',
+      headers: {
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
+      },
+      body: formData,
+    });
+
+    // Clean up uploaded file after sending to API
+    try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+
+    if (!ocrResponse.ok) {
+      const errorText = await ocrResponse.text().catch(() => '');
+      console.error(`[DL OCR] API error (${ocrResponse.status}):`, errorText.slice(0, 500));
+      res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: errorText.slice(0, 200) });
+      return;
+    }
+
+    const ocrData = await ocrResponse.json() as any;
+    console.log('[DL OCR] Raw response keys:', Object.keys(ocrData));
+
+    // Map OCR response to our person/DL record format
+    const raw = ocrData.result || ocrData.data || ocrData;
+
+    const extractField = (...keys: string[]): string => {
+      for (const key of keys) {
+        if (raw[key] && typeof raw[key] === 'string') return raw[key].trim();
+        if (ocrData[key] && typeof ocrData[key] === 'string') return ocrData[key].trim();
+      }
+      return '';
+    };
+
+    // Parse name parts
+    const fullName = extractField('name', 'full_name', 'fullName', 'Name', 'FN');
+    const firstName = extractField('first_name', 'firstName', 'First Name', 'FN', 'fname') || fullName.split(' ')[0] || '';
+    const lastName = extractField('last_name', 'lastName', 'Last Name', 'LN', 'lname') || fullName.split(' ').slice(-1)[0] || '';
+    const middleName = extractField('middle_name', 'middleName', 'Middle Name', 'MN');
+
+    // Parse address
+    const fullAddress = extractField('address', 'Address', 'addr', 'street_address');
+    const city = extractField('city', 'City');
+    const stateVal = extractField('state', 'State', 'st');
+    const zip = extractField('zip', 'zip_code', 'zipCode', 'Zip', 'postal_code', 'ZIP');
+
+    // Parse DL specifics
+    const dlNumber = extractField('license_number', 'licenseNumber', 'License Number', 'DL', 'dl_number', 'DLN', 'document_number');
+    const dlClass = extractField('class', 'dl_class', 'Class', 'license_class');
+    const dlState = extractField('issuing_state', 'issuingState', 'dl_state', 'state_code') || stateVal;
+    const dlExpiry = extractField('expiry_date', 'expiryDate', 'expiration_date', 'Expiry Date', 'EXP', 'exp_date', 'expires');
+    const dlIssueDate = extractField('issue_date', 'issueDate', 'Issue Date', 'ISS', 'issued', 'iss_date');
+    const dlRestrictions = extractField('restrictions', 'Restrictions', 'RSTR');
+    const dlEndorsements = extractField('endorsements', 'Endorsements', 'ENDRSMNTS');
+
+    // Parse physical descriptors
+    const dob = extractField('date_of_birth', 'dateOfBirth', 'DOB', 'dob', 'Date of Birth', 'birth_date');
+    const gender = extractField('sex', 'gender', 'Sex', 'Gender', 'SEX');
+    const height = extractField('height', 'Height', 'HGT');
+    const weight = extractField('weight', 'Weight', 'WGT');
+    const eyeColor = extractField('eyes', 'eye_color', 'eyeColor', 'Eyes', 'EYE');
+    const hairColor = extractField('hair', 'hair_color', 'hairColor', 'Hair', 'HAIR');
+
+    const parsed = {
+      first_name: firstName,
+      middle_name: middleName,
+      last_name: lastName,
+      full_name: fullName || [firstName, middleName, lastName].filter(Boolean).join(' '),
+      date_of_birth: dob,
+      gender: gender,
+      height: height,
+      weight: weight,
+      eye_color: eyeColor,
+      hair_color: hairColor,
+      address: fullAddress,
+      city: city,
+      state: stateVal,
+      zip: zip,
+      dl_number: dlNumber,
+      dl_state: dlState,
+      dl_class: dlClass,
+      dl_expiry: dlExpiry,
+      dl_issue_date: dlIssueDate,
+      dl_restrictions: dlRestrictions,
+      dl_endorsements: dlEndorsements,
+      source: 'DL_OCR_SCAN',
+      raw_ocr: ocrData,
+    };
+
+    // Audit log
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dl_ocr_scan', 'dl_record', 0, ?, ?)"
+    ).run(
+      req.user!.userId,
+      `DL OCR scan: ${parsed.dl_number || 'unknown'} (${parsed.dl_state || '??'}) — ${parsed.last_name || '??'}, ${parsed.first_name || '??'}`,
+      req.ip || 'unknown'
+    );
+
+    res.json({ success: true, parsed, raw: ocrData });
+  } catch (error: any) {
+    console.error('[DL OCR] Scan error:', error);
+    // Clean up file on error
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch { /* ignore */ } }
+    res.status(500).json({ error: 'DL OCR scan failed', code: 'OCR_SCAN_ERROR', detail: error.message });
+  }
+});
+
+// POST /api/dl-records/verify — Verify a DL number via RapidAPI
+router.post('/verify', requireRole('admin', 'manager', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const { dl_number, date_of_birth, dl_state } = req.body;
+
+    if (!dl_number || !dl_number.trim()) {
+      res.status(400).json({ error: 'DL number is required' }); return;
+    }
+
+    const db = getDb();
+    let apiKey: string | null = null;
+
+    // Get API key
+    const keyRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'dl_verification_rapidapi_key' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+
+    if (keyRow?.config_value) {
+      try { apiKey = decryptConfig(keyRow.config_value); } catch { apiKey = keyRow.config_value; }
+    }
+
+    if (!apiKey) {
+      // Fall back to general RapidAPI key
+      const fallback = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = 'skiptracer_api_key' AND is_active = 1 LIMIT 1"
+      ).get() as { config_value: string } | undefined;
+      if (fallback?.config_value) {
+        try { apiKey = decryptConfig(fallback.config_value); } catch { apiKey = fallback.config_value; }
+      }
+    }
+
+    if (!apiKey) {
+      res.status(503).json({ error: 'DL Verification API key not configured', code: 'DL_VERIFY_NOT_CONFIGURED' }); return;
+    }
+
+    const taskId = crypto.randomUUID();
+    const groupId = crypto.randomUUID();
+
+    const apiRes = await fetch('https://driving-license-verification.p.rapidapi.com/v3/tasks/sync/verify_with_source/ind_driving_license', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'driving-license-verification.p.rapidapi.com',
+      },
+      body: JSON.stringify({
+        task_id: taskId,
+        group_id: groupId,
+        data: {
+          id_number: dl_number.trim().toUpperCase(),
+          ...(date_of_birth ? { date_of_birth } : {}),
+        },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!apiRes.ok) {
+      const errText = await apiRes.text().catch(() => '');
+      console.error(`[DL Verify] API error (${apiRes.status}):`, errText.slice(0, 500));
+      res.status(502).json({ error: `DL Verification API returned ${apiRes.status}`, detail: errText.slice(0, 200) }); return;
+    }
+
+    const data = await apiRes.json() as any;
+
+    // Parse response — extract useful fields
+    const result = data?.result || data?.data || data;
+    const extraction = result?.extraction_output || result?.source_output || result;
+
+    const parsed = {
+      verified: result?.status === 'completed' || result?.verified === true || false,
+      dl_number: extraction?.id_number || extraction?.dl_number || extraction?.license_number || dl_number,
+      name: extraction?.name || extraction?.full_name || [extraction?.first_name, extraction?.last_name].filter(Boolean).join(' ') || '',
+      first_name: extraction?.first_name || '',
+      last_name: extraction?.last_name || '',
+      father_name: extraction?.fathers_name || extraction?.father_name || '',
+      date_of_birth: extraction?.dob || extraction?.date_of_birth || date_of_birth || '',
+      address: extraction?.permanent_address || extraction?.address || '',
+      dl_class: extraction?.vehicle_class || extraction?.class_of_vehicle || extraction?.cov || '',
+      dl_status: extraction?.status || '',
+      dl_validity: extraction?.validity || extraction?.valid_upto || extraction?.non_transport_validity || '',
+      dl_issue_date: extraction?.date_of_issue || extraction?.issue_date || '',
+      dl_expiry: extraction?.non_transport_validity || extraction?.transport_validity || extraction?.expiry_date || '',
+      dl_state: extraction?.issuing_state || extraction?.state || dl_state || '',
+      blood_group: extraction?.blood_group || '',
+      photo_url: extraction?.photo || extraction?.image || '',
+      raw: data,
+    };
+
+    // Audit
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dl_verification', 'dl_record', 0, ?, ?)"
+    ).run(req.user!.userId, `DL verification: ${dl_number} — ${parsed.verified ? 'VERIFIED' : 'NOT VERIFIED'}`, req.ip || 'unknown');
+
+    res.json({ success: true, parsed, raw: data });
+  } catch (err: any) {
+    console.error('[DL Verify] Error:', err);
+    res.status(500).json({ error: 'DL verification failed', detail: err.message });
+  }
+});
 
 // POST /api/dl-records — manually create/update a DL record
 router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res: Response) => {
@@ -82,6 +385,121 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
   } catch (error: any) {
     console.error('[DL Records] Manual entry error:', error);
     res.status(500).json({ error: 'Failed to save DL record', code: 'FAILED_TO_SAVE_DL' });
+  }
+});
+
+// GET /api/dl-records — list DL records with pagination & search
+router.get('/', requireRole('admin', 'manager', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string, 10) || 25));
+    const search = (req.query.search as string || '').trim();
+
+    let where = '1=1';
+    const params: any[] = [];
+
+    if (search) {
+      where += ' AND (full_name LIKE ? OR dl_number LIKE ? OR last_name LIKE ? OR first_name LIKE ?)';
+      const like = `%${search}%`;
+      params.push(like, like, like, like);
+    }
+
+    const total = (db.prepare(`SELECT COUNT(*) as cnt FROM dl_records WHERE ${where}`).get(...params) as any)?.cnt || 0;
+    const rows = db.prepare(`
+      SELECT * FROM dl_records WHERE ${where}
+      ORDER BY updated_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, perPage, (page - 1) * perPage);
+
+    res.json({ data: rows, total, page, per_page: perPage });
+  } catch (error: any) {
+    console.error('[DL Records] List error:', error);
+    res.status(500).json({ error: 'Failed to list DL records', code: 'FAILED_TO_LIST_DL' });
+  }
+});
+
+// GET /api/dl-records/:id — get single DL record
+router.get('/:id', requireRole('admin', 'manager', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const record = db.prepare('SELECT * FROM dl_records WHERE id = ?').get(req.params.id);
+    if (!record) {
+      res.status(404).json({ error: 'DL record not found', code: 'DL_NOT_FOUND' });
+      return;
+    }
+    res.json(record);
+  } catch (error: any) {
+    console.error('[DL Records] Get error:', error);
+    res.status(500).json({ error: 'Failed to get DL record', code: 'FAILED_TO_GET_DL' });
+  }
+});
+
+// PUT /api/dl-records/:id — update a DL record
+router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dl_records WHERE id = ?').get(req.params.id) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'DL record not found', code: 'DL_NOT_FOUND' });
+      return;
+    }
+
+    const allowed = [
+      'first_name', 'middle_name', 'last_name', 'suffix', 'full_name',
+      'date_of_birth', 'gender', 'height', 'weight', 'eye_color', 'hair_color', 'race',
+      'dl_number', 'dl_state', 'dl_class', 'dl_status', 'dl_expiration',
+      'dl_issue_date', 'dl_restrictions', 'dl_endorsements'
+    ];
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        setClauses.push(`${key} = ?`);
+        values.push(req.body[key]);
+      }
+    }
+    if (setClauses.length === 0) {
+      res.status(400).json({ error: 'No fields to update', code: 'DL_NO_FIELDS' });
+      return;
+    }
+    setClauses.push("updated_at = datetime('now','localtime')");
+    values.push(req.params.id);
+
+    db.prepare(`UPDATE dl_records SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    const updated = db.prepare('SELECT * FROM dl_records WHERE id = ?').get(req.params.id);
+
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dl_record_update', 'dl_record', ?, ?, ?)"
+    ).run(req.user!.userId, req.params.id, `Updated DL record #${req.params.id}`, req.ip || 'unknown');
+
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    console.error('[DL Records] Update error:', error);
+    res.status(500).json({ error: 'Failed to update DL record', code: 'FAILED_TO_UPDATE_DL' });
+  }
+});
+
+// DELETE /api/dl-records/:id — delete a DL record (admin only)
+router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dl_records WHERE id = ?').get(req.params.id) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'DL record not found', code: 'DL_NOT_FOUND' });
+      return;
+    }
+
+    db.prepare('DELETE FROM dl_records WHERE id = ?').run(req.params.id);
+
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dl_record_delete', 'dl_record', ?, ?, ?)"
+    ).run(req.user!.userId, req.params.id, `Deleted DL record: ${existing.dl_number} (${existing.dl_state}) — ${existing.last_name}, ${existing.first_name}`, req.ip || 'unknown');
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[DL Records] Delete error:', error);
+    res.status(500).json({ error: 'Failed to delete DL record', code: 'FAILED_TO_DELETE_DL' });
   }
 });
 

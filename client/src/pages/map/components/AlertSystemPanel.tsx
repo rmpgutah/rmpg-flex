@@ -50,7 +50,7 @@ interface AlertSystemPanelProps {
 
 function formatTimestamp(ts: string): string {
   try {
-    const d = new Date(ts);
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
     return d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',

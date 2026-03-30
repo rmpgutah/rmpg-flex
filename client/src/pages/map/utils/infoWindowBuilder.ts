@@ -104,7 +104,7 @@ function divider(): string {
 function formatTimestamp(ts: string | null | undefined): string {
   if (!ts) return '--';
   try {
-    const d = new Date(ts);
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
     return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   } catch { return '--'; }
 }
@@ -112,7 +112,7 @@ function formatTimestamp(ts: string | null | undefined): string {
 function formatDateTime(ts: string | null | undefined): string {
   if (!ts) return '--';
   try {
-    const d = new Date(ts);
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
            d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   } catch { return '--'; }

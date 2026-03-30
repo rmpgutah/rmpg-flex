@@ -96,7 +96,7 @@ function speakFallback(text: string): Promise<void> {
 // ─── Edge-TTS Fetch + Bandpass Playback ─────────────────────
 
 async function fetchAndPlay(text: string): Promise<void> {
-  const token = localStorage.getItem('rmpg-token');
+  const token = localStorage.getItem('rmpg_token');
   const ctx = getAudioContext();
 
   const res = await fetch('/api/tts', {

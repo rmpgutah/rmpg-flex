@@ -70,7 +70,7 @@ export default function MobileHeader({
         {/* Hamburger */}
         <button type="button"
           onClick={onMenuOpen}
-          className="flex items-center justify-center w-10 h-10"
+          className="flex items-center justify-center w-11 h-11"
           style={{ color: '#b0bcc8' }}
           aria-label="Open navigation"
         >
@@ -81,7 +81,7 @@ export default function MobileHeader({
         <button type="button"
           onClick={onNavBack}
           disabled={!canGoBack}
-          className="flex items-center justify-center w-8 h-8"
+          className="flex items-center justify-center w-11 h-11"
           style={{ color: canGoBack ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
           aria-label="Go back"
         >
@@ -90,7 +90,7 @@ export default function MobileHeader({
         <button type="button"
           onClick={onNavForward}
           disabled={!canGoForward}
-          className="flex items-center justify-center w-8 h-8"
+          className="flex items-center justify-center w-11 h-11"
           style={{ color: canGoForward ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
           aria-label="Go forward"
         >
@@ -117,7 +117,7 @@ export default function MobileHeader({
         {/* Profile Avatar */}
         <button type="button"
           onClick={onProfileTap}
-          className="flex items-center justify-center w-9 h-9"
+          className="flex items-center justify-center w-11 h-11"
         >
           {user?.profile_image ? (
             <img

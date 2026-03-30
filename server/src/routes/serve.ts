@@ -11,6 +11,7 @@ import { validateParamId, validateParamIdMiddleware } from '../middleware/saniti
 import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
+import { notifyPortalStatusUpdate } from '../utils/portalCallback';
 import config from '../config';
 import { sendCsv } from '../utils/csvExport';
 
@@ -33,6 +34,25 @@ const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
 // ============================================================
 // Static routes FIRST (before /:id param route)
 // ============================================================
+
+// ── GET /linked-statuses — Batch serve status for dispatch call list ──
+router.get('/linked-statuses', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const { call_ids } = req.query;
+    if (!call_ids) { res.status(400).json({ error: 'call_ids parameter required' }); return; }
+    const ids = String(call_ids).split(',').map(Number).filter(n => !isNaN(n) && n > 0).slice(0, 200);
+    if (!ids.length) { res.status(400).json({ error: 'No valid call IDs provided' }); return; }
+    const db = getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = db.prepare(`SELECT call_id, status, attempt_count FROM serve_queue WHERE call_id IN (${placeholders})`).all(...ids) as any[];
+    const result: Record<number, { status: string; attempt_count: number }> = {};
+    for (const r of rows) result[r.call_id] = { status: r.status, attempt_count: r.attempt_count };
+    res.json(result);
+  } catch (err: any) {
+    console.error('[SERVE] linked-statuses error:', err);
+    res.status(500).json({ error: 'Failed to fetch linked statuses', code: 'FAILED_TO_FETCH_LINKED' });
+  }
+});
 
 // ── GET /stats/summary — Dashboard stats ────────────────────
 router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
@@ -252,7 +272,8 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
       return;
     }
 
-    if (order.length > 500) {
+    // God Mode: admin bypass
+    if (req.user?.role !== 'admin' && order.length > 500) {
       res.status(400).json({ error: 'Cannot reorder more than 500 items at once', code: 'CANNOT_REORDER_MORE_THAN' });
       return;
     }
@@ -432,10 +453,13 @@ router.get('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES, 'dispa
       return;
     }
 
-    // IDOR protection: officers can only view their own assigned jobs
+    // IDOR protection: officers can only view their own assigned jobs (admin bypass)
     if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
       res.status(403).json({ error: 'You can only view jobs assigned to you', code: 'YOU_CAN_ONLY_VIEW' });
       return;
+    }
+    if (req.user!.role === 'admin' && job.officer_id && job.officer_id !== req.user!.userId) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: viewed serve job assigned to officer_id ${job.officer_id}`);
     }
 
     const attempts = db.prepare(
@@ -473,10 +497,23 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
       return;
     }
 
-    // IDOR protection: officers can only modify their own assigned jobs
+    // IDOR protection: officers can only modify their own assigned jobs (admin bypass)
     if (req.user!.role === 'officer' && existing.officer_id && existing.officer_id !== req.user!.userId) {
       res.status(403).json({ error: 'You can only modify jobs assigned to you', code: 'YOU_CAN_ONLY_MODIFY' });
       return;
+    }
+    if (req.user!.role === 'admin' && existing.officer_id && existing.officer_id !== req.user!.userId) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: modified serve job assigned to officer_id ${existing.officer_id}`);
+    }
+
+    // God Mode: admin can edit completed/served serve jobs
+    if (req.user!.role === 'admin' && ['served', 'failed', 'cancelled'].includes(existing.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: editing ${existing.status} serve job #${req.params.id}`);
+    }
+
+    // God Mode: admin can reassign serve jobs
+    if (req.user!.role === 'admin' && req.body.officer_id && req.body.officer_id !== existing.officer_id) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: reassigning serve job from officer_id ${existing.officer_id} to ${req.body.officer_id}`);
     }
 
     // Validate status enum if provided
@@ -704,6 +741,19 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
     } catch (syncErr) {
       console.error('[Serve] Dispatch sync-back failed:', (syncErr as Error)?.message);
       // Sync failure must never prevent the attempt from being recorded
+    }
+
+    // Notify portal of serve attempt (fire-and-forget)
+    try {
+      const jobForPortal = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+      if (jobForPortal?.call_id) {
+        const linkedCallForPortal = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(jobForPortal.call_id) as any;
+        if (linkedCallForPortal) {
+          notifyPortalStatusUpdate(linkedCallForPortal);
+        }
+      }
+    } catch (portalErr) {
+      console.error('[Serve] Portal notification failed (non-fatal):', (portalErr as Error)?.message);
     }
 
     res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
@@ -1340,16 +1390,22 @@ router.post('/:id/notify-completion', validateParamIdMiddleware, requireRole(...
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
     if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
-    // Import createNotificationForRoles (dynamic require — module may not exist)
+    // Dynamic import for notifications module (may not exist)
     let createNotificationForRoles: any;
     try {
-      createNotificationForRoles = require('./notifications').createNotificationForRoles;
+      // Use inline dynamic import with .then() since handler isn't async
+      const notifModule = (globalThis as any).__notifModule ?? null;
+      if (!notifModule) {
+        import('./notifications.js').then(m => { (globalThis as any).__notifModule = m; }).catch(() => {});
+        // Skip notification on first call — will be cached for subsequent calls
+        console.warn('[Serve] notifications module loading, skipping notification this time');
+      } else {
+        createNotificationForRoles = notifModule.createNotificationForRoles;
+      }
     } catch (importErr) {
       console.error('[Serve] notifications module not available:', importErr instanceof Error ? importErr.message : importErr);
-      res.status(500).json({ error: 'Notification system unavailable', code: 'NOTIFICATION_MODULE_UNAVAILABLE' });
-      return;
     }
-    createNotificationForRoles(
+    if (createNotificationForRoles) createNotificationForRoles(
       ['admin', 'manager', 'supervisor'],
       'serve_completed',
       `Serve Complete: ${job.recipient_name}`,

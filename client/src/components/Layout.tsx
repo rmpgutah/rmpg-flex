@@ -150,7 +150,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
+    { path: '/microbilt', icon: Search, label: 'MicroBilt' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },
@@ -703,7 +703,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
+    <div className="flex flex-col text-white overflow-hidden" style={{ background: '#141e2b', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -1089,6 +1089,7 @@ export default function Layout() {
         <MenuBar
           isAdmin={isAdmin}
           isConnected={isConnected}
+          onlineCount={presence.count}
           onLogout={logout}
           onSearch={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
           onShowShortcuts={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}

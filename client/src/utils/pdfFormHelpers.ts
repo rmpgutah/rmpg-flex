@@ -6,6 +6,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { sanitizePdfText, wordWrapText } from './pdfGenerator';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getGridStartX, getGridContentWidth,
@@ -86,23 +87,26 @@ export function drawFormCell(
 ): void {
   const pad = SPACING.FORM_CELL_PAD;
 
-  // Cell border
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, w, h);
+  // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
+  if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
-  // Label (tiny, Helvetica, gray — inside cell top-left)
+  // No cell border — clean borderless style matching CFS report
+
+  // Label (Helvetica Bold, dark gray — above value)
   const labelBaseY = y + pad + 1.2;
   if (cell.label) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text(cell.label.toUpperCase(), x + pad, labelBaseY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5); // 5.5pt labels matching CFS addFieldPair style
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    // Strip numbered prefix patterns like "1. ", "12. " from labels
+    const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
+    doc.text(cleanLabel, x + pad, labelBaseY);
   }
 
-  // Value area starts below label strip
-  const valueAreaTop = y + SPACING.FORM_CELL_LABEL_H + pad;
-  const valueAreaH = h - SPACING.FORM_CELL_LABEL_H - pad;
+  // Value area starts below label strip — 2mm gap between label and value
+  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.3; // Tight gap
+  const valueAreaTop = y + labelStripH + pad;
+  const valueAreaH = h - labelStripH - pad;
 
   // Value (Courier, black — centered in value area)
   if (cell.checkbox) {
@@ -136,12 +140,13 @@ export function drawFormCell(
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
     const maxW = w - 2 * pad;
 
+    const displayVal = cell.value.toUpperCase();
     if (cell.align === 'center') {
-      doc.text(cell.value, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
+      doc.text(displayVal, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
     } else if (cell.align === 'right') {
-      doc.text(cell.value, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
+      doc.text(displayVal, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
     } else {
-      doc.text(cell.value, x + pad, valueY, { maxWidth: maxW });
+      doc.text(displayVal, x + pad, valueY, { maxWidth: maxW });
     }
   }
 }
@@ -193,12 +198,7 @@ export function drawFormGrid(
     curY = drawFormRow(doc, row.cells, x, curY, totalW, h);
   }
 
-  // Bold outer border around entire grid
-  if (opts?.outerBorder !== false) {
-    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-    doc.setLineWidth(BORDER.FORM_GRID_OUTER);
-    doc.rect(x, startY, totalW, curY - startY);
-  }
+  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
@@ -228,7 +228,7 @@ export function drawSideTab(
   // jsPDF's align:'center' acts on the pre-rotation axis, so with
   // angle:90 it would center across the tab WIDTH (wrong axis).
   // Instead we measure text width and offset the anchor Y ourselves.
-  const upperLabel = label.toUpperCase();
+  const upperLabel = sanitizePdfText(label.toUpperCase());
   const maxTextLen = height - 4;
   let fontSize: number = FONT.SIZE_SIDEBAR_TAB;
 
@@ -292,10 +292,11 @@ export function drawCheckboxGrid(
       doc.line(cbX + 0.85, cbY + 1.8, cbX + 1.9, cbY + 0.4);
     }
 
-    // Label text
-    const labelText = items[i].code
+    // Label text — sanitize to prevent Unicode crashes
+    const rawLabel = items[i].code
       ? `${items[i].code} = ${items[i].label}`
       : items[i].label;
+    const labelText = sanitizePdfText(rawLabel);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
@@ -308,10 +309,7 @@ export function drawCheckboxGrid(
   // Account for last row
   curY += rowH;
 
-  // Outer border around checkbox grid
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, totalW, curY - y);
+  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
@@ -359,22 +357,19 @@ export function drawCodeReferenceTable(
     doc.setFont('courier', 'bold');
     doc.setFontSize(4.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(codes[i].code || '', cellX + 1, curY + 2.3);
+    doc.text(sanitizePdfText(codes[i].code || ''), cellX + 1, curY + 2.3);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(`= ${codes[i].description || ''}`, cellX + 5.5, curY + 2.3, {
+    doc.text(sanitizePdfText(`= ${codes[i].description || ''}`), cellX + 5.5, curY + 2.3, {
       maxWidth: colW - 7,
     });
   }
 
   curY += rowH;
 
-  // Outer border
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, totalW, curY - y);
+  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
@@ -411,7 +406,8 @@ export function drawFormSection(
     : getGridContentWidth(doc);
 
   // Calculate total section height (include banner if applicable)
-  const bannerH = useBanner ? SPACING.SECTION_HEADER_H : 0;
+  // Banner: 5mm dark header bar matching CFS openAutoSection style
+  const bannerH = useBanner ? 4 : 0;
   let totalH = bannerH;
   for (const row of config.rows) {
     totalH += row.height || SPACING.FORM_CELL_H;
@@ -432,6 +428,7 @@ export function drawFormSection(
 
   if (useBanner) {
     // ── Draw horizontal banner (matches openAutoSection header style) ──
+    // Dark fill (#2a3e58 equivalent) matching CFS section headers
     const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
     doc.setFillColor(...bgColor);
     doc.rect(gridX, curY, gridW, bannerH, 'F');
@@ -443,9 +440,10 @@ export function drawFormSection(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const textY = curY + bannerH / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
-    doc.text(config.sideTab.label.toUpperCase(), gridX + SPACING.CONTENT_INSET + 1, textY);
-    curY += bannerH;
+    const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+    const textY = curY + (bannerH + bannerCapH) / 2;
+    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
+    curY += bannerH + 1; // 1mm gap between banner and first grid row (tight)
   }
 
   // Draw grid rows
@@ -459,9 +457,7 @@ export function drawFormSection(
   if (useBanner) {
     // Enclosing section border around entire section (banner + grid + afterGrid)
     const totalH = curY - sectionStartY;
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(gridX, sectionStartY, gridW, totalH);
+    // No enclosing section border — clean borderless style
   } else {
     // Draw sidebar tab spanning the full section height (legacy mode)
     const sectionH = curY - sectionStartY;
@@ -490,6 +486,7 @@ export function drawNibrsHeader(
     formTitle: string;            // e.g. "UNIFORM INCIDENT REPORT"
     formNumber?: string;          // e.g. "FORM PS-101"
     caseNumber?: string;          // e.g. "INC-2026-001234"
+    caseNumberLabel?: string;     // e.g. "CALL FOR SERVICE" — defaults to "CASE NUMBER"
     reportDate?: string;          // e.g. "03/02/2026"
     sealBase64?: string | null;   // Agency seal image
     logoBase64?: string | null;   // Agency logo image
@@ -549,17 +546,17 @@ export function drawNibrsHeader(
     doc.setLineWidth(0.5);
     doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
 
-    // "CASE NUMBER" label
+    // Case number label — configurable per report type
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text('CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
+    doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
 
     // Case number value
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_CASE_NUMBER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(config.caseNumber, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+    doc.text(sanitizePdfText(config.caseNumber), caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;
@@ -572,14 +569,14 @@ export function drawNibrsHeader(
   // Sub-header row: Form number (left) + Report date (right)
   y += 1;
   if (config.formNumber || config.reportDate) {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
-    doc.setTextColor(...COLOR.TEXT_MUTED);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
     if (config.formNumber) {
       doc.text(config.formNumber, margin + 2, y + 3);
     }
     if (config.reportDate) {
-      doc.text(`REPORT DATE: ${config.reportDate}`, margin + contentW - 2, y + 3, { align: 'right' });
+      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 3, { align: 'right' });
     }
     y += 5;
   }

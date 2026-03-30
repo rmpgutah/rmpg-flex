@@ -85,6 +85,28 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     }
 
     req.user = decoded;
+
+    // Check system lockdown (admin-only access when active)
+    if (req.user && req.user.role !== 'admin') {
+      try {
+        const db = getDb();
+        const lockdownRow = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'system_lockdown' AND is_active = 1").get() as any;
+        if (lockdownRow?.config_value) {
+          try {
+            const lockdown = JSON.parse(lockdownRow.config_value);
+            if (lockdown.active) {
+              res.status(503).json({
+                error: lockdown.message || 'System is in lockdown mode',
+                code: 'SYSTEM_LOCKDOWN',
+                lockdown: true
+              });
+              return;
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
     next();
   } catch (err: any) {
     if (err.name === 'TokenExpiredError') {

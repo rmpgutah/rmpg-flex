@@ -16,7 +16,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -27,7 +27,7 @@ const FOLDER_ICONS: Record<string, React.ElementType> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -80,7 +80,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   const handleSave = async () => {
     setSaving(true);
     try { await apiFetch('/email/signature', { method: 'PUT', body: JSON.stringify({ signature }) }); onClose(); }
-    catch { /* ignore */ } finally { setSaving(false); }
+    catch (err) { console.warn('[EmailPage] save signature failed:', err); } finally { setSaving(false); }
   };
 
   if (loading) return <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" role="status" aria-label="Loading" />;
@@ -635,6 +635,36 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 }
 
 // ============================================================
+// Email Body Frame — renders HTML email in a blob: URL iframe
+// Uses blob: instead of srcdoc so the iframe inherits the page origin,
+// allowing external images to load (srcdoc has null origin which many CDNs reject).
+// ============================================================
+const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
+  ({ bodyHtml, onLoad }, ref) => {
+    const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+    React.useEffect(() => {
+      // Sanitize: strip <script> tags + inline event handlers
+      const sanitized = bodyHtml
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/\bon\w+\s*=/gi, 'data-blocked=');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none';"><style>
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0d1520; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #3b82f6; text-decoration: underline; } a:hover { color: #60a5fa; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #1e3048; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
+        pre { background: #141e2b; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #1e3048; margin: 16px 0; }
+      </style></head><body>${sanitized}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }, [bodyHtml]);
+    if (!blobUrl) return null;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
+  }
+);
+EmailBodyFrame.displayName = 'EmailBodyFrame';
+
+// ============================================================
 // Print Email Helper
 // ============================================================
 
@@ -645,7 +675,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   const doc = printWindow.document;
   const toStr = message.toAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ');
   const ccStr = message.ccAddresses.length > 0 ? message.ccAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ') : '';
-  const dateStr = new Date(message.receivedAt).toLocaleString();
+  const dateStr = safeDateTimeStr(message.receivedAt);
 
   // Build print document using safe DOM methods
   const style = doc.createElement('style');
@@ -693,7 +723,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     // This is the same HTML we already render from the email server in a sandboxed iframe
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
-    iframe.sandbox.value = '';
+    iframe.sandbox.value = 'allow-same-origin';
     iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#1a5a9e;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
@@ -1576,11 +1606,11 @@ export default function EmailPage() {
   // ─── Data Fetching ───
 
   const fetchStatus = useCallback(async () => {
-    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch { /* ignore */ }
+    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch (err) { console.warn('[EmailPage] fetch status failed:', err); }
   }, []);
 
   const fetchFolders = useCallback(async () => {
-    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch { /* ignore */ }
+    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch (err) { console.warn('[EmailPage] fetch folders failed:', err); }
   }, []);
 
   const fetchMessages = useCallback(async (p = 1, folder = selectedFolder, q = search) => {
@@ -1602,7 +1632,7 @@ export default function EmailPage() {
       setFullMessage(msg);
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
       try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
-      catch { setAttachments([]); }
+      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 
@@ -1610,7 +1640,7 @@ export default function EmailPage() {
     try {
       const children = await apiFetch<EmailFolder[]>(`/email/folders/${parentId}/children`);
       setChildFolders(prev => new Map(prev).set(parentId, children));
-    } catch { /* ignore */ }
+    } catch (err) { console.warn('[EmailPage] fetch child folders failed:', err); }
   }, []);
 
   // ─── Effects ───
@@ -1852,6 +1882,9 @@ export default function EmailPage() {
     setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
+
   // ─── Not Configured ───
 
   if (status && !status.configured) {
@@ -2002,9 +2035,6 @@ export default function EmailPage() {
   };
 
   // ─── Render ───
-
-  // Set document title
-  useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -2475,14 +2505,7 @@ export default function EmailPage() {
               {loadingMessage ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (
-                <iframe ref={iframeRef} onLoad={handleIframeLoad}
-                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-                    body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0d1520; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-                    a { color: #3b82f6; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-                    td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #1e3048; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
-                    pre { background: #141e2b; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #1e3048; margin: 16px 0; }
-                  </style></head><body>${fullMessage.bodyHtml}</body></html>`}
-                  sandbox="" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
+                <EmailBodyFrame ref={iframeRef} bodyHtml={fullMessage.bodyHtml} onLoad={handleIframeLoad} />
               ) : (
                 <div className="p-4 text-xs text-rmpg-400 whitespace-pre-wrap font-mono">{fullMessage.bodyPreview}</div>
               )}

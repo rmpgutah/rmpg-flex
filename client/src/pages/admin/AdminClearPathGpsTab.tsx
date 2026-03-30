@@ -6,6 +6,7 @@ import {
   HardDrive, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -445,12 +446,23 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - GPS \u2014 RMPG Flex'; }, []);
+
   // Units that are not already mapped
   const mappedUnitIds = new Set(mappings.map(m => m.unit_id));
   const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
 
-  // Set document title
-  useEffect(() => { document.title = 'Admin - GPS \u2014 RMPG Flex'; }, []);
+  if (loading) return <LoadingSpinner />;
+
+
+  if (loading) return <LoadingSpinner />;
+
+
+  if (loading) return <LoadingSpinner />;
+
+
+  if (loading) return <LoadingSpinner />;
 
 
   if (loading) return <LoadingSpinner />;
@@ -656,7 +668,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               {status.last_sync && (
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  Last: {new Date(status.last_sync).toLocaleTimeString()}
+                  Last: {safeTimeStr(status.last_sync)}
                 </span>
               )}
             </div>
@@ -732,7 +744,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       {m.last_synced_at && (
                         <span className="ml-auto text-[9px] text-rmpg-600 flex items-center gap-1">
                           <Clock className="w-2.5 h-2.5" />
-                          {new Date(m.last_synced_at).toLocaleTimeString()}
+                          {safeTimeStr(m.last_synced_at)}
                         </span>
                       )}
                       <button type="button"
@@ -873,7 +885,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       </span>
                     )}
                     <span className="ml-auto text-[9px] text-rmpg-600 whitespace-nowrap">
-                      {new Date(evt.event_timestamp).toLocaleString()}
+                      {safeDateTimeStr(evt.event_timestamp)}
                     </span>
                   </div>
                 );

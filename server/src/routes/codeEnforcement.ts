@@ -8,7 +8,8 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { sendCsv } from '../utils/csvExport';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -154,7 +155,7 @@ router.put('/violations/:id', (req: Request, res: Response) => {
     auditLog(req, 'UPDATE', 'code_violation', req.params.id, `Updated code violation #${req.params.id}`);
     broadcastRecordUpdate({ type: 'violation_updated', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'UPDATE_VIOLATION_ERROR' }); }
+  } catch (error: any) { console.error('Update violation error:', error); res.status(500).json({ error: 'Internal server error', code: 'UPDATE_VIOLATION_ERROR' }); }
 });
 
 router.put('/violations/:id/status', (req: Request, res: Response) => {
@@ -180,7 +181,7 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'violation_status_changed', id, status });
     res.json({ data: { id, status } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'VIOLATION_STATUS_ERROR' }); }
+  } catch (error: any) { console.error('Update violation status error:', error); res.status(500).json({ error: 'Internal server error', code: 'VIOLATION_STATUS_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════
@@ -206,7 +207,7 @@ router.get('/tows', (req: Request, res: Response) => {
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any).count;
     const rows = db.prepare(`SELECT * FROM vehicle_tows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve tows', code: 'LIST_TOWS_ERROR' }); }
+  } catch (error: any) { console.error('List tows error:', error); res.status(500).json({ error: 'Failed to retrieve tows', code: 'LIST_TOWS_ERROR' }); }
 });
 
 router.get('/tows/:id', (req: Request, res: Response) => {
@@ -217,7 +218,7 @@ router.get('/tows/:id', (req: Request, res: Response) => {
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Tow not found', code: 'TOW_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve tow record', code: 'GET_TOW_ERROR' }); }
+  } catch (error: any) { console.error('Get tow error:', error); res.status(500).json({ error: 'Failed to retrieve tow record', code: 'GET_TOW_ERROR' }); }
 });
 
 router.post('/tows', (req: Request, res: Response) => {
@@ -287,7 +288,7 @@ router.put('/tows/:id', (req: Request, res: Response) => {
     auditLog(req, 'UPDATE', 'vehicle_tow', req.params.id, `Updated tow #${req.params.id}`);
     broadcastRecordUpdate({ type: 'tow_updated', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'UPDATE_TOW_ERROR' }); }
+  } catch (error: any) { console.error('Update tow error:', error); res.status(500).json({ error: 'Internal server error', code: 'UPDATE_TOW_ERROR' }); }
 });
 
 router.put('/tows/:id/status', (req: Request, res: Response) => {
@@ -310,7 +311,7 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
       VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
 
     res.json({ data: { id: parseInt(req.params.id), status } });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to update tow status', code: 'TOW_STATUS_ERROR' }); }
+  } catch (error: any) { console.error('Update tow status error:', error); res.status(500).json({ error: 'Failed to update tow status', code: 'TOW_STATUS_ERROR' }); }
 });
 
 // GET /property-history — Violation count for a property in last 12 months
@@ -869,6 +870,33 @@ router.post('/violations/:id/payment', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Payment recording error:', error);
     res.status(500).json({ error: 'Failed to record payment', code: 'PAYMENT_ERROR' });
+  }
+});
+
+// ─── CSV Export ──────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const violations = db.prepare('SELECT * FROM code_violations ORDER BY created_at DESC').all() as any[];
+    sendCsv(res, 'code_violations_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'violation_number', header: 'Violation Number' },
+      { key: 'violation_type', header: 'Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'location', header: 'Location' },
+      { key: 'description', header: 'Description' },
+      { key: 'violator_name', header: 'Violator Name' },
+      { key: 'reported_by', header: 'Reported By' },
+      { key: 'assigned_officer', header: 'Assigned Officer' },
+      { key: 'fine_amount', header: 'Fine Amount' },
+      { key: 'amount_paid', header: 'Amount Paid' },
+      { key: 'created_at', header: 'Created' },
+      { key: 'updated_at', header: 'Updated' },
+    ], violations);
+  } catch (error: any) {
+    console.error('Export code violations error:', error);
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

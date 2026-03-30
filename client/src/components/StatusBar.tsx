@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
+import { safeTimeStr } from '../utils/dateUtils';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -84,7 +85,7 @@ export default function StatusBar({
             )}
             {gpsLastSent && (
               <span className="tabular-nums" style={{ color: '#505050', marginLeft: 4 }}>
-                {new Date(gpsLastSent).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                {safeTimeStr(gpsLastSent)}
               </span>
             )}
           </>

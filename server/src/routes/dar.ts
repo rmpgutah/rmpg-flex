@@ -8,8 +8,9 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
@@ -152,7 +153,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
       
         LIMIT 1000
       `).all(shift_date, officer_id);
-    } catch (e) { console.warn('DAR auto-populate field_interviews query failed:', (e as Error).message); }
+    } catch (e) { console.error('DAR auto-populate field_interviews query failed:', (e as Error).message); }
 
     // ── Build auto-generated narrative ──
     const narrativeParts: string[] = [];
@@ -294,8 +295,15 @@ router.put('/:id', (req: Request, res: Response) => {
     }
     params.push(id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Admin can override dar_number
+    if (req.user?.role === 'admin' && req.body.dar_number) {
+      db.prepare('UPDATE daily_activity_reports SET dar_number = ? WHERE id = ?').run(req.body.dar_number, id);
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: overrode dar_number to ${req.body.dar_number}`);
+    }
+
     res.json({ data: { id } });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to update DAR', code: 'UPDATE_DAR_ERROR' }); }
+  } catch (error: any) { console.error('Update DAR error:', error); res.status(500).json({ error: 'Failed to update DAR', code: 'UPDATE_DAR_ERROR' }); }
 });
 
 // ─── PUT /:id/submit ────────────────────────────────────
@@ -315,7 +323,7 @@ router.put('/:id/submit', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'dar_submitted', id });
     res.json({ data: { id, status: 'submitted' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_SUBMIT_ERROR' }); }
+  } catch (error: any) { console.error('Submit DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_SUBMIT_ERROR' }); }
 });
 
 // ─── PUT /:id/approve ───────────────────────────────────
@@ -334,7 +342,7 @@ router.put('/:id/approve', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'dar_approved', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id), status: 'approved' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_APPROVE_ERROR' }); }
+  } catch (error: any) { console.error('Approve DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_APPROVE_ERROR' }); }
 });
 
 // ─── PUT /:id/return ────────────────────────────────────
@@ -352,7 +360,1038 @@ router.put('/:id/return', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'dar_returned', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id), status: 'returned' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_RETURN_ERROR' }); }
+  } catch (error: any) { console.error('Return DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_RETURN_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: DAR Completeness Scoring
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+
+    const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!dar) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
+
+    let score = 0;
+    let maxScore = 0;
+    const checks: { field: string; filled: boolean; weight: number }[] = [];
+
+    const scoreField = (field: string, value: any, weight: number, minLength = 0) => {
+      maxScore += weight;
+      const filled = value != null && String(value).trim().length > minLength;
+      if (filled) score += weight;
+      checks.push({ field, filled, weight });
+    };
+
+    scoreField('officer_name', dar.officer_name, 10);
+    scoreField('shift_date', dar.shift_date, 10);
+    scoreField('shift_start', dar.shift_start, 8);
+    scoreField('shift_end', dar.shift_end, 8);
+    scoreField('property_name', dar.property_name, 5);
+    scoreField('activities_narrative', dar.activities_narrative, 25, 20);
+    scoreField('calls_handled', dar.calls_handled, 8, 2);
+    scoreField('incidents_created', dar.incidents_created, 8, 2);
+    scoreField('patrols_completed', dar.patrols_completed, 5, 2);
+    scoreField('notable_events', dar.notable_events, 5, 5);
+    scoreField('equipment_issues', dar.equipment_issues, 4);
+    scoreField('safety_concerns', dar.safety_concerns, 4);
+
+    const pct = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+    let rating: string;
+    if (pct >= 90) rating = 'excellent';
+    else if (pct >= 75) rating = 'good';
+    else if (pct >= 50) rating = 'fair';
+    else rating = 'incomplete';
+
+    res.json({ dar_id: id, score: pct, rating, max_score: maxScore, earned_score: score, field_checks: checks });
+  } catch (error: any) {
+    console.error('DAR completeness error:', error);
+    res.status(500).json({ error: 'Failed to calculate completeness', code: 'DAR_COMPLETENESS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Supervisor Review Workflow (pending -> reviewed -> approved)
+// ════════════════════════════════════════════════════════════
+router.put('/:id/review', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+    const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
+      res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
+      return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
+    }
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    db.prepare(`UPDATE daily_activity_reports SET status = 'reviewed', reviewed_by = ?,
+      reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
+      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'review', 'dar', ?, '{}', ?)`).run(req.user!.userId, id, now);
+
+    broadcastRecordUpdate({ type: 'dar_reviewed', id });
+    res.json({ data: { id, status: 'reviewed' } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_REVIEW_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: DAR Templates
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { property_id } = req.query;
+
+    let rows: any[];
+    try {
+      if (property_id) {
+        rows = db.prepare(`
+          SELECT * FROM dar_templates WHERE property_id = ? OR property_id IS NULL
+          ORDER BY is_default DESC, name ASC LIMIT 100
+        `).all(property_id);
+      } else {
+        rows = db.prepare('SELECT * FROM dar_templates ORDER BY is_default DESC, name ASC LIMIT 100').all();
+      }
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { name, property_id, post_assignment, activities_narrative_template,
+      notable_events_template, is_default } = req.body;
+    if (!name) return res.status(400).json({ error: 'Template name required', code: 'TEMPLATE_NAME_REQUIRED' });
+
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS dar_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, property_id INTEGER, post_assignment TEXT,
+        activities_narrative_template TEXT, notable_events_template TEXT,
+        is_default INTEGER DEFAULT 0, created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* may already exist */ }
+
+    const result = db.prepare(`
+      INSERT INTO dar_templates (name, property_id, post_assignment, activities_narrative_template,
+        notable_events_template, is_default, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, property_id || null, post_assignment || null,
+      activities_narrative_template || null, notable_events_template || null,
+      is_default ? 1 : 0, req.user!.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templateId = parseInt(req.params.templateId, 10);
+    if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: DAR Stats / Summary
+// ════════════════════════════════════════════════════════════
+router.get('/stats/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    const from = date_from || localToday();
+    const to = date_to || localToday();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ? GROUP BY status
+    `).all(from, to) as any[];
+
+    const totalDars = statusCounts.reduce((s: number, r: any) => s + r.count, 0);
+    const statusMap: Record<string, number> = {};
+    for (const r of statusCounts) statusMap[r.status] = r.count;
+
+    const withNarrative = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+        AND activities_narrative IS NOT NULL AND LENGTH(activities_narrative) > 20
+    `).get(from, to) as { count: number };
+
+    const pendingReview = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE status IN ('submitted', 'reviewed') AND shift_date >= ? AND shift_date <= ?
+    `).get(from, to) as { count: number };
+
+    const topOfficers = db.prepare(`
+      SELECT officer_name, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+      GROUP BY officer_id ORDER BY count DESC LIMIT 10
+    `).all(from, to) as any[];
+
+    res.json({
+      total: totalDars, by_status: statusMap, pending_review: pendingReview.count,
+      with_narrative: withNarrative.count,
+      narrative_rate: totalDars > 0 ? Math.round((withNarrative.count / totalDars) * 100) : 0,
+      top_officers: topOfficers, period: { from, to },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get DAR stats', code: 'DAR_STATS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: DAR Completeness Scoring
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+
+    const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!dar) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
+
+    let score = 0;
+    let maxScore = 0;
+    const checks: { field: string; filled: boolean; weight: number }[] = [];
+
+    const scoreField = (field: string, value: any, weight: number, minLength = 0) => {
+      maxScore += weight;
+      const filled = value != null && String(value).trim().length > minLength;
+      if (filled) score += weight;
+      checks.push({ field, filled, weight });
+    };
+
+    scoreField('officer_name', dar.officer_name, 10);
+    scoreField('shift_date', dar.shift_date, 10);
+    scoreField('shift_start', dar.shift_start, 8);
+    scoreField('shift_end', dar.shift_end, 8);
+    scoreField('property_name', dar.property_name, 5);
+    scoreField('activities_narrative', dar.activities_narrative, 25, 20);
+    scoreField('calls_handled', dar.calls_handled, 8, 2);
+    scoreField('incidents_created', dar.incidents_created, 8, 2);
+    scoreField('patrols_completed', dar.patrols_completed, 5, 2);
+    scoreField('notable_events', dar.notable_events, 5, 5);
+    scoreField('equipment_issues', dar.equipment_issues, 4);
+    scoreField('safety_concerns', dar.safety_concerns, 4);
+
+    const pct = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+    let rating: string;
+    if (pct >= 90) rating = 'excellent';
+    else if (pct >= 75) rating = 'good';
+    else if (pct >= 50) rating = 'fair';
+    else rating = 'incomplete';
+
+    res.json({ dar_id: id, score: pct, rating, max_score: maxScore, earned_score: score, field_checks: checks });
+  } catch (error: any) {
+    console.error('DAR completeness error:', error);
+    res.status(500).json({ error: 'Failed to calculate completeness', code: 'DAR_COMPLETENESS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Supervisor Review Workflow (pending -> reviewed -> approved)
+// ════════════════════════════════════════════════════════════
+router.put('/:id/review', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+    const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
+      res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
+      return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
+    }
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    db.prepare(`UPDATE daily_activity_reports SET status = 'reviewed', reviewed_by = ?,
+      reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
+      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'review', 'dar', ?, '{}', ?)`).run(req.user!.userId, id, now);
+
+    broadcastRecordUpdate({ type: 'dar_reviewed', id });
+    res.json({ data: { id, status: 'reviewed' } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_REVIEW_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: DAR Templates
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { property_id } = req.query;
+
+    let rows: any[];
+    try {
+      if (property_id) {
+        rows = db.prepare(`
+          SELECT * FROM dar_templates WHERE property_id = ? OR property_id IS NULL
+          ORDER BY is_default DESC, name ASC LIMIT 100
+        `).all(property_id);
+      } else {
+        rows = db.prepare('SELECT * FROM dar_templates ORDER BY is_default DESC, name ASC LIMIT 100').all();
+      }
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { name, property_id, post_assignment, activities_narrative_template,
+      notable_events_template, is_default } = req.body;
+    if (!name) return res.status(400).json({ error: 'Template name required', code: 'TEMPLATE_NAME_REQUIRED' });
+
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS dar_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, property_id INTEGER, post_assignment TEXT,
+        activities_narrative_template TEXT, notable_events_template TEXT,
+        is_default INTEGER DEFAULT 0, created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* may already exist */ }
+
+    const result = db.prepare(`
+      INSERT INTO dar_templates (name, property_id, post_assignment, activities_narrative_template,
+        notable_events_template, is_default, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, property_id || null, post_assignment || null,
+      activities_narrative_template || null, notable_events_template || null,
+      is_default ? 1 : 0, req.user!.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templateId = parseInt(req.params.templateId, 10);
+    if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: DAR Stats / Summary
+// ════════════════════════════════════════════════════════════
+router.get('/stats/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    const from = date_from || localToday();
+    const to = date_to || localToday();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ? GROUP BY status
+    `).all(from, to) as any[];
+
+    const totalDars = statusCounts.reduce((s: number, r: any) => s + r.count, 0);
+    const statusMap: Record<string, number> = {};
+    for (const r of statusCounts) statusMap[r.status] = r.count;
+
+    const withNarrative = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+        AND activities_narrative IS NOT NULL AND LENGTH(activities_narrative) > 20
+    `).get(from, to) as { count: number };
+
+    const pendingReview = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE status IN ('submitted', 'reviewed') AND shift_date >= ? AND shift_date <= ?
+    `).get(from, to) as { count: number };
+
+    const topOfficers = db.prepare(`
+      SELECT officer_name, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+      GROUP BY officer_id ORDER BY count DESC LIMIT 10
+    `).all(from, to) as any[];
+
+    res.json({
+      total: totalDars, by_status: statusMap, pending_review: pendingReview.count,
+      with_narrative: withNarrative.count,
+      narrative_rate: totalDars > 0 ? Math.round((withNarrative.count / totalDars) * 100) : 0,
+      top_officers: topOfficers, period: { from, to },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get DAR stats', code: 'DAR_STATS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: DAR Completeness Scoring
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+
+    const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!dar) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
+
+    let score = 0;
+    let maxScore = 0;
+    const checks: { field: string; filled: boolean; weight: number }[] = [];
+
+    const scoreField = (field: string, value: any, weight: number, minLength = 0) => {
+      maxScore += weight;
+      const filled = value != null && String(value).trim().length > minLength;
+      if (filled) score += weight;
+      checks.push({ field, filled, weight });
+    };
+
+    scoreField('officer_name', dar.officer_name, 10);
+    scoreField('shift_date', dar.shift_date, 10);
+    scoreField('shift_start', dar.shift_start, 8);
+    scoreField('shift_end', dar.shift_end, 8);
+    scoreField('property_name', dar.property_name, 5);
+    scoreField('activities_narrative', dar.activities_narrative, 25, 20);
+    scoreField('calls_handled', dar.calls_handled, 8, 2);
+    scoreField('incidents_created', dar.incidents_created, 8, 2);
+    scoreField('patrols_completed', dar.patrols_completed, 5, 2);
+    scoreField('notable_events', dar.notable_events, 5, 5);
+    scoreField('equipment_issues', dar.equipment_issues, 4);
+    scoreField('safety_concerns', dar.safety_concerns, 4);
+
+    const pct = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+    let rating: string;
+    if (pct >= 90) rating = 'excellent';
+    else if (pct >= 75) rating = 'good';
+    else if (pct >= 50) rating = 'fair';
+    else rating = 'incomplete';
+
+    res.json({ dar_id: id, score: pct, rating, max_score: maxScore, earned_score: score, field_checks: checks });
+  } catch (error: any) {
+    console.error('DAR completeness error:', error);
+    res.status(500).json({ error: 'Failed to calculate completeness', code: 'DAR_COMPLETENESS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Supervisor Review Workflow (pending -> reviewed -> approved)
+// ════════════════════════════════════════════════════════════
+router.put('/:id/review', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+    const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
+      res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
+      return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
+    }
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    db.prepare(`UPDATE daily_activity_reports SET status = 'reviewed', reviewed_by = ?,
+      reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
+      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'review', 'dar', ?, '{}', ?)`).run(req.user!.userId, id, now);
+
+    broadcastRecordUpdate({ type: 'dar_reviewed', id });
+    res.json({ data: { id, status: 'reviewed' } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_REVIEW_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: DAR Templates
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { property_id } = req.query;
+
+    let rows: any[];
+    try {
+      if (property_id) {
+        rows = db.prepare(`
+          SELECT * FROM dar_templates WHERE property_id = ? OR property_id IS NULL
+          ORDER BY is_default DESC, name ASC LIMIT 100
+        `).all(property_id);
+      } else {
+        rows = db.prepare('SELECT * FROM dar_templates ORDER BY is_default DESC, name ASC LIMIT 100').all();
+      }
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { name, property_id, post_assignment, activities_narrative_template,
+      notable_events_template, is_default } = req.body;
+    if (!name) return res.status(400).json({ error: 'Template name required', code: 'TEMPLATE_NAME_REQUIRED' });
+
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS dar_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, property_id INTEGER, post_assignment TEXT,
+        activities_narrative_template TEXT, notable_events_template TEXT,
+        is_default INTEGER DEFAULT 0, created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* may already exist */ }
+
+    const result = db.prepare(`
+      INSERT INTO dar_templates (name, property_id, post_assignment, activities_narrative_template,
+        notable_events_template, is_default, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, property_id || null, post_assignment || null,
+      activities_narrative_template || null, notable_events_template || null,
+      is_default ? 1 : 0, req.user!.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templateId = parseInt(req.params.templateId, 10);
+    if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: DAR Stats / Summary
+// ════════════════════════════════════════════════════════════
+router.get('/stats/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    const from = date_from || localToday();
+    const to = date_to || localToday();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ? GROUP BY status
+    `).all(from, to) as any[];
+
+    const totalDars = statusCounts.reduce((s: number, r: any) => s + r.count, 0);
+    const statusMap: Record<string, number> = {};
+    for (const r of statusCounts) statusMap[r.status] = r.count;
+
+    const withNarrative = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+        AND activities_narrative IS NOT NULL AND LENGTH(activities_narrative) > 20
+    `).get(from, to) as { count: number };
+
+    const pendingReview = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE status IN ('submitted', 'reviewed') AND shift_date >= ? AND shift_date <= ?
+    `).get(from, to) as { count: number };
+
+    const topOfficers = db.prepare(`
+      SELECT officer_name, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+      GROUP BY officer_id ORDER BY count DESC LIMIT 10
+    `).all(from, to) as any[];
+
+    res.json({
+      total: totalDars, by_status: statusMap, pending_review: pendingReview.count,
+      with_narrative: withNarrative.count,
+      narrative_rate: totalDars > 0 ? Math.round((withNarrative.count / totalDars) * 100) : 0,
+      top_officers: topOfficers, period: { from, to },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get DAR stats', code: 'DAR_STATS_ERROR' });
+  }
+});
+
+// ─── CSV Export ──────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM daily_activity_reports ORDER BY shift_date DESC, created_at DESC').all() as any[];
+    sendCsv(res, 'daily_activity_reports_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'dar_number', header: 'DAR Number' },
+      { key: 'status', header: 'Status' },
+      { key: 'officer_name', header: 'Officer' },
+      { key: 'shift_date', header: 'Shift Date' },
+      { key: 'shift_start', header: 'Shift Start' },
+      { key: 'shift_end', header: 'Shift End' },
+      { key: 'property_name', header: 'Property' },
+      { key: 'post_assignment', header: 'Post Assignment' },
+      { key: 'calls_handled', header: 'Calls Handled' },
+      { key: 'incidents_created', header: 'Incidents Created' },
+      { key: 'citations_issued', header: 'Citations Issued' },
+      { key: 'patrols_completed', header: 'Patrols Completed' },
+      { key: 'activities_narrative', header: 'Narrative' },
+      { key: 'notable_events', header: 'Notable Events' },
+      { key: 'equipment_issues', header: 'Equipment Issues' },
+      { key: 'safety_concerns', header: 'Safety Concerns' },
+      { key: 'created_at', header: 'Created' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export DARs error:', error);
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: DAR Completeness Scoring
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+
+    const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!dar) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
+
+    let score = 0;
+    let maxScore = 0;
+    const checks: { field: string; filled: boolean; weight: number }[] = [];
+
+    const scoreField = (field: string, value: any, weight: number, minLength = 0) => {
+      maxScore += weight;
+      const filled = value != null && String(value).trim().length > minLength;
+      if (filled) score += weight;
+      checks.push({ field, filled, weight });
+    };
+
+    scoreField('officer_name', dar.officer_name, 10);
+    scoreField('shift_date', dar.shift_date, 10);
+    scoreField('shift_start', dar.shift_start, 8);
+    scoreField('shift_end', dar.shift_end, 8);
+    scoreField('property_name', dar.property_name, 5);
+    scoreField('activities_narrative', dar.activities_narrative, 25, 20);
+    scoreField('calls_handled', dar.calls_handled, 8, 2);
+    scoreField('incidents_created', dar.incidents_created, 8, 2);
+    scoreField('patrols_completed', dar.patrols_completed, 5, 2);
+    scoreField('notable_events', dar.notable_events, 5, 5);
+    scoreField('equipment_issues', dar.equipment_issues, 4);
+    scoreField('safety_concerns', dar.safety_concerns, 4);
+
+    const pct = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+    let rating: string;
+    if (pct >= 90) rating = 'excellent';
+    else if (pct >= 75) rating = 'good';
+    else if (pct >= 50) rating = 'fair';
+    else rating = 'incomplete';
+
+    res.json({ dar_id: id, score: pct, rating, max_score: maxScore, earned_score: score, field_checks: checks });
+  } catch (error: any) {
+    console.error('DAR completeness error:', error);
+    res.status(500).json({ error: 'Failed to calculate completeness', code: 'DAR_COMPLETENESS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Supervisor Review Workflow (pending -> reviewed -> approved)
+// ════════════════════════════════════════════════════════════
+router.put('/:id/review', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+    const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
+      res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
+      return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
+    }
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    db.prepare(`UPDATE daily_activity_reports SET status = 'reviewed', reviewed_by = ?,
+      reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
+      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'review', 'dar', ?, '{}', ?)`).run(req.user!.userId, id, now);
+
+    broadcastRecordUpdate({ type: 'dar_reviewed', id });
+    res.json({ data: { id, status: 'reviewed' } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_REVIEW_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: DAR Templates
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { property_id } = req.query;
+
+    let rows: any[];
+    try {
+      if (property_id) {
+        rows = db.prepare(`
+          SELECT * FROM dar_templates WHERE property_id = ? OR property_id IS NULL
+          ORDER BY is_default DESC, name ASC LIMIT 100
+        `).all(property_id);
+      } else {
+        rows = db.prepare('SELECT * FROM dar_templates ORDER BY is_default DESC, name ASC LIMIT 100').all();
+      }
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { name, property_id, post_assignment, activities_narrative_template,
+      notable_events_template, is_default } = req.body;
+    if (!name) return res.status(400).json({ error: 'Template name required', code: 'TEMPLATE_NAME_REQUIRED' });
+
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS dar_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, property_id INTEGER, post_assignment TEXT,
+        activities_narrative_template TEXT, notable_events_template TEXT,
+        is_default INTEGER DEFAULT 0, created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* may already exist */ }
+
+    const result = db.prepare(`
+      INSERT INTO dar_templates (name, property_id, post_assignment, activities_narrative_template,
+        notable_events_template, is_default, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, property_id || null, post_assignment || null,
+      activities_narrative_template || null, notable_events_template || null,
+      is_default ? 1 : 0, req.user!.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templateId = parseInt(req.params.templateId, 10);
+    if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: DAR Stats / Summary
+// ════════════════════════════════════════════════════════════
+router.get('/stats/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    const from = date_from || localToday();
+    const to = date_to || localToday();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ? GROUP BY status
+    `).all(from, to) as any[];
+
+    const totalDars = statusCounts.reduce((s: number, r: any) => s + r.count, 0);
+    const statusMap: Record<string, number> = {};
+    for (const r of statusCounts) statusMap[r.status] = r.count;
+
+    const withNarrative = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+        AND activities_narrative IS NOT NULL AND LENGTH(activities_narrative) > 20
+    `).get(from, to) as { count: number };
+
+    const pendingReview = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE status IN ('submitted', 'reviewed') AND shift_date >= ? AND shift_date <= ?
+    `).get(from, to) as { count: number };
+
+    const topOfficers = db.prepare(`
+      SELECT officer_name, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+      GROUP BY officer_id ORDER BY count DESC LIMIT 10
+    `).all(from, to) as any[];
+
+    res.json({
+      total: totalDars, by_status: statusMap, pending_review: pendingReview.count,
+      with_narrative: withNarrative.count,
+      narrative_rate: totalDars > 0 ? Math.round((withNarrative.count / totalDars) * 100) : 0,
+      top_officers: topOfficers, period: { from, to },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get DAR stats', code: 'DAR_STATS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: DAR Completeness Scoring
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+
+    const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!dar) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
+
+    let score = 0;
+    let maxScore = 0;
+    const checks: { field: string; filled: boolean; weight: number }[] = [];
+
+    const scoreField = (field: string, value: any, weight: number, minLength = 0) => {
+      maxScore += weight;
+      const filled = value != null && String(value).trim().length > minLength;
+      if (filled) score += weight;
+      checks.push({ field, filled, weight });
+    };
+
+    scoreField('officer_name', dar.officer_name, 10);
+    scoreField('shift_date', dar.shift_date, 10);
+    scoreField('shift_start', dar.shift_start, 8);
+    scoreField('shift_end', dar.shift_end, 8);
+    scoreField('property_name', dar.property_name, 5);
+    scoreField('activities_narrative', dar.activities_narrative, 25, 20);
+    scoreField('calls_handled', dar.calls_handled, 8, 2);
+    scoreField('incidents_created', dar.incidents_created, 8, 2);
+    scoreField('patrols_completed', dar.patrols_completed, 5, 2);
+    scoreField('notable_events', dar.notable_events, 5, 5);
+    scoreField('equipment_issues', dar.equipment_issues, 4);
+    scoreField('safety_concerns', dar.safety_concerns, 4);
+
+    const pct = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+    let rating: string;
+    if (pct >= 90) rating = 'excellent';
+    else if (pct >= 75) rating = 'good';
+    else if (pct >= 50) rating = 'fair';
+    else rating = 'incomplete';
+
+    res.json({ dar_id: id, score: pct, rating, max_score: maxScore, earned_score: score, field_checks: checks });
+  } catch (error: any) {
+    console.error('DAR completeness error:', error);
+    res.status(500).json({ error: 'Failed to calculate completeness', code: 'DAR_COMPLETENESS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Supervisor Review Workflow (pending -> reviewed -> approved)
+// ════════════════════════════════════════════════════════════
+router.put('/:id/review', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
+    const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
+    if (existing.status !== 'submitted' && req.user?.role !== 'admin') {
+      res.status(400).json({ error: 'DAR must be in submitted status to review', code: 'DAR_MUST_BE_SUBMITTED' });
+      return;
+    }
+    if (req.user?.role === 'admin' && existing.status !== 'submitted') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: bypassed submitted-only review restriction (status: ${existing.status})`);
+    }
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    db.prepare(`UPDATE daily_activity_reports SET status = 'reviewed', reviewed_by = ?,
+      reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
+      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'review', 'dar', ?, '{}', ?)`).run(req.user!.userId, id, now);
+
+    broadcastRecordUpdate({ type: 'dar_reviewed', id });
+    res.json({ data: { id, status: 'reviewed' } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_REVIEW_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: DAR Templates
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { property_id } = req.query;
+
+    let rows: any[];
+    try {
+      if (property_id) {
+        rows = db.prepare(`
+          SELECT * FROM dar_templates WHERE property_id = ? OR property_id IS NULL
+          ORDER BY is_default DESC, name ASC LIMIT 100
+        `).all(property_id);
+      } else {
+        rows = db.prepare('SELECT * FROM dar_templates ORDER BY is_default DESC, name ASC LIMIT 100').all();
+      }
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { name, property_id, post_assignment, activities_narrative_template,
+      notable_events_template, is_default } = req.body;
+    if (!name) return res.status(400).json({ error: 'Template name required', code: 'TEMPLATE_NAME_REQUIRED' });
+
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS dar_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, property_id INTEGER, post_assignment TEXT,
+        activities_narrative_template TEXT, notable_events_template TEXT,
+        is_default INTEGER DEFAULT 0, created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* may already exist */ }
+
+    const result = db.prepare(`
+      INSERT INTO dar_templates (name, property_id, post_assignment, activities_narrative_template,
+        notable_events_template, is_default, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, property_id || null, post_assignment || null,
+      activities_narrative_template || null, notable_events_template || null,
+      is_default ? 1 : 0, req.user!.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templateId = parseInt(req.params.templateId, 10);
+    if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: DAR Stats / Summary
+// ════════════════════════════════════════════════════════════
+router.get('/stats/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    const from = date_from || localToday();
+    const to = date_to || localToday();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ? GROUP BY status
+    `).all(from, to) as any[];
+
+    const totalDars = statusCounts.reduce((s: number, r: any) => s + r.count, 0);
+    const statusMap: Record<string, number> = {};
+    for (const r of statusCounts) statusMap[r.status] = r.count;
+
+    const withNarrative = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+        AND activities_narrative IS NOT NULL AND LENGTH(activities_narrative) > 20
+    `).get(from, to) as { count: number };
+
+    const pendingReview = db.prepare(`
+      SELECT COUNT(*) as count FROM daily_activity_reports
+      WHERE status IN ('submitted', 'reviewed') AND shift_date >= ? AND shift_date <= ?
+    `).get(from, to) as { count: number };
+
+    const topOfficers = db.prepare(`
+      SELECT officer_name, COUNT(*) as count FROM daily_activity_reports
+      WHERE shift_date >= ? AND shift_date <= ?
+      GROUP BY officer_id ORDER BY count DESC LIMIT 10
+    `).all(from, to) as any[];
+
+    res.json({
+      total: totalDars, by_status: statusMap, pending_review: pendingReview.count,
+      with_narrative: withNarrative.count,
+      narrative_rate: totalDars > 0 ? Math.round((withNarrative.count / totalDars) * 100) : 0,
+      top_officers: topOfficers, period: { from, to },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get DAR stats', code: 'DAR_STATS_ERROR' });
+  }
 });
 
 // ════════════════════════════════════════════════════════════

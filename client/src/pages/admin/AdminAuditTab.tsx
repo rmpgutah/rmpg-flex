@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, Download, Search, Filter } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
 
 // ============================================================
 // Types
@@ -69,7 +70,7 @@ export default function AdminAuditTab({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `audit-log-${localToday()}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch { /* silent */ }
@@ -170,13 +171,7 @@ export default function AdminAuditTab({
                 <td className="text-xs text-rmpg-300 font-mono whitespace-nowrap tabular-nums">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-rmpg-400" aria-hidden="true" />
-                    {new Date(entry.timestamp).toLocaleString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: false,
-                    })}
+                    {safeDateTimeStr(entry.timestamp)}
                   </div>
                 </td>
                 <td className="text-xs font-semibold text-white">{entry.user}</td>

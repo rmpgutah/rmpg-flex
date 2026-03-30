@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob, ServeSkipAddress, ServeSkipTrace } from '../../types';
+import { safeDateStr } from '../../utils/dateUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -406,7 +407,7 @@ export default function ServeSkipTracePanel({
                     <div key={trace.id} className="px-3 py-2 text-[11px]">
                       <div className="flex items-center justify-between">
                         <span className="text-rmpg-300">
-                          {new Date(trace.created_at).toLocaleDateString()}
+                          {safeDateStr(trace.created_at)}
                         </span>
                         <span className="text-rmpg-500">{trace.search_type}</span>
                       </div>

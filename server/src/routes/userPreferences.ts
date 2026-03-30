@@ -262,11 +262,12 @@ router.delete('/favorites/:entity_type/:entity_id', (req: Request, res: Response
     const db = getDb();
     const userId = req.user!.userId;
     const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
-    let items = JSON.parse(user?.favorites || '[]');
+    let items: any[] = [];
+    try { items = JSON.parse(user?.favorites || '[]'); } catch { items = []; }
     items = items.filter((i: any) => !(i.entity_type === req.params.entity_type && String(i.entity_id) === req.params.entity_id));
     db.prepare('UPDATE users SET favorites = ? WHERE id = ?').run(JSON.stringify(items), userId);
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+  } catch (error: any) { console.error('[UserPreferences] favorites DELETE error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 export default router;
