@@ -110,7 +110,12 @@ export default function TrainingPage() {
       ]);
       if (!mountedRef.current) return;
       setRecords(recs || []);
-      setRequirements(reqs || []);
+      // Normalize required_for_roles — DB stores as JSON string, UI expects array
+      setRequirements((reqs || []).map(r => ({
+        ...r,
+        required_for_roles: Array.isArray(r.required_for_roles) ? r.required_for_roles
+          : (() => { try { return JSON.parse(r.required_for_roles as any || '[]'); } catch { return []; } })(),
+      })));
       setOfficers((users || []).filter(u => u.status === 'active'));
     } catch (err: any) {
       console.error('Failed to load training data:', err);
@@ -1059,7 +1064,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                 <div className="grid grid-cols-3 gap-2 text-[10px] text-rmpg-400 mb-2">
                   <div>
                     <span className="text-rmpg-500">Roles: </span>
-                    <span className="text-rmpg-300">{req.required_for_roles.map(r => r.replace(/_/g, ' ')).join(', ')}</span>
+                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ')).join(', ') || '—'}</span>
                   </div>
                   <div>
                     <span className="text-rmpg-500">Min Hours: </span>
