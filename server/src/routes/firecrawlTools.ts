@@ -863,6 +863,76 @@ function initTables(): void {
       created_at TEXT NOT NULL
     )
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_support_bots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      website_url TEXT,
+      system_prompt TEXT,
+      knowledge_base_url TEXT,
+      auto_respond INTEGER DEFAULT 0,
+      max_tokens INTEGER DEFAULT 500,
+      status TEXT DEFAULT 'active',
+      total_conversations INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_trend_crons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      query TEXT NOT NULL,
+      schedule_cron TEXT DEFAULT '0 */6 * * *',
+      notify_email TEXT,
+      last_run_at TEXT,
+      next_run_at TEXT,
+      total_runs INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      target_format TEXT DEFAULT 'markdown',
+      pages_crawled INTEGER DEFAULT 0,
+      pages_total INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      output_path TEXT,
+      error_message TEXT,
+      created_by INTEGER,
+      created_at TEXT,
+      completed_at TEXT
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS firecrawl_code_repos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_url TEXT NOT NULL,
+      repo_name TEXT,
+      analysis_type TEXT DEFAULT 'full',
+      language TEXT,
+      total_files INTEGER DEFAULT 0,
+      total_lines INTEGER DEFAULT 0,
+      issues_found INTEGER DEFAULT 0,
+      summary TEXT,
+      analysis_json TEXT,
+      status TEXT DEFAULT 'pending',
+      created_by INTEGER,
+      created_at TEXT,
+      completed_at TEXT
+    )
+  `);
 }
 
 // Initialize tables on module load
@@ -7793,5 +7863,608 @@ router.get('/leads/config', requireRole('admin', 'manager'), (_req: Request, res
     res.json({ configured: false });
   }
 });
+
+// ══════════════════════════════════════════════════════════════
+// Customer Support Bot Routes (ai-customer-support-bot)
+// ══════════════════════════════════════════════════════════════
+
+// ── POST /support-bots — Create a support bot ────────────────
+router.post(
+  '/support-bots',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { name, website_url, system_prompt, knowledge_base_url, auto_respond, max_tokens } = req.body as {
+      name?: string; website_url?: string; system_prompt?: string;
+      knowledge_base_url?: string; auto_respond?: boolean; max_tokens?: number;
+    };
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ error: 'name is required' }); return;
+    }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_support_bots (name, website_url, system_prompt, knowledge_base_url, auto_respond, max_tokens, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name.trim(), website_url?.trim() || null, system_prompt?.trim() || null,
+        knowledge_base_url?.trim() || null, auto_respond ? 1 : 0, max_tokens || 500,
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+      const id = Number(result.lastInsertRowid);
+      auditLog(req, 'CREATE', 'firecrawl_support_bots', id, `Created support bot: ${name.trim()}`);
+      const row = db.prepare('SELECT * FROM firecrawl_support_bots WHERE id = ?').get(id);
+      res.status(201).json(row);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Create support bot error:', msg);
+      res.status(500).json({ error: 'Failed to create support bot', detail: msg });
+    }
+  },
+);
+
+// ── GET /support-bots — List all support bots ────────────────
+router.get(
+  '/support-bots',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_support_bots ORDER BY created_at DESC').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list support bots', detail: msg });
+    }
+  },
+);
+
+// ── PUT /support-bots/:id — Update a support bot ─────────────
+router.put(
+  '/support-bots/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    const { name, website_url, system_prompt, knowledge_base_url, auto_respond, max_tokens, status } = req.body as {
+      name?: string; website_url?: string; system_prompt?: string;
+      knowledge_base_url?: string; auto_respond?: boolean; max_tokens?: number; status?: string;
+    };
+
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT id FROM firecrawl_support_bots WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Support bot not found' }); return; }
+
+      const now = localNow();
+      db.prepare(`
+        UPDATE firecrawl_support_bots SET
+          name = COALESCE(?, name),
+          website_url = COALESCE(?, website_url),
+          system_prompt = COALESCE(?, system_prompt),
+          knowledge_base_url = COALESCE(?, knowledge_base_url),
+          auto_respond = COALESCE(?, auto_respond),
+          max_tokens = COALESCE(?, max_tokens),
+          status = COALESCE(?, status),
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        name?.trim() || null, website_url?.trim() || null, system_prompt?.trim() || null,
+        knowledge_base_url?.trim() || null, auto_respond != null ? (auto_respond ? 1 : 0) : null,
+        max_tokens || null, status?.trim() || null, now, id,
+      );
+      auditLog(req, 'UPDATE', 'firecrawl_support_bots', id, `Updated support bot #${id}`);
+      const row = db.prepare('SELECT * FROM firecrawl_support_bots WHERE id = ?').get(id);
+      res.json(row);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Update support bot error:', msg);
+      res.status(500).json({ error: 'Failed to update support bot', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /support-bots/:id — Delete a support bot ──────────
+router.delete(
+  '/support-bots/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT id FROM firecrawl_support_bots WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Support bot not found' }); return; }
+
+      db.prepare('DELETE FROM firecrawl_support_bots WHERE id = ?').run(id);
+      auditLog(req, 'DELETE', 'firecrawl_support_bots', id, `Deleted support bot #${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Delete support bot error:', msg);
+      res.status(500).json({ error: 'Failed to delete support bot', detail: msg });
+    }
+  },
+);
+
+// ── POST /support-bots/:id/chat — Chat with a support bot ────
+router.post(
+  '/support-bots/:id/chat',
+  requireRole('admin', 'manager', 'officer'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    const { message } = req.body as { message?: string };
+    if (!message || !message.trim()) { res.status(400).json({ error: 'message is required' }); return; }
+
+    try {
+      const db = getDb();
+      const bot = db.prepare('SELECT * FROM firecrawl_support_bots WHERE id = ?').get(id) as any;
+      if (!bot) { res.status(404).json({ error: 'Support bot not found' }); return; }
+
+      // Scrape knowledge base if URL provided
+      let knowledgeContext = '';
+      if (bot.knowledge_base_url) {
+        try {
+          const scraped = await firecrawlScrape({ url: bot.knowledge_base_url, formats: ['markdown'] });
+          knowledgeContext = (scraped as any)?.markdown?.slice(0, 4000) || '';
+        } catch { /* knowledge base unavailable, continue without */ }
+      }
+
+      // Build response using scraped knowledge
+      const response = knowledgeContext
+        ? `Based on the knowledge base: ${knowledgeContext.slice(0, 500)}...\n\nRegarding "${message.trim()}": Please refer to the scraped content above for details.`
+        : `I'm a support bot for ${bot.name}. Your question: "${message.trim()}" — Knowledge base not yet configured.`;
+
+      // Increment conversation count
+      db.prepare('UPDATE firecrawl_support_bots SET total_conversations = total_conversations + 1, updated_at = ? WHERE id = ?')
+        .run(localNow(), id);
+
+      res.json({ success: true, response, bot_name: bot.name });
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Support bot chat error:', msg);
+      res.status(500).json({ error: 'Chat failed', detail: msg });
+    }
+  },
+);
+
+// ══════════════════════════════════════════════════════════════
+// TrendCron Routes (scheduled trend scans)
+// ══════════════════════════════════════════════════════════════
+
+// ── POST /trend-crons — Create a trend cron ──────────────────
+router.post(
+  '/trend-crons',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const { name, query, schedule_cron, notify_email } = req.body as {
+      name?: string; query?: string; schedule_cron?: string; notify_email?: string;
+    };
+
+    if (!name || !name.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+    if (!query || !query.trim()) { res.status(400).json({ error: 'query is required' }); return; }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_trend_crons (name, query, schedule_cron, notify_email, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name.trim(), query.trim(), schedule_cron?.trim() || '0 */6 * * *',
+        notify_email?.trim() || null,
+        (req as any).user?.id || (req as any).user?.userId, now, now,
+      );
+      const id = Number(result.lastInsertRowid);
+      auditLog(req, 'CREATE', 'firecrawl_trend_crons', id, `Created trend cron: ${name.trim()}`);
+      const row = db.prepare('SELECT * FROM firecrawl_trend_crons WHERE id = ?').get(id);
+      res.status(201).json(row);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Create trend cron error:', msg);
+      res.status(500).json({ error: 'Failed to create trend cron', detail: msg });
+    }
+  },
+);
+
+// ── GET /trend-crons — List all trend crons ──────────────────
+router.get(
+  '/trend-crons',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_trend_crons ORDER BY created_at DESC').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list trend crons', detail: msg });
+    }
+  },
+);
+
+// ── PUT /trend-crons/:id — Update a trend cron ──────────────
+router.put(
+  '/trend-crons/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    const { name, query, schedule_cron, notify_email, is_active } = req.body as {
+      name?: string; query?: string; schedule_cron?: string; notify_email?: string; is_active?: boolean;
+    };
+
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT id FROM firecrawl_trend_crons WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Trend cron not found' }); return; }
+
+      const now = localNow();
+      db.prepare(`
+        UPDATE firecrawl_trend_crons SET
+          name = COALESCE(?, name),
+          query = COALESCE(?, query),
+          schedule_cron = COALESCE(?, schedule_cron),
+          notify_email = COALESCE(?, notify_email),
+          is_active = COALESCE(?, is_active),
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        name?.trim() || null, query?.trim() || null, schedule_cron?.trim() || null,
+        notify_email?.trim() || null, is_active != null ? (is_active ? 1 : 0) : null, now, id,
+      );
+      auditLog(req, 'UPDATE', 'firecrawl_trend_crons', id, `Updated trend cron #${id}`);
+      const row = db.prepare('SELECT * FROM firecrawl_trend_crons WHERE id = ?').get(id);
+      res.json(row);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Update trend cron error:', msg);
+      res.status(500).json({ error: 'Failed to update trend cron', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /trend-crons/:id — Delete a trend cron ────────────
+router.delete(
+  '/trend-crons/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT id FROM firecrawl_trend_crons WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Trend cron not found' }); return; }
+
+      db.prepare('DELETE FROM firecrawl_trend_crons WHERE id = ?').run(id);
+      auditLog(req, 'DELETE', 'firecrawl_trend_crons', id, `Deleted trend cron #${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Delete trend cron error:', msg);
+      res.status(500).json({ error: 'Failed to delete trend cron', detail: msg });
+    }
+  },
+);
+
+// ── POST /trend-crons/:id/run — Manually run a trend cron ────
+router.post(
+  '/trend-crons/:id/run',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const cron = db.prepare('SELECT * FROM firecrawl_trend_crons WHERE id = ?').get(id) as any;
+      if (!cron) { res.status(404).json({ error: 'Trend cron not found' }); return; }
+
+      // Perform search using Firecrawl
+      let results: any = null;
+      try {
+        results = await firecrawlSearch({ query: cron.query, limit: 10 });
+      } catch (e) {
+        if (e instanceof FirecrawlUnavailableError) {
+          return handleFirecrawlError(e, res);
+        }
+        results = { error: (e as Error).message };
+      }
+
+      const now = localNow();
+      db.prepare(`
+        UPDATE firecrawl_trend_crons SET
+          last_run_at = ?, total_runs = total_runs + 1, updated_at = ?
+        WHERE id = ?
+      `).run(now, now, id);
+
+      auditLog(req, 'RUN', 'firecrawl_trend_crons', id, `Manually ran trend cron: ${cron.name}`);
+      res.json({ success: true, results, ran_at: now });
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Run trend cron error:', msg);
+      res.status(500).json({ error: 'Failed to run trend cron', detail: msg });
+    }
+  },
+);
+
+// ══════════════════════════════════════════════════════════════
+// Site Migrator Routes (firecrawl-migrator)
+// ══════════════════════════════════════════════════════════════
+
+// ── POST /migrations — Start a site migration ────────────────
+router.post(
+  '/migrations',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { name, source_url, target_format } = req.body as {
+      name?: string; source_url?: string; target_format?: string;
+    };
+
+    if (!name || !name.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+    if (!source_url || !source_url.trim()) { res.status(400).json({ error: 'source_url is required' }); return; }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_migrations (name, source_url, target_format, status, created_by, created_at)
+        VALUES (?, ?, ?, 'running', ?, ?)
+      `).run(
+        name.trim(), source_url.trim(), target_format?.trim() || 'markdown',
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+      const id = Number(result.lastInsertRowid);
+
+      // Start migration by scraping the source URL
+      let migrationResult: any = null;
+      try {
+        migrationResult = await firecrawlScrape({ url: source_url.trim(), formats: ['markdown', 'html'] });
+        const pagesTotal = 1;
+        db.prepare(`
+          UPDATE firecrawl_migrations SET
+            status = 'completed', pages_crawled = ?, pages_total = ?, completed_at = ?
+          WHERE id = ?
+        `).run(pagesTotal, pagesTotal, localNow(), id);
+      } catch (e) {
+        const errMsg = (e as Error).message;
+        db.prepare('UPDATE firecrawl_migrations SET status = ?, error_message = ? WHERE id = ?')
+          .run('failed', errMsg, id);
+      }
+
+      auditLog(req, 'CREATE', 'firecrawl_migrations', id, `Started migration: ${name.trim()}`);
+      const row = db.prepare('SELECT * FROM firecrawl_migrations WHERE id = ?').get(id);
+      res.status(201).json(row);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Create migration error:', msg);
+      res.status(500).json({ error: 'Failed to start migration', detail: msg });
+    }
+  },
+);
+
+// ── GET /migrations — List all migrations ────────────────────
+router.get(
+  '/migrations',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_migrations ORDER BY created_at DESC').all();
+      res.json(rows);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list migrations', detail: msg });
+    }
+  },
+);
+
+// ── GET /migrations/:id — Get migration detail ──────────────
+router.get(
+  '/migrations/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT * FROM firecrawl_migrations WHERE id = ?').get(id);
+      if (!row) { res.status(404).json({ error: 'Migration not found' }); return; }
+      res.json(row);
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get migration', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /migrations/:id — Delete a migration ─────────────
+router.delete(
+  '/migrations/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT id FROM firecrawl_migrations WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Migration not found' }); return; }
+
+      db.prepare('DELETE FROM firecrawl_migrations WHERE id = ?').run(id);
+      auditLog(req, 'DELETE', 'firecrawl_migrations', id, `Deleted migration #${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Delete migration error:', msg);
+      res.status(500).json({ error: 'Failed to delete migration', detail: msg });
+    }
+  },
+);
+
+// ══════════════════════════════════════════════════════════════
+// Code Analyzer Routes (opencode-firecrawl)
+// ══════════════════════════════════════════════════════════════
+
+// ── POST /code-repos — Analyze a code repository ────────────
+router.post(
+  '/code-repos',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    const { repo_url, repo_name, analysis_type, language } = req.body as {
+      repo_url?: string; repo_name?: string; analysis_type?: string; language?: string;
+    };
+
+    if (!repo_url || !repo_url.trim()) { res.status(400).json({ error: 'repo_url is required' }); return; }
+
+    try {
+      const db = getDb();
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO firecrawl_code_repos (repo_url, repo_name, analysis_type, language, status, created_by, created_at)
+        VALUES (?, ?, ?, ?, 'running', ?, ?)
+      `).run(
+        repo_url.trim(), repo_name?.trim() || repo_url.trim().split('/').pop() || 'unknown',
+        analysis_type?.trim() || 'full', language?.trim() || null,
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+      const id = Number(result.lastInsertRowid);
+
+      // Scrape the repo page for analysis
+      let analysisResult: any = null;
+      try {
+        analysisResult = await firecrawlScrape({ url: repo_url.trim(), formats: ['markdown'] });
+        const markdown = (analysisResult as any)?.markdown || '';
+        const lines = markdown.split('\n').length;
+
+        db.prepare(`
+          UPDATE firecrawl_code_repos SET
+            status = 'completed', total_lines = ?, summary = ?,
+            analysis_json = ?, completed_at = ?
+          WHERE id = ?
+        `).run(
+          lines, markdown.slice(0, 500),
+          JSON.stringify({ content_length: markdown.length, lines }), localNow(), id,
+        );
+      } catch (e) {
+        db.prepare('UPDATE firecrawl_code_repos SET status = ?, summary = ? WHERE id = ?')
+          .run('failed', (e as Error).message, id);
+      }
+
+      auditLog(req, 'CREATE', 'firecrawl_code_repos', id, `Analyzed repo: ${repo_url.trim()}`);
+      const row = db.prepare('SELECT * FROM firecrawl_code_repos WHERE id = ?').get(id);
+      res.status(201).json(parseJsonFields(row, ['analysis_json']));
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Analyze code repo error:', msg);
+      res.status(500).json({ error: 'Failed to analyze repo', detail: msg });
+    }
+  },
+);
+
+// ── GET /code-repos — List all code analyses ────────────────
+router.get(
+  '/code-repos',
+  requireRole('admin', 'manager'),
+  (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare('SELECT * FROM firecrawl_code_repos ORDER BY created_at DESC').all();
+      res.json(parseJsonRows(rows, ['analysis_json']));
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to list code repos', detail: msg });
+    }
+  },
+);
+
+// ── GET /code-repos/:id — Get code analysis detail ──────────
+router.get(
+  '/code-repos/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT * FROM firecrawl_code_repos WHERE id = ?').get(id);
+      if (!row) { res.status(404).json({ error: 'Code repo analysis not found' }); return; }
+      res.json(parseJsonFields(row, ['analysis_json']));
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get code repo', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /code-repos/:id — Delete a code analysis ─────────
+router.delete(
+  '/code-repos/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    ensureTables();
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT id FROM firecrawl_code_repos WHERE id = ?').get(id);
+      if (!existing) { res.status(404).json({ error: 'Code repo not found' }); return; }
+
+      db.prepare('DELETE FROM firecrawl_code_repos WHERE id = ?').run(id);
+      auditLog(req, 'DELETE', 'firecrawl_code_repos', id, `Deleted code repo analysis #${id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      if (handleFirecrawlError(err, res)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] Delete code repo error:', msg);
+      res.status(500).json({ error: 'Failed to delete code repo', detail: msg });
+    }
+  },
+);
 
 export default router;

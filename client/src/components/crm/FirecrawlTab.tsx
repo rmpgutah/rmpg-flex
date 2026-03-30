@@ -97,7 +97,7 @@ function safeObj(val: any): Record<string, any> {
 
 // ── Shared Types ──────────────────────────────────────────────
 
-type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant' | 'lead-gen';
+type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant' | 'lead-gen' | 'support-bot' | 'trend-cron' | 'site-migrator' | 'code-repo';
 
 interface Scout {
   id: number;
@@ -330,6 +330,10 @@ const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = 
   { id: 'pdf-tools', label: 'PDF Tools', icon: FileType },
   { id: 'assistant', label: 'Assistant', icon: HelpCircle },
   { id: 'lead-gen', label: 'Lead Gen', icon: Users },
+  { id: 'support-bot', label: 'Support Bot', icon: Bot },
+  { id: 'trend-cron', label: 'TrendCron', icon: Clock },
+  { id: 'site-migrator', label: 'Migrator', icon: ArrowRight },
+  { id: 'code-repo', label: 'Code Repo', icon: Code2 },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -7207,7 +7211,7 @@ function DocExtractPanel() {
           <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">
             {result.content_preview || 'No content'}
           </pre>
-          {Object.keys(result.metadata).length > 0 && (
+          {result.metadata && typeof result.metadata === 'object' && Object.keys(result.metadata).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Metadata</div>
               <div className="grid grid-cols-2 gap-1">
@@ -9841,7 +9845,7 @@ function LeadGenPanel() {
           <div className="px-3 py-2 bg-[#1a2636] border-b border-[#1e2d40] flex items-center justify-between">
             <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
             <span className="text-[9px] text-[#556677] font-mono">
-              {Array.isArray(results.results) ? results.results.length : typeof results.results === 'object' ? Object.keys(results.results).length : '—'} entries
+              {Array.isArray(results.results) ? results.results.length : (results.results && typeof results.results === 'object') ? Object.keys(results.results).length : '—'} entries
             </span>
           </div>
           <div className="p-3 bg-[#0d1520] max-h-[500px] overflow-y-auto">
@@ -9985,6 +9989,451 @@ function AssistantPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ██ SUPPORT BOT PANEL (ai-customer-support-bot)
+// ══════════════════════════════════════════════════════════════
+
+function SupportBotPanel() {
+  const { addToast } = useToast();
+  const [bots, setBots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formPrompt, setFormPrompt] = useState('');
+  const [formKbUrl, setFormKbUrl] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [activeBotId, setActiveBotId] = useState<number | null>(null);
+  const [chatMsg, setChatMsg] = useState('');
+  const [chatReply, setChatReply] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const loadBots = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/support-bots');
+      setBots(data || []);
+    } catch { addToast('Failed to load support bots', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadBots(); }, [loadBots]);
+
+  const createBot = async () => {
+    if (!formName.trim()) { addToast('Name is required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/support-bots', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formName.trim(), website_url: formUrl.trim() || null, system_prompt: formPrompt.trim() || null, knowledge_base_url: formKbUrl.trim() || null }),
+      });
+      addToast('Support bot created', 'success');
+      setFormName(''); setFormUrl(''); setFormPrompt(''); setFormKbUrl('');
+      loadBots();
+    } catch { addToast('Failed to create support bot', 'error'); }
+    setCreating(false);
+  };
+
+  const deleteBot = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/support-bots/${id}`, { method: 'DELETE' });
+      addToast('Bot deleted', 'success');
+      loadBots();
+    } catch { addToast('Failed to delete bot', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  const sendChat = async () => {
+    if (!activeBotId || !chatMsg.trim()) return;
+    setChatLoading(true); setChatReply('');
+    try {
+      const data = await apiFetch<any>(`/firecrawl-tools/support-bots/${activeBotId}/chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: chatMsg.trim() }),
+      });
+      setChatReply(data.response || 'No response');
+      setChatMsg('');
+    } catch { addToast('Chat failed', 'error'); }
+    setChatLoading(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-blue-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Support Bot</div>
+        <div className="grid grid-cols-2 gap-2">
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Bot name" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formUrl} onChange={e => setFormUrl(e.target.value)} placeholder="Website URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formKbUrl} onChange={e => setFormKbUrl(e.target.value)} placeholder="Knowledge base URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formPrompt} onChange={e => setFormPrompt(e.target.value)} placeholder="System prompt (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+        </div>
+        <SmallBtn onClick={createBot} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Create Bot</SmallBtn>
+      </div>
+
+      {/* Bot List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : bots.length === 0 ? (
+        <EmptyState icon={Bot} message="No support bots yet. Create one to get started." />
+      ) : (
+        <div className="space-y-1">
+          {bots.map(bot => (
+            <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
+              <StatusLed status={bot.status || 'active'} />
+              <Bot className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
+              <span className="text-[10px] text-rmpg-500">{bot.total_conversations || 0} chats</span>
+              <SmallBtn onClick={() => setActiveBotId(activeBotId === bot.id ? null : bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'}>
+                <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Chat'}
+              </SmallBtn>
+              <SmallBtn onClick={() => deleteBot(bot.id)} loading={deletingIds.has(bot.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Chat Area */}
+      {activeBotId && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Chat</div>
+          <div className="flex gap-2">
+            <input value={chatMsg} onChange={e => setChatMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendChat()} placeholder="Ask a question..." className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 flex-1" />
+            <SmallBtn onClick={sendChat} loading={chatLoading} variant="primary"><Send className="w-3 h-3" /></SmallBtn>
+          </div>
+          {chatReply && (
+            <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 text-[10px] text-rmpg-300 whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-dark">{chatReply}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ TREND CRON PANEL (trendCron)
+// ══════════════════════════════════════════════════════════════
+
+function TrendCronPanel() {
+  const { addToast } = useToast();
+  const [crons, setCrons] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formQuery, setFormQuery] = useState('');
+  const [formCron, setFormCron] = useState('0 */6 * * *');
+  const [formEmail, setFormEmail] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  const loadCrons = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/trend-crons');
+      setCrons(data || []);
+    } catch { addToast('Failed to load trend crons', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadCrons(); }, [loadCrons]);
+
+  const createCron = async () => {
+    if (!formName.trim() || !formQuery.trim()) { addToast('Name and query are required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/trend-crons', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formName.trim(), query: formQuery.trim(), schedule_cron: formCron.trim(), notify_email: formEmail.trim() || null }),
+      });
+      addToast('Trend cron created', 'success');
+      setFormName(''); setFormQuery(''); setFormCron('0 */6 * * *'); setFormEmail('');
+      loadCrons();
+    } catch { addToast('Failed to create trend cron', 'error'); }
+    setCreating(false);
+  };
+
+  const runCron = async (id: number) => {
+    setRunningIds(prev => new Set([...prev, id]));
+    try {
+      const data = await apiFetch<any>(`/firecrawl-tools/trend-crons/${id}/run`, { method: 'POST' });
+      addToast(data.success ? 'Trend cron ran successfully' : 'Run failed', data.success ? 'success' : 'error');
+      loadCrons();
+    } catch { addToast('Failed to run trend cron', 'error'); }
+    setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  const deleteCron = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/trend-crons/${id}`, { method: 'DELETE' });
+      addToast('Trend cron deleted', 'success');
+      loadCrons();
+    } catch { addToast('Failed to delete trend cron', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="TrendCron — Scheduled Trend Scans" icon={Clock} statusLed="bg-yellow-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Trend Cron</div>
+        <div className="grid grid-cols-2 gap-2">
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Name" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formQuery} onChange={e => setFormQuery(e.target.value)} placeholder="Search query" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formCron} onChange={e => setFormCron(e.target.value)} placeholder="Cron (e.g. 0 */6 * * *)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full font-mono" />
+          <input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="Notify email (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+        </div>
+        <SmallBtn onClick={createCron} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Create Cron</SmallBtn>
+      </div>
+
+      {/* Cron List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : crons.length === 0 ? (
+        <EmptyState icon={Clock} message="No trend crons yet. Schedule a recurring trend scan." />
+      ) : (
+        <div className="space-y-1">
+          {crons.map(c => (
+            <div key={c.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
+              <StatusLed status={c.is_active ? 'active' : 'paused'} />
+              <Clock className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium text-white truncate block">{c.name}</span>
+                <span className="text-[9px] text-rmpg-500 font-mono">{c.schedule_cron} | {c.total_runs || 0} runs</span>
+              </div>
+              <span className="text-[10px] text-rmpg-400 truncate max-w-[150px]">{c.query}</span>
+              <SmallBtn onClick={() => runCron(c.id)} loading={runningIds.has(c.id)} variant="primary"><Play className="w-3 h-3" /> Run</SmallBtn>
+              <SmallBtn onClick={() => deleteCron(c.id)} loading={deletingIds.has(c.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ SITE MIGRATOR PANEL (firecrawl-migrator)
+// ══════════════════════════════════════════════════════════════
+
+function SiteMigratorPanel() {
+  const { addToast } = useToast();
+  const [migrations, setMigrations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formFormat, setFormFormat] = useState('markdown');
+  const [creating, setCreating] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  const loadMigrations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/migrations');
+      setMigrations(data || []);
+    } catch { addToast('Failed to load migrations', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadMigrations(); }, [loadMigrations]);
+
+  const startMigration = async () => {
+    if (!formName.trim() || !formUrl.trim()) { addToast('Name and source URL are required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/migrations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formName.trim(), source_url: formUrl.trim(), target_format: formFormat }),
+      });
+      addToast('Migration started', 'success');
+      setFormName(''); setFormUrl(''); setFormFormat('markdown');
+      loadMigrations();
+    } catch { addToast('Failed to start migration', 'error'); }
+    setCreating(false);
+  };
+
+  const deleteMigration = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/migrations/${id}`, { method: 'DELETE' });
+      addToast('Migration deleted', 'success');
+      loadMigrations();
+    } catch { addToast('Failed to delete migration', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Site Migrator" icon={ArrowRight} statusLed="bg-emerald-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Migration</div>
+        <div className="grid grid-cols-3 gap-2">
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Migration name" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formUrl} onChange={e => setFormUrl(e.target.value)} placeholder="Source URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <select value={formFormat} onChange={e => setFormFormat(e.target.value)} className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white w-full">
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        <SmallBtn onClick={startMigration} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Start Migration</SmallBtn>
+      </div>
+
+      {/* Migration List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : migrations.length === 0 ? (
+        <EmptyState icon={ArrowRight} message="No migrations yet. Start one to migrate a website." />
+      ) : (
+        <div className="space-y-1">
+          {migrations.map(m => (
+            <div key={m.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
+              <StatusLed status={m.status === 'completed' ? 'active' : m.status === 'failed' ? 'error' : 'paused'} />
+              <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium text-white truncate block">{m.name}</span>
+                <span className="text-[9px] text-rmpg-500 font-mono truncate block">{m.source_url}</span>
+              </div>
+              <span className="text-[10px] text-rmpg-400">{m.pages_crawled}/{m.pages_total} pages</span>
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${m.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : m.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
+                {m.status}
+              </span>
+              <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(m.created_at)}</span>
+              <SmallBtn onClick={() => deleteMigration(m.id)} loading={deletingIds.has(m.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ CODE REPO PANEL (opencode-firecrawl)
+// ══════════════════════════════════════════════════════════════
+
+function CodeRepoPanel() {
+  const { addToast } = useToast();
+  const [repos, setRepos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formUrl, setFormUrl] = useState('');
+  const [formName, setFormName] = useState('');
+  const [formType, setFormType] = useState('full');
+  const [formLang, setFormLang] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const loadRepos = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/code-repos');
+      setRepos(data || []);
+    } catch { addToast('Failed to load code repos', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadRepos(); }, [loadRepos]);
+
+  const analyzeRepo = async () => {
+    if (!formUrl.trim()) { addToast('Repository URL is required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/code-repos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_url: formUrl.trim(), repo_name: formName.trim() || null, analysis_type: formType, language: formLang.trim() || null }),
+      });
+      addToast('Code analysis started', 'success');
+      setFormUrl(''); setFormName(''); setFormType('full'); setFormLang('');
+      loadRepos();
+    } catch { addToast('Failed to analyze repo', 'error'); }
+    setCreating(false);
+  };
+
+  const deleteRepo = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/code-repos/${id}`, { method: 'DELETE' });
+      addToast('Analysis deleted', 'success');
+      loadRepos();
+    } catch { addToast('Failed to delete analysis', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Code Analyzer" icon={Code2} statusLed="bg-purple-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Analyze Repository</div>
+        <div className="grid grid-cols-2 gap-2">
+          <input value={formUrl} onChange={e => setFormUrl(e.target.value)} placeholder="Repository URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Repo name (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <select value={formType} onChange={e => setFormType(e.target.value)} className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white w-full">
+            <option value="full">Full Analysis</option>
+            <option value="security">Security Audit</option>
+            <option value="performance">Performance Review</option>
+            <option value="dependencies">Dependency Check</option>
+          </select>
+          <input value={formLang} onChange={e => setFormLang(e.target.value)} placeholder="Language (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+        </div>
+        <SmallBtn onClick={analyzeRepo} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Analyze</SmallBtn>
+      </div>
+
+      {/* Repo List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : repos.length === 0 ? (
+        <EmptyState icon={Code2} message="No code analyses yet. Analyze a repository to get started." />
+      ) : (
+        <div className="space-y-1">
+          {repos.map(r => (
+            <div key={r.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <StatusLed status={r.status === 'completed' ? 'active' : r.status === 'failed' ? 'error' : 'paused'} />
+                <Code2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <button onClick={() => setExpandedId(expandedId === r.id ? null : r.id)} className="flex items-center gap-1 flex-1 min-w-0 text-left">
+                  {expandedId === r.id ? <ChevronDown className="w-3 h-3 text-rmpg-500 shrink-0" /> : <ChevronRight className="w-3 h-3 text-rmpg-500 shrink-0" />}
+                  <span className="text-xs font-medium text-white truncate">{r.repo_name || r.repo_url}</span>
+                </button>
+                <span className="text-[10px] text-rmpg-400">{r.total_lines || 0} lines</span>
+                <span className="text-[10px] text-rmpg-400">{r.issues_found || 0} issues</span>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${r.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : r.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
+                  {r.status}
+                </span>
+                <SmallBtn onClick={() => deleteRepo(r.id)} loading={deletingIds.has(r.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+              </div>
+              {expandedId === r.id && (
+                <div className="border-t border-rmpg-700 bg-surface-sunken p-3 space-y-2">
+                  <div className="text-[10px] text-rmpg-400 font-mono truncate">URL: {r.repo_url}</div>
+                  {r.language && <div className="text-[10px] text-rmpg-400">Language: <span className="text-rmpg-300">{r.language}</span></div>}
+                  {r.summary && (
+                    <div className="text-[10px] text-rmpg-300 whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-dark">{r.summary}</div>
+                  )}
+                  {r.analysis_json && typeof r.analysis_json === 'object' && (
+                    <pre className="bg-rmpg-800 border border-rmpg-700 rounded-sm p-2 text-[9px] text-rmpg-400 font-mono max-h-32 overflow-auto scrollbar-dark">
+                      {JSON.stringify(r.analysis_json, null, 2)}
+                    </pre>
+                  )}
+                  <div className="text-[9px] text-rmpg-500">{fmtDate(r.created_at)}{r.completed_at ? ` — completed ${fmtDate(r.completed_at)}` : ''}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // ██ MAIN FIRECRAWL TAB COMPONENT
 // ══════════════════════════════════════════════════════════════
 
@@ -10067,6 +10516,10 @@ export default function FirecrawlTab() {
         {activeTab === 'pdf-tools' && <PdfToolsPanel />}
         {activeTab === 'assistant' && <AssistantPanel />}
         {activeTab === 'lead-gen' && <LeadGenPanel />}
+        {activeTab === 'support-bot' && <SupportBotPanel />}
+        {activeTab === 'trend-cron' && <TrendCronPanel />}
+        {activeTab === 'site-migrator' && <SiteMigratorPanel />}
+        {activeTab === 'code-repo' && <CodeRepoPanel />}
       </div>
     </div>
   );
