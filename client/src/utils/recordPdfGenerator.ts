@@ -1104,57 +1104,104 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Persons — field-pair box rows (matches Assigned Units style)
+  // Linked Persons — table with header row + data rows (matches screenshot)
   if (data.linked_persons && data.linked_persons.length > 0) {
-    y = checkPageBreak(doc, y, 18, prio); // header + at least 1 person row
-    const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
-    // 5 columns using ffw (inside section borders): Name | Role | DOB | Race/Sex | Phone
-    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.15, ffw * 0.22, ffw * 0.23];
+    y = checkPageBreak(doc, y, 22, prio);
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
+    // Table header row
+    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
+    const pColW = [ffw * 0.28, ffw * 0.17, ffw * 0.15, ffw * 0.17, ffw * 0.23];
+    const rowH = 5;
+    // Draw header row background
+    doc.setFillColor(30, 40, 55);
+    doc.rect(lx, y, ffw, rowH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.setLineWidth(0.2);
+    doc.rect(lx, y, ffw, rowH);
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(255, 255, 255);
+    let hx = lx;
+    for (let i = 0; i < pHeaders.length; i++) {
+      doc.text(pHeaders[i], hx + 1.5, y + rowH * 0.65);
+      if (i < pHeaders.length - 1) { doc.line(hx + pColW[i], y, hx + pColW[i], y + rowH); }
+      hx += pColW[i];
+    }
+    y += rowH;
+    // Data rows
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const p of data.linked_persons) {
-      y = checkPageBreak(doc, y, 12);
-      const np = 'Not Provided';
-      const pFields = [
-        { label: 'Name', value: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || np },
-        { label: 'Role', value: titleCase((p.role || '').replace(/_/g, ' ')) || np },
-        { label: 'DOB', value: p.dob || np },
-        { label: 'Race/Sex', value: [p.race, p.gender].filter(Boolean).join('/') || np },
-        { label: 'Phone', value: p.phone || np },
+      y = checkPageBreak(doc, y, rowH);
+      doc.setDrawColor(...COLOR.BORDER_FIELD);
+      doc.setLineWidth(0.15);
+      doc.rect(lx, y, ffw, rowH);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const pVals = [
+        `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
+        titleCase((p.role || '').replace(/_/g, ' ')).toUpperCase() || '—',
+        (p.dob || '—').toUpperCase(),
+        [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
+        (p.phone || '—').toUpperCase(),
       ];
-      let maxPY = y + SPACING.FIELD_ROW_ADVANCE;
-      let pX = lx;
-      for (let i = 0; i < 5; i++) {
-        const fy = addFieldPair(doc, pFields[i].label, pFields[i].value, pX, y, pColW[i]);
-        if (fy > maxPY) maxPY = fy;
-        pX += pColW[i];
+      let dx = lx;
+      for (let i = 0; i < pVals.length; i++) {
+        doc.text(pVals[i], dx + 1.5, y + rowH * 0.65);
+        if (i < pVals.length - 1) { doc.line(dx + pColW[i], y, dx + pColW[i], y + rowH); }
+        dx += pColW[i];
       }
-      y = maxPY;
+      y += rowH;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Vehicles — field-pair box rows (matches Linked Persons style)
+  // Linked Vehicles — table with header row + data rows (matches Linked Persons table)
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
-    y = checkPageBreak(doc, y, 18, prio); // header + at least 1 vehicle row
-    const sec = openAutoSection(doc, `Linked Vehicles (${data.linked_vehicles.length})`, y); y = sec.contentY;
-    const vColW = [ffw * 0.15, ffw * 0.25, ffw * 0.12, ffw * 0.18, ffw * 0.30];
-    const nv = 'Not Provided';
+    y = checkPageBreak(doc, y, 22, prio);
+    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.contentY;
+    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
+    const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
+    const rowH = 5;
+    // Header row
+    doc.setFillColor(30, 40, 55);
+    doc.rect(lx, y, ffw, rowH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.setLineWidth(0.2);
+    doc.rect(lx, y, ffw, rowH);
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(255, 255, 255);
+    let vhx = lx;
+    for (let i = 0; i < vHeaders.length; i++) {
+      doc.text(vHeaders[i], vhx + 1.5, y + rowH * 0.65);
+      if (i < vHeaders.length - 1) { doc.line(vhx + vColW[i], y, vhx + vColW[i], y + rowH); }
+      vhx += vColW[i];
+    }
+    y += rowH;
+    // Data rows
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const v of data.linked_vehicles) {
-      y = checkPageBreak(doc, y, 12);
-      const vFields = [
-        { label: 'Role', value: titleCase((v.role || '').replace(/_/g, ' ')) || nv },
-        { label: 'Year/Make/Model', value: [v.year, v.make, v.model].filter(Boolean).join(' ') || nv },
-        { label: 'Color', value: v.color || nv },
-        { label: 'Plate', value: (v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '') || nv },
-        { label: 'Owner', value: [v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + (v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '') || nv },
+      y = checkPageBreak(doc, y, rowH);
+      doc.setDrawColor(...COLOR.BORDER_FIELD);
+      doc.setLineWidth(0.15);
+      doc.rect(lx, y, ffw, rowH);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '';
+      const vVals = [
+        titleCase((v.role || '').replace(/_/g, ' ')).toUpperCase() || '—',
+        [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
+        (v.color || '—').toUpperCase(),
+        ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
+        ([v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + stolen).toUpperCase() || '—',
       ];
-      let maxVY = y + SPACING.FIELD_ROW_ADVANCE;
-      let vX = lx;
-      for (let i = 0; i < 5; i++) {
-        const fy = addFieldPair(doc, vFields[i].label, vFields[i].value, vX, y, vColW[i]);
-        if (fy > maxVY) maxVY = fy;
-        vX += vColW[i];
+      let vdx = lx;
+      for (let i = 0; i < vVals.length; i++) {
+        doc.text(vVals[i], vdx + 1.5, y + rowH * 0.65);
+        if (i < vVals.length - 1) { doc.line(vdx + vColW[i], y, vdx + vColW[i], y + rowH); }
+        vdx += vColW[i];
       }
-      y = maxVY;
+      y += rowH;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
