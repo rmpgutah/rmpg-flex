@@ -28,6 +28,7 @@ import type { ArrestFormData } from '../components/ArrestFormModal';
 import { localToday } from '../utils/dateUtils';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
 // ── Types ─────────────────────────────────────────────────
 
@@ -219,6 +220,8 @@ export default function ArrestRecordsPage() {
   // ── State ───────────────────────────────────────────────
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Statistics
   const [stats, setStats] = useState<{
@@ -730,7 +733,7 @@ export default function ArrestRecordsPage() {
             </div>
           </div>
 
-          {isManual && (
+          {(isManual || isAdmin) && (
             <div className="flex items-center gap-1.5 mt-2">
               <button type="button" onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
                 <Pencil className="w-3 h-3" /> Edit

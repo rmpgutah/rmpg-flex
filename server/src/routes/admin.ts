@@ -2880,4 +2880,809 @@ router.get('/schema', requireRole('admin'), (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Data Management & Cleanup
+// ════════════════════════════════════════════════════════════
+
+// 1. POST /admin/records/bulk-delete — Hard-delete multiple records
+router.post('/records/bulk-delete', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, ids } = req.body;
+    if (!table || !Array.isArray(ids) || !ids.length) { res.status(400).json({ error: 'table and ids array required' }); return; }
+    const allowed = ['persons','vehicles','properties','calls_for_service','incidents','citations','arrests','warrants','field_interviews','trespass_orders','cases','evidence_items','bolos','code_violations','invoices','leave_requests','performance_reviews','daily_activity_reports','serve_queue','offender_alerts'];
+    if (!allowed.includes(table)) { res.status(400).json({ error: 'Table not allowed' }); return; }
+    const del = db.prepare(`DELETE FROM "${table}" WHERE id = ?`);
+    let deleted = 0;
+    db.transaction(() => { for (const id of ids) { deleted += del.run(id).changes; } })();
+    auditLog(req, 'ADMIN_OVERRIDE', table, 0, `Bulk hard-deleted ${deleted}/${ids.length} records from ${table}`);
+    res.json({ success: true, deleted });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 2. POST /admin/records/bulk-status — Change status on multiple records
+router.post('/records/bulk-status', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, ids, status } = req.body;
+    if (!table || !Array.isArray(ids) || !status) { res.status(400).json({ error: 'table, ids, and status required' }); return; }
+    const now = new Date().toISOString();
+    const upd = db.prepare(`UPDATE "${table}" SET status = ?, updated_at = ? WHERE id = ?`);
+    let updated = 0;
+    db.transaction(() => { for (const id of ids) { updated += upd.run(status, now, id).changes; } })();
+    auditLog(req, 'ADMIN_OVERRIDE', table, 0, `Bulk status change to '${status}' on ${updated} ${table} records`);
+    res.json({ success: true, updated });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 3. GET /admin/records/orphans — Find orphaned records (FK refs to deleted parents)
+router.get('/records/orphans', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const orphans: any[] = [];
+    const checks = [
+      { table: 'incidents', fk: 'reporting_officer_id', parent: 'users' },
+      { table: 'citations', fk: 'person_id', parent: 'persons' },
+      { table: 'arrests', fk: 'person_id', parent: 'persons' },
+      { table: 'field_interviews', fk: 'person_id', parent: 'persons' },
+      { table: 'trespass_orders', fk: 'person_id', parent: 'persons' },
+      { table: 'calls_for_service', fk: 'created_by', parent: 'users' },
+      { table: 'evidence_items', fk: 'incident_id', parent: 'incidents' },
+    ];
+    for (const c of checks) {
+      try {
+        const rows = db.prepare(`SELECT t.id, t."${c.fk}" as fk_value FROM "${c.table}" t LEFT JOIN "${c.parent}" p ON t."${c.fk}" = p.id WHERE t."${c.fk}" IS NOT NULL AND p.id IS NULL LIMIT 100`).all();
+        if (rows.length) orphans.push({ table: c.table, fk_field: c.fk, parent_table: c.parent, count: rows.length, sample_ids: rows.slice(0, 10).map((r: any) => r.id) });
+      } catch {}
+    }
+    res.json({ orphan_groups: orphans, total_issues: orphans.reduce((s, o) => s + o.count, 0) });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 4. POST /admin/records/fix-orphans — Null out orphaned FK references
+router.post('/records/fix-orphans', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, fk_field, parent_table } = req.body;
+    if (!table || !fk_field || !parent_table) { res.status(400).json({ error: 'table, fk_field, parent_table required' }); return; }
+    const result = db.prepare(`UPDATE "${table}" SET "${fk_field}" = NULL, updated_at = ? WHERE "${fk_field}" IS NOT NULL AND "${fk_field}" NOT IN (SELECT id FROM "${parent_table}")`).run(new Date().toISOString());
+    auditLog(req, 'ADMIN_OVERRIDE', table, 0, `Fixed ${result.changes} orphaned ${fk_field} refs in ${table}`);
+    res.json({ success: true, fixed: result.changes });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 5. GET /admin/records/duplicates/:table — Find potential duplicate records
+router.get('/records/duplicates/:table', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const table = req.params.table;
+    let dupes: any[] = [];
+    if (table === 'persons') {
+      dupes = db.prepare(`SELECT full_name, dob, COUNT(*) as cnt, GROUP_CONCAT(id) as ids FROM persons WHERE full_name IS NOT NULL GROUP BY LOWER(full_name), dob HAVING cnt > 1 ORDER BY cnt DESC LIMIT 50`).all();
+    } else if (table === 'vehicles') {
+      dupes = db.prepare(`SELECT plate_number, vin, COUNT(*) as cnt, GROUP_CONCAT(id) as ids FROM vehicles WHERE plate_number IS NOT NULL GROUP BY UPPER(plate_number) HAVING cnt > 1 ORDER BY cnt DESC LIMIT 50`).all();
+    } else {
+      res.status(400).json({ error: 'Duplicate detection only for persons and vehicles' }); return;
+    }
+    res.json({ table, duplicates: dupes, count: dupes.length });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 6. POST /admin/records/merge-vehicles — Merge duplicate vehicle records
+router.post('/records/merge-vehicles', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { keep_id, merge_id } = req.body;
+    if (!keep_id || !merge_id || keep_id === merge_id) { res.status(400).json({ error: 'keep_id and merge_id required, must differ' }); return; }
+    const keep = db.prepare('SELECT * FROM vehicles WHERE id = ?').get(keep_id) as any;
+    const merge = db.prepare('SELECT * FROM vehicles WHERE id = ?').get(merge_id) as any;
+    if (!keep || !merge) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    let reassigned = 0;
+    db.transaction(() => {
+      for (const t of ['calls_for_service', 'incidents', 'citations', 'trespass_orders', 'field_interviews']) {
+        try { reassigned += db.prepare(`UPDATE "${t}" SET vehicle_id = ? WHERE vehicle_id = ?`).run(keep_id, merge_id).changes; } catch {}
+      }
+      const fill = ['vin', 'make', 'model', 'year', 'color', 'plate_state', 'owner_name', 'insurance_company', 'insurance_policy'];
+      for (const f of fill) { if (!keep[f] && merge[f]) { try { db.prepare(`UPDATE vehicles SET "${f}" = ? WHERE id = ?`).run(merge[f], keep_id); } catch {} } }
+      db.prepare("UPDATE vehicles SET full_name = ?, notes = ? WHERE id = ?").run(`[MERGED INTO #${keep_id}] ${merge.plate_number || ''}`, `Merged into Vehicle #${keep_id}`, merge_id);
+    })();
+    auditLog(req, 'ADMIN_OVERRIDE', 'vehicle', keep_id, `Merged Vehicle #${merge_id} into #${keep_id}, ${reassigned} linked records`);
+    res.json({ success: true, kept: keep_id, merged: merge_id, records_reassigned: reassigned });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 7. GET /admin/records/count — Get record counts for all tables
+router.get('/records/count', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as any[];
+    const counts: Record<string, number> = {};
+    for (const t of tables) {
+      try { counts[t.name] = (db.prepare(`SELECT COUNT(*) as c FROM "${t.name}"`).get() as any)?.c || 0; } catch { counts[t.name] = -1; }
+    }
+    res.json({ counts, total_tables: Object.keys(counts).length, total_records: Object.values(counts).filter(v => v > 0).reduce((s, v) => s + v, 0) });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 8. POST /admin/records/truncate — Empty a table (keep structure)
+router.post('/records/truncate', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, confirm } = req.body;
+    if (!table || confirm !== 'CONFIRM_TRUNCATE') { res.status(400).json({ error: 'table required, confirm must be "CONFIRM_TRUNCATE"' }); return; }
+    const blocked = ['users', 'system_config', 'refresh_tokens', 'migrations'];
+    if (blocked.includes(table)) { res.status(403).json({ error: 'Cannot truncate system table' }); return; }
+    const count = (db.prepare(`SELECT COUNT(*) as c FROM "${table}"`).get() as any)?.c || 0;
+    db.prepare(`DELETE FROM "${table}"`).run();
+    auditLog(req, 'ADMIN_OVERRIDE', table, 0, `TRUNCATED table ${table} (${count} records deleted)`);
+    res.json({ success: true, table, records_deleted: count });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 9. POST /admin/records/transfer-ownership — Transfer all records from one user to another
+router.post('/records/transfer-ownership', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { from_user_id, to_user_id } = req.body;
+    if (!from_user_id || !to_user_id) { res.status(400).json({ error: 'from_user_id and to_user_id required' }); return; }
+    const now = new Date().toISOString();
+    let total = 0;
+    const fields = [
+      { table: 'calls_for_service', field: 'created_by' },
+      { table: 'incidents', field: 'reporting_officer_id' },
+      { table: 'incidents', field: 'assigned_officer_id' },
+      { table: 'citations', field: 'issuing_officer_id' },
+      { table: 'arrests', field: 'arresting_officer_id' },
+      { table: 'field_interviews', field: 'officer_id' },
+      { table: 'daily_activity_reports', field: 'officer_id' },
+      { table: 'evidence_items', field: 'collected_by' },
+    ];
+    db.transaction(() => {
+      for (const f of fields) {
+        try { total += db.prepare(`UPDATE "${f.table}" SET "${f.field}" = ?, updated_at = ? WHERE "${f.field}" = ?`).run(to_user_id, now, from_user_id).changes; } catch {}
+      }
+    })();
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', from_user_id, `Transferred ${total} records from user #${from_user_id} to #${to_user_id}`);
+    res.json({ success: true, records_transferred: total });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 10. GET /admin/data-integrity — Run comprehensive data integrity checks
+router.get('/data-integrity', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const issues: any[] = [];
+    // Check for NULL required fields
+    const nullChecks = [
+      { table: 'persons', field: 'full_name', label: 'Persons without name' },
+      { table: 'calls_for_service', field: 'call_number', label: 'Calls without number' },
+      { table: 'incidents', field: 'incident_number', label: 'Incidents without number' },
+      { table: 'citations', field: 'citation_number', label: 'Citations without number' },
+      { table: 'users', field: 'username', label: 'Users without username' },
+    ];
+    for (const c of nullChecks) {
+      try {
+        const count = (db.prepare(`SELECT COUNT(*) as c FROM "${c.table}" WHERE "${c.field}" IS NULL OR "${c.field}" = ''`).get() as any)?.c || 0;
+        if (count > 0) issues.push({ type: 'null_required', ...c, count });
+      } catch {}
+    }
+    // Check DB integrity
+    const integ = db.prepare('PRAGMA integrity_check').get() as any;
+    const fkCheck = db.prepare('PRAGMA foreign_key_check').all();
+    res.json({ issues, integrity: integ, fk_violations: fkCheck.length, fk_details: fkCheck.slice(0, 20) });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 11. POST /admin/records/swap-ids — Swap IDs between two records (same table)
+router.post('/records/swap-ids', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id_a, id_b } = req.body;
+    if (!table || !id_a || !id_b) { res.status(400).json({ error: 'table, id_a, id_b required' }); return; }
+    const tempId = -999999;
+    db.transaction(() => {
+      db.prepare(`UPDATE "${table}" SET id = ? WHERE id = ?`).run(tempId, id_a);
+      db.prepare(`UPDATE "${table}" SET id = ? WHERE id = ?`).run(id_a, id_b);
+      db.prepare(`UPDATE "${table}" SET id = ? WHERE id = ?`).run(id_b, tempId);
+    })();
+    auditLog(req, 'ADMIN_OVERRIDE', table, id_a, `Swapped IDs: ${table} #${id_a} ↔ #${id_b}`);
+    res.json({ success: true, swapped: [id_a, id_b] });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 12. POST /admin/records/reindex — Reindex a column
+router.post('/records/reindex', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, column } = req.body;
+    if (!table || !column) { res.status(400).json({ error: 'table and column required' }); return; }
+    const idxName = `idx_admin_${table}_${column}`;
+    try { db.prepare(`DROP INDEX IF EXISTS "${idxName}"`).run(); } catch {}
+    db.prepare(`CREATE INDEX "${idxName}" ON "${table}"("${column}")`).run();
+    auditLog(req, 'ADMIN_OVERRIDE', 'database', 0, `Created index ${idxName} on ${table}.${column}`);
+    res.json({ success: true, index: idxName });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 13. GET /admin/records/recent-changes — Get recently modified records across all tables
+router.get('/records/recent-changes', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(parseInt(String(req.query.hours || '24'), 10), 168);
+    const cutoff = new Date(Date.now() - hours * 3600000).toISOString();
+    const tables = ['calls_for_service', 'incidents', 'citations', 'arrests', 'persons', 'vehicles', 'warrants'];
+    const changes: any[] = [];
+    for (const t of tables) {
+      try {
+        const rows = db.prepare(`SELECT id, updated_at FROM "${t}" WHERE updated_at > ? ORDER BY updated_at DESC LIMIT 20`).all(cutoff) as any[];
+        for (const r of rows) changes.push({ table: t, id: r.id, updated_at: r.updated_at });
+      } catch {}
+    }
+    changes.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    res.json({ changes: changes.slice(0, 100), hours, cutoff });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 14. POST /admin/records/set-sequence — Reset auto-increment sequence for a table
+router.post('/records/set-sequence', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, next_id } = req.body;
+    if (!table || !next_id) { res.status(400).json({ error: 'table and next_id required' }); return; }
+    db.prepare(`UPDATE sqlite_sequence SET seq = ? WHERE name = ?`).run(next_id - 1, table);
+    auditLog(req, 'ADMIN_OVERRIDE', 'database', 0, `Reset sequence for ${table} to ${next_id}`);
+    res.json({ success: true, table, next_id });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 15. POST /admin/records/copy-field — Copy value from one field to another
+router.post('/records/copy-field', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, source_field, target_field, where_clause } = req.body;
+    if (!table || !source_field || !target_field) { res.status(400).json({ error: 'table, source_field, target_field required' }); return; }
+    const sql = where_clause
+      ? `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ? WHERE ${where_clause}`
+      : `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ?`;
+    const result = db.prepare(sql).run(new Date().toISOString());
+    auditLog(req, 'ADMIN_OVERRIDE', table, 0, `Copied ${table}.${source_field} → ${target_field} on ${result.changes} rows`);
+    res.json({ success: true, updated: result.changes });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: Workflow & Approval Overrides
+// ════════════════════════════════════════════════════════════
+
+// 16. POST /admin/workflow/force-approve — Force-approve any pending item
+router.post('/workflow/force-approve', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, notes = 'Force-approved by admin' } = req.body;
+    if (!table || !id) { res.status(400).json({ error: 'table and id required' }); return; }
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE "${table}" SET status = 'approved', approved_by = ?, approved_at = ?, updated_at = ?, notes = COALESCE(notes, '') || ? WHERE id = ?`)
+      .run(req.user!.userId, now, now, `\n[ADMIN FORCE-APPROVED: ${notes}]`, id);
+    auditLog(req, 'ADMIN_OVERRIDE', table, id, `Force-approved ${table} #${id}`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 17. POST /admin/workflow/force-reject — Force-reject any pending item
+router.post('/workflow/force-reject', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, reason = 'Rejected by admin' } = req.body;
+    if (!table || !id) { res.status(400).json({ error: 'table and id required' }); return; }
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE "${table}" SET status = 'rejected', updated_at = ?, notes = COALESCE(notes, '') || ? WHERE id = ?`)
+      .run(now, `\n[ADMIN FORCE-REJECTED: ${reason}]`, id);
+    auditLog(req, 'ADMIN_OVERRIDE', table, id, `Force-rejected ${table} #${id}: ${reason}`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 18. POST /admin/workflow/force-status — Set any status on any record
+router.post('/workflow/force-status', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, status, reason = '' } = req.body;
+    if (!table || !id || !status) { res.status(400).json({ error: 'table, id, status required' }); return; }
+    const now = new Date().toISOString();
+    const result = db.prepare(`UPDATE "${table}" SET status = ?, updated_at = ? WHERE id = ?`).run(status, now, id);
+    if (result.changes === 0) { res.status(404).json({ error: 'Record not found' }); return; }
+    auditLog(req, 'ADMIN_OVERRIDE', table, id, `Force-set status to '${status}' on ${table} #${id}. ${reason}`);
+    res.json({ success: true, new_status: status });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 19. POST /admin/workflow/reopen — Reopen any closed/archived/completed record
+router.post('/workflow/reopen', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, target_status = 'open' } = req.body;
+    if (!table || !id) { res.status(400).json({ error: 'table and id required' }); return; }
+    const now = new Date().toISOString();
+    // Clear closed_at/archived_at if they exist
+    try { db.prepare(`UPDATE "${table}" SET closed_at = NULL WHERE id = ?`).run(id); } catch {}
+    try { db.prepare(`UPDATE "${table}" SET archived_at = NULL WHERE id = ?`).run(id); } catch {}
+    db.prepare(`UPDATE "${table}" SET status = ?, updated_at = ? WHERE id = ?`).run(target_status, now, id);
+    auditLog(req, 'ADMIN_OVERRIDE', table, id, `Reopened ${table} #${id} to status '${target_status}'`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 20. POST /admin/workflow/bulk-approve — Approve all pending items in a table
+router.post('/workflow/bulk-approve', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, status_from = 'pending' } = req.body;
+    if (!table) { res.status(400).json({ error: 'table required' }); return; }
+    const now = new Date().toISOString();
+    const result = db.prepare(`UPDATE "${table}" SET status = 'approved', approved_by = ?, approved_at = ?, updated_at = ? WHERE status = ?`)
+      .run(req.user!.userId, now, now, status_from);
+    auditLog(req, 'ADMIN_OVERRIDE', table, 0, `Bulk-approved ${result.changes} ${status_from} records in ${table}`);
+    res.json({ success: true, approved: result.changes });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: User & Session Management
+// ════════════════════════════════════════════════════════════
+
+// 21. POST /admin/users/set-password — Directly set a user's password
+router.post('/users/set-password', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id, new_password } = req.body;
+    if (!user_id || !new_password) { res.status(400).json({ error: 'user_id and new_password required' }); return; }
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(new_password, 12);
+    db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(hash, new Date().toISOString(), user_id);
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Admin directly set password for user #${user_id}`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 22. POST /admin/users/toggle-status — Enable/disable user account
+router.post('/users/toggle-status', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id, status } = req.body;
+    if (!user_id || !['active', 'suspended', 'disabled', 'locked'].includes(status)) { res.status(400).json({ error: 'user_id and valid status required' }); return; }
+    db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?').run(status, new Date().toISOString(), user_id);
+    if (status !== 'active') {
+      db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user_id);
+    }
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Set user #${user_id} status to '${status}'`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 23. GET /admin/users/login-history/:userId — Get login history
+router.get('/users/login-history/:userId', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = parseInt(req.params.userId, 10);
+    const rows = db.prepare(`SELECT * FROM activity_log WHERE user_id = ? AND (action LIKE '%login%' OR action LIKE '%LOGIN%' OR action LIKE '%auth%') ORDER BY created_at DESC LIMIT 100`).all(userId);
+    res.json({ user_id: userId, logins: rows });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 24. POST /admin/users/unlock — Unlock a locked account
+router.post('/users/unlock', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id } = req.body;
+    if (!user_id) { res.status(400).json({ error: 'user_id required' }); return; }
+    db.prepare('UPDATE users SET status = ?, failed_login_attempts = 0, lockout_until = NULL, updated_at = ? WHERE id = ?').run('active', new Date().toISOString(), user_id);
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Unlocked user #${user_id}`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 25. POST /admin/users/kill-sessions — Kill all sessions for a user
+router.post('/users/kill-sessions', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id } = req.body;
+    if (!user_id) { res.status(400).json({ error: 'user_id required' }); return; }
+    const result = db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user_id);
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Killed ${result.changes} sessions for user #${user_id}`);
+    try { const { broadcast } = require('../utils/websocket'); broadcast('system', 'session:killed', { user_id }); } catch {}
+    res.json({ success: true, sessions_killed: result.changes });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 26. GET /admin/users/all-sessions — List all active sessions
+router.get('/users/all-sessions', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`SELECT rt.id, rt.user_id, rt.created_at, rt.expires_at, rt.ip_address, rt.user_agent, u.username, u.full_name, u.role FROM refresh_tokens rt JOIN users u ON rt.user_id = u.id WHERE rt.expires_at > datetime('now') ORDER BY rt.created_at DESC`).all();
+    res.json({ sessions: rows, count: rows.length });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 27. POST /admin/users/bulk-role — Change role for multiple users
+router.post('/users/bulk-role', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_ids, role } = req.body;
+    if (!Array.isArray(user_ids) || !role) { res.status(400).json({ error: 'user_ids and role required' }); return; }
+    const valid = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    if (!valid.includes(role)) { res.status(400).json({ error: 'Invalid role' }); return; }
+    const now = new Date().toISOString();
+    let updated = 0;
+    db.transaction(() => { for (const id of user_ids) { updated += db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND id != ?').run(role, now, id, req.user!.userId).changes; } })();
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', 0, `Bulk role change to '${role}' for ${updated} users`);
+    res.json({ success: true, updated });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 28. POST /admin/users/create — Create user directly (bypass registration)
+router.post('/users/create', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { username, password, full_name, role = 'officer', email, badge_number, call_sign } = req.body;
+    if (!username || !password || !full_name) { res.status(400).json({ error: 'username, password, full_name required' }); return; }
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) { res.status(409).json({ error: 'Username already exists' }); return; }
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(password, 12);
+    const now = new Date().toISOString();
+    const result = db.prepare('INSERT INTO users (username, password_hash, full_name, role, email, badge_number, call_sign, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(username, hash, full_name, role, email || null, badge_number || null, call_sign || null, 'active', now, now);
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', Number(result.lastInsertRowid), `Created user ${username} (${role})`);
+    res.json({ success: true, id: result.lastInsertRowid, username });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 29. POST /admin/users/edit-profile — Edit any user's profile fields
+router.post('/users/edit-profile', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id, ...fields } = req.body;
+    if (!user_id) { res.status(400).json({ error: 'user_id required' }); return; }
+    const allowed = ['full_name', 'email', 'phone', 'badge_number', 'call_sign', 'department', 'rank', 'hire_date', 'notes'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const [k, v] of Object.entries(fields)) {
+      if (allowed.includes(k)) { updates.push(`"${k}" = ?`); values.push(v); }
+    }
+    if (!updates.length) { res.status(400).json({ error: 'No valid fields to update' }); return; }
+    updates.push('updated_at = ?'); values.push(new Date().toISOString());
+    values.push(user_id);
+    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Edited profile fields: ${Object.keys(fields).join(', ')}`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 30. POST /admin/users/deactivate — Deactivate user and transfer their records
+router.post('/users/deactivate', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id, transfer_to_id } = req.body;
+    if (!user_id) { res.status(400).json({ error: 'user_id required' }); return; }
+    const now = new Date().toISOString();
+    db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?').run('disabled', now, user_id);
+    db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user_id);
+    let transferred = 0;
+    if (transfer_to_id) {
+      const fields = [
+        { table: 'calls_for_service', field: 'created_by' },
+        { table: 'incidents', field: 'assigned_officer_id' },
+      ];
+      for (const f of fields) {
+        try { transferred += db.prepare(`UPDATE "${f.table}" SET "${f.field}" = ? WHERE "${f.field}" = ? AND status IN ('open','active','pending','dispatched','enroute','onscene')`).run(transfer_to_id, user_id).changes; } catch {}
+      }
+    }
+    auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Deactivated user #${user_id}, transferred ${transferred} active records`);
+    res.json({ success: true, transferred });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// GOD MODE: System Configuration & Notifications
+// ════════════════════════════════════════════════════════════
+
+// 31. POST /admin/config/set — Set any system_config value
+router.post('/config/set', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { key, value, category = 'admin' } = req.body;
+    if (!key) { res.status(400).json({ error: 'key required' }); return; }
+    const now = new Date().toISOString();
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ?").get(key) as any;
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, category = ?, updated_at = ? WHERE config_key = ?").run(typeof value === 'object' ? JSON.stringify(value) : String(value), category, now, key);
+    } else {
+      db.prepare("INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)").run(key, typeof value === 'object' ? JSON.stringify(value) : String(value), category, now, now);
+    }
+    auditLog(req, 'ADMIN_OVERRIDE', 'system_config', 0, `Set config ${key} = ${String(value).slice(0, 100)}`);
+    res.json({ success: true, key, value });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 32. GET /admin/config/all — Get all system config values
+router.get('/config/all', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM system_config ORDER BY category, config_key').all();
+    res.json({ configs: rows, count: rows.length });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 33. DELETE /admin/config/:key — Delete a config entry
+router.delete('/config/:key', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM system_config WHERE config_key = ?').run(req.params.key);
+    auditLog(req, 'ADMIN_OVERRIDE', 'system_config', 0, `Deleted config key: ${req.params.key}`);
+    res.json({ success: true, deleted: result.changes > 0 });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 34. POST /admin/notifications/send-as — Send notification as any user
+router.post('/notifications/send-as', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { from_user_id, to_user_id, title, message, type = 'info' } = req.body;
+    if (!to_user_id || !message) { res.status(400).json({ error: 'to_user_id and message required' }); return; }
+    const now = new Date().toISOString();
+    const result = db.prepare('INSERT INTO notifications (user_id, from_user_id, title, message, type, is_read, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)').run(to_user_id, from_user_id || req.user!.userId, title || 'Admin Message', message, type, now);
+    try { const { broadcast } = require('../utils/websocket'); broadcast('system', 'notification:new', { user_id: to_user_id }); } catch {}
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 35. POST /admin/notifications/clear-all — Clear all notifications for a user
+router.post('/notifications/clear-all', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id } = req.body;
+    const result = user_id
+      ? db.prepare('DELETE FROM notifications WHERE user_id = ?').run(user_id)
+      : db.prepare('DELETE FROM notifications WHERE is_read = 1').run();
+    res.json({ success: true, cleared: result.changes });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 36. POST /admin/audit/purge-before — Purge audit logs before a date
+router.post('/audit/purge-before', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { before_date } = req.body;
+    if (!before_date) { res.status(400).json({ error: 'before_date required (ISO format)' }); return; }
+    const result = db.prepare('DELETE FROM activity_log WHERE created_at < ?').run(before_date);
+    auditLog(req, 'ADMIN_OVERRIDE', 'activity_log', 0, `Purged ${result.changes} audit entries before ${before_date}`);
+    res.json({ success: true, purged: result.changes });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 37. GET /admin/audit/user/:userId — Get all audit entries for a user
+router.get('/audit/user/:userId', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(String(req.query.limit || '200'), 10), 1000);
+    const rows = db.prepare('SELECT * FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(parseInt(req.params.userId, 10), limit);
+    res.json({ entries: rows, count: rows.length });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 38. GET /admin/audit/entity/:type/:id — Get audit trail for a specific record
+router.get('/audit/entity/:type/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT al.*, u.username, u.full_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 200').all(req.params.type, parseInt(req.params.id, 10));
+    res.json({ trail: rows, count: rows.length });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 39. POST /admin/system/restart-hint — Create a restart-needed flag
+router.post('/system/restart-hint', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = 'restart_requested'").get() as any;
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = 'restart_requested'").run(JSON.stringify({ requested: true, by: req.user!.userId, at: now }), now);
+    } else {
+      db.prepare("INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES ('restart_requested', ?, 'system', 1, ?, ?)").run(JSON.stringify({ requested: true, by: req.user!.userId, at: now }), now, now);
+    }
+    auditLog(req, 'ADMIN_OVERRIDE', 'system', 0, 'Restart requested');
+    res.json({ success: true, message: 'Restart flag set. Deploy script will pick it up.' });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 40. GET /admin/system/disk-usage — Get database file size and disk info
+router.get('/system/disk-usage', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const pageCount = (db.prepare('PRAGMA page_count').get() as any)?.page_count || 0;
+    const pageSize = (db.prepare('PRAGMA page_size').get() as any)?.page_size || 4096;
+    const freelistCount = (db.prepare('PRAGMA freelist_count').get() as any)?.freelist_count || 0;
+    const dbSizeBytes = pageCount * pageSize;
+    const freeBytes = freelistCount * pageSize;
+    res.json({
+      database_size_mb: Math.round(dbSizeBytes / 1024 / 1024 * 100) / 100,
+      free_space_mb: Math.round(freeBytes / 1024 / 1024 * 100) / 100,
+      utilization_pct: Math.round((1 - freelistCount / Math.max(pageCount, 1)) * 100),
+      page_count: pageCount,
+      page_size: pageSize,
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 41. POST /admin/system/feature-flag — Toggle a feature flag
+router.post('/system/feature-flag', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { flag, enabled } = req.body;
+    if (!flag || typeof enabled !== 'boolean') { res.status(400).json({ error: 'flag and enabled required' }); return; }
+    const now = new Date().toISOString();
+    const key = `feature_flag_${flag}`;
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ?").get(key) as any;
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, is_active = ?, updated_at = ? WHERE config_key = ?").run(String(enabled), enabled ? 1 : 0, now, key);
+    } else {
+      db.prepare("INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'features', ?, ?, ?)").run(key, String(enabled), enabled ? 1 : 0, now, now);
+    }
+    auditLog(req, 'ADMIN_OVERRIDE', 'system_config', 0, `Feature flag '${flag}' ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    res.json({ success: true, flag, enabled });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 42. GET /admin/system/feature-flags — List all feature flags
+router.get('/system/feature-flags', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare("SELECT config_key, config_value, is_active FROM system_config WHERE config_key LIKE 'feature_flag_%' ORDER BY config_key").all() as any[];
+    const flags = rows.map((r: any) => ({ flag: r.config_key.replace('feature_flag_', ''), enabled: r.is_active === 1 }));
+    res.json({ flags });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 43. POST /admin/broadcast/system-message — Send system-wide banner message
+router.post('/broadcast/system-message', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { message, type = 'info', duration_minutes = 60 } = req.body;
+    if (!message) { res.status(400).json({ error: 'message required' }); return; }
+    const now = new Date().toISOString();
+    const expires = new Date(Date.now() + duration_minutes * 60000).toISOString();
+    const data = JSON.stringify({ message, type, created_by: req.user!.userId, created_at: now, expires_at: expires });
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = 'system_banner'").get() as any;
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = 'system_banner'").run(data, now);
+    } else {
+      db.prepare("INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES ('system_banner', ?, 'system', 1, ?, ?)").run(data, now, now);
+    }
+    try { const { broadcast } = require('../utils/websocket'); broadcast('system', 'banner:update', JSON.parse(data)); } catch {}
+    auditLog(req, 'ADMIN_OVERRIDE', 'system', 0, `System banner: ${message.slice(0, 100)}`);
+    res.json({ success: true, expires_at: expires });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 44. DELETE /admin/broadcast/system-message — Clear system banner
+router.delete('/broadcast/system-message', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare("DELETE FROM system_config WHERE config_key = 'system_banner'").run();
+    try { const { broadcast } = require('../utils/websocket'); broadcast('system', 'banner:clear', {}); } catch {}
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 45. POST /admin/dispatch/reassign-unit — Reassign a unit to different call
+router.post('/dispatch/reassign-unit', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { unit_id, from_call_id, to_call_id } = req.body;
+    if (!unit_id || !to_call_id) { res.status(400).json({ error: 'unit_id and to_call_id required' }); return; }
+    const now = new Date().toISOString();
+    if (from_call_id) {
+      db.prepare('DELETE FROM call_unit_assignments WHERE call_id = ? AND unit_id = ?').run(from_call_id, unit_id);
+    }
+    try { db.prepare('INSERT INTO call_unit_assignments (call_id, unit_id, assigned_at) VALUES (?, ?, ?)').run(to_call_id, unit_id, now); } catch {}
+    db.prepare('UPDATE dispatch_units SET current_call_id = ?, status = ?, updated_at = ? WHERE id = ?').run(to_call_id, 'dispatched', now, unit_id);
+    auditLog(req, 'ADMIN_OVERRIDE', 'dispatch_units', unit_id, `Reassigned unit #${unit_id} from call #${from_call_id || 'none'} to call #${to_call_id}`);
+    try { const { broadcast } = require('../utils/websocket'); broadcast('dispatch', 'units:reassigned', { unit_id, to_call_id }); } catch {}
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 46. POST /admin/dispatch/clear-unit — Force-clear a unit from its current call
+router.post('/dispatch/clear-unit', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { unit_id } = req.body;
+    if (!unit_id) { res.status(400).json({ error: 'unit_id required' }); return; }
+    const now = new Date().toISOString();
+    db.prepare('UPDATE dispatch_units SET current_call_id = NULL, status = ?, updated_at = ? WHERE id = ?').run('available', now, unit_id);
+    auditLog(req, 'ADMIN_OVERRIDE', 'dispatch_units', unit_id, `Force-cleared unit #${unit_id} to available`);
+    try { const { broadcast } = require('../utils/websocket'); broadcast('dispatch', 'units:cleared', { unit_id }); } catch {}
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 47. POST /admin/dispatch/set-priority — Force-set call priority
+router.post('/dispatch/set-priority', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id, priority } = req.body;
+    if (!call_id || !priority) { res.status(400).json({ error: 'call_id and priority required' }); return; }
+    db.prepare('UPDATE calls_for_service SET priority = ?, updated_at = ? WHERE id = ?').run(priority, new Date().toISOString(), call_id);
+    auditLog(req, 'ADMIN_OVERRIDE', 'calls_for_service', call_id, `Force-set priority to '${priority}'`);
+    try { const { broadcast } = require('../utils/websocket'); broadcast('dispatch', 'calls:updated', { id: call_id }); } catch {}
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 48. POST /admin/records/add-note — Append a note to any record
+router.post('/records/add-note', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, id, note } = req.body;
+    if (!table || !id || !note) { res.status(400).json({ error: 'table, id, note required' }); return; }
+    const now = new Date().toISOString();
+    const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/Denver' });
+    const appendNote = `\n[ADMIN NOTE ${timestamp}]: ${note}`;
+    try {
+      db.prepare(`UPDATE "${table}" SET notes = COALESCE(notes, '') || ?, updated_at = ? WHERE id = ?`).run(appendNote, now, id);
+    } catch {
+      try { db.prepare(`UPDATE "${table}" SET description = COALESCE(description, '') || ?, updated_at = ? WHERE id = ?`).run(appendNote, now, id); } catch {}
+    }
+    auditLog(req, 'ADMIN_OVERRIDE', table, id, `Added admin note to ${table} #${id}`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 49. POST /admin/records/search-all — Search across all tables
+router.post('/records/search-all', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { query } = req.body;
+    if (!query || query.length < 2) { res.status(400).json({ error: 'query (2+ chars) required' }); return; }
+    const q = `%${query}%`;
+    const results: any[] = [];
+    const searches = [
+      { table: 'persons', fields: ['full_name', 'dob', 'phone', 'email', 'address'], label: 'Persons' },
+      { table: 'vehicles', fields: ['plate_number', 'vin', 'make', 'model', 'owner_name'], label: 'Vehicles' },
+      { table: 'calls_for_service', fields: ['call_number', 'location', 'call_type', 'notes'], label: 'Calls' },
+      { table: 'incidents', fields: ['incident_number', 'title', 'location_address', 'narrative'], label: 'Incidents' },
+      { table: 'citations', fields: ['citation_number', 'person_name', 'violation_description'], label: 'Citations' },
+      { table: 'warrants', fields: ['warrant_number', 'subject_name', 'description'], label: 'Warrants' },
+      { table: 'users', fields: ['username', 'full_name', 'email', 'badge_number'], label: 'Users' },
+    ];
+    for (const s of searches) {
+      try {
+        const where = s.fields.map(f => `"${f}" LIKE ?`).join(' OR ');
+        const params = s.fields.map(() => q);
+        const rows = db.prepare(`SELECT id, ${s.fields.map(f => `"${f}"`).join(', ')} FROM "${s.table}" WHERE ${where} LIMIT 10`).all(...params) as any[];
+        if (rows.length) results.push({ table: s.table, label: s.label, matches: rows });
+      } catch {}
+    }
+    res.json({ query, results, total_matches: results.reduce((s, r) => s + r.matches.length, 0) });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 50. POST /admin/records/raw-insert — Insert a raw record into any table
+router.post('/records/raw-insert', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { table, data } = req.body;
+    if (!table || !data || typeof data !== 'object') { res.status(400).json({ error: 'table and data object required' }); return; }
+    const blocked = ['users', 'refresh_tokens', 'system_config', 'migrations'];
+    if (blocked.includes(table)) { res.status(403).json({ error: 'Cannot raw-insert into system tables' }); return; }
+    if (!data.created_at) data.created_at = new Date().toISOString();
+    if (!data.updated_at) data.updated_at = new Date().toISOString();
+    const columns = Object.keys(data);
+    const placeholders = columns.map(() => '?').join(', ');
+    const values = columns.map(c => data[c]);
+    const result = db.prepare(`INSERT INTO "${table}" (${columns.map(c => `"${c}"`).join(', ')}) VALUES (${placeholders})`).run(...values);
+    auditLog(req, 'ADMIN_OVERRIDE', table, Number(result.lastInsertRowid), `Raw insert into ${table}`);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;

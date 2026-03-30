@@ -231,6 +231,7 @@ router.put('/:id', (req: Request, res: Response) => {
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Field interview not found', code: 'FIELD_INTERVIEW_NOT_FOUND' });
 
+    // God Mode: admin can edit field interviews in any status (including archived)
     const fields = [
       'person_id', 'subject_first_name', 'subject_last_name', 'subject_dob',
       'subject_gender', 'subject_race', 'subject_height', 'subject_weight',
@@ -239,6 +240,7 @@ router.put('/:id', (req: Request, res: Response) => {
       'contact_reason', 'contact_type', 'action_taken',
       'narrative', 'vehicle_plate', 'vehicle_description', 'vehicle_id',
       'associated_call_id', 'associated_incident_id',
+      ...((req as any).user?.role === 'admin' ? ['status', 'fi_number'] : []),
     ];
 
     const setClauses: string[] = [];
@@ -255,6 +257,10 @@ router.put('/:id', (req: Request, res: Response) => {
     db.prepare(`UPDATE field_interviews SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id);
+    // God Mode: admin override logging
+    if ((req as any).user?.role === 'admin' && (req.body.status !== undefined || req.body.fi_number !== undefined)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'field_interview', id, `Admin God Mode: edited FI #${id} (status/fi_number change)`);
+    }
     auditLog(req, 'UPDATE', 'field_interview', id, `Updated field interview #${id}`);
     broadcast('alerts', 'fi_updated', updated);
     res.json({ data: updated });
@@ -300,14 +306,25 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   }
 });
 
-// DELETE /:id — Soft delete (archive)
+// DELETE /:id — Soft delete (archive), or hard-delete for admin
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
-    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT id, fi_number, status FROM field_interviews WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'Field interview not found', code: 'FIELD_INTERVIEW_NOT_FOUND' }); return; }
+
+    // God Mode: admin can hard-delete field interviews in any status
+    if ((req as any).user?.role === 'admin' && req.query.hard === 'true') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'field_interview', id, `Admin God Mode: hard-deleting field interview ${existing.fi_number} (status=${existing.status})`);
+      db.prepare('DELETE FROM fi_associates WHERE fi_id = ?').run(id);
+      db.prepare('DELETE FROM field_interviews WHERE id = ?').run(id);
+      broadcast('alerts', 'fi_deleted', { id });
+      res.json({ success: true });
+      return;
+    }
+
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), id);
     auditLog(req, 'DELETE', 'field_interview', id, `Soft-deleted field interview #${id}`);
     broadcast('alerts', 'fi_deleted', { id });

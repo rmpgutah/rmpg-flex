@@ -7,6 +7,7 @@ import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../t
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
@@ -62,6 +63,8 @@ const timeAgo = (date: string): string => {
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
@@ -509,6 +512,19 @@ export default function TrespassOrdersPage() {
                 {(selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
                   <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
+                  </button>
+                )}
+                {isAdmin && (
+                  <button type="button" onClick={async () => {
+                    if (!confirm(`Admin God Mode: Delete trespass order ${selectedOrder.order_number}?`)) return;
+                    try {
+                      await apiFetch(`/trespass-orders/${selectedOrder.id}`, { method: 'DELETE' });
+                      addToast(`Order ${selectedOrder.order_number} deleted`, 'success');
+                      setSelectedOrder(null);
+                      fetchOrders();
+                    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+                  }} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                    <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}
                 <button type="button" onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>

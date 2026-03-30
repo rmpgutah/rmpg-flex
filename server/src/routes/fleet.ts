@@ -1000,6 +1000,11 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       fValues.push(equipmentJson);
     }
 
+    // God Mode: admin can override odometer readings (including lowering)
+    if (req.user?.role === 'admin' && current_mileage !== undefined && existing.current_mileage && current_mileage < existing.current_mileage) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', parseInt(id), `Admin God Mode: overriding odometer on ${existing.vehicle_number} (${existing.current_mileage} → ${current_mileage})`);
+    }
+
     if (fFields.length > 0) {
       fFields.push("updated_at = ?");
       fValues.push(localNow());
@@ -1135,11 +1140,16 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
     if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' }); return; }
-    if (vehicle.status !== 'retired') {
-      res.status(400).json({ error: 'Only retired vehicles can be deleted', code: 'ONLY_RETIRED_VEHICLES_CAN' }); return;
-    }
-    if (vehicle.assigned_unit_id) {
-      res.status(400).json({ error: 'Unassign vehicle from unit before deleting', code: 'UNASSIGN_VEHICLE_FROM_UNIT' }); return;
+    // God Mode: admin can delete vehicles regardless of status
+    if (req.user?.role !== 'admin') {
+      if (vehicle.status !== 'retired') {
+        res.status(400).json({ error: 'Only retired vehicles can be deleted', code: 'ONLY_RETIRED_VEHICLES_CAN' }); return;
+      }
+      if (vehicle.assigned_unit_id) {
+        res.status(400).json({ error: 'Unassign vehicle from unit before deleting', code: 'UNASSIGN_VEHICLE_FROM_UNIT' }); return;
+      }
+    } else if (vehicle.status !== 'retired' || vehicle.assigned_unit_id) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', vehicle.id, `Admin God Mode: deleting vehicle ${vehicle.vehicle_number} (status=${vehicle.status}, assigned=${!!vehicle.assigned_unit_id})`);
     }
 
     const delTx = db.transaction(() => {

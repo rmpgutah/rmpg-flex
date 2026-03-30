@@ -20,6 +20,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-blue-900/50 text-blue-400 border-blue-700/50' },
@@ -211,6 +212,8 @@ const timeAgo = (date: string): string => {
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [cases, setCases] = useState<Case[]>([]);
   const [selected, setSelected] = useState<Case | null>(null);
@@ -617,6 +620,26 @@ export default function CaseManagementPage() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Admin God Mode: Delete Case */}
+                  {isAdmin && (
+                    <div className="panel-beveled p-3 border-red-900/30">
+                      <button type="button"
+                        onClick={async () => {
+                          if (!confirm(`Admin God Mode: Delete case ${selected.case_number}? This cannot be undone.`)) return;
+                          try {
+                            await apiFetch(`/cases/${selected.id}`, { method: 'DELETE' });
+                            addToast(`Case ${selected.case_number} deleted`, 'success');
+                            setSelected(null);
+                            fetchCases();
+                          } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+                        }}
+                        className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30 text-[10px]"
+                      >
+                        <X style={{ width: 11, height: 11 }} /> Delete Case (Admin)
+                      </button>
+                    </div>
+                  )}
 
                   {/* Review Workflow */}
                   {(selected.status === 'under_review' || (selected as any).approval_status) && (

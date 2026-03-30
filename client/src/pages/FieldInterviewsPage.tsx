@@ -13,6 +13,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
@@ -86,6 +87,8 @@ const timeAgo = (date: string): string => {
 export default function FieldInterviewsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
@@ -435,6 +438,19 @@ export default function FieldInterviewsPage() {
                 ) : (
                   <button type="button" onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Restore
+                  </button>
+                )}
+                {isAdmin && (
+                  <button type="button" onClick={async () => {
+                    if (!confirm(`Admin God Mode: Permanently delete FI ${selectedFi.fi_number}?`)) return;
+                    try {
+                      await apiFetch(`/field-interviews/${selectedFi.id}?hard=true`, { method: 'DELETE' });
+                      addToast(`FI ${selectedFi.fi_number} permanently deleted`, 'success');
+                      setSelectedFi(null);
+                      fetchData();
+                    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+                  }} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                    <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}
                 <button type="button" onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>

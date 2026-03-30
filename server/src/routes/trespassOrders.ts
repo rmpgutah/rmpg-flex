@@ -207,12 +207,30 @@ router.post('/', (req: Request, res: Response) => {
   }
 });
 
+// DELETE /:id — Admin God Mode: delete trespass orders
+router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'Trespass order not found', code: 'TRESPASS_ORDER_NOT_FOUND' }); return; }
+    auditLog(req, 'ADMIN_OVERRIDE', 'trespass_order', id, `Admin God Mode: deleting trespass order ${existing.order_number} (status=${existing.status})`);
+    db.prepare('DELETE FROM trespass_orders WHERE id = ?').run(id);
+    broadcast('alerts', 'trespass_order_deleted', { id });
+    res.json({ success: true, message: `Trespass order ${existing.order_number} deleted` });
+  } catch (err: any) {
+    console.error('[TrespassOrders] Delete error:', err?.message);
+    res.status(500).json({ error: 'Failed to delete trespass order', code: 'DELETE_TRESPASS_ORDER_ERROR' });
+  }
+});
+
 // PUT /:id — Update order
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
+    const existing = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Trespass order not found', code: 'TRESPASS_ORDER_NOT_FOUND' });
 
     const fields = [
@@ -230,6 +248,11 @@ router.put('/:id', (req: Request, res: Response) => {
         setClauses.push(`${f} = ?`);
         params.push(req.body[f] || null);
       }
+    }
+
+    // God Mode: admin can edit expired trespass orders
+    if ((req as any).user?.role === 'admin' && (existing.status === 'expired' || existing.status === 'lifted')) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'trespass_order', parseInt(req.params.id as string), `Admin God Mode: editing ${existing.status} trespass order ${existing.order_number}`);
     }
 
     params.push(req.params.id);

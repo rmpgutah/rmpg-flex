@@ -961,6 +961,8 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
       notes: v => v ?? null,
       statute_id: v => v || null,
       statute_citation: v => v ?? null,
+      // God Mode: admin can change warrant number
+      ...(req.user?.role === 'admin' ? { warrant_number: (v: any) => v || null } : {}),
     };
 
     const setClauses: string[] = [];

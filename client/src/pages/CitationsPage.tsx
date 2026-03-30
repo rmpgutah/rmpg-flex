@@ -223,6 +223,7 @@ const timeAgo = (date: string): string => {
 
 export default function CitationsPage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
@@ -830,9 +831,9 @@ export default function CitationsPage() {
             <button type="button" onClick={() => handleEditCitation(c)} className="toolbar-btn text-[10px]">
               <FileText size={12} /> Edit
             </button>
-            {c.status !== 'voided' && (
+            {(c.status !== 'voided' || isAdmin) && (
               <button type="button" onClick={() => handleVoid(c)} className="toolbar-btn text-[10px] text-red-400 hover:text-red-300">
-                <Ban size={12} /> Void
+                <Ban size={12} /> {c.status === 'voided' && isAdmin ? 'Un-Void' : 'Void'}
               </button>
             )}
           </div>

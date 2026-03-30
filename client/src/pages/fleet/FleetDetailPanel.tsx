@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
@@ -197,6 +198,8 @@ export default function FleetDetailPanel({
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
   onClose,
 }: Props) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Detail header */}
@@ -295,6 +298,11 @@ export default function FleetDetailPanel({
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </>
+          )}
+          {!isArchived && isAdmin && (
+            <button type="button" className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Admin: Delete this vehicle">
+              <Trash2 className="w-3 h-3" /> Delete
+            </button>
           )}
           <button type="button"
             className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"

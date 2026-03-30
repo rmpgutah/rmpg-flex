@@ -167,10 +167,12 @@ router.put('/:id', (req: Request, res: Response) => {
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
 
+    // God Mode: admin can change case_number
     const fields = ['title', 'case_type', 'priority', 'summary', 'narrative', 'disposition',
       'disposition_date', 'due_date', 'lead_investigator_id', 'assigned_officers',
       'solvability_score', 'solvability_factors', 'linked_incidents', 'linked_citations',
-      'linked_evidence', 'linked_persons', 'linked_field_interviews', 'linked_calls'];
+      'linked_evidence', 'linked_persons', 'linked_field_interviews', 'linked_calls',
+      ...(req.user?.role === 'admin' ? ['case_number'] : [])];
     const updates: string[] = ['updated_at = ?'];
     const params: any[] = [now];
 
@@ -179,6 +181,11 @@ router.put('/:id', (req: Request, res: Response) => {
         updates.push(`${f} = ?`);
         params.push(typeof req.body[f] === 'object' ? JSON.stringify(req.body[f]) : req.body[f]);
       }
+    }
+
+    // God Mode: admin can edit closed cases and change case_number
+    if (req.user?.role === 'admin' && (existing.status?.startsWith('closed_') || req.body.case_number)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'case', id, `Admin God Mode: editing case #${id} (status=${existing.status}, case_number change=${!!req.body.case_number})`);
     }
 
     params.push(id);
@@ -287,6 +294,11 @@ router.put('/:id/status', (req: Request, res: Response) => {
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(statusId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
 
+    // God Mode: admin can reopen closed cases
+    if (req.user?.role === 'admin' && existing.status?.startsWith('closed_') && !status.startsWith('closed_')) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'case', statusId, `Admin God Mode: reopening closed case #${statusId} (${existing.status} → ${status})`);
+    }
+
     const updates: any = { status, updated_at: now };
     if (status.startsWith('closed_')) updates.closed_date = localToday();
     if (status === 'assigned' && !existing.assigned_at) updates.assigned_at = now;
@@ -303,6 +315,34 @@ router.put('/:id/status', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update case status error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'STATUS_UPDATE_ERROR' });
+  }
+});
+
+// ─── DELETE /:id — Admin God Mode: delete case in any status ─
+router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const delId = parseInt(req.params.id, 10);
+    if (isNaN(delId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
+    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(delId) as any;
+    if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
+
+    auditLog(req, 'ADMIN_OVERRIDE', 'case', delId, `Admin God Mode: deleting case ${existing.case_number} (status=${existing.status})`);
+
+    // Delete associated records
+    db.prepare('DELETE FROM case_notes WHERE case_id = ?').run(delId);
+    db.prepare('DELETE FROM case_persons WHERE case_id = ?').run(delId);
+    db.prepare('DELETE FROM cases WHERE id = ?').run(delId);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'delete', 'case', ?, ?, ?)`).run(
+      req.user!.userId, delId, JSON.stringify({ case_number: existing.case_number, status: existing.status }), localNow());
+
+    broadcastRecordUpdate({ type: 'case_deleted', id: delId });
+    res.json({ success: true, message: `Case ${existing.case_number} deleted` });
+  } catch (error: any) {
+    console.error('Delete case error:', error);
+    res.status(500).json({ error: 'Failed to delete case', code: 'DELETE_CASE_ERROR' });
   }
 });
 

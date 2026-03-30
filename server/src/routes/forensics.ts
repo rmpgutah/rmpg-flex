@@ -228,6 +228,11 @@ router.put('/:id', (req: Request, res: Response) => {
     let completed_date = existing.completed_date;
     let released_date = existing.released_date;
 
+    // God Mode: admin can release evidence without supervisor approval
+    if (user.role === 'admin' && newStatus === 'released' && existing.status !== 'released') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'forensic_case', existing.id, `Admin God Mode: releasing forensic case ${existing.lab_number} without supervisor approval`);
+    }
+
     if (newStatus === 'analysis_complete' && !completed_date) completed_date = now;
     if (newStatus === 'released' && !released_date) released_date = now;
 
@@ -423,6 +428,12 @@ router.delete('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
     if (!existing) return res.status(404).json({ error: 'Exhibit not found', code: 'EXHIBIT_NOT_FOUND' });
+
+    // God Mode: admin can delete evidence items
+    if (user.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'forensic_exhibit', existing.id, `Admin God Mode: deleting exhibit ${existing.exhibit_number}`);
+    }
+
     db.prepare('DELETE FROM forensic_exhibits WHERE id = ?').run(req.params.exhibitId);
     logActivity(parseInt(req.params.caseId as string), 'exhibit_deleted', `Exhibit ${existing.exhibit_number} deleted`, user.id, user.full_name);
     res.json({ message: 'Exhibit deleted' });
@@ -443,8 +454,13 @@ router.post('/:caseId/exhibits/:exhibitId/custody', (req: Request, res: Response
     const { action, notes: custodyNotes } = req.body;
     if (!action) return res.status(400).json({ error: 'Action is required', code: 'ACTION_IS_REQUIRED' });
 
+    // God Mode: admin can break chain of custody (add any action without supervisor approval)
+    if (user.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'forensic_exhibit', existing.id, `Admin God Mode: chain of custody action "${action}" on exhibit ${existing.exhibit_number} (no supervisor approval required)`);
+    }
+
     const chain = JSON.parse(existing.chain_of_custody || '[]');
-    chain.push({ action, by: user.full_name, at: localNow(), notes: custodyNotes || '' });
+    chain.push({ action, by: user.full_name, at: localNow(), notes: custodyNotes || '', admin_override: user.role === 'admin' });
 
     db.prepare('UPDATE forensic_exhibits SET chain_of_custody = ?, updated_at = ? WHERE id = ?')
       .run(JSON.stringify(chain), localNow(), existing.id);

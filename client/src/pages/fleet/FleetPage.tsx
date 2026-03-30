@@ -8,6 +8,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { useToast } from '../../components/ToastProvider';
+import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -86,6 +87,8 @@ const timeAgo = (date: string): string => {
 export default function FleetPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);

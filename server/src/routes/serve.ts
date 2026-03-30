@@ -506,6 +506,16 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
       auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: modified serve job assigned to officer_id ${existing.officer_id}`);
     }
 
+    // God Mode: admin can edit completed/served serve jobs
+    if (req.user!.role === 'admin' && ['served', 'failed', 'cancelled'].includes(existing.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: editing ${existing.status} serve job #${req.params.id}`);
+    }
+
+    // God Mode: admin can reassign serve jobs
+    if (req.user!.role === 'admin' && req.body.officer_id && req.body.officer_id !== existing.officer_id) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: reassigning serve job from officer_id ${existing.officer_id} to ${req.body.officer_id}`);
+    }
+
     // Validate status enum if provided
     const VALID_SERVE_STATUSES = ['pending', 'in_progress', 'served', 'failed', 'on_hold', 'cancelled'];
     if (req.body.status !== undefined && !VALID_SERVE_STATUSES.includes(req.body.status)) {

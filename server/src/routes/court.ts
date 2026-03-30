@@ -7,7 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -206,6 +206,17 @@ router.put('/events/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
+
+    // God Mode: admin can reschedule past court dates
+    const courtEvent = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (req.user?.role === 'admin' && courtEvent) {
+      const eventDate = courtEvent.event_date;
+      const today = localToday();
+      if (eventDate && eventDate < today && req.body.event_date) {
+        auditLog(req, 'ADMIN_OVERRIDE', 'court_event', parseInt(req.params.id), `Admin God Mode: rescheduling past court date (${eventDate} → ${req.body.event_date})`);
+      }
+    }
+
     const fields = ['event_type', 'status', 'event_date', 'event_time', 'court_name', 'courtroom',
       'judge_name', 'court_case_number', 'citation_id', 'incident_id', 'case_id',
       'defendant_person_id', 'defendant_name', 'prosecutor', 'defense_attorney', 'notes'];
@@ -267,6 +278,12 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
       }
     }
 
+    // God Mode: admin can change court outcomes on already-completed events
+    const existingOutcome = db.prepare('SELECT outcome, status FROM court_events WHERE id = ?').get(id) as any;
+    if (req.user?.role === 'admin' && existingOutcome?.status === 'completed' && existingOutcome?.outcome) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'court_event', id, `Admin God Mode: changing court outcome from "${existingOutcome.outcome}" to "${outcome}"`);
+    }
+
     db.prepare(`
       UPDATE court_events SET outcome = ?, sentence = ?, fine_amount = ?, notes = ?,
         status = 'completed', updated_at = ? WHERE id = ?
@@ -277,6 +294,30 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
 
     res.json({ data: { id, outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
+});
+
+// ─── DELETE /events/:id — Admin God Mode: delete court events ────
+router.delete('/events/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM court_events WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' }); return; }
+
+    auditLog(req, 'ADMIN_OVERRIDE', 'court_event', id, `Admin God Mode: deleting court event ${existing.event_number} (status=${existing.status})`);
+    db.prepare('DELETE FROM court_events WHERE id = ?').run(id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'delete', 'court_event', ?, ?, ?)`).run(
+      req.user!.userId, id, JSON.stringify({ event_number: existing.event_number }), localNow());
+
+    broadcastRecordUpdate({ type: 'court_event_deleted', id });
+    res.json({ success: true, message: `Court event ${existing.event_number} deleted` });
+  } catch (error: any) {
+    console.error('Delete court event error:', error);
+    res.status(500).json({ error: 'Failed to delete court event', code: 'DELETE_COURT_EVENT_ERROR' });
+  }
 });
 
 // ─── POST /events/from-citation ─────────────────────────

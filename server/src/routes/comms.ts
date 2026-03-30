@@ -443,6 +443,15 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
       return;
     }
 
+    // God Mode: admin can edit BOLOs in any status (cancelled, expired, archived)
+    if (req.user?.role === 'admin' && ['cancelled', 'expired'].includes(bolo.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: editing ${bolo.status} BOLO "${bolo.title}"`);
+    }
+    // God Mode: admin can reactivate expired BOLOs
+    if (req.user?.role === 'admin' && req.body.status === 'active' && ['expired', 'cancelled'].includes(bolo.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: reactivating ${bolo.status} BOLO "${bolo.title}"`);
+    }
+
     const {
       title, description, subject_description, vehicle_description,
       photo_url, status, priority, expires_at,
@@ -521,7 +530,10 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
     if (!bolo) { res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }); return; }
-    if (bolo.archived_at) { res.status(400).json({ error: 'BOLO is already archived', code: 'BOLO_IS_ALREADY_ARCHIVED' }); return; }
+    if (bolo.archived_at && req.user?.role !== 'admin') { res.status(400).json({ error: 'BOLO is already archived', code: 'BOLO_IS_ALREADY_ARCHIVED' }); return; }
+    if (bolo.archived_at && req.user?.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: re-archiving already archived BOLO`);
+    }
 
     const now = localNow();
     db.prepare('UPDATE bolos SET archived_at = ? WHERE id = ?').run(now, bolo.id);
