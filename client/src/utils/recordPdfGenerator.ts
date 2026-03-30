@@ -1112,7 +1112,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     // Place table flush against section header (no content padding gap)
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const tableX = LAYOUT.PAGE_MARGIN;
-    const tableW = cw;
+    const tableW = getContentWidth(doc);
     // Table header row
     const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
     const pColW = [tableW * 0.28, tableW * 0.17, tableW * 0.15, tableW * 0.17, tableW * 0.23];
@@ -1167,7 +1167,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     // Place table flush against section header (no content padding gap)
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const vtX = LAYOUT.PAGE_MARGIN;
-    const vtW = cw;
+    const vtW = getContentWidth(doc);
     const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
     const vColW = [vtW * 0.13, vtW * 0.28, vtW * 0.12, vtW * 0.17, vtW * 0.30];
     const rowH = 5;
