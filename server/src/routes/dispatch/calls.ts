@@ -126,9 +126,10 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       limit = '50',
     } = req.query;
 
-    // Validate enum query filters
+    // Validate enum query filters (status supports comma-separated values)
     const VALID_CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
-    if (status && !VALID_CALL_STATUSES.includes(status as string)) {
+    const statusList = status ? String(status).split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (statusList.length > 0 && statusList.some(s => !VALID_CALL_STATUSES.includes(s))) {
       res.status(400).json({ error: 'Invalid status filter', code: 'INVALID_STATUS_FILTER' });
       return;
     }
@@ -145,9 +146,12 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 
-    if (status) {
+    if (statusList.length === 1) {
       whereClause += ' AND c.status = ?';
-      params.push(status);
+      params.push(statusList[0]);
+    } else if (statusList.length > 1) {
+      whereClause += ` AND c.status IN (${statusList.map(() => '?').join(',')})`;
+      params.push(...statusList);
     }
     if (priority) {
       whereClause += ' AND c.priority = ?';
@@ -806,8 +810,33 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
   }
 });
 
+// GET /api/dispatch/calls/active — Shortcut for dispatched+enroute+onscene+pending+open calls
+router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT c.*, u.full_name as created_by_name, p.name as property_name,
+        cl.name as client_name
+      FROM calls_for_service c
+      LEFT JOIN users u ON c.created_by = u.id
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.status IN ('dispatched', 'enroute', 'onscene', 'pending', 'open')
+      ORDER BY
+        COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
+        c.created_at DESC
+      LIMIT 200
+    `).all();
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Active calls error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get active calls', code: 'ACTIVE_CALLS_ERROR' });
+  }
+});
+
 // GET /api/dispatch/calls/:id - Get single call with details
-router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+// NOTE: \\d+ constraint ensures this doesn't shadow named routes like /calls/search, /calls/active, /calls/stats/*
+router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -888,7 +917,7 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
