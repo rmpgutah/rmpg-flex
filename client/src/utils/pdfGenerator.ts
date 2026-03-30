@@ -225,12 +225,12 @@ export function addDraftWatermark(doc: jsPDF) {
 
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
-  doc.setFontSize(72);
+  doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
   doc.text('DRAFT', cx, cy, { align: 'center', angle: 45 });
 
   // Add border warning
   doc.setDrawColor(220, 38, 38);
-  doc.setLineWidth(2);
+  doc.setLineWidth(BORDER.BANNER);
   doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
 
   doc.restoreGraphicsState();
@@ -685,10 +685,10 @@ export function addCautionBlock(
   const boxH = Math.max(8, lines.length * lineH + 4);
 
   // Amber warning background
-  doc.setFillColor(255, 248, 230);
+  doc.setFillColor(...COLOR.CAUTION_BG);
   doc.rect(x, y, width, boxH, 'F');
   // Orange left accent bar
-  doc.setFillColor(200, 80, 10);
+  doc.setFillColor(...COLOR.CAUTION_ACCENT);
   doc.rect(x, y, 2, boxH, 'F');
   // Border
   doc.setDrawColor(200, 160, 80);
@@ -698,7 +698,7 @@ export function addCautionBlock(
   // Label
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-  doc.setTextColor(180, 60, 0);
+  doc.setTextColor(...COLOR.CAUTION_TEXT);
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
 
   // Text content
@@ -781,7 +781,7 @@ export function addSignatureBlock(
 
   // ── Signature area ──
   const row1Y = y + roleBarH;
-  doc.setDrawColor(0, 0, 0);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, row1Y, width, sigRowH);
 
@@ -810,7 +810,7 @@ export function addSignatureBlock(
   // ── Info row: PRINTED NAME | BADGE NUMBER | DATE ──
   const row2Y = row1Y + sigRowH;
   const colW = width / 3;
-  doc.setDrawColor(0, 0, 0);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, row2Y, width, infoRowH);
   doc.line(x + colW, row2Y, x + colW, row2Y + infoRowH);
@@ -840,7 +840,7 @@ export function addSignatureBlock(
   }
 
   // Outer border
-  doc.setDrawColor(0, 0, 0);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, y, width, totalH);
 
@@ -877,7 +877,7 @@ export function addStackedSignatures(
   addSignatureBlock(doc, role1, mx, y, sigW, sig1, sigRowH, infoRowH);
 
   // ── Company Seal (right column) — aligned to full signature block height ──
-  doc.setDrawColor(0, 0, 0);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(mx + sigW, y, sealColW, totalH); // matches signature block height
 
@@ -2861,8 +2861,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
       { label: 'CODE', x: colPositions[1] },
       { label: 'CLASS', x: colPositions[2] },
     ];
-    const emptyRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-    y = addTableWithShading(doc, tableHeaders, emptyRows, y, colPositions);
+    // Only render table if there is actual data (no empty placeholder rows)
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2873,8 +2872,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
     { label: 'STATUTE', x: chargeColPositions[1] },
     { label: 'CLASS', x: chargeColPositions[2] },
   ];
-  const emptyChargeRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-  y = addTableWithShading(doc, chargeHeaders, emptyChargeRows, y, chargeColPositions);
+  // Only render table if there is actual data (no empty placeholder rows)
 
   drawSideTab(doc, 'CHARGES', chargesStartY, y - chargesStartY);
   y += SPACING.SECTION_GAP;
@@ -2906,8 +2904,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
       { label: 'DESCRIPTION', x: colPositions[1] },
       { label: 'DISPOSITION', x: colPositions[2] },
     ];
-    const emptyRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-    y = addTableWithShading(doc, tableHeaders, emptyRows, y, colPositions);
+    // Only render table if there is actual data (no empty placeholder rows)
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2918,8 +2915,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
     { label: 'DESCRIPTION', x: propColPositions[1] },
     { label: 'DISPOSITION', x: propColPositions[2] },
   ];
-  const emptyPropRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-  y = addTableWithShading(doc, propHeaders, emptyPropRows, y, propColPositions);
+  // Only render table if there is actual data (no empty placeholder rows)
 
   drawSideTab(doc, 'PROPERTY', propStartY, y - propStartY);
   y += SPACING.SECTION_GAP;

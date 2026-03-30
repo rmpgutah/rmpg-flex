@@ -816,7 +816,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const numCols = hasContract ? 6 : 5;
     const barH = 8;
     // Black background with white text
-    doc.setFillColor(0, 0, 0);
+    doc.setFillColor(...COLOR.TEXT_PRIMARY);
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
 
     const distFields = [
@@ -852,7 +852,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const fw = finalWidths[i];
       const fx = colX + 1.5;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5);
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(255, 255, 255);
       doc.text(f.label, fx, barY + 2.8);
       doc.setFont('courier', 'bold');
@@ -1037,7 +1037,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const scFields = [
       { label: 'Weather', value: data.weather_conditions || '' },
       { label: 'Lighting', value: data.lighting_conditions || '' },
-      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'None' : data.weapons_involved },
+      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'N/A' : data.weapons_involved },
       { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
     ];
     let maxScY = y + SPACING.FIELD_ROW_ADVANCE;
@@ -1437,7 +1437,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
 
     if (step > 1) {
-      doc.setFontSize(5);
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);

@@ -307,7 +307,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   doc.setLineWidth(BORDER.SECTION_OUTER);
   const balBoxX = totX - 8;
   const balBoxW = totVX - balBoxX + 3;
-  doc.rect(balBoxX, y - 2, balBoxW, 9);
+  const balBoxH = 9; // Balance due box height
+  doc.rect(balBoxX, y - 2, balBoxW, balBoxH);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);

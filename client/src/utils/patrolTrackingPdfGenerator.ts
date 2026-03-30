@@ -100,7 +100,7 @@ function formatTime(isoStr: string): string {
 }
 
 function formatDate(isoStr: string | null): string {
-  if (!isoStr) return '-';
+  if (!isoStr) return 'N/A';
   try {
     return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return isoStr; }
@@ -147,6 +147,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
   let yPos: number = margin;
 
+  // Add watermark to the first page (newPage() handles subsequent pages)
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState — safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
   // ── Utility: add header/footer to each page ──────────
   // Page 1 = cover (no top header bar — it has its own centered layout)
   // Pages 2+ = dark header bar with logo + text
@@ -185,7 +190,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     // Footer on ALL pages
     const footerH = 8;
     const footerY = pageH - footerH;
-    doc.setFillColor(240, 240, 245);
+    doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
     doc.rect(0, footerY, pageW, footerH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
@@ -456,26 +461,26 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       let xOff = margin;
 
       // Extract beat code and sector from zone string (e.g., "Riverton D2" → sector "D", beat "2")
-      const beatCode = pt.beat_code || '-';
-      const zoneParts = pt.zone || '-';
+      const beatCode = pt.beat_code || 'N/A';
+      const zoneParts = pt.zone || 'N/A';
       // beat_code is the full identifier; zone is the area label
-      const sector = beatCode !== '-' ? beatCode.replace(/[0-9]/g, '') : '-';
+      const sector = beatCode !== 'N/A' ? beatCode.replace(/[0-9]/g, '') : 'N/A';
 
       const rowData = [
         formatDateTime(pt.time).toUpperCase(),                           // Date/Time
         beatCode.toUpperCase(),                                          // Beat
         sector.toUpperCase(),                                            // Sector
         (typeof zoneParts === 'string' ? zoneParts : String(zoneParts)).toUpperCase(), // Zone
-        (pt.road_name || '-').toUpperCase(),                             // Road
-        (pt.nearest_intersection || '-').toUpperCase(),                  // Cross St
-        pt.speed_mph != null ? `${pt.speed_mph}` : '-',                // Speed
-        (pt.heading_cardinal || '-').toUpperCase(),                      // Heading
+        (pt.road_name || 'N/A').toUpperCase(),                             // Road
+        (pt.nearest_intersection || 'N/A').toUpperCase(),                  // Cross St
+        pt.speed_mph != null ? `${pt.speed_mph}` : 'N/A',                // Speed
+        (pt.heading_cardinal || 'N/A').toUpperCase(),                      // Heading
         (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
-        (pt.status || '-').replace(/_/g, ' ').toUpperCase(),            // Status
-        (pt.current_call_number || '-').toUpperCase(),                   // Call #
-        (pt.current_call_type || '-').replace(/_/g, ' ').toUpperCase(), // Call Type
-        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',  // Dist
-        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : '-',  // Lat/Lng
+        (pt.status || 'N/A').replace(/_/g, ' ').toUpperCase(),            // Status
+        (pt.current_call_number || 'N/A').toUpperCase(),                   // Call #
+        (pt.current_call_type || 'N/A').replace(/_/g, ' ').toUpperCase(), // Call Type
+        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : 'N/A',  // Dist
+        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : 'N/A',  // Lat/Lng
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
@@ -530,13 +535,13 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let rxOff = margin;
         const rRowData = [
-          (seg.call_number || '-').toUpperCase(),
-          (seg.incident_type || '-').replace(/_/g, ' ').toUpperCase(),
+          (seg.call_number || 'N/A').toUpperCase(),
+          (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
           `P${seg.priority}`.toUpperCase(),
-          seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : '-',
-          seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : '-',
-          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : '-',
-          seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : '-',
+          seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
+          seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
+          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',
+          seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : 'N/A',
           String(seg.breadcrumb_count || 0),
         ];
 
@@ -585,9 +590,9 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let zxOff = margin;
         const zRowData = [
-          (beatId || '-').toUpperCase(),
-          (zone.beat_code || '-').toUpperCase(),
-          (zone.city || '-').toUpperCase(),
+          (beatId || 'N/A').toUpperCase(),
+          (zone.beat_code || 'N/A').toUpperCase(),
+          (zone.city || 'N/A').toUpperCase(),
           String(zone.point_count || 0),
           formatDuration(zone.time_seconds || 0).toUpperCase(),
           `${zone.percentage || 0}%`,

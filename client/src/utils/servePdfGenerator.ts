@@ -116,7 +116,7 @@ function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = FONT.
 function addNotarySection(doc: jsPDF, y: number): number {
   const cw = getContentWidth(doc);
   const lx = getLeftX();
-  const boxH = 42;
+  const boxH = 42; // Notary section fixed height
 
   y = checkPageBreak(doc, y, boxH + SPACING.LG);
 
@@ -140,7 +140,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   // Notary lines
   const lineX1 = lx;
   const lineX2 = LAYOUT.PAGE_MARGIN + cw - SPACING.CONTENT_INSET;
-  const lineGap = 8;
+  const lineGap = 8; // Notary line spacing
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
@@ -182,7 +182,7 @@ function addPhotos(doc: jsPDF, photos: string[], y: number, label?: string): num
   const cw = getContentWidth(doc);
   const lx = getLeftX();
   const imgMaxW = cw - 2 * SPACING.CONTENT_INSET;
-  const imgMaxH = 60;
+  const imgMaxH = 60; // Max attachment image height
   const photosPerPage = 3;
 
   for (let i = 0; i < photos.length; i++) {

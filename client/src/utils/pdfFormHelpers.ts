@@ -99,7 +99,7 @@ export function drawFormCell(
   const labelBaseY = y + pad + 1.2;
   if (cell.label) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5.5); // 5.5pt labels matching CFS addFieldPair style
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     // Strip numbered prefix patterns like "1. ", "12. " from labels
     const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
@@ -271,7 +271,7 @@ export function drawCheckboxGrid(
 ): number {
   const cellW = totalW / cols;
   const rowH = opts?.rowHeight || 4.5;
-  const cbSize = 2.2;
+  const cbSize = 2.2; // Intentional: 2.2mm is the optimal checkbox size for form readability
   let curY = y;
 
   for (let i = 0; i < items.length; i++) {
@@ -440,7 +440,7 @@ export function drawFormSection(
     const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textY = curY + (bannerH + bannerCapH) / 2;
     doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
-    curY += bannerH + 1; // 1mm gap between banner and first grid row (tight)
+    curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
   }
 
   // Draw grid rows

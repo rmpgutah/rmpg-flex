@@ -37,6 +37,17 @@ export const COLOR = {
   // Watermark
   WATERMARK:       [120, 120, 120]  as const,
 
+  // Caution / Warning
+  CAUTION_BG:      [255, 248, 230]  as const,  // Amber background
+  CAUTION_ACCENT:  [200, 80, 10]    as const,  // Amber accent bar
+  CAUTION_TEXT:    [180, 60, 0]     as const,  // Warning text
+  FLAG_ARMED:      [180, 20, 20]    as const,  // ARMED & DANGEROUS
+  FLAG_WARRANT:    [200, 60, 0]     as const,  // Active warrant
+  FLAG_GANG:       [120, 40, 140]   as const,  // Gang affiliation
+  FLAG_MENTAL:     [40, 90, 170]    as const,  // Mental health
+  FLAG_MEDICAL:    [0, 130, 80]     as const,  // Medical condition
+  FLAG_DEFAULT:    [80, 80, 90]     as const,  // Generic flag
+
   // NIBRS Grid Form — sidebar tabs + dense cells
   BG_SIDEBAR_TAB:      [25, 25, 30]     as const,  // Dark sidebar tab background
   BG_FORM_CELL_LABEL:  [240, 240, 245]  as const,  // Light gray label strip inside cell
