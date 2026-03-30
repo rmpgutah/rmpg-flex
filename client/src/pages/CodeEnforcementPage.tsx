@@ -21,7 +21,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidVIN, isValidPlate } from '../utils/validate';
-import { localToday } from '../utils/dateUtils';
+import { localToday, safeDateStr } from '../utils/dateUtils';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -282,7 +282,7 @@ export default function CodeEnforcementPage() {
         method: 'PUT',
         body: JSON.stringify({ status: 'reinspection', reinspection_date: reinspectionDate }),
       });
-      addToast(`Reinspection scheduled for ${new Date(reinspectionDate + 'T00:00:00').toLocaleDateString()}`, 'success');
+      addToast(`Reinspection scheduled for ${safeDateStr(reinspectionDate)}`, 'success');
       setShowReinspection(false);
       setReinspectionDate('');
       fetchViolations({ silent: true }); fetchStats();
@@ -525,7 +525,7 @@ export default function CodeEnforcementPage() {
                 {(selectedViolation as any).reinspection_date && (
                   <div className="mt-2 text-[10px] text-blue-400 flex items-center gap-1">
                     <Calendar style={{ width: 10, height: 10 }} />
-                    Reinspection scheduled: {new Date((selectedViolation as any).reinspection_date + 'T00:00:00').toLocaleDateString()}
+                    Reinspection scheduled: {safeDateStr((selectedViolation as any).reinspection_date)}
                   </div>
                 )}
               </div>

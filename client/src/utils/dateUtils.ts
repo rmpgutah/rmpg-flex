@@ -117,6 +117,29 @@ export function formatDateLong(dateStr: string | null | undefined): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// ── Safe formatting for inline JSX (returns '—' for null/invalid) ───
+
+/** Safe locale date string — replaces `new Date(x).toLocaleDateString()` */
+export function safeDateStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+}
+
+/** Safe locale date+time string — replaces `new Date(x).toLocaleString()` */
+export function safeDateTimeStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
+/** Safe locale time string — replaces `new Date(x).toLocaleTimeString()` */
+export function safeTimeStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
 /**
  * Format a server timestamp as a relative date (e.g., "2 hours ago").
  */

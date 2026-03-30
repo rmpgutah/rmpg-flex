@@ -5,6 +5,7 @@ import {
   Clock, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -408,7 +409,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                   <span className="text-rmpg-500 text-[9px]">{row.result_count} results</span>
                   <span className="text-rmpg-600 text-[9px]">{row.searched_by_name || '—'}</span>
                   <span className="text-rmpg-600 text-[9px] tabular-nums">
-                    {new Date(row.created_at).toLocaleString()}
+                    {safeDateTimeStr(row.created_at)}
                   </span>
                 </div>
               );

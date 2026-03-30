@@ -18,6 +18,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
+import { safeDateStr } from '../utils/dateUtils';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
@@ -387,7 +388,7 @@ export default function SkipTracerPage() {
                     </div>
                     <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
                       <span className="uppercase">{entry.mode}</span>
-                      <span>{new Date(entry.date).toLocaleDateString()}</span>
+                      <span>{safeDateStr(entry.date)}</span>
                     </div>
                   </button>
                 ))}

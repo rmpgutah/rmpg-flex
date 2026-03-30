@@ -10,6 +10,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
 import LoginHistoryTable from '../../components/security/LoginHistoryTable';
 import { useToast } from '../../components/ToastProvider';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 
 interface Session {
   id: number;
@@ -166,7 +167,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
                   {s.last_used_at ? new Date(s.last_used_at).toLocaleString() : '—'}
                 </td>
                 <td className="px-3 py-2 text-rmpg-400 tabular-nums">
-                  {new Date(s.expires_at).toLocaleString()}
+                  {safeDateTimeStr(s.expires_at)}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <button type="button"

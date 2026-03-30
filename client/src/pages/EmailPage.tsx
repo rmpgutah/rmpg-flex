@@ -16,7 +16,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -675,7 +675,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   const doc = printWindow.document;
   const toStr = message.toAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ');
   const ccStr = message.ccAddresses.length > 0 ? message.ccAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ') : '';
-  const dateStr = new Date(message.receivedAt).toLocaleString();
+  const dateStr = safeDateTimeStr(message.receivedAt);
 
   // Build print document using safe DOM methods
   const style = doc.createElement('style');

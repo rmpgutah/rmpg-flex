@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 import {
   Shield, Database, Users, Bell, Trash2, RefreshCw, Download,
   HardDrive, Activity, UserCheck, AlertTriangle, CheckCircle,
@@ -380,7 +381,7 @@ export default function AdminGodModeTab() {
               <div key={b.filename} className="flex items-center justify-between bg-[#0d1520] px-2 py-1.5 rounded-sm">
                 <div>
                   <div className="text-[11px] font-mono text-gray-300">{b.filename}</div>
-                  <div className="text-[9px] text-gray-500">{b.size_mb} MB — {new Date(b.created_at).toLocaleString()}</div>
+                  <div className="text-[9px] text-gray-500">{b.size_mb} MB — {safeDateTimeStr(b.created_at)}</div>
                 </div>
                 <button onClick={() => handleDeleteBackup(b.filename)} className="px-2 py-1 bg-red-900/40 hover:bg-red-800/60 text-red-400 text-[10px] rounded-sm"><Trash2 size={12} /></button>
               </div>

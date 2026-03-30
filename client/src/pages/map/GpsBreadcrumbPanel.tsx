@@ -15,7 +15,7 @@ import {
   Navigation2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { localToday } from '../../utils/dateUtils';
+import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
 import { escapeHtml } from '../../utils/sanitize';
 
 // ============================================================
@@ -524,7 +524,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               )}
               {trail.points.length > 0 && (
                 <div className="text-[9px] font-mono text-rmpg-500">
-                  {new Date(trail.points[0].time).toLocaleString()} &rarr; {new Date(trail.points[trail.points.length - 1].time).toLocaleString()}
+                  {safeDateTimeStr(trail.points[0]?.time)} &rarr; {safeDateTimeStr(trail.points[trail.points.length - 1]?.time)}
                 </div>
               )}
             </div>
@@ -699,7 +699,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 <div className="text-[9px] font-mono text-rmpg-300 space-y-0.5 pt-1 border-t border-rmpg-700/50">
                   <div className="flex justify-between">
                     <span className="text-rmpg-500">Time:</span>
-                    <span className="text-white font-bold">{new Date(currentPt.time).toLocaleString()}</span>
+                    <span className="text-white font-bold">{safeDateTimeStr(currentPt.time)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-rmpg-500">Speed:</span>

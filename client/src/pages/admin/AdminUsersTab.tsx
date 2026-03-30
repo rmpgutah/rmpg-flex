@@ -26,6 +26,7 @@ import type { UserFormData } from '../../components/UserFormModal';
 import { toDisplayLabel } from '../../utils/formatters';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 
 // ============================================================
 // Shared types
@@ -794,9 +795,7 @@ export default function AdminUsersTab({
                     {userActivity.map((entry) => (
                       <div key={entry.id} className="flex items-center gap-3 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700">
                         <span className="text-rmpg-400 font-mono text-[10px] flex-shrink-0">
-                          {new Date(entry.timestamp).toLocaleString('en-US', {
-                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
-                          })}
+                          {safeDateTimeStr(entry.timestamp)}
                         </span>
                         <span className="text-brand-400 font-medium">{entry.action}</span>
                         <span className="text-rmpg-300 flex-1 truncate">{entry.details}</span>

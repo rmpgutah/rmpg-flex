@@ -4,6 +4,7 @@ import {
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateStr } from '../../utils/dateUtils';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -529,7 +530,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                       {k.request_count.toLocaleString()}
                     </td>
                     <td className="px-4 py-2.5 text-rmpg-500 text-xs">
-                      {new Date(k.created_at).toLocaleDateString()}
+                      {safeDateStr(k.created_at)}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">

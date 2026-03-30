@@ -24,6 +24,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateStr } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -506,7 +507,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
       {selectedEvidence.retention_until && new Date(selectedEvidence.retention_until) < new Date() && !selectedEvidence.disposition && (
         <div className="px-4 py-2 bg-red-950/30 border-b border-red-800/40 flex items-center gap-2 text-[11px] text-red-400 font-bold flex-shrink-0">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-pulse" />
-          RETENTION OVERDUE — Past retention date ({new Date(selectedEvidence.retention_until).toLocaleDateString()})
+          RETENTION OVERDUE — Past retention date ({safeDateStr(selectedEvidence.retention_until)})
           — Evidence requires disposition
         </div>
       )}

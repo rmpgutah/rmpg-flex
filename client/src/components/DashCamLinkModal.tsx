@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Link2, Loader2, Trash2, FileText, Phone, Briefcase, Gavel, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { safeDateStr } from '../utils/dateUtils';
 
 interface VideoLink {
   id: number;
@@ -207,7 +208,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
                           <div className="text-[9px] text-rmpg-500 truncate">{link.notes}</div>
                         )}
                         <div className="text-[8px] text-rmpg-600">
-                          by {link.linked_by} — {new Date(link.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          by {link.linked_by} — {safeDateStr(link.created_at)}
                         </div>
                       </div>
                       {canManage && (

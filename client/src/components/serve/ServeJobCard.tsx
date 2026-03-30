@@ -14,6 +14,7 @@ import {
   User,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall } from '../../types';
+import { safeDateStr } from '../../utils/dateUtils';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -271,7 +272,7 @@ export default React.memo(function ServeJobCard({
                 <Calendar className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Deadline:</span>
                 <span className={isDueSoon || isOverdue ? 'text-red-400 font-bold' : ''}>
-                  {new Date(job.deadline).toLocaleDateString()}
+                  {safeDateStr(job.deadline)}
                 </span>
               </div>
             )}
@@ -296,7 +297,7 @@ export default React.memo(function ServeJobCard({
                     className="flex items-start gap-2 pl-2 border-l-2 border-rmpg-600/50"
                   >
                     <span className="text-[10px] font-mono text-rmpg-400 flex-shrink-0 w-16">
-                      {new Date(attempt.attempt_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {safeDateStr(attempt.attempt_at)}
                     </span>
                     <span className="text-[10px] font-mono text-amber-300 flex-shrink-0 w-14">
                       {attempt.attempt_type}

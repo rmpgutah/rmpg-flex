@@ -36,7 +36,7 @@ import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
-import { formatDateTime, localToday } from '../utils/dateUtils';
+import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
 
 // ── Quick Status Buttons ────────────────────────────────────
@@ -165,7 +165,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
                     )}
                   </div>
                   <span className="text-[8px] text-rmpg-500 font-mono">
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {safeTimeStr(msg.created_at)}
                   </span>
                 </div>
                 {msg.subject && (
@@ -316,7 +316,7 @@ export default function MdtPage() {
         data.calls.forEach((c: any) => {
           lines.push(`  ${c.call_number}  ${(c.incident_type || 'UNKNOWN').toUpperCase()}  ${c.priority || ''}  ${c.status || ''}`);
           lines.push(`    Location: ${c.location_address || 'N/A'}`);
-          lines.push(`    Time: ${new Date(c.created_at).toLocaleTimeString()}`);
+          lines.push(`    Time: ${safeTimeStr(c.created_at)}`);
           lines.push('');
         });
       }
@@ -333,7 +333,7 @@ export default function MdtPage() {
       if (data.scans.length > 0) {
         lines.push('───── PATROL SCANS ────────────────────────────────────');
         data.scans.forEach((s: any) => {
-          lines.push(`  ${new Date(s.scanned_at).toLocaleTimeString()}  ${s.checkpoint_name || 'Unknown'}`);
+          lines.push(`  ${safeTimeStr(s.scanned_at)}  ${s.checkpoint_name || 'Unknown'}`);
         });
         lines.push('');
       }
@@ -1012,7 +1012,7 @@ export default function MdtPage() {
                     <div className="space-y-1">
                       {selectedCall.notes.slice(-5).map((note, i) => (
                         <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1 bg-surface-sunken border-l-2 border-l-rmpg-700">
-                          <span className="text-rmpg-500">{new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="text-rmpg-500">{safeTimeStr(note.timestamp)}</span>
                           {' — '}
                           {note.text}
                         </div>

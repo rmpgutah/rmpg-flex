@@ -6,6 +6,7 @@ import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { playRadioTone } from '../utils/radioTones';
 import { useToast } from './ToastProvider';
+import { safeTimeStr } from '../utils/dateUtils';
 
 // ─── Panic Alarm — loops the unified panicWarble tone ────────────
 // Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
@@ -393,7 +394,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               )}
 
               <div className="text-center text-[10px] font-mono" style={{ color: '#3a5070' }}>
-                {new Date(incomingAlert.triggered_at).toLocaleTimeString('en-US', { hour12: false })}
+                {safeTimeStr(incomingAlert.triggered_at)}
               </div>
 
               {/* Live Audio Indicator — shows when receiving panic mic broadcast */}

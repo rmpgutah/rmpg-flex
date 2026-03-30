@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { formatFileSize, formatDuration, toDisplayLabel } from '../../utils/formatters';
+import { safeDateStr, safeTimeStr } from '../../utils/dateUtils';
 
 // ============================================================
 // System Health & Monitoring Tab
@@ -659,7 +660,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                   <span className="text-[10px] font-medium text-red-300">{err.action}</span>
                   <span className="text-[10px] text-rmpg-400 ml-2">{err.details}</span>
                 </div>
-                <span className="text-[9px] text-rmpg-500 whitespace-nowrap">{new Date(err.created_at).toLocaleTimeString()}</span>
+                <span className="text-[9px] text-rmpg-500 whitespace-nowrap">{safeTimeStr(err.created_at)}</span>
               </div>
             ))}
           </div>
@@ -805,7 +806,7 @@ function ConfigChangeHistory() {
       <div className="space-y-1 max-h-40 overflow-y-auto">
         {history.map((h: any) => (
           <div key={h.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800 last:border-0">
-            <span className="text-rmpg-400 w-16 shrink-0">{new Date(h.changed_at).toLocaleDateString()}</span>
+            <span className="text-rmpg-400 w-16 shrink-0">{safeDateStr(h.changed_at)}</span>
             <span className="text-brand-400 font-mono">{h.config_key}</span>
             <span className="text-rmpg-500">by</span>
             <span className="text-white">{h.changed_by_name || 'Unknown'}</span>
@@ -851,7 +852,7 @@ function DatabaseBackupStatus() {
           {backup.backups.map((b: any, i: number) => (
             <div key={i} className="flex items-center justify-between text-[10px] py-0.5">
               <span className="text-rmpg-300">{b.filename}</span>
-              <span className="text-rmpg-400">{formatFileSize(b.size)} - {new Date(b.created).toLocaleDateString()}</span>
+              <span className="text-rmpg-400">{formatFileSize(b.size)} - {safeDateStr(b.created)}</span>
             </div>
           ))}
         </div>

@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
@@ -384,7 +385,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     }`} />
                     <span className="text-rmpg-300 font-mono">{entry.sync_type}</span>
                     <span className="text-rmpg-500">{entry.jobs_synced} jobs, {entry.attempts_synced} attempts</span>
-                    <span className="ml-auto text-rmpg-500 whitespace-nowrap">{new Date(entry.started_at).toLocaleString()}</span>
+                    <span className="ml-auto text-rmpg-500 whitespace-nowrap">{safeDateTimeStr(entry.started_at)}</span>
                     {entry.error_message && (
                       <span className="text-red-400 truncate max-w-[200px]" title={entry.error_message}>
                         {entry.error_message}
@@ -624,7 +625,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                       <td className="py-1 pr-2 text-rmpg-300 max-w-[100px] truncate">{job.client_company_name || '—'}</td>
                       <td className="py-1 pr-2 text-rmpg-400 whitespace-nowrap">{job.due_date || '—'}</td>
                       <td className="py-1 pr-2 text-center font-mono text-rmpg-300">{job.attempt_count}</td>
-                      <td className="py-1 text-rmpg-500 whitespace-nowrap">{new Date(job.synced_at).toLocaleDateString()}</td>
+                      <td className="py-1 text-rmpg-500 whitespace-nowrap">{safeDateStr(job.synced_at)}</td>
                     </tr>
                   ))}
                   {jobs.length === 0 && (

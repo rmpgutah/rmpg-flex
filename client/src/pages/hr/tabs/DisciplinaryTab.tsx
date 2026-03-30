@@ -15,6 +15,7 @@ import type { DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, Discip
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
 import ExportButton from '../../../components/ExportButton';
+import { safeDateStr } from '../../../utils/dateUtils';
 
 interface DisciplinaryTabProps {
   userRole: string;
@@ -514,7 +515,7 @@ function RecordCard({
               <span className="text-xs text-rmpg-300">{rec.officer_name}</span>
             )}
             <span className="text-[10px] text-rmpg-500">
-              {new Date(rec.incident_date).toLocaleDateString()}
+              {safeDateStr(rec.incident_date)}
             </span>
             <span
               className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${sBadge.bg}`}
@@ -551,7 +552,7 @@ function RecordCard({
               }`}
             >
               <AlertTriangle size={10} />
-              Follow-up: {new Date(rec.follow_up_date).toLocaleDateString()}
+              Follow-up: {safeDateStr(rec.follow_up_date)}
               {fuStatus === 'overdue' && ' (overdue)'}
               {fuStatus === 'upcoming' && ' (upcoming)'}
             </div>
@@ -622,7 +623,7 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
                   {DISCIPLINARY_TYPE_LABELS[rec.type] ?? rec.type}
                 </span>
                 <span className="text-rmpg-500">
-                  {new Date(rec.incident_date).toLocaleDateString()}
+                  {safeDateStr(rec.incident_date)}
                 </span>
               </div>
               <p className="text-xs text-rmpg-300">
