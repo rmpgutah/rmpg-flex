@@ -815,10 +815,10 @@ router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'offic
   try {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT c.*, u.full_name as created_by_name, p.name as property_name,
+      SELECT c.*, u.full_name as dispatcher_name, p.name as property_name,
         cl.name as client_name
       FROM calls_for_service c
-      LEFT JOIN users u ON c.created_by = u.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       WHERE c.status IN ('dispatched', 'enroute', 'onscene', 'pending', 'open')

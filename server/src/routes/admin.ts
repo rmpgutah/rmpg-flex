@@ -2639,7 +2639,7 @@ router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response)
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const rows = db.prepare(`
-      SELECT al.*, u.username, u.full_name, u.role, 
+      SELECT al.*, u.username, u.full_name, u.role
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.created_at > ?
