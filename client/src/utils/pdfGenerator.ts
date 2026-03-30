@@ -409,9 +409,9 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // Section header bar (dark slate) with white text, left-justified
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H, 'F');
-  // Clean border around header
-  doc.setDrawColor(...COLOR.BORDER_SECTION);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
+  // Thin border around header — matches interior table line weight
+  doc.setDrawColor(...COLOR.BORDER_TABLE);
+  doc.setLineWidth(BORDER.TABLE_ROW);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H);
 
   doc.setFont('helvetica', 'bold');
@@ -441,10 +441,10 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   const startPage = sectionPage ?? currentPage;
 
   if (startPage === currentPage) {
-    // Enclosing section border (header bar + content area)
+    // Enclosing section border — thin, matching interior table lines
     const totalHeight = (contentEndY - sectionY) + padding;
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
     doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, totalHeight);
   } else {
     // Multi-page section — just ensure we're on the last page

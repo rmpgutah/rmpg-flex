@@ -984,8 +984,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Flags — before Scene Conditions
   y = checkPageBreak(doc, y, 15, prio);
   { const flagSec = openAutoSection(doc, 'Flags', y);
-    // 2mm gap between header bar and first checkbox row
-    y = flagSec.sectionY + SPACING.SECTION_HEADER_H + 2.0;
+    // Match other sections' content padding (SECTION_CONTENT_PAD = 1.2mm)
+    y = flagSec.contentY;
     const flagCols = 6;
     const flagColW = ffw / flagCols;
     const flagRowH = 3.5;
@@ -1105,31 +1105,29 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Persons — table with header row + data rows (matches screenshot)
+  // Linked Persons — table with medium-gray header row + data rows
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y);
-    // Place table flush against section header (no content padding gap)
-    y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const tableX = LAYOUT.PAGE_MARGIN;
-    const tableW = getContentWidth(doc);
-    // Table header row
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
     const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
-    const pColW = [tableW * 0.28, tableW * 0.17, tableW * 0.15, tableW * 0.17, tableW * 0.23];
+    const pColW = [ffw * 0.28, ffw * 0.17, ffw * 0.15, ffw * 0.17, ffw * 0.23];
     const rowH = 5;
-    // Draw header row background
-    doc.setFillColor(30, 40, 55);
-    doc.rect(tableX, y, tableW, rowH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(0.2);
-    doc.rect(tableX, y, tableW, rowH);
+    // Medium-gray header row (lighter than section header)
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.rect(lx, y, ffw, rowH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.rect(lx, y, ffw, rowH);
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(255, 255, 255);
-    let hx = tableX;
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    let hx = lx;
     for (let i = 0; i < pHeaders.length; i++) {
       doc.text(pHeaders[i], hx + 1.5, y + rowH * 0.65);
-      if (i < pHeaders.length - 1) { doc.line(hx + pColW[i], y, hx + pColW[i], y + rowH); }
+      if (i < pHeaders.length - 1) {
+        doc.setDrawColor(...COLOR.BORDER_COLUMN);
+        doc.line(hx + pColW[i], y, hx + pColW[i], y + rowH);
+      }
       hx += pColW[i];
     }
     y += rowH;
@@ -1138,9 +1136,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const p of data.linked_persons) {
       y = checkPageBreak(doc, y, rowH);
-      doc.setDrawColor(...COLOR.BORDER_FIELD);
-      doc.setLineWidth(0.15);
-      doc.rect(tableX, y, tableW, rowH);
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(BORDER.TABLE_ROW);
+      doc.rect(lx, y, ffw, rowH);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const pVals = [
         `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
@@ -1149,10 +1147,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
         (p.phone || '—').toUpperCase(),
       ];
-      let dx = tableX;
+      let dx = lx;
       for (let i = 0; i < pVals.length; i++) {
         doc.text(pVals[i], dx + 1.5, y + rowH * 0.65);
-        if (i < pVals.length - 1) { doc.line(dx + pColW[i], y, dx + pColW[i], y + rowH); }
+        if (i < pVals.length - 1) {
+          doc.setDrawColor(...COLOR.BORDER_COLUMN);
+          doc.setLineWidth(BORDER.TABLE_COLUMN);
+          doc.line(dx + pColW[i], y, dx + pColW[i], y + rowH);
+        }
         dx += pColW[i];
       }
       y += rowH;
@@ -1160,30 +1162,29 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Vehicles — table with header row + data rows (matches Linked Persons table)
+  // Linked Vehicles — table with medium-gray header row + data rows
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED VEHICLES', y);
-    // Place table flush against section header (no content padding gap)
-    y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const vtX = LAYOUT.PAGE_MARGIN;
-    const vtW = getContentWidth(doc);
+    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.contentY;
     const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
-    const vColW = [vtW * 0.13, vtW * 0.28, vtW * 0.12, vtW * 0.17, vtW * 0.30];
+    const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
     const rowH = 5;
-    // Header row
-    doc.setFillColor(30, 40, 55);
-    doc.rect(vtX, y, vtW, rowH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(0.2);
-    doc.rect(vtX, y, vtW, rowH);
+    // Medium-gray header row (lighter than section header)
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.rect(lx, y, ffw, rowH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.rect(lx, y, ffw, rowH);
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(255, 255, 255);
-    let vhx = vtX;
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    let vhx = lx;
     for (let i = 0; i < vHeaders.length; i++) {
       doc.text(vHeaders[i], vhx + 1.5, y + rowH * 0.65);
-      if (i < vHeaders.length - 1) { doc.line(vhx + vColW[i], y, vhx + vColW[i], y + rowH); }
+      if (i < vHeaders.length - 1) {
+        doc.setDrawColor(...COLOR.BORDER_COLUMN);
+        doc.line(vhx + vColW[i], y, vhx + vColW[i], y + rowH);
+      }
       vhx += vColW[i];
     }
     y += rowH;
@@ -1192,9 +1193,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const v of data.linked_vehicles) {
       y = checkPageBreak(doc, y, rowH);
-      doc.setDrawColor(...COLOR.BORDER_FIELD);
-      doc.setLineWidth(0.15);
-      doc.rect(vtX, y, vtW, rowH);
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(BORDER.TABLE_ROW);
+      doc.rect(lx, y, ffw, rowH);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '';
       const vVals = [
@@ -1204,10 +1205,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
         ([v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + stolen).toUpperCase() || '—',
       ];
-      let vdx = vtX;
+      let vdx = lx;
       for (let i = 0; i < vVals.length; i++) {
         doc.text(vVals[i], vdx + 1.5, y + rowH * 0.65);
-        if (i < vVals.length - 1) { doc.line(vdx + vColW[i], y, vdx + vColW[i], y + rowH); }
+        if (i < vVals.length - 1) {
+          doc.setDrawColor(...COLOR.BORDER_COLUMN);
+          doc.setLineWidth(BORDER.TABLE_COLUMN);
+          doc.line(vdx + vColW[i], y, vdx + vColW[i], y + rowH);
+        }
         vdx += vColW[i];
       }
       y += rowH;
