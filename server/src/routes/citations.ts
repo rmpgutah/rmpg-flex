@@ -318,6 +318,11 @@ router.post('/', (req: Request, res: Response) => {
     const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
 
     const now = localNow();
+    // Admin can override created_at
+    const created_at = (req.user?.role === 'admin' && req.body.created_at) ? req.body.created_at : now;
+    if (req.user?.role === 'admin' && req.body.created_at) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'citation', 0, `Admin God Mode: overrode created_at to ${req.body.created_at} on new citation`);
+    }
 
     const result = db.prepare(`
       INSERT INTO citations (
@@ -350,7 +355,7 @@ router.post('/', (req: Request, res: Response) => {
       incident_id || null, call_id || null,
       issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
       court_date || null, court_name || null, court_address || null,
-      notes || null, now, now
+      notes || null, created_at, now
     );
 
     // Activity log
@@ -433,11 +438,23 @@ router.put('/:id', (req: Request, res: Response) => {
       }
     }
 
+    // Admin can override timestamps
+    const effectiveUpdatedAt = (req.user?.role === 'admin' && req.body.updated_at) ? req.body.updated_at : localNow();
+
     if (fields.length > 0) {
       fields.push('updated_at = ?');
-      values.push(localNow());
+      values.push(effectiveUpdatedAt);
       values.push(req.params.id);
       db.prepare(`UPDATE citations SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      if (req.user?.role === 'admin' && req.body.updated_at) {
+        auditLog(req, 'ADMIN_OVERRIDE', 'citation', id, `Admin God Mode: overrode updated_at to ${req.body.updated_at}`);
+      }
+    }
+
+    // Admin can override citation_number
+    if (req.user?.role === 'admin' && req.body.citation_number) {
+      db.prepare('UPDATE citations SET citation_number = ? WHERE id = ?').run(req.body.citation_number, id);
+      auditLog(req, 'ADMIN_OVERRIDE', 'citation', id, `Admin God Mode: overrode citation_number to ${req.body.citation_number}`);
     }
 
     // Activity log

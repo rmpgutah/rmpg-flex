@@ -295,6 +295,13 @@ router.put('/:id', (req: Request, res: Response) => {
     }
     params.push(id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Admin can override dar_number
+    if (req.user?.role === 'admin' && req.body.dar_number) {
+      db.prepare('UPDATE daily_activity_reports SET dar_number = ? WHERE id = ?').run(req.body.dar_number, id);
+      auditLog(req, 'ADMIN_OVERRIDE', 'dar', id, `Admin God Mode: overrode dar_number to ${req.body.dar_number}`);
+    }
+
     res.json({ data: { id } });
   } catch (error: any) { console.error('Update DAR error:', error); res.status(500).json({ error: 'Failed to update DAR', code: 'UPDATE_DAR_ERROR' }); }
 });

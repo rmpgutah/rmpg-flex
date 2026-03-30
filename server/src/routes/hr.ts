@@ -227,11 +227,22 @@ router.put('/leave/:id', validateParamIdMiddleware, (req: Request, res: Response
     const { type, start_date, end_date, hours_requested, reason } = req.body;
     const now = localNow();
 
+    // Admin can override created_at and updated_at on leave requests
+    const effectiveUpdatedAt = (user.role === 'admin' && req.body.updated_at) ? req.body.updated_at : now;
+
     db.prepare(
       `UPDATE leave_requests SET type = COALESCE(?, type), start_date = COALESCE(?, start_date),
        end_date = COALESCE(?, end_date), hours_requested = COALESCE(?, hours_requested),
        reason = COALESCE(?, reason), updated_at = ? WHERE id = ?`
-    ).run(type || null, start_date || null, end_date || null, hours_requested ?? null, reason ?? null, now, id);
+    ).run(type || null, start_date || null, end_date || null, hours_requested ?? null, reason ?? null, effectiveUpdatedAt, id);
+
+    if (user.role === 'admin' && req.body.created_at) {
+      db.prepare('UPDATE leave_requests SET created_at = ? WHERE id = ?').run(req.body.created_at, id);
+      auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: overrode created_at to ${req.body.created_at}`);
+    }
+    if (user.role === 'admin' && req.body.updated_at) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: overrode updated_at to ${req.body.updated_at}`);
+    }
 
     auditLog(req, 'UPDATE', 'leave_request', id, `Leave request updated`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'updated', id });
@@ -807,7 +818,10 @@ router.post('/reviews/:id/acknowledge', validateParamIdMiddleware, (req: Request
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Review not found', code: 'REVIEW_NOT_FOUND' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only acknowledge own reviews', code: 'CAN_ONLY_ACKNOWLEDGE_OWN' });
+    if (existing.officer_id !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Can only acknowledge own reviews', code: 'CAN_ONLY_ACKNOWLEDGE_OWN' });
+    if (user.role === 'admin' && existing.officer_id !== user.id) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'performance_review', id, `Admin God Mode: bypassed own-review-only acknowledge restriction (officer_id: ${existing.officer_id})`);
+    }
 
     const now = localNow();
     db.prepare(

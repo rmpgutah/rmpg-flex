@@ -453,10 +453,13 @@ router.get('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES, 'dispa
       return;
     }
 
-    // IDOR protection: officers can only view their own assigned jobs
+    // IDOR protection: officers can only view their own assigned jobs (admin bypass)
     if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
       res.status(403).json({ error: 'You can only view jobs assigned to you', code: 'YOU_CAN_ONLY_VIEW' });
       return;
+    }
+    if (req.user!.role === 'admin' && job.officer_id && job.officer_id !== req.user!.userId) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: viewed serve job assigned to officer_id ${job.officer_id}`);
     }
 
     const attempts = db.prepare(
@@ -494,10 +497,13 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
       return;
     }
 
-    // IDOR protection: officers can only modify their own assigned jobs
+    // IDOR protection: officers can only modify their own assigned jobs (admin bypass)
     if (req.user!.role === 'officer' && existing.officer_id && existing.officer_id !== req.user!.userId) {
       res.status(403).json({ error: 'You can only modify jobs assigned to you', code: 'YOU_CAN_ONLY_MODIFY' });
       return;
+    }
+    if (req.user!.role === 'admin' && existing.officer_id && existing.officer_id !== req.user!.userId) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'serve_queue', Number(req.params.id), `Admin God Mode: modified serve job assigned to officer_id ${existing.officer_id}`);
     }
 
     // Validate status enum if provided
