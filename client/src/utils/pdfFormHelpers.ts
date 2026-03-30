@@ -90,7 +90,10 @@ export function drawFormCell(
   // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
   if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
-  // No cell border — clean borderless style matching CFS report
+  // Cell border — thin bordered grid style matching data tables
+  doc.setDrawColor(...COLOR.BORDER_FIELD);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.rect(x, y, w, h);
 
   // Label (Helvetica Bold, dark gray — above value)
   const labelBaseY = y + pad + 1.2;
@@ -197,8 +200,6 @@ export function drawFormGrid(
     const h = row.height || SPACING.FORM_CELL_H;
     curY = drawFormRow(doc, row.cells, x, curY, totalW, h);
   }
-
-  // No outer border — clean borderless style matching CFS report
 
   return curY;
 }
