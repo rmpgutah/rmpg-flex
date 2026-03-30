@@ -447,7 +447,7 @@ export default function FieldInterviewsPage() {
                       await apiFetch(`/field-interviews/${selectedFi.id}?hard=true`, { method: 'DELETE' });
                       addToast(`FI ${selectedFi.fi_number} permanently deleted`, 'success');
                       setSelectedFi(null);
-                      fetchData();
+                      setFis(prev => prev.filter(f => f.id !== selectedFi.id));
                     } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
                   }} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
