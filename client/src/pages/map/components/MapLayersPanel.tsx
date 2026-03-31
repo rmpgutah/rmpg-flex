@@ -1370,50 +1370,48 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               {collapsedGroups.intel ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" />}
             </div>
           </button>
-          {!collapsedGroups.intel && <div className="flex items-center justify-between mb-1.5 px-1">
-            <span className="text-[7px] text-rmpg-600" />
-            {/* Fix 94: "All On" / "All Off" buttons per group */}
-            <div className="flex gap-1">
-              <button type="button"
-                onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (!intelLayers[k]) toggleIntelLayer(k); }); }}
-                className="text-[7px] font-bold text-green-400 hover:text-green-300 px-1"
-                title="Enable all intelligence layers"
-              >ON</button>
-              <button type="button"
-                onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (intelLayers[k]) toggleIntelLayer(k); }); }}
-                className="text-[7px] font-bold text-red-400 hover:text-red-300 px-1"
-                title="Disable all intelligence layers"
-              >OFF</button>
+          {!collapsedGroups.intel && (<>
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <span className="text-[7px] text-rmpg-600" />
+              <div className="flex gap-1">
+                <button type="button"
+                  onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (!intelLayers[k]) toggleIntelLayer(k); }); }}
+                  className="text-[7px] font-bold text-green-400 hover:text-green-300 px-1"
+                  title="Enable all intelligence layers"
+                >ON</button>
+                <button type="button"
+                  onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (intelLayers[k]) toggleIntelLayer(k); }); }}
+                  className="text-[7px] font-bold text-red-400 hover:text-red-300 px-1"
+                  title="Disable all intelligence layers"
+                >OFF</button>
+              </div>
             </div>
-          </div>
-          {([
-            { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
-            { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
-            { key: 'offenders' as const, label: 'Sex Offenders', color: 'purple' },
-            { key: 'bolos' as const, label: 'BOLOs', color: 'amber' },
-          ] as const).map(({ key, label }) => (
-            <button type="button"
-              key={key}
-              onClick={() => toggleIntelLayer(key)}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                intelLayers[key] ? 'panel-inset bg-surface-deep text-rmpg-200' : 'text-rmpg-400 hover:bg-surface-raised'
-              }`}
-            >
-              <Shield className="w-3 h-3" />
-              <span className="flex-1 text-left">{label}</span>
-              {/* Fix 92: show feature count next to each toggle */}
-              {intelCounts && (
-                <span className={`text-[9px] font-mono ${intelLayers[key] ? '' : 'opacity-50'}`}>
-                  {intelCounts[key] || 0}
-                </span>
-              )}
-              {/* Fix 48: show "no data" when count is 0 and layer is on */}
-              {intelLayers[key] && intelCounts && intelCounts[key] === 0 && (
-                <span className="text-[7px] text-rmpg-500">none</span>
-              )}
-            </button>
-          ))}
-          </div>}
+            {([
+              { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
+              { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
+              { key: 'offenders' as const, label: 'Sex Offenders', color: 'purple' },
+              { key: 'bolos' as const, label: 'BOLOs', color: 'amber' },
+            ] as const).map(({ key, label }) => (
+              <button type="button"
+                key={key}
+                onClick={() => toggleIntelLayer(key)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  intelLayers[key] ? 'panel-inset bg-surface-deep text-rmpg-200' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Shield className="w-3 h-3" />
+                <span className="flex-1 text-left">{label}</span>
+                {intelCounts && (
+                  <span className={`text-[9px] font-mono ${intelLayers[key] ? '' : 'opacity-50'}`}>
+                    {intelCounts[key] || 0}
+                  </span>
+                )}
+                {intelLayers[key] && intelCounts && intelCounts[key] === 0 && (
+                  <span className="text-[7px] text-rmpg-500">none</span>
+                )}
+              </button>
+            ))}
+          </>)}
         </div>
       )}
 
