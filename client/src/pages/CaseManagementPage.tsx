@@ -115,8 +115,14 @@ function LinkedEntityPanel({
   };
 
   const handleLink = async (entityId: number) => {
+    // Map entity type plural → singular for the POST body key
+    const singularMap: Record<string, string> = {
+      calls: 'call', incidents: 'incident', persons: 'person', vehicles: 'vehicle',
+      properties: 'property', evidence: 'evidence', warrants: 'warrant', citations: 'citation',
+    };
+    const singular = singularMap[entityType] || entityType.replace(/s$/, '');
     try {
-      await apiFetch(`/cases/${caseId}/${entityType}`, { method: 'POST', body: JSON.stringify({ [`${entityType.slice(0, -1)}_id`]: entityId }) });
+      await apiFetch(`/cases/${caseId}/${entityType}`, { method: 'POST', body: JSON.stringify({ [`${singular}_id`]: entityId }) });
       addToast(`${entityType.slice(0, -1)} linked to case`, 'success');
       setModalOpen(false);
       setSearchQuery('');
@@ -915,8 +921,8 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.calls || []}
                   columns={[
-                    { key: 'case_number', label: 'CFS #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
-                    { key: 'call_type', label: 'Type' },
+                    { key: 'call_number', label: 'CFS #', render: (v: any) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'incident_type', label: 'Type' },
                     { key: 'priority', label: 'Priority', render: (v) => <span className="font-bold uppercase">{v || '—'}</span> },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
@@ -926,7 +932,7 @@ export default function CaseManagementPage() {
                   caseId={selected.id}
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/dispatch/calls"
-                  searchFields={['case_number', 'call_type', 'location']}
+                  searchFields={['call_number', 'incident_type', 'location_address']}
                 />
               )}
 
@@ -960,7 +966,7 @@ export default function CaseManagementPage() {
                   entityType="persons"
                   caseId={selected.id}
                   onRefresh={() => fetchFullCase(selected.id)}
-                  searchEndpoint="/records/persons/search"
+                  searchEndpoint="/records/persons"
                   searchFields={['last_name', 'first_name', 'date_of_birth']}
                 />
               )}
@@ -979,7 +985,7 @@ export default function CaseManagementPage() {
                   entityType="vehicles"
                   caseId={selected.id}
                   onRefresh={() => fetchFullCase(selected.id)}
-                  searchEndpoint="/records/vehicles/search"
+                  searchEndpoint="/records/vehicles"
                   searchFields={['plate_number', 'make', 'model', 'color']}
                 />
               )}
@@ -997,7 +1003,7 @@ export default function CaseManagementPage() {
                   entityType="properties"
                   caseId={selected.id}
                   onRefresh={() => fetchFullCase(selected.id)}
-                  searchEndpoint="/records/properties/search"
+                  searchEndpoint="/records/properties"
                   searchFields={['description', 'serial_number', 'property_type']}
                 />
               )}
@@ -1015,7 +1021,7 @@ export default function CaseManagementPage() {
                   entityType="evidence"
                   caseId={selected.id}
                   onRefresh={() => fetchFullCase(selected.id)}
-                  searchEndpoint="/records/evidence/search"
+                  searchEndpoint="/records/evidence"
                   searchFields={['evidence_number', 'description', 'evidence_type']}
                 />
               )}
@@ -1033,7 +1039,7 @@ export default function CaseManagementPage() {
                   entityType="warrants"
                   caseId={selected.id}
                   onRefresh={() => fetchFullCase(selected.id)}
-                  searchEndpoint="/records/warrants/search"
+                  searchEndpoint="/warrants"
                   searchFields={['warrant_number', 'subject_name', 'warrant_type']}
                 />
               )}
@@ -1051,7 +1057,7 @@ export default function CaseManagementPage() {
                   entityType="citations"
                   caseId={selected.id}
                   onRefresh={() => fetchFullCase(selected.id)}
-                  searchEndpoint="/citations/search"
+                  searchEndpoint="/citations"
                   searchFields={['citation_number', 'violation', 'violator_name']}
                 />
               )}

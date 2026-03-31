@@ -170,7 +170,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       params.push(propertyId);
     }
     if (search) {
-      whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.call_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.narrative LIKE ? ESCAPE '\\')";
+      whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.incident_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.description LIKE ? ESCAPE '\\')";
       const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
