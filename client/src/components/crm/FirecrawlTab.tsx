@@ -81,6 +81,8 @@ import {
   Wrench,
   Shield,
   Mail,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -97,6 +99,31 @@ function safeObj(val: any): Record<string, any> {
   if (val && typeof val === 'object' && !Array.isArray(val)) return val;
   if (typeof val === 'string') { try { const p = JSON.parse(val); return (p && typeof p === 'object') ? p : {}; } catch { return {}; } }
   return {};
+}
+
+// ── Result Copy/Export Actions ────────────────────────────────
+// Reusable bar of "Copy JSON" and "Export" buttons for tool result panels
+
+function ResultActions({ result, toolName }: { result: any; toolName: string }) {
+  const { addToast } = useToast();
+  return (
+    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700">
+      <button type="button" onClick={() => {
+        navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+        addToast('Copied to clipboard', 'success');
+      }} className="text-[9px] text-rmpg-400 hover:text-white flex items-center gap-1">
+        <Copy className="w-3 h-3" /> Copy JSON
+      </button>
+      <button type="button" onClick={() => {
+        const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = u; a.download = `${toolName}_result.json`; a.click();
+        URL.revokeObjectURL(u);
+      }} className="text-[9px] text-rmpg-400 hover:text-white flex items-center gap-1">
+        <Download className="w-3 h-3" /> Export
+      </button>
+    </div>
+  );
 }
 
 // ── Shared Types ──────────────────────────────────────────────
@@ -2157,6 +2184,7 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               }} className="text-[9px] text-brand-400 hover:text-brand-300">Monitor for changes &rarr;</button>
             )}
           </div>
+          <ResultActions result={result} toolName="enrich" />
         </div>
       )}
 
@@ -2426,6 +2454,7 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
               }} className="text-[9px] text-brand-400 hover:text-brand-300">Monitor sources &rarr;</button>
             )}
           </div>
+          <ResultActions result={result} toolName="researcher" />
         </div>
       )}
 
@@ -3101,6 +3130,7 @@ function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainP
           {result.duration_ms != null && (
             <span className="text-[9px] text-rmpg-500">{(result.duration_ms / 1000).toFixed(1)}s</span>
           )}
+          <ResultActions result={result} toolName="deep_search" />
         </div>
       )}
 
@@ -3273,6 +3303,7 @@ function PdfInspectPanel() {
   const [history, setHistory] = useState<PdfInspectResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -3297,6 +3328,30 @@ function PdfInspectPanel() {
       loadHistory();
     } catch {
       addToast('PDF inspection failed', 'error');
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    setInspecting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/firecrawl-tools/pdf-inspect/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || 'Upload failed'); }
+      const data = await resp.json();
+      setResult(data);
+      setUrl(data.url || `upload://${file.name}`);
+      addToast('PDF uploaded and inspected', 'success');
+      loadHistory();
+    } catch (err: any) {
+      addToast(err.message || 'Upload failed', 'error');
     } finally {
       setInspecting(false);
     }
@@ -3327,7 +3382,7 @@ function PdfInspectPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* URL Input */}
+      {/* URL Input + File Upload */}
       <div className="flex items-center gap-2">
         <input
           value={url}
@@ -3338,6 +3393,10 @@ function PdfInspectPanel() {
         />
         <SmallBtn onClick={inspect} loading={inspecting} variant="primary">
           <FileSearch className="w-3 h-3" /> Inspect
+        </SmallBtn>
+        <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadFile(e.target.files[0]); e.target.value = ''; }} />
+        <SmallBtn onClick={() => fileInputRef.current?.click()} loading={inspecting}>
+          <Upload className="w-3 h-3" /> Upload
         </SmallBtn>
       </div>
 
@@ -3425,11 +3484,12 @@ function PdfInspectPanel() {
               </div>
             </div>
           )}
+          <ResultActions result={result} toolName="pdf_inspect" />
         </div>
       )}
 
       {!result && !inspecting && (
-        <EmptyState icon={FileSearch} message="Enter a PDF URL to inspect its structure and extract entities." />
+        <EmptyState icon={FileSearch} message="Enter a PDF URL or upload a file to inspect its structure and extract entities." />
       )}
     </div>
   );
@@ -4746,6 +4806,11 @@ function ExtractPanel() {
   const [history, setHistory] = useState<ExtractResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchUrls, setBatchUrls] = useState('');
+  const [batchExtracting, setBatchExtracting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const [batchResults, setBatchResults] = useState<ExtractResult[]>([]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -4789,30 +4854,91 @@ function ExtractPanel() {
     }
   };
 
+  const batchExtract = async () => {
+    const urls = batchUrls.split('\n').map(u => u.trim()).filter(Boolean);
+    if (urls.length === 0) { addToast('Enter at least one URL', 'warning'); return; }
+    const validFields = fields.filter(f => f.name.trim());
+    if (validFields.length === 0) { addToast('Add at least one field', 'warning'); return; }
+    setBatchExtracting(true);
+    setBatchResults([]);
+    setBatchProgress({ done: 0, total: urls.length });
+
+    const results: ExtractResult[] = [];
+    // Process in parallel batches of 5
+    for (let i = 0; i < urls.length; i += 5) {
+      const batch = urls.slice(i, i + 5);
+      const batchPromises = batch.map(async (u) => {
+        try {
+          return await apiFetch<ExtractResult>('/firecrawl-tools/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: u, schema_fields: validFields }),
+          });
+        } catch { return null; }
+      });
+      const batchRes = await Promise.all(batchPromises);
+      for (const r of batchRes) { if (r) results.push(r); }
+      setBatchProgress({ done: Math.min(i + 5, urls.length), total: urls.length });
+      setBatchResults([...results]);
+    }
+
+    setBatchExtracting(false);
+    addToast(`Extracted ${results.length}/${urls.length} URLs`, results.length === urls.length ? 'success' : 'warning');
+    loadHistory();
+  };
+
+  const downloadBatchResults = () => {
+    const blob = new Blob([JSON.stringify(batchResults, null, 2)], { type: 'application/json' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = u; a.download = 'batch_extract_results.json'; a.click();
+    URL.revokeObjectURL(u);
+  };
+
   const viewHistoryItem = (item: ExtractResult) => {
     setResult(item);
     setUrl(item.url);
     setFields(safeArr(item.schema_fields).length > 0 ? safeArr(item.schema_fields) : [{ name: '', type: 'string', description: '' }]);
     setShowHistory(false);
+    setBatchMode(false);
   };
 
   return (
     <div className="space-y-3">
       <PanelTitleBar title="Structured Extract" icon={Database} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setBatchMode(!batchMode)} variant={batchMode ? 'primary' : 'default'}>
+          <Layers className="w-3 h-3" /> {batchMode ? 'Single' : 'Batch'}
+        </SmallBtn>
         <SmallBtn onClick={() => setShowHistory(!showHistory)}>
           <Clock className="w-3 h-3" /> History ({history.length})
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* URL Input */}
-      <div className="flex items-center gap-2">
-        <input
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
-          placeholder="https://example.com"
-        />
-      </div>
+      {/* URL Input (single mode) */}
+      {!batchMode && (
+        <div className="flex items-center gap-2">
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="https://example.com"
+          />
+        </div>
+      )}
+
+      {/* Batch URL input */}
+      {batchMode && (
+        <div className="space-y-1">
+          <div className="text-[10px] text-rmpg-400">One URL per line (max 50)</div>
+          <textarea
+            value={batchUrls}
+            onChange={e => setBatchUrls(e.target.value)}
+            className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono resize-none"
+            rows={5}
+            placeholder={"https://example.com/page1\nhttps://example.com/page2\nhttps://example.com/page3"}
+          />
+          <div className="text-[9px] text-rmpg-500">{batchUrls.split('\n').filter(u => u.trim()).length} URLs</div>
+        </div>
+      )}
 
       {/* Schema Builder */}
       <div className="space-y-1.5">
@@ -4851,9 +4977,54 @@ function ExtractPanel() {
         ))}
       </div>
 
-      <SmallBtn onClick={extract} loading={extracting} variant="primary">
-        <Database className="w-3 h-3" /> Extract
-      </SmallBtn>
+      {!batchMode ? (
+        <SmallBtn onClick={extract} loading={extracting} variant="primary">
+          <Database className="w-3 h-3" /> Extract
+        </SmallBtn>
+      ) : (
+        <SmallBtn onClick={batchExtract} loading={batchExtracting} variant="primary">
+          <Layers className="w-3 h-3" /> Batch Extract ({batchUrls.split('\n').filter(u => u.trim()).length} URLs)
+        </SmallBtn>
+      )}
+
+      {/* Batch Progress */}
+      {batchExtracting && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Processing {batchProgress.done}/{batchProgress.total}...
+          </div>
+          <div className="w-full h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-orange-500 rounded-full transition-all duration-300"
+              style={{ width: `${batchProgress.total ? (batchProgress.done / batchProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Batch Results */}
+      {batchMode && batchResults.length > 0 && !batchExtracting && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-orange-400">{batchResults.length} results</span>
+            <SmallBtn onClick={downloadBatchResults}>
+              <Download className="w-3 h-3" /> Download All JSON
+            </SmallBtn>
+          </div>
+          <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+            {batchResults.map((br, i) => (
+              <button key={i} onClick={() => { setResult(br); setBatchMode(false); setUrl(br.url); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Database className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{br.url}</span>
+                <span className="text-[9px] text-orange-400 font-mono shrink-0">{br.fields_found}/{br.fields_found + br.fields_missing}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* History */}
       {showHistory && (
@@ -4921,6 +5092,7 @@ function ExtractPanel() {
               </tbody>
             </table>
           </div>
+          <ResultActions result={result} toolName="extract" />
         </div>
       )}
 
@@ -7301,6 +7473,7 @@ function DocExtractPanel() {
   const [history, setHistory] = useState<DocExtractResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const docExtractFileRef = React.useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -7330,6 +7503,27 @@ function DocExtractPanel() {
     }
   };
 
+  const uploadDocFile = async (file: File) => {
+    setExtracting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('output_format', outputFormat);
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/firecrawl-tools/doc-extract/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || 'Upload failed'); }
+      const data = await resp.json();
+      setResult(data);
+      setUrl(data.url || `upload://${file.name}`);
+      addToast('Document uploaded and extracted', 'success');
+      loadHistory();
+    } catch (err: any) { addToast(err.message || 'Upload failed', 'error'); } finally { setExtracting(false); }
+  };
+
   const viewHistoryItem = (item: DocExtractResult) => {
     setResult(item);
     setUrl(item.url);
@@ -7345,7 +7539,7 @@ function DocExtractPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* Input */}
+      {/* Input + Upload */}
       <div className="flex items-center gap-2">
         <input
           value={url}
@@ -7364,6 +7558,10 @@ function DocExtractPanel() {
         </select>
         <SmallBtn onClick={extract} loading={extracting} variant="primary">
           <FileDown className="w-3 h-3" /> Extract
+        </SmallBtn>
+        <input ref={docExtractFileRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadDocFile(e.target.files[0]); e.target.value = ''; }} />
+        <SmallBtn onClick={() => docExtractFileRef.current?.click()} loading={extracting}>
+          <Upload className="w-3 h-3" /> Upload
         </SmallBtn>
       </div>
 
@@ -7416,11 +7614,12 @@ function DocExtractPanel() {
               </div>
             </div>
           )}
+          <ResultActions result={result} toolName="doc_extract" />
         </div>
       )}
 
       {!result && !extracting && (
-        <EmptyState icon={FileDown} message="Enter a document URL to extract content, tables, and metadata." />
+        <EmptyState icon={FileDown} message="Enter a document URL or upload a file to extract content, tables, and metadata." />
       )}
     </div>
   );
@@ -7798,6 +7997,9 @@ function ApiConsolePanel() {
   const [mapResult, setMapResult] = useState<ConsoleMapResult | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
+  // Scrape result view tab
+  const [scrapeViewTab, setScrapeViewTab] = useState<'preview' | 'raw' | 'markdown'>('preview');
+
   const doScrape = async () => {
     if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
     setLoading(true);
@@ -7958,31 +8160,69 @@ function ApiConsolePanel() {
         </SmallBtn>
       )}
 
-      {/* Scrape Result */}
+      {/* Scrape Result with Tabbed Preview */}
       {mode === 'scrape' && scrapeResult && (
         <div className="space-y-2">
-          {scrapeResult.markdown && (
-            <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">Markdown Output</div>
-              <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">{scrapeResult.markdown}</pre>
+          {/* Result view tabs */}
+          <div className="flex items-center gap-1">
+            {(['preview', 'raw', 'markdown'] as const).map(t => (
+              <button key={t} onClick={() => setScrapeViewTab(t)}
+                className={`px-2 py-0.5 text-[9px] font-medium rounded-sm border transition-colors ${
+                  scrapeViewTab === t ? 'border-orange-500/50 bg-orange-500/10 text-orange-300' : 'border-rmpg-600 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }`}
+              >{t === 'preview' ? 'Preview' : t === 'raw' ? 'Raw JSON' : 'Markdown'}</button>
+            ))}
+          </div>
+
+          {/* Preview tab — metadata card + formatted content */}
+          {scrapeViewTab === 'preview' && (
+            <div className="space-y-2">
+              {((scrapeResult as any).metadata?.title || (scrapeResult as any).metadata?.description || (scrapeResult as any).metadata?.ogImage) && (
+                <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 flex items-start gap-3">
+                  {(scrapeResult as any).metadata?.ogImage && (
+                    <img src={(scrapeResult as any).metadata.ogImage} alt="" className="w-16 h-16 rounded-sm object-cover shrink-0 border border-rmpg-600" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    {(scrapeResult as any).metadata?.title && <div className="text-xs font-medium text-white truncate">{(scrapeResult as any).metadata.title}</div>}
+                    {(scrapeResult as any).metadata?.description && <div className="text-[10px] text-rmpg-300 mt-0.5 line-clamp-2">{(scrapeResult as any).metadata.description}</div>}
+                    {(scrapeResult as any).metadata?.sourceURL && <div className="text-[9px] text-rmpg-500 font-mono mt-1 truncate">{(scrapeResult as any).metadata.sourceURL}</div>}
+                  </div>
+                </div>
+              )}
+              {scrapeResult.markdown && (
+                <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 max-h-64 overflow-auto scrollbar-dark" style={{ maxWidth: 'none' }}>
+                  <pre className="whitespace-pre-wrap font-sans">{scrapeResult.markdown.substring(0, 5000)}</pre>
+                </div>
+              )}
+              {safeArr(scrapeResult.links).length > 0 && (
+                <div>
+                  <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({safeArr(scrapeResult.links).length})</div>
+                  <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 max-h-32 overflow-auto scrollbar-dark space-y-0.5">
+                    {safeArr(scrapeResult.links).slice(0, 20).map((link, i) => (
+                      <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-brand-400 hover:underline font-mono truncate">{link}</a>
+                    ))}
+                    {safeArr(scrapeResult.links).length > 20 && <span className="text-[9px] text-rmpg-500">+{safeArr(scrapeResult.links).length - 20} more</span>}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-          {scrapeResult.html && (
-            <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">HTML Output</div>
-              <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-48 overflow-auto scrollbar-dark whitespace-pre-wrap">{scrapeResult.html}</pre>
-            </div>
+
+          {/* Raw JSON tab */}
+          {scrapeViewTab === 'raw' && (
+            <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-80 overflow-auto scrollbar-dark whitespace-pre-wrap">
+              {JSON.stringify(scrapeResult, null, 2)}
+            </pre>
           )}
-          {safeArr(scrapeResult.links).length > 0 && (
-            <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({safeArr(scrapeResult.links).length})</div>
-              <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 max-h-48 overflow-auto scrollbar-dark space-y-0.5">
-                {safeArr(scrapeResult.links).map((link, i) => (
-                  <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-brand-400 hover:underline font-mono truncate">{link}</a>
-                ))}
-              </div>
-            </div>
+
+          {/* Markdown tab */}
+          {scrapeViewTab === 'markdown' && scrapeResult.markdown && (
+            <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-80 overflow-auto scrollbar-dark whitespace-pre-wrap">
+              {scrapeResult.markdown}
+            </pre>
           )}
+
+          <ResultActions result={scrapeResult} toolName="api_console_scrape" />
         </div>
       )}
 
@@ -9788,6 +10028,7 @@ function PdfToolsPanel() {
   const [history, setHistory] = useState<PdfToolsResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const pdfToolsFileRef = React.useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -9797,6 +10038,15 @@ function PdfToolsPanel() {
   }, []);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const getSelectedOps = () => {
+    const ops: string[] = [];
+    if (opExtractText) ops.push('extract_text');
+    if (opCountPages) ops.push('count_pages');
+    if (opExtractLinks) ops.push('extract_links');
+    if (opGetMetadata) ops.push('get_metadata');
+    return ops;
+  };
 
   const process = async () => {
     if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
@@ -9816,6 +10066,27 @@ function PdfToolsPanel() {
     } catch { addToast('Processing failed', 'error'); } finally { setProcessing(false); }
   };
 
+  const uploadPdfFile = async (file: File) => {
+    setProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('operations', JSON.stringify(getSelectedOps()));
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/firecrawl-tools/pdf-manipulate/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || 'Upload failed'); }
+      const data = await resp.json();
+      setResult(data);
+      setUrl(data.url || `upload://${file.name}`);
+      addToast('PDF uploaded and processed', 'success');
+      loadHistory();
+    } catch (err: any) { addToast(err.message || 'Upload failed', 'error'); } finally { setProcessing(false); }
+  };
+
   const viewHistoryItem = (item: PdfToolsResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   return (
@@ -9826,7 +10097,7 @@ function PdfToolsPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* URL Input */}
+      {/* URL Input + Upload */}
       <div className="flex items-center gap-2">
         <input
           value={url} onChange={e => setUrl(e.target.value)}
@@ -9834,6 +10105,10 @@ function PdfToolsPanel() {
           className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
           placeholder="https://example.com/document.pdf"
         />
+        <input ref={pdfToolsFileRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadPdfFile(e.target.files[0]); e.target.value = ''; }} />
+        <SmallBtn onClick={() => pdfToolsFileRef.current?.click()} loading={processing}>
+          <Upload className="w-3 h-3" /> Upload
+        </SmallBtn>
       </div>
 
       {/* Operation Checkboxes */}
@@ -9928,11 +10203,12 @@ function PdfToolsPanel() {
               </table>
             </div>
           )}
+          <ResultActions result={result} toolName="pdf_tools" />
         </div>
       )}
 
       {!result && !processing && (
-        <EmptyState icon={FileType} message="Enter a PDF URL and select operations to process." />
+        <EmptyState icon={FileType} message="Enter a PDF URL or upload a file and select operations to process." />
       )}
     </div>
   );
@@ -10764,6 +11040,22 @@ export default function FirecrawlTab() {
   const [toolContext, setToolContext] = useState<ToolContext>({});
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({});
 
+  // Recently used tools tracking (persisted in localStorage)
+  const [recentTools, setRecentTools] = useState<FirecrawlSubTab[]>(() => {
+    try { return JSON.parse(localStorage.getItem('rmpg_firecrawl_recent') || '[]'); } catch { return []; }
+  });
+
+  // Track tool usage when activeTab changes
+  useEffect(() => {
+    if (activeTab) {
+      setRecentTools(prev => {
+        const updated = [activeTab, ...prev.filter(t => t !== activeTab)].slice(0, 5);
+        localStorage.setItem('rmpg_firecrawl_recent', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  }, [activeTab]);
+
   // Shared switch function that clears context when navigating without chaining
   const switchTab = useCallback((tab: FirecrawlSubTab) => {
     setActiveTab(tab);
@@ -10925,6 +11217,27 @@ export default function FirecrawlTab() {
             <span className="text-[9px] text-rmpg-500 shrink-0">{filteredTabs.length} tools</span>
           )}
         </div>
+
+        {/* Recent tools pills */}
+        {recentTools.length > 0 && !activeTab && (
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark">
+            <span className="text-[8px] font-bold text-rmpg-500 tracking-wider uppercase shrink-0 mr-0.5">RECENT</span>
+            {recentTools.map(tid => {
+              const tab = TABS.find(t => t.id === tid);
+              if (!tab) return null;
+              return (
+                <button
+                  key={tid}
+                  onClick={() => setActiveTab(tid)}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border border-brand-500/30 bg-brand-500/5 text-brand-400 hover:bg-brand-500/10 transition-colors shrink-0 whitespace-nowrap"
+                >
+                  <tab.icon className="w-2.5 h-2.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Category pills */}
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark">
