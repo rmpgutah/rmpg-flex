@@ -118,14 +118,21 @@ async function fetchAndPlay(text: string): Promise<void> {
     source.buffer = audioBuffer;
     currentSource = source;
 
-    // Radio bandpass filter — matches radioTones.ts pattern
-    const bandpass = ctx.createBiquadFilter();
-    bandpass.type = 'bandpass';
-    bandpass.frequency.value = 1350;
-    bandpass.Q.value = 2.5;
+    // Check if user wants the radio filter effect
+    const useRadioFilter = localStorage.getItem('rmpg-voice-radio-filter') === 'true';
 
-    source.connect(bandpass);
-    bandpass.connect(ctx.destination);
+    if (useRadioFilter) {
+      // Radio bandpass filter — police radio dispatch effect
+      const bandpass = ctx.createBiquadFilter();
+      bandpass.type = 'bandpass';
+      bandpass.frequency.value = 1350;
+      bandpass.Q.value = 2.5;
+      source.connect(bandpass);
+      bandpass.connect(ctx.destination);
+    } else {
+      // Natural voice — clean, no filter
+      source.connect(ctx.destination);
+    }
 
     source.onended = () => {
       currentSource = null;
