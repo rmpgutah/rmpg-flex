@@ -2244,6 +2244,41 @@ export interface CaseNote {
   created_at: string;
 }
 
+// Case Master Folder — linked entity types
+export interface CaseFull {
+  id: number;
+  case_number: string;
+  title: string;
+  case_type: string;
+  status: string;
+  priority: string;
+  lead_investigator_id?: number;
+  lead_investigator_name?: string;
+  summary?: string;
+  narrative?: string;
+  disposition?: string;
+  opened_date?: string;
+  due_date?: string;
+  closed_date?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Linked entities
+  calls: any[];
+  incidents: any[];
+  persons: any[];
+  vehicles: any[];
+  properties: any[];
+  evidence: any[];
+  warrants: any[];
+  citations: any[];
+  notes: any[];
+  counts: {
+    calls: number; incidents: number; persons: number;
+    vehicles: number; properties: number; evidence: number;
+    warrants: number; citations: number; notes: number;
+  };
+}
+
 // --- Code Enforcement ---
 
 export type ViolationType = 'noise' | 'property_maintenance' | 'zoning' | 'signage' | 'health' | 'fire' | 'nuisance' | 'other';

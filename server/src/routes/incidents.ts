@@ -1616,4 +1616,39 @@ router.get('/:id/potential-calls', (req: Request, res: Response) => {
   }
 });
 
+// PUT /incidents/:id/link-call — Link incident to a CFS
+router.put('/:id/link-call', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id } = req.body;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid incident ID' }); return; }
+
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
+    if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
+
+    if (call_id) {
+      const call = db.prepare('SELECT id, case_id, case_number FROM calls_for_service WHERE id = ?').get(call_id) as any;
+      if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+      db.prepare('UPDATE incidents SET call_id = ?, updated_at = ? WHERE id = ?').run(call_id, localNow(), id);
+
+      // If the call has a case, auto-link this incident to that case
+      if (call.case_id) {
+        try {
+          db.prepare('INSERT OR IGNORE INTO case_incidents (case_id, incident_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(call.case_id, id, (req as any).user!.userId, localNow());
+        } catch { /* table may not exist yet */ }
+      }
+    } else {
+      // Unlink
+      db.prepare('UPDATE incidents SET call_id = NULL, updated_at = ? WHERE id = ?').run(localNow(), id);
+    }
+
+    auditLog(req, 'UPDATE', 'incident', id, `${call_id ? 'Linked' : 'Unlinked'} incident to call #${call_id || 'none'}`);
+
+    const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id);
+    res.json(updated);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;
