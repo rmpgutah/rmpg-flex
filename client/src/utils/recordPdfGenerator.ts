@@ -1232,7 +1232,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+      // Extra padding so text clears the header bar (matching other section body spacing)
+      return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     };
     y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
     y += SPACING.SM;

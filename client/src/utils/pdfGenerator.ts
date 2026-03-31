@@ -1207,7 +1207,7 @@ export function addNarrativeSection(
     const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
     doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
-    const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+    const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     // Draw fresh background tint for remaining text on this page
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
     doc.setFillColor(246, 246, 250);
@@ -1270,7 +1270,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
         const capH = FONT.SIZE_SECTION_TITLE * 0.35;
         const textYpos = newY + (SPACING.SECTION_HEADER_H + capH) / 2;
         doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
-        const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+        const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.setFont('courier', 'normal');
         doc.setFontSize(fontSize);
