@@ -21,6 +21,11 @@ import TurndownService from 'turndown';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 import config from '../config';
+import multer from 'multer';
+import fs from 'fs';
+
+// PDF upload middleware — 50MB max, temp dir
+const pdfUpload = multer({ dest: '/tmp/rmpg-pdf-uploads', limits: { fileSize: 50 * 1024 * 1024 } });
 
 function safeJsonParse(val: string | null | undefined, fallback: any = null): any {
   if (!val) return fallback;
@@ -3356,6 +3361,107 @@ router.get(
 // 14. PDF Inspector
 // ═════════════════════════════════════════════════════════════
 
+// ── POST /pdf-inspect/upload — Upload a PDF file for inspection ──
+
+router.post(
+  '/pdf-inspect/upload',
+  requireRole('admin', 'manager'),
+  pdfUpload.single('file'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
+
+    try {
+      const pdfParse = (await import('pdf-parse')).default;
+      const buffer = fs.readFileSync(req.file.path);
+      const parsed = await pdfParse(buffer);
+      const content = parsed.text || '';
+
+      // Clean up uploaded file
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+
+      const contentLower = content.toLowerCase();
+      const pageCountEstimate = parsed.numpages || Math.max(1, Math.round(content.length / 3000));
+      const lineCount = content.split('\n').length;
+      const avgLineLength = content.length / Math.max(lineCount, 1);
+      const isScanned = content.length < 200 || avgLineLength < 10;
+      const hasText = content.trim().length > 50;
+
+      // Classification
+      let classification: 'report' | 'form' | 'contract' | 'invoice' | 'legal' | 'other' = 'other';
+      if (contentLower.includes('invoice') || contentLower.includes('bill to') || contentLower.includes('amount due')) classification = 'invoice';
+      else if (contentLower.includes('agreement') || contentLower.includes('hereby agree') || contentLower.includes('terms and conditions')) classification = 'contract';
+      else if (contentLower.includes('court') || contentLower.includes('plaintiff') || contentLower.includes('defendant') || contentLower.includes('statute')) classification = 'legal';
+      else if (contentLower.includes('fill in') || contentLower.includes('signature:') || contentLower.includes('date:___')) classification = 'form';
+      else if (contentLower.includes('report') || contentLower.includes('executive summary') || contentLower.includes('findings')) classification = 'report';
+
+      // Extract entities
+      const dateMatches = content.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g) || [];
+      const isoDateMatches = content.match(/\b\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\b/g) || [];
+      const writtenDateMatches = content.match(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/gi) || [];
+      const amountMatches = content.match(/\$[\d,]+(?:\.\d{2})?/g) || [];
+      const phoneMatches = content.match(/(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
+      const emailMatches = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+      const nameMatches = content.match(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g) || [];
+      const addrMatches = content.match(/\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Way|Ct|Pl|Cir|Pkwy|Hwy)[.,]?\s+(?:[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)?,?\s*[A-Z]{2}\s+\d{5}/g) || [];
+      const caseMatches = content.match(/(?:Case|Docket|Ref|No\.?|#)\s*:?\s*[\w-]{4,20}/gi) || [];
+
+      const extractedEntities = {
+        names: [...new Set(nameMatches)].slice(0, 20),
+        dates: [...new Set([...dateMatches, ...isoDateMatches, ...writtenDateMatches])].slice(0, 20),
+        amounts: [...new Set(amountMatches)].slice(0, 20),
+        phones: [...new Set(phoneMatches)].slice(0, 15),
+        emails: [...new Set(emailMatches)].slice(0, 15),
+        addresses: [...new Set(addrMatches)].slice(0, 10),
+        caseNumbers: [...new Set(caseMatches)].slice(0, 10),
+      };
+
+      const headers = content.match(/^#{1,3}\s+.+$/gm) || content.match(/^[A-Z][A-Z\s]{3,}$/gm) || [];
+      const keySections = headers.slice(0, 20).map((h: string) => h.replace(/^#+\s+/, '').trim());
+      const summary = content.substring(0, 500).replace(/\n{2,}/g, ' ').trim();
+      const wordCount = content.split(/\s+/).filter(Boolean).length;
+
+      // Store in DB
+      const db = getDb();
+      const now = localNow();
+      const filename = req.file.originalname || 'uploaded.pdf';
+      const insertResult = db.prepare(`
+        INSERT INTO firecrawl_pdf_inspections (url, page_count_estimate, is_scanned, has_text, classification, summary, key_sections, extracted_entities, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        `upload://${filename}`, pageCountEstimate, isScanned ? 1 : 0, hasText ? 1 : 0,
+        classification, summary, JSON.stringify(keySections), JSON.stringify(extractedEntities),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_pdf_inspections', Number(insertResult.lastInsertRowid), `PDF upload inspect: ${filename}`);
+
+      res.json({
+        id: Number(insertResult.lastInsertRowid),
+        url: `upload://${filename}`,
+        filename,
+        page_count_estimate: pageCountEstimate,
+        is_scanned: isScanned,
+        has_text: hasText,
+        classification,
+        summary,
+        key_sections: keySections,
+        extracted_entities: extractedEntities,
+        word_count: wordCount,
+        character_count: content.length,
+        full_text: content.substring(0, 100000),
+        pdf_info: parsed.info || {},
+      });
+    } catch (err: any) {
+      // Clean up file on error
+      try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[FirecrawlTools] PDF upload inspect error:', msg);
+      res.status(500).json({ error: 'PDF processing failed', detail: msg });
+    }
+  },
+);
+
 // ── POST /pdf-inspect — Inspect/classify a PDF URL ──────────
 
 router.post(
@@ -6066,6 +6172,64 @@ router.delete(
 // 34. MinerU Document Extraction
 // ═════════════════════════════════════════════════════════════
 
+// ── POST /doc-extract/upload — Upload document for extraction ──
+
+router.post(
+  '/doc-extract/upload',
+  requireRole('admin', 'manager'),
+  pdfUpload.single('file'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    if (!req.file) { res.status(400).json({ error: 'File is required' }); return; }
+
+    const { output_format } = req.body as { output_format?: string };
+    const format = ['markdown', 'json', 'text'].includes(output_format || '') ? output_format! : 'markdown';
+
+    try {
+      const pdfParse = (await import('pdf-parse')).default;
+      const buffer = fs.readFileSync(req.file.path);
+      const parsed = await pdfParse(buffer);
+      const rawText = parsed.text || '';
+
+      // Clean up
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+
+      let content = rawText;
+      if (format === 'json') {
+        content = JSON.stringify({ title: parsed.info?.Title || '', sections: rawText.split(/\n{2,}/).map((s: string) => s.trim()).filter(Boolean) });
+      } else if (format === 'text') {
+        content = rawText.replace(/[#*_\[\]()]/g, '').replace(/\n{3,}/g, '\n\n');
+      }
+
+      const metadata = {
+        title: parsed.info?.Title || '',
+        author: parsed.info?.Author || '',
+        pages: parsed.numpages || 0,
+      };
+
+      const db = getDb();
+      const now = localNow();
+      const filename = req.file.originalname || 'uploaded.pdf';
+      const result = db.prepare(`
+        INSERT INTO firecrawl_doc_extractions (url, content, format, tables, images_found, metadata, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        `upload://${filename}`, content, format, '[]', 0,
+        JSON.stringify(metadata),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_doc_extractions', Number(result.lastInsertRowid), `Doc upload extract: ${filename}`);
+
+      res.json({ url: `upload://${filename}`, filename, content, format, tables: [], images_found: 0, metadata });
+    } catch (err: any) {
+      try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Document extraction failed', detail: msg });
+    }
+  },
+);
+
 // ── POST /doc-extract — Extract structured content from URL ──
 
 router.post(
@@ -7649,6 +7813,61 @@ router.get(
 // ═════════════════════════════════════════════════════════════
 // 49. LoPDF — PDF Manipulation
 // ═════════════════════════════════════════════════════════════
+
+// ── POST /pdf-manipulate/upload — Upload PDF for manipulation ──
+
+router.post(
+  '/pdf-manipulate/upload',
+  requireRole('admin', 'manager'),
+  pdfUpload.single('file'),
+  async (req: Request, res: Response) => {
+    ensureTables();
+    if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
+
+    const { operations } = req.body as { operations?: string };
+    const ops = operations ? (typeof operations === 'string' ? JSON.parse(operations) : operations) : ['extract_text', 'count_pages'];
+    const validOps = ['extract_text', 'count_pages', 'extract_links', 'get_metadata'];
+    const filteredOps = (Array.isArray(ops) ? ops : []).filter((o: string) => validOps.includes(o));
+
+    try {
+      const pdfParse = (await import('pdf-parse')).default;
+      const buffer = fs.readFileSync(req.file.path);
+      const parsed = await pdfParse(buffer);
+      const md = parsed.text || '';
+      const metadata = { title: parsed.info?.Title || null, author: parsed.info?.Author || null, pages: parsed.numpages || 0 };
+
+      // Clean up
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+
+      const results: any = {};
+      if (filteredOps.includes('extract_text')) results.text = md.substring(0, 50000);
+      if (filteredOps.includes('count_pages')) results.page_count = parsed.numpages || Math.max(1, Math.ceil(md.length / 3000));
+      if (filteredOps.includes('extract_links')) {
+        const linkMatches = md.match(/https?:\/\/[^\s)]+/g) || [];
+        results.links = [...new Set(linkMatches)].slice(0, 50);
+      }
+      if (filteredOps.includes('get_metadata')) results.metadata = metadata;
+
+      const db = getDb();
+      const now = localNow();
+      const filename = req.file.originalname || 'uploaded.pdf';
+      const dbResult = db.prepare(`
+        INSERT INTO firecrawl_pdf_operations (url, operations, results, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        `upload://${filename}`, JSON.stringify(filteredOps), JSON.stringify(results),
+        (req as any).user?.id || (req as any).user?.userId, now,
+      );
+
+      auditLog(req, 'CREATE', 'firecrawl_pdf_operations', Number(dbResult.lastInsertRowid), `PDF upload ops: ${filename}`);
+      res.json({ url: `upload://${filename}`, filename, results });
+    } catch (err: any) {
+      try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'PDF processing failed', detail: msg });
+    }
+  },
+);
 
 // ── POST /pdf-manipulate — Analyze/manipulate a PDF URL ───────
 
