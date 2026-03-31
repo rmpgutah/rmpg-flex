@@ -30,6 +30,10 @@ export interface GeofenceAlert {
   timestamp: string;
 }
 
+interface UseMapGeofencesOptions {
+  onAlert?: (alert: GeofenceAlert) => void;
+}
+
 interface UseMapGeofencesReturn {
   geofences: Geofence[];
   loading: boolean;
@@ -38,6 +42,51 @@ interface UseMapGeofencesReturn {
   drawnVertices: google.maps.LatLngLiteral[];
   clearDrawing: () => void;
   alerts: GeofenceAlert[];
+}
+
+// ─── Web Audio beep ────────────────────────────────────────
+
+let audioCtxCache: AudioContext | null = null;
+
+function playGeofenceBeep(isEnter: boolean): void {
+  try {
+    const audible = localStorage.getItem('rmpg-audible-alerts');
+    if (audible === 'false' || audible === '0') return;
+
+    if (!audioCtxCache) {
+      audioCtxCache = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioCtxCache;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Enter = higher pitch double beep, Exit = lower single beep
+    osc.type = 'sine';
+    osc.frequency.value = isEnter ? 880 : 440;
+    gain.gain.value = 0.15;
+
+    const now = ctx.currentTime;
+    osc.start(now);
+
+    if (isEnter) {
+      // Double beep: on-off-on
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.setValueAtTime(0, now + 0.08);
+      gain.gain.setValueAtTime(0.15, now + 0.12);
+      gain.gain.setValueAtTime(0, now + 0.2);
+      osc.stop(now + 0.22);
+    } else {
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.stop(now + 0.27);
+    }
+  } catch {
+    // Audio not available — silent fail
+  }
 }
 
 // ─── Parse polygon coords ───────────────────────────────────
@@ -81,6 +130,7 @@ function computeCentroid(path: google.maps.LatLngLiteral[]): google.maps.LatLngL
 export function useMapGeofences(
   map: google.maps.Map | null,
   enabled: boolean,
+  options?: UseMapGeofencesOptions,
 ): UseMapGeofencesReturn {
   const { subscribe } = useWebSocket();
 
@@ -363,11 +413,17 @@ export function useMapGeofences(
           timestamp: payload.timestamp || new Date().toISOString(),
         };
         setAlerts((prev) => [alert, ...prev].slice(0, 50)); // keep last 50
+
+        // Play audible beep notification
+        playGeofenceBeep(alert.eventType === 'enter');
+
+        // Notify parent via callback (for toast display)
+        options?.onAlert?.(alert);
       }
     });
 
     return unsub;
-  }, [subscribe]);
+  }, [subscribe, options?.onAlert]);
 
   // ── Cleanup on unmount ──────────────────────────────────
 

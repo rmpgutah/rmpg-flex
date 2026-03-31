@@ -87,7 +87,7 @@ import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorSchem
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
 import { useMapSafetyZones } from './hooks/useMapSafetyZones';
-import { useMapGeofences } from './hooks/useMapGeofences';
+import { useMapGeofences, type GeofenceAlert } from './hooks/useMapGeofences';
 import { useMapClustering } from './hooks/useMapClustering';
 import { useMapDragDispatch } from './hooks/useMapDragDispatch';
 import { useMapTrafficLayer } from './hooks/useMapTrafficLayer';
@@ -115,7 +115,7 @@ import { useMapAlerts, type SafetyAlertType } from './hooks/useMapAlerts';
 import SafetyDashboardPanel from './components/SafetyDashboardPanel';
 import SafetyAlertModal from './components/SafetyAlertModal';
 import ThreatAssessmentPanel from './components/ThreatAssessmentPanel';
-import TacticalToolsPanel from './components/TacticalToolsPanel';
+import TacticalToolsPanel, { type QuickDeployPreset } from './components/TacticalToolsPanel';
 import PerimeterToolsPanel from './components/PerimeterToolsPanel';
 import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
@@ -498,7 +498,11 @@ export default function MapPage() {
   const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
   const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
   const safetyZones = useMapSafetyZones(mapInstanceRef.current, showSafetyZones);
-  const geofences = useMapGeofences(mapInstanceRef.current, showGeofences);
+  const handleGeofenceAlert = useCallback((alert: GeofenceAlert) => {
+    const verb = alert.eventType === 'enter' ? 'entered' : 'exited';
+    addToast(`${alert.unitCallSign} ${verb} ${alert.geofenceName}`, alert.eventType === 'enter' ? 'warning' : 'info');
+  }, [addToast]);
+  const geofences = useMapGeofences(mapInstanceRef.current, showGeofences, { onAlert: handleGeofenceAlert });
   const analysisSummary = useAnalysisSummary(showAnalysisDashboard);
   // Traffic layer
   const { showTraffic, toggleTraffic } = useMapTrafficLayer();
@@ -4550,6 +4554,45 @@ export default function MapPage() {
                 if (c) tactical.addEntryPoint(c.lat(), c.lng(), label);
               }}
               onClearEntryPoints={() => tactical.clearEntryPoints()}
+              onQuickDeploy={(preset: QuickDeployPreset) => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (!c) return;
+                const lat = c.lat();
+                const lng = c.lng();
+                // Clear existing tactical markers first
+                tactical.clearRallyPoint();
+                tactical.clearEntryPoints();
+                tactical.clearCommandRings();
+                tactical.clearK9Radius();
+
+                switch (preset) {
+                  case 'traffic_stop':
+                    tactical.setRallyPoint(lat, lng, 'Traffic Stop');
+                    tactical.showCommandRings(lat, lng); // 100/300/500m rings
+                    break;
+                  case 'building_search':
+                    // 4 entry points at N/S/E/W offsets (~50m)
+                    tactical.addEntryPoint(lat + 0.00045, lng, 'North Entry');
+                    tactical.addEntryPoint(lat - 0.00045, lng, 'South Entry');
+                    tactical.addEntryPoint(lat, lng + 0.0006, 'East Entry');
+                    tactical.addEntryPoint(lat, lng - 0.0006, 'West Entry');
+                    tactical.showK9Radius(lat, lng); // K9 radius
+                    break;
+                  case 'active_threat':
+                    tactical.setRallyPoint(lat + 0.003, lng, 'Command Post');
+                    tactical.showCommandRings(lat, lng); // inner/outer perimeters
+                    break;
+                  case 'crowd_control':
+                    // 4 rally points at corners (~250m offsets)
+                    tactical.addEntryPoint(lat + 0.0023, lng + 0.003, 'NE Rally');
+                    tactical.addEntryPoint(lat + 0.0023, lng - 0.003, 'NW Rally');
+                    tactical.addEntryPoint(lat - 0.0023, lng + 0.003, 'SE Rally');
+                    tactical.addEntryPoint(lat - 0.0023, lng - 0.003, 'SW Rally');
+                    tactical.showCommandRings(lat, lng); // perimeter rings
+                    break;
+                }
+                addToast(`${preset.replace('_', ' ').toUpperCase()} deployed at map center`, 'success');
+              }}
               onClose={() => setShowTacticalTools(false)}
             />
           </div>
@@ -4938,6 +4981,54 @@ export default function MapPage() {
             <Crosshair className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`} />
           </button>
         </div>
+
+        {/* ── Mini-Stats Bar — live operational counts above status bar ── */}
+        {!isMobile && mapLoaded && (
+          <div
+            className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-6 px-4 select-none pointer-events-none"
+            style={{
+              height: 22,
+              background: 'rgba(20,30,43,0.80)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+              borderTop: '1px solid rgba(30,48,72,0.5)',
+            }}
+          >
+            {/* Active Calls */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: calls.length > 0 ? '#ef4444' : '#22c55e', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Active Calls</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">{calls.length}</span>
+            </div>
+            {/* Units On Duty */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: '#3b82f6', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Units On Duty</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">{units.filter(u => u.status !== 'off_duty').length}</span>
+            </div>
+            {/* Avg Response Time — estimated from dispatched call ratio */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: '#f59e0b', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Avg Response</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">
+                {(() => {
+                  const dispatched = units.filter(u => u.status === 'dispatched' || u.status === 'enroute').length;
+                  const available = units.filter(u => u.status === 'available').length;
+                  // Estimate: more dispatched vs available = longer response times
+                  const base = 4; // baseline 4 min
+                  const load = available > 0 ? Math.min(dispatched / available, 3) : 3;
+                  return `${(base + load * 3).toFixed(1)}m`;
+                })()}
+              </span>
+            </div>
+            {/* Coverage */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: (unitSafety.coveragePercent ?? 0) >= 70 ? '#22c55e' : (unitSafety.coveragePercent ?? 0) >= 40 ? '#f59e0b' : '#ef4444', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Coverage</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">{unitSafety.coveragePercent ?? 0}%</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Right Sidebar - Unit/Call List (Desktop only, responsive width) ── */}

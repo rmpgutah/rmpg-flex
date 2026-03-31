@@ -6,7 +6,7 @@
 // and statistical summary.
 // ============================================================
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   SlidersHorizontal,
   Loader2,
@@ -20,6 +20,7 @@ import {
   RotateCw,
   Check,
   Minus,
+  Zap,
 } from 'lucide-react';
 import type {
   HeatmapAdvancedMode,
@@ -121,6 +122,25 @@ const COMPARISON_PERIODS = [
   { days: 90, label: '90d' },
 ];
 
+// ─── Quick Presets ─────────────────────────────────────────
+
+interface HeatmapPreset {
+  key: string;
+  label: string;
+  mode: HeatmapAdvancedMode;
+  colorScheme: HeatmapColorScheme;
+  radius: number;
+  hourRange?: [number, number];
+  accent: string;
+}
+
+const QUICK_PRESETS: HeatmapPreset[] = [
+  { key: 'crime', label: 'Crime', mode: 'density', colorScheme: 'heat', radius: 30, accent: '#f97316' },
+  { key: 'risk', label: 'Risk', mode: 'risk', colorScheme: 'risk', radius: 25, accent: '#ef4444' },
+  { key: 'temporal', label: 'Temporal', mode: 'temporal', colorScheme: 'blue', radius: 20, accent: '#3b82f6' },
+  { key: 'night', label: 'Night Shift', mode: 'density', colorScheme: 'purple', radius: 30, hourRange: [19, 7], accent: '#a855f7' },
+];
+
 // ─── Helpers ────────────────────────────────────────────────
 
 function formatHour(h: number): string {
@@ -196,6 +216,17 @@ export default function AdvancedHeatmapPanel({
     if (!stats?.topTypes?.length) return 1;
     return Math.max(...stats.topTypes.map((t) => t.count), 1);
   }, [stats]);
+
+  // ── Quick preset handler ──
+
+  const applyPreset = useCallback((preset: HeatmapPreset) => {
+    onModeChange(preset.mode);
+    onColorSchemeChange(preset.colorScheme);
+    onRadiusChange(preset.radius);
+    if (preset.hourRange) {
+      onHourRangeChange(preset.hourRange);
+    }
+  }, [onModeChange, onColorSchemeChange, onRadiusChange, onHourRangeChange]);
 
   // ── Day filter helpers ──
 
@@ -296,6 +327,32 @@ export default function AdvancedHeatmapPanel({
                 </button>
               );
             })}
+          </div>
+
+          {/* ── Quick Presets ── */}
+          <div className="mt-2.5 pt-2" style={{ borderTop: '1px solid #1e2a3a' }}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Zap size={10} className="text-rmpg-500" />
+              <span className="text-[8px] uppercase tracking-widest font-bold text-rmpg-500">Quick Presets</span>
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              {QUICK_PRESETS.map((preset) => (
+                <button
+                  type="button"
+                  key={preset.key}
+                  onClick={() => applyPreset(preset)}
+                  className="px-1 py-1.5 rounded-sm text-[8px] font-bold uppercase tracking-wider transition-all duration-150 active:scale-[0.97] hover:brightness-125"
+                  style={{
+                    background: `${preset.accent}15`,
+                    border: `1px solid ${preset.accent}40`,
+                    color: preset.accent,
+                  }}
+                  title={`Apply ${preset.label} preset: ${preset.mode} mode, ${preset.colorScheme} colors, ${preset.radius}px radius${preset.hourRange ? `, ${formatHourCompact(preset.hourRange[0])}-${formatHourCompact(preset.hourRange[1])}` : ''}`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
