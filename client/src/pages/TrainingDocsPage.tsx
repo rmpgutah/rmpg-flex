@@ -6,8 +6,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2,
   Edit2, Loader2, X, Upload, Link as LinkIcon, Star, Eye, EyeOff,
-  FileVideo, FileSpreadsheet, FileImage, File,
+  FileVideo, FileSpreadsheet, FileImage, File, Printer,
 } from 'lucide-react';
+import { BLANK_FORMS, downloadBlankForm, type BlankFormDef } from '../utils/blankFormGenerator';
 import { useAuth } from '../context/AuthContext';
 import {
   apiFetchCompanyDocuments,
@@ -89,6 +90,7 @@ export default function TrainingDocsPage() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editDoc, setEditDoc] = useState<any | null>(null);
+  const [showBlankForms, setShowBlankForms] = useState(false);
 
   // Document title
   useEffect(() => { document.title = 'Policies & Training Docs \u2014 RMPG Flex'; }, []);
@@ -187,6 +189,14 @@ export default function TrainingDocsPage() {
               </button>
             )}
           </div>
+          <button type="button"
+            onClick={() => setShowBlankForms(v => !v)}
+            className={`toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1 ${showBlankForms ? 'toolbar-btn-primary' : ''}`}
+            title="Printable Blank Forms"
+          >
+            <Printer className="w-3 h-3" />
+            Blank Forms
+          </button>
           <ExportButton exportUrl="/api/company-documents/export/csv" exportFilename="training-docs.csv" />
           {isAdmin && (
             <button type="button"
@@ -216,6 +226,36 @@ export default function TrainingDocsPage() {
           </button>
         ))}
       </div>
+
+      {/* Blank Forms Grid */}
+      {showBlankForms && (
+        <div className="mx-3 mt-3 panel-beveled border border-rmpg-700 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Printer className="w-4 h-4 text-brand-400" />
+            <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Printable Blank Forms</h2>
+            <span className="text-[9px] text-rmpg-500 ml-2">Download blank PDF forms for field use</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {(['incident', 'record', 'operations', 'administrative'] as const).map(cat => (
+              <div key={cat}>
+                <h3 className="text-[10px] font-bold text-rmpg-400 uppercase mb-2 tracking-wider">{cat}</h3>
+                {BLANK_FORMS.filter(f => f.category === cat).map(form => (
+                  <button
+                    key={form.id}
+                    onClick={() => downloadBlankForm(form.id)}
+                    className="w-full text-left mb-2 px-3 py-2 bg-surface-raised hover:bg-surface-raised/80 border border-rmpg-700/50 transition-colors"
+                    style={{ borderRadius: '2px' }}
+                  >
+                    <div className="text-[11px] font-bold text-white">{form.name}</div>
+                    <div className="text-[9px] text-rmpg-400 mt-0.5">{form.formNumber}</div>
+                    <div className="text-[9px] text-rmpg-500 mt-0.5">{form.description}</div>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Document List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-dark" role="tabpanel">
