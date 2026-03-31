@@ -111,7 +111,7 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     const formData = new FormData();
     formData.append('image', blob, req.file.originalname || 'dl-scan.jpg');
 
-    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/extract', {
+    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
       method: 'POST',
       headers: {
         'x-rapidapi-key': apiKey,
