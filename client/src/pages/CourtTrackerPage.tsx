@@ -900,12 +900,13 @@ export default function CourtTrackerPage() {
                     <Users style={{ width: 10, height: 10 }} /> Witnesses
                   </div>
                   <button type="button" onClick={() => {
-                    setWitnesses(JSON.parse((selected as any).witnesses || '[]'));
+                    try { setWitnesses(JSON.parse((selected as any).witnesses || '[]')); } catch { setWitnesses([]); }
                     setWitnessOpen(true);
                   }} className="toolbar-btn text-[9px]">Manage</button>
                 </div>
                 {(() => {
-                  const w = JSON.parse((selected as any).witnesses || '[]');
+                  let w: any[] = [];
+                  try { w = JSON.parse((selected as any).witnesses || '[]'); } catch { /* invalid JSON */ }
                   if (w.length === 0) return <div className="text-[10px] text-rmpg-500">No witnesses recorded.</div>;
                   return w.map((wit: any, i: number) => (
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
@@ -932,7 +933,8 @@ export default function CourtTrackerPage() {
 
               {/* Feature 3: Continuance log */}
               {(() => {
-                const log = JSON.parse((selected as any).continuance_log || '[]');
+                let log: any[] = [];
+                try { log = JSON.parse((selected as any).continuance_log || '[]'); } catch { /* invalid JSON */ }
                 if (log.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
