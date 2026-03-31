@@ -1993,6 +1993,78 @@ export default function MapPage() {
   }, [createMarker, removeMarker]);
 
   // ============================================================
+  // Keyboard Shortcuts for Map
+  // ============================================================
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      switch (e.key.toLowerCase()) {
+        case 'l': // Toggle layers panel
+          e.preventDefault();
+          setLayersPanelOpen(prev => !prev);
+          break;
+        case 'h': // Toggle heatmap
+          e.preventDefault();
+          setShowHeatmap(prev => !prev);
+          break;
+        case 't': // Toggle traffic
+          if (typeof toggleTraffic === 'function') {
+            e.preventDefault();
+            toggleTraffic(mapInstanceRef.current);
+          }
+          break;
+        case 'b': // Toggle breadcrumbs
+          e.preventDefault();
+          setShowBreadcrumbs(prev => !prev);
+          break;
+        case 'c': // Center on all units
+          e.preventDefault();
+          if (mapInstanceRef.current && units.length > 0) {
+            const bounds = new google.maps.LatLngBounds();
+            let hasCoords = false;
+            units.forEach(u => {
+              if (u.latitude != null && u.longitude != null) {
+                bounds.extend({ lat: u.latitude, lng: u.longitude });
+                hasCoords = true;
+              }
+            });
+            if (hasCoords) mapInstanceRef.current.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: layersPanelOpen ? 220 : 60 });
+          }
+          break;
+        case '+':
+        case '=': // Zoom in
+          e.preventDefault();
+          if (mapInstanceRef.current) {
+            const z = mapInstanceRef.current.getZoom();
+            if (z != null) mapInstanceRef.current.setZoom(z + 1);
+          }
+          break;
+        case '-': // Zoom out
+          e.preventDefault();
+          if (mapInstanceRef.current) {
+            const z = mapInstanceRef.current.getZoom();
+            if (z != null) mapInstanceRef.current.setZoom(z - 1);
+          }
+          break;
+        case 'escape': // Close all panels
+          e.preventDefault();
+          infoWindowRef.current?.close();
+          setLayersPanelOpen(false);
+          setSidebarOpen(false);
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [units, layersPanelOpen]);
+
+  // ============================================================
   // Render
   // ============================================================
 

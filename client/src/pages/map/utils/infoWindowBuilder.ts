@@ -137,6 +137,32 @@ export function buildUnitInfoWindow(
   // GPS accuracy indicator color
   const gpsColor = gpsSource === 'device' ? C_GREEN : gpsSource === 'manual' ? C_GOLD : C_TEXT_MUTED;
 
+  // Speed and heading formatting
+  const speedMph = unit.gps_speed != null ? `${(unit.gps_speed * 2.237).toFixed(0)} mph` : '';
+  const headingDirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const headingStr = unit.gps_heading != null
+    ? `${headingDirs[Math.round(unit.gps_heading / 45) % 8]} (${Math.round(unit.gps_heading)}\u00b0)`
+    : '';
+
+  // Time on scene / time since dispatch
+  let timeOnScene = '';
+  let timeSinceDispatch = '';
+  if (unit.onscene_at) {
+    const ms = Date.now() - new Date(unit.onscene_at).getTime();
+    const mins = Math.floor(ms / 60000);
+    timeOnScene = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+  if (unit.dispatched_at && !unit.onscene_at) {
+    const ms = Date.now() - new Date(unit.dispatched_at).getTime();
+    const mins = Math.floor(ms / 60000);
+    timeSinceDispatch = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  // Battery level color
+  const batteryColor = unit.battery_level != null
+    ? unit.battery_level > 50 ? C_GREEN : unit.battery_level > 20 ? C_AMBER : C_RED
+    : C_TEXT_MUTED;
+
   // Overview tab
   const overviewTab = `
     <div style="padding:4px 6px;background:${C_BASE};border-radius:2px;border:1px solid ${C_BORDER}20;">
@@ -144,6 +170,11 @@ export function buildUnitInfoWindow(
       ${dataRow('Status', statusLabel, statusColor)}
       ${unit.vehicle ? dataRow('Vehicle', unit.vehicle, C_TEXT_DIM) : ''}
       ${dataRow('GPS Source', gpsSource + ' ', gpsColor)}
+      ${speedMph ? dataRow('Speed', speedMph, C_TEXT) : ''}
+      ${headingStr ? dataRow('Heading', headingStr, C_TEXT_DIM) : ''}
+      ${unit.battery_level != null ? dataRow('Battery', `${unit.battery_level}%`, batteryColor) : ''}
+      ${timeOnScene ? dataRow('On Scene', timeOnScene, C_AMBER) : ''}
+      ${timeSinceDispatch ? dataRow('Since Dispatch', timeSinceDispatch, C_TEXT_DIM) : ''}
       ${unit.last_gps_update ? dataRow('Last Update', formatTimestamp(unit.last_gps_update), C_TEXT_DIM) : ''}
     </div>
   `;

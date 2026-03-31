@@ -23,6 +23,11 @@ export interface MapUnit {
   current_call_type: string | null;
   current_call_location: string | null;
   gps_source?: string;
+  gps_speed?: number | null;       // m/s from GPS tracker
+  gps_heading?: number | null;     // degrees 0-360
+  battery_level?: number | null;   // 0-100 from mobile device
+  dispatched_at?: string | null;   // timestamp when dispatched to current call
+  onscene_at?: string | null;      // timestamp when arrived on scene
 }
 
 export interface ActiveCall {

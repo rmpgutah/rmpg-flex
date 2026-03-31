@@ -20,13 +20,42 @@ interface WeatherWidgetProps {
   weather: UseWeatherOverlayResult;
 }
 
+// Wind direction degree → compass cardinal
+function windCardinal(deg: number | null): string {
+  if (deg == null) return '';
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
+// Format sunrise/sunset time string (ISO) to short time
+function formatSunTime(iso: string | null): string {
+  if (!iso) return '--';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch { return '--'; }
+}
+
+// Visibility in miles
+function formatVisibilityMi(meters: number | null): string {
+  if (meters == null) return '--';
+  const mi = meters / 1609.34;
+  if (mi >= 10) return '10+ mi';
+  return `${mi.toFixed(1)} mi`;
+}
+
 export default function WeatherWidget({ weather }: WeatherWidgetProps) {
-  const { temp, weatherCode, humidity, windSpeed, loading } = weather;
+  const { temp, weatherCode, humidity, windSpeed, windDirection, feelsLike, uvIndex, visibility, sunrise, sunset, loading } = weather;
   const { icon, label } = weatherInfo(weatherCode);
+
+  const visStr = formatVisibilityMi(visibility);
+  const sunriseStr = formatSunTime(sunrise);
+  const sunsetStr = formatSunTime(sunset);
+  const cardinal = windCardinal(windDirection);
 
   const tooltip =
     temp !== null
-      ? `${label} · ${temp}°F\nHumidity: ${humidity}%\nWind: ${windSpeed} mph`
+      ? `${label} · ${temp}°F${feelsLike != null ? ` (feels ${feelsLike}°F)` : ''}\nHumidity: ${humidity}%\nWind: ${windSpeed} mph ${cardinal}\nVisibility: ${visStr}${uvIndex != null ? `\nUV Index: ${uvIndex}` : ''}\nSunrise: ${sunriseStr} · Sunset: ${sunsetStr}`
       : 'Weather unavailable';
 
   return (
@@ -55,9 +84,50 @@ export default function WeatherWidget({ weather }: WeatherWidgetProps) {
           {/* #45: Weather values with font-mono for alignment */}
           <span className="font-medium font-mono tabular-nums">{temp ?? '—'}°F</span>
           <span className="text-white/30 text-[9px]">|</span>
-          <span className="text-white/50 font-mono tabular-nums">{windSpeed ?? '—'} mph</span>
+          {/* Wind speed + direction compass arrow */}
+          <span className="flex items-center gap-0.5 text-white/50 font-mono tabular-nums">
+            {windDirection != null && (
+              <span
+                className="inline-block text-[9px] text-white/40"
+                style={{ transform: `rotate(${windDirection}deg)`, lineHeight: 1 }}
+                title={`Wind from ${cardinal} (${windDirection}°)`}
+              >
+                &#8595;
+              </span>
+            )}
+            {windSpeed ?? '—'} mph
+          </span>
+          {/* Hover-expanded details */}
           <span className="hidden group-hover:inline text-white/30 text-[9px]">|</span>
           <span className="hidden group-hover:inline text-white/50 font-mono tabular-nums">{humidity ?? '—'}%</span>
+          {/* Visibility on hover */}
+          {visibility != null && (
+            <>
+              <span className="hidden group-hover:inline text-white/30 text-[9px]">|</span>
+              <span className="hidden group-hover:inline text-white/50 font-mono tabular-nums text-[10px]">{visStr}</span>
+            </>
+          )}
+          {/* UV index on hover */}
+          {uvIndex != null && uvIndex > 0 && (
+            <>
+              <span className="hidden group-hover:inline text-white/30 text-[9px]">|</span>
+              <span className={`hidden group-hover:inline font-mono tabular-nums text-[10px] ${
+                uvIndex >= 8 ? 'text-red-400' : uvIndex >= 6 ? 'text-orange-400' : uvIndex >= 3 ? 'text-yellow-400' : 'text-white/50'
+              }`}>UV {uvIndex}</span>
+            </>
+          )}
+          {/* Sunrise/sunset on hover */}
+          {sunrise && sunset && (
+            <>
+              <span className="hidden group-hover:inline text-white/30 text-[9px]">|</span>
+              <span className="hidden group-hover:inline text-yellow-400/60 font-mono tabular-nums text-[9px]" title={`Sunrise ${sunriseStr}`}>
+                &#9728;{sunriseStr}
+              </span>
+              <span className="hidden group-hover:inline text-blue-400/60 font-mono tabular-nums text-[9px]" title={`Sunset ${sunsetStr}`}>
+                &#9790;{sunsetStr}
+              </span>
+            </>
+          )}
         </>
       )}
     </div>

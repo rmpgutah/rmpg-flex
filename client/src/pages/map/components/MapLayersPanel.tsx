@@ -190,6 +190,21 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
   const [showDistrictLegend, setShowDistrictLegend] = useState(false);
   const [showShiftPanel, setShowShiftPanel] = useState(false);
   const [showEventPanel, setShowEventPanel] = useState(false);
+
+  // Collapsible category group states
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('rmpg_map_layer_groups');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups(prev => {
+      const next = { ...prev, [group]: !prev[group] };
+      try { localStorage.setItem('rmpg_map_layer_groups', JSON.stringify(next)); } catch { /* noop */ }
+      return next;
+    });
+  };
   const [newPlanName, setNewPlanName] = useState('');
   const [newShiftPlanName, setNewShiftPlanName] = useState('');
   const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => localToday());
@@ -303,6 +318,16 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           </button>
         ))}
 
+        {/* Live Tracking group header */}
+        <button type="button"
+          onClick={() => toggleGroup('tracking')}
+          className="flex items-center justify-between w-full px-1 py-0.5 mt-1 border-t border-[#1e3048]/50"
+        >
+          <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Live Tracking</span>
+          {collapsedGroups.tracking ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" />}
+        </button>
+
+        {!collapsedGroups.tracking && <>
         {/* Heat Map */}
         <button type="button"
           onClick={() => setShowHeatmap(!showHeatmap)}
@@ -623,6 +648,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             )}
           </div>
         )}
+      </>}
       </div>
 
       {/* Measurement Tools */}
@@ -1333,8 +1359,19 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
       {/* Fix 93: group related toggles (intelligence group) */}
       {intelLayers && toggleIntelLayer && (
         <div className="border-t border-rmpg-700 p-1.5">
-          <div className="flex items-center justify-between mb-1.5 px-1">
+          <button type="button" onClick={() => toggleGroup('intel')} className="flex items-center justify-between w-full px-1 mb-0.5">
             <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Intelligence</span>
+            <div className="flex items-center gap-1">
+              {collapsedGroups.intel && intelCounts && (
+                <span className="text-[7px] font-mono text-rmpg-500">
+                  {(intelCounts.warrants || 0) + (intelCounts.trespass || 0) + (intelCounts.offenders || 0) + (intelCounts.bolos || 0)}
+                </span>
+              )}
+              {collapsedGroups.intel ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" />}
+            </div>
+          </button>
+          {!collapsedGroups.intel && <div className="flex items-center justify-between mb-1.5 px-1">
+            <span className="text-[7px] text-rmpg-600" />
             {/* Fix 94: "All On" / "All Off" buttons per group */}
             <div className="flex gap-1">
               <button type="button"
@@ -1376,13 +1413,18 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               )}
             </button>
           ))}
+          </div>}
         </div>
       )}
 
       {/* ── Analysis ── */}
       {(setShowPredictions || setShowSafetyZones || setShowGeofences) && (
         <div className="border-t border-rmpg-700 p-1.5">
-          <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
+          <button type="button" onClick={() => toggleGroup('analysis')} className="flex items-center justify-between w-full px-1 mb-0.5">
+            <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Analysis</span>
+            {collapsedGroups.analysis ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" />}
+          </button>
+          {!collapsedGroups.analysis && <>
 
           {setShowPredictions && (
             <button type="button"
@@ -1440,13 +1482,18 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               )}
             </div>
           )}
+          </>}
         </div>
       )}
 
       {/* ── Tactical Layers ── */}
       {(setShowPatrolCheckpoints || setShowFieldInterviews || setShowDwellTime || setShowResponseRadius || setShowEnforcementClusters || setShowCoverage || setShowFleetVehicles || setShowRepeatAddresses || setShowPanicZone || setShowDaylight) && (
         <div className="border-t border-rmpg-700 p-1.5">
-          <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
+          <button type="button" onClick={() => toggleGroup('tactical')} className="flex items-center justify-between w-full px-1 mb-0.5">
+            <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Tactical</span>
+            {collapsedGroups.tactical ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" />}
+          </button>
+          {!collapsedGroups.tactical && <>
 
           {/* Patrol Checkpoints */}
           {setShowPatrolCheckpoints && (
@@ -1721,6 +1768,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               )}
             </button>
           )}
+          </>}
         </div>
       )}
 

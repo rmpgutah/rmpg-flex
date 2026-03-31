@@ -582,6 +582,18 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 />
               </div>
 
+              {/* Timeline time range labels */}
+              {trail.points.length > 1 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[7px] font-mono text-rmpg-500">
+                    {new Date(trail.points[0].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                  </span>
+                  <span className="text-[7px] font-mono text-rmpg-500">
+                    {new Date(trail.points[trail.points.length - 1].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                  </span>
+                </div>
+              )}
+
               {/* Scrub slider */}
               <input
                 type="range"
@@ -676,9 +688,29 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                   <SkipForward className="w-3 h-3 text-rmpg-300" />
                 </button>
 
+                {/* Jump to end (now) */}
+                <button type="button"
+                  onClick={() => {
+                    const lastIdx = totalPts - 1;
+                    setPlaybackIdx(lastIdx);
+                    setIsPlaying(false);
+                    if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
+                    if (trail.points[lastIdx] && playbackMarkerRef.current) {
+                      playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
+                    }
+                    if (trail.points[lastIdx] && map) {
+                      map.panTo({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
+                    }
+                  }}
+                  className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors text-amber-400 hover:bg-amber-900/30 border border-amber-700/30"
+                  title="Jump to latest point"
+                >
+                  NOW
+                </button>
+
                 {/* Speed buttons */}
                 <div className="flex items-center gap-0.5 ml-auto">
-                  {[1, 2, 4, 8].map((s) => (
+                  {[0.5, 1, 2, 4, 8].map((s) => (
                     <button type="button"
                       key={s}
                       onClick={() => setPlaybackSpeed(s)}
