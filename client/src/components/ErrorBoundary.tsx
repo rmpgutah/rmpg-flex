@@ -30,6 +30,20 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
+
+    // Auto-reload on stale chunk errors (happens after deploys when cached JS references old chunks)
+    const msg = error.message || '';
+    if (msg.includes('Failed to fetch dynamically imported module') || msg.includes('ChunkLoadError') || msg.includes('Loading chunk')) {
+      const reloadKey = 'rmpg_chunk_reload';
+      const lastReload = sessionStorage.getItem(reloadKey);
+      // Only auto-reload once per session to prevent infinite loops
+      if (!lastReload || Date.now() - parseInt(lastReload) > 30000) {
+        sessionStorage.setItem(reloadKey, String(Date.now()));
+        window.location.reload();
+        return;
+      }
+    }
+
     // Save component stack for display in error UI
     this.setState({ componentStack: info.componentStack || null });
     // Report to server for diagnostics (fire-and-forget, best-effort)
