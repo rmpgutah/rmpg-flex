@@ -1,8 +1,28 @@
 import { useEffect, useRef, useState, useCallback, type MutableRefObject } from 'react';
 import { escapeHtml } from '../../../utils/sanitize';
 
+// ── Recent searches localStorage key ──
+const RECENT_SEARCHES_KEY = 'rmpg_map_recent_searches';
+const MAX_RECENT_SEARCHES = 5;
+
+function getRecentSearches(): { description: string; place_id: string }[] {
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function addRecentSearch(description: string, placeId: string) {
+  try {
+    const recent = getRecentSearches().filter(r => r.place_id !== placeId);
+    recent.unshift({ description, place_id: placeId });
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(recent.slice(0, MAX_RECENT_SEARCHES)));
+  } catch { /* ignore */ }
+}
+
 interface UseMapAddressSearchParams {
   mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  infoWindowRef?: React.MutableRefObject<google.maps.InfoWindow | null>;
   createMarker: (opts: {
     map: google.maps.Map;
     position: google.maps.LatLngLiteral;
@@ -31,10 +51,11 @@ function buildAddressMarkerElement(label: string): HTMLElement {
   return wrapper;
 }
 
-export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker }: UseMapAddressSearchParams) {
+export function useMapAddressSearch({ mapInstanceRef, infoWindowRef, createMarker, removeMarker }: UseMapAddressSearchParams) {
   const [addressSearch, setAddressSearch] = useState('');
   const [addressResults, setAddressResults] = useState<{ description: string; place_id: string }[]>([]);
   const [showAddressResults, setShowAddressResults] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<{ description: string; place_id: string }[]>(getRecentSearches);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addressMarkerRef = useRef<any>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +107,10 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
     const map = mapInstanceRef.current;
     if (!map || typeof google === 'undefined') return;
 
+    // Save to recent searches
+    addRecentSearch(description, placeId);
+    setRecentSearches(getRecentSearches());
+
     if (!geocoderRef.current) {
       geocoderRef.current = new google.maps.Geocoder();
     }
@@ -102,12 +127,35 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
 
         const el = buildAddressMarkerElement(description.split(',')[0]);
 
+        const pos = { lat: loc.lat(), lng: loc.lng() };
         addressMarkerRef.current = createMarker({
           map,
-          position: { lat: loc.lat(), lng: loc.lng() },
+          position: pos,
           content: el,
           zIndex: 5000,
           title: description,
+          onClick: () => {
+            // Show address info window on click
+            if (infoWindowRef?.current) {
+              const container = document.createElement('div');
+              container.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a";
+              const heading = document.createElement('div');
+              heading.style.cssText = 'font-weight:bold;font-size:12px;margin-bottom:4px;color:#3b82f6';
+              heading.textContent = description.split(',')[0];
+              container.appendChild(heading);
+              const addr = document.createElement('div');
+              addr.style.cssText = 'font-size:9px;color:#9ca3af;margin-bottom:4px;';
+              addr.textContent = description;
+              container.appendChild(addr);
+              const coords = document.createElement('div');
+              coords.style.cssText = 'font-size:8px;color:#6b7280;';
+              coords.textContent = `${loc.lat().toFixed(6)}, ${loc.lng().toFixed(6)}`;
+              container.appendChild(coords);
+              infoWindowRef.current.setContent(container);
+              infoWindowRef.current.setPosition(pos);
+              infoWindowRef.current.open(map);
+            }
+          },
         });
 
         if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
@@ -123,7 +171,7 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
 
     setAddressSearch(description.split(',')[0]);
     setShowAddressResults(false);
-  }, [mapInstanceRef, createMarker, removeMarker]);
+  }, [mapInstanceRef, infoWindowRef, createMarker, removeMarker]);
 
   const clearAddressSearch = useCallback(() => {
     setAddressSearch('');
@@ -144,5 +192,6 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
     handleAddressSearch,
     handleAddressSelect,
     clearAddressSearch,
+    recentSearches,
   };
 }

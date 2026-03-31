@@ -40,6 +40,7 @@ export interface ActiveCall {
   latitude: number | null;
   longitude: number | null;
   property_name: string | null;
+  created_at?: string | null;
 }
 
 export interface MapProperty {

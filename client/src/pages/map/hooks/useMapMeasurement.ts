@@ -10,15 +10,29 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 
 export type MeasureMode = 'distance' | 'area';
 
+export interface SegmentInfo {
+  fromIdx: number;
+  toIdx: number;
+  meters: number;
+  displayFt: string;
+  displayM: string;
+}
+
 export interface MeasurementState {
   measuring: boolean;
   measureMode: MeasureMode | null;
   measureValue: number;
   measureUnit: string;
   measureDisplay: string;
+  measureDisplayMetric: string;
+  segments: SegmentInfo[];
+  perimeterDisplay: string;
+  areaDisplay: string;
+  pointCount: number;
   startMeasure: (map: google.maps.Map, mode: MeasureMode) => void;
   finishMeasurement: () => void;
   clearMeasurement: () => void;
+  undoLastPoint: () => void;
 }
 
 // ─── Haversine distance (meters) ────────────────────────────
@@ -82,6 +96,16 @@ function formatDistance(meters: number): { value: number; unit: string; display:
   return { value: miles, unit: 'mi', display: `${miles.toFixed(2)} mi` };
 }
 
+function formatDistanceMetric(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(2)} km`;
+}
+
+function formatAreaMetric(sqMeters: number): string {
+  if (sqMeters < 10000) return `${Math.round(sqMeters).toLocaleString()} sq m`;
+  return `${(sqMeters / 10000).toFixed(2)} hectares`;
+}
+
 function formatArea(sqMeters: number): { value: number; unit: string; display: string } {
   const sqFeet = sqMeters * 10.7639;
   if (sqFeet < 43560) {
@@ -124,11 +148,17 @@ export function useMapMeasurement(): MeasurementState {
   const [measureValue, setMeasureValue] = useState(0);
   const [measureUnit, setMeasureUnit] = useState('');
   const [measureDisplay, setMeasureDisplay] = useState('');
+  const [measureDisplayMetric, setMeasureDisplayMetric] = useState('');
+  const [segments, setSegments] = useState<SegmentInfo[]>([]);
+  const [perimeterDisplay, setPerimeterDisplay] = useState('');
+  const [areaDisplay, setAreaDisplay] = useState('');
+  const [pointCount, setPointCount] = useState(0);
 
   const pathRef = useRef<google.maps.LatLngLiteral[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const polygonRef = useRef<google.maps.Polygon | null>(null);
   const vertexMarkersRef = useRef<google.maps.Marker[]>([]);
+  const segmentLabelsRef = useRef<google.maps.InfoWindow[]>([]);
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const dblClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -136,30 +166,126 @@ export function useMapMeasurement(): MeasurementState {
 
   // ── Update measurement display ─────────────────────────
 
+  // ── Clear segment labels ─────────────────────────────────
+  const clearSegmentLabels = useCallback(() => {
+    segmentLabelsRef.current.forEach(iw => iw.close());
+    segmentLabelsRef.current = [];
+  }, []);
+
+  // ── Render segment distance labels on map ─────────────────
+  const renderSegmentLabels = useCallback((segs: SegmentInfo[]) => {
+    clearSegmentLabels();
+    const map = mapRef.current;
+    const path = pathRef.current;
+    if (!map || segs.length === 0) return;
+
+    segs.forEach((seg) => {
+      const p1 = path[seg.fromIdx];
+      const p2 = path[seg.toIdx];
+      if (!p1 || !p2) return;
+      const midLat = (p1.lat + p2.lat) / 2;
+      const midLng = (p1.lng + p2.lng) / 2;
+
+      const iw = new google.maps.InfoWindow({
+        content: `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#d4a017;background:#0d1520;padding:2px 6px;border:1px solid #d4a01740;border-radius:2px;white-space:nowrap;">${seg.displayFt} / ${seg.displayM}</div>`,
+        position: { lat: midLat, lng: midLng },
+        disableAutoPan: true,
+      });
+      iw.open(map);
+      segmentLabelsRef.current.push(iw);
+    });
+  }, [clearSegmentLabels]);
+
   const updateMeasurement = useCallback(() => {
     const path = pathRef.current;
     const mode = modeRef.current;
+    setPointCount(path.length);
 
     if (mode === 'distance') {
       let totalMeters = 0;
+      const segs: SegmentInfo[] = [];
       for (let i = 1; i < path.length; i++) {
-        totalMeters += haversineMeters(
+        const segMeters = haversineMeters(
           path[i - 1].lat, path[i - 1].lng,
           path[i].lat, path[i].lng,
         );
+        totalMeters += segMeters;
+        const segFeet = segMeters * 3.28084;
+        segs.push({
+          fromIdx: i - 1,
+          toIdx: i,
+          meters: segMeters,
+          displayFt: segFeet < 1000 ? `${Math.round(segFeet)} ft` : `${(segFeet / 5280).toFixed(2)} mi`,
+          displayM: formatDistanceMetric(segMeters),
+        });
       }
+      setSegments(segs);
       const fmt = formatDistance(totalMeters);
       setMeasureValue(fmt.value);
       setMeasureUnit(fmt.unit);
       setMeasureDisplay(fmt.display);
+      setMeasureDisplayMetric(formatDistanceMetric(totalMeters));
+
+      // Show perimeter + area if path is closed (3+ points)
+      if (path.length >= 3) {
+        const closingMeters = haversineMeters(
+          path[path.length - 1].lat, path[path.length - 1].lng,
+          path[0].lat, path[0].lng,
+        );
+        const perimMeters = totalMeters + closingMeters;
+        const perimFmt = formatDistance(perimMeters);
+        setPerimeterDisplay(`Perimeter: ${perimFmt.display} / ${formatDistanceMetric(perimMeters)}`);
+
+        const sqm = computeSphericalArea(path);
+        const areaFmt = formatArea(sqm);
+        setAreaDisplay(`Area: ${areaFmt.display} / ${formatAreaMetric(sqm)}`);
+      } else {
+        setPerimeterDisplay('');
+        setAreaDisplay('');
+      }
+
+      // Render segment labels on map
+      renderSegmentLabels(segs);
     } else if (mode === 'area') {
       const sqm = computeSphericalArea(path);
       const fmt = formatArea(sqm);
       setMeasureValue(fmt.value);
       setMeasureUnit(fmt.unit);
       setMeasureDisplay(fmt.display);
+      setMeasureDisplayMetric(formatAreaMetric(sqm));
+
+      // Calculate perimeter for area mode
+      let perimMeters = 0;
+      const segs: SegmentInfo[] = [];
+      for (let i = 1; i < path.length; i++) {
+        const segMeters = haversineMeters(
+          path[i - 1].lat, path[i - 1].lng,
+          path[i].lat, path[i].lng,
+        );
+        perimMeters += segMeters;
+        const segFeet = segMeters * 3.28084;
+        segs.push({
+          fromIdx: i - 1,
+          toIdx: i,
+          meters: segMeters,
+          displayFt: segFeet < 1000 ? `${Math.round(segFeet)} ft` : `${(segFeet / 5280).toFixed(2)} mi`,
+          displayM: formatDistanceMetric(segMeters),
+        });
+      }
+      if (path.length >= 3) {
+        const closingMeters = haversineMeters(
+          path[path.length - 1].lat, path[path.length - 1].lng,
+          path[0].lat, path[0].lng,
+        );
+        perimMeters += closingMeters;
+      }
+      setSegments(segs);
+      const perimFmt = formatDistance(perimMeters);
+      setPerimeterDisplay(`Perimeter: ${perimFmt.display} / ${formatDistanceMetric(perimMeters)}`);
+      setAreaDisplay('');
+      renderSegmentLabels(segs);
     }
-  }, []);
+  }, [renderSegmentLabels]);
 
   // ── Add a vertex ───────────────────────────────────────
 
@@ -223,7 +349,8 @@ export function useMapMeasurement(): MeasurementState {
       m.setMap(null);
     }
     vertexMarkersRef.current = [];
-  }, []);
+    clearSegmentLabels();
+  }, [clearSegmentLabels]);
 
   // ── Remove listeners ───────────────────────────────────
 
@@ -249,6 +376,40 @@ export function useMapMeasurement(): MeasurementState {
     }
   }, [removeListeners]);
 
+  // ── Undo last point ────────────────────────────────────
+
+  const undoLastPoint = useCallback(() => {
+    if (pathRef.current.length === 0) return;
+
+    // Remove last point
+    pathRef.current = pathRef.current.slice(0, -1);
+
+    // Remove last vertex marker
+    const lastMarker = vertexMarkersRef.current.pop();
+    if (lastMarker) lastMarker.setMap(null);
+
+    // Update shape
+    const mode = modeRef.current;
+    if (mode === 'distance') {
+      polylineRef.current?.setPath(pathRef.current);
+    } else if (mode === 'area') {
+      polygonRef.current?.setPaths(pathRef.current);
+    }
+
+    updateMeasurement();
+
+    // If no points remain, reset display
+    if (pathRef.current.length === 0) {
+      const m = modeRef.current;
+      setMeasureDisplay(m === 'distance' ? '0 ft' : '0 sq ft');
+      setMeasureDisplayMetric(m === 'distance' ? '0 m' : '0 sq m');
+      setSegments([]);
+      setPerimeterDisplay('');
+      setAreaDisplay('');
+      clearSegmentLabels();
+    }
+  }, [updateMeasurement, clearSegmentLabels]);
+
   // ── Clear everything ───────────────────────────────────
 
   const clearMeasurement = useCallback(() => {
@@ -262,6 +423,11 @@ export function useMapMeasurement(): MeasurementState {
     setMeasureValue(0);
     setMeasureUnit('');
     setMeasureDisplay('');
+    setMeasureDisplayMetric('');
+    setSegments([]);
+    setPerimeterDisplay('');
+    setAreaDisplay('');
+    setPointCount(0);
   }, [removeListeners, removeOverlays]);
 
   // ── Start measurement ──────────────────────────────────
@@ -312,8 +478,14 @@ export function useMapMeasurement(): MeasurementState {
     measureValue,
     measureUnit,
     measureDisplay,
+    measureDisplayMetric,
+    segments,
+    perimeterDisplay,
+    areaDisplay,
+    pointCount,
     startMeasure,
     finishMeasurement,
     clearMeasurement,
+    undoLastPoint,
   };
 }
