@@ -8545,4 +8545,56 @@ router.get('/trends', requireRole('admin', 'manager'), (req: Request, res: Respo
   } catch (e: any) { handleFirecrawlError(res, e, 'list trends'); }
 });
 
+// ════════════════════════════════════════════════════════════
+// Additional alias GET routes — FirecrawlTab expects list
+// endpoints at the base plural path. These map to the
+// corresponding /history or differently-named list routes.
+// ════════════════════════════════════════════════════════════
+
+const aliasRoutes: Array<{ path: string; table: string; jsonFields?: string[] }> = [
+  { path: '/ai-ready', table: 'firecrawl_ai_ready_scans', jsonFields: ['recommendations'] },
+  { path: '/compare', table: 'firecrawl_comparisons', jsonFields: ['differences'] },
+  { path: '/search-engine', table: 'firecrawl_search_engine_queries', jsonFields: ['results'] },
+  { path: '/pdf-inspections', table: 'firecrawl_pdf_inspections', jsonFields: ['key_sections', 'extracted_entities'] },
+  { path: '/rag-evals', table: 'firecrawl_rag_evals', jsonFields: ['questions', 'results'] },
+  { path: '/gen-ui', table: 'firecrawl_gen_ui', jsonFields: ['components'] },
+  { path: '/qa-clusters', table: 'firecrawl_qa_clusters', jsonFields: ['clusters', 'insights'] },
+  { path: '/extractions', table: 'firecrawl_extractions', jsonFields: ['schema', 'extracted_data'] },
+  { path: '/html-conversions', table: 'firecrawl_html_conversions' },
+  { path: '/coupon-searches', table: 'firecrawl_coupon_searches', jsonFields: ['coupons_found'] },
+  { path: '/brand-analyses', table: 'firecrawl_brand_analyses', jsonFields: ['analysis_data'] },
+  { path: '/mcp-config', table: 'firecrawl_mcp_config' },
+  { path: '/llmstxt-v2', table: 'firecrawl_llmstxt_v2' },
+  { path: '/news-searches', table: 'firecrawl_news_searches', jsonFields: ['articles'] },
+  { path: '/slack-config', table: 'firecrawl_slack_config' },
+  { path: '/discord-config', table: 'firecrawl_discord_config' },
+  { path: '/doc-extractions', table: 'firecrawl_doc_extractions', jsonFields: ['extracted_fields'] },
+  { path: '/job-matches', table: 'firecrawl_job_matches', jsonFields: ['matches'] },
+  { path: '/mhtml-conversions', table: 'firecrawl_mhtml_conversions' },
+  { path: '/crawl-jobs', table: 'firecrawl_crawl_jobs', jsonFields: ['pages'] },
+  { path: '/cli-history', table: 'firecrawl_cli_history' },
+  { path: '/grok-enrichments', table: 'firecrawl_grok_enrichments', jsonFields: ['result_data'] },
+  { path: '/n8n', table: 'firecrawl_n8n_workflows', jsonFields: ['nodes', 'connections'] },
+  { path: '/mendable-indexes', table: 'firecrawl_mendable_indexes', jsonFields: ['source_urls'] },
+  { path: '/code-analyses', table: 'firecrawl_code_analyses', jsonFields: ['analysis_data'] },
+  { path: '/skill-generations', table: 'firecrawl_skill_generations' },
+  { path: '/ai-chat', table: 'firecrawl_ai_chat_history' },
+  { path: '/pdf-tools', table: 'firecrawl_pdf_operations' },
+  { path: '/assistants', table: 'firecrawl_assistant_chats' },
+  { path: '/console/status', table: 'firecrawl_mcp_logs' },
+];
+
+for (const alias of aliasRoutes) {
+  router.get(alias.path, requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+    ensureTables();
+    try {
+      const db = getDb();
+      const rows = db.prepare(`SELECT * FROM "${alias.table}" ORDER BY created_at DESC LIMIT 100`).all();
+      res.json(alias.jsonFields ? parseJsonRows(rows as any[], alias.jsonFields) : rows);
+    } catch (e: any) {
+      handleFirecrawlError(res, e, `list ${alias.path}`);
+    }
+  });
+}
+
 export default router;
