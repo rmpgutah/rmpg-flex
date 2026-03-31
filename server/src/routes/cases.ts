@@ -49,6 +49,7 @@ router.get('/stats', (req: Request, res: Response) => {
 // ─── POST /migrate-json-to-junctions — Admin only ────────
 router.post('/migrate-json-to-junctions', requireRole('admin'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const cases = db.prepare('SELECT id, linked_calls, linked_incidents, linked_persons FROM cases').all() as any[];
     let migrated = 0;
@@ -598,11 +599,18 @@ function initCaseJunctionTables(): void {
   } catch { /* Tables will be created on first use */ }
 }
 
-// Initialize on module load
+// Initialize on module load (may fail if DB not ready — ensureCaseTables handles retry)
 try { initCaseJunctionTables(); } catch { /* deferred */ }
+
+let _caseTablesReady = false;
+function ensureCaseTables(): void {
+  if (_caseTablesReady) return;
+  try { initCaseJunctionTables(); _caseTablesReady = true; } catch { /* will retry next request */ }
+}
 
 // ── Auto-Cascade Helpers ────────────────────────────────────
 function autoCascadeFromCall(db: any, caseId: number, callId: number, userId: number, processed?: Set<string>): void {
+  ensureCaseTables();
   const seen = processed || new Set<string>();
   const key = `call:${callId}`;
   if (seen.has(key)) return;
@@ -790,6 +798,7 @@ router.post('/:id/archive', (req: Request, res: Response) => {
 
 // ── GET /:id/full — Aggregate Endpoint ──────────────────────
 router.get('/:id/full', (req: Request, res: Response) => {
+  ensureCaseTables();
   try {
     const db = getDb();
     const caseRow = db.prepare(`
@@ -827,6 +836,7 @@ router.get('/:id/full', (req: Request, res: Response) => {
 // ── Calls ───────────────────────────────────────────────────
 router.get('/:id/calls', (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const rows = db.prepare(`
       SELECT cc.id as link_id, cc.created_at as linked_at,
@@ -845,6 +855,7 @@ router.get('/:id/calls', (req: Request, res: Response) => {
 
 router.post('/:id/calls', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const { call_id } = req.body;
     if (!call_id) { res.status(400).json({ error: 'call_id required' }); return; }
@@ -875,6 +886,7 @@ router.delete('/:id/calls/:linkId', requireRole('admin', 'manager', 'supervisor'
 // ── Incidents ───────────────────────────────────────────────
 router.get('/:id/incidents', (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const rows = db.prepare(`
       SELECT ci.id as link_id, ci.created_at as linked_at,
@@ -893,6 +905,7 @@ router.get('/:id/incidents', (req: Request, res: Response) => {
 
 router.post('/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const { incident_id } = req.body;
     if (!incident_id) { res.status(400).json({ error: 'incident_id required' }); return; }
@@ -918,6 +931,7 @@ router.delete('/:id/incidents/:linkId', requireRole('admin', 'manager', 'supervi
 // ── Vehicles ────────────────────────────────────────────────
 router.get('/:id/vehicles', (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const rows = db.prepare(`
       SELECT cv.id as link_id, cv.role, cv.notes, cv.created_at as linked_at,
@@ -935,6 +949,7 @@ router.get('/:id/vehicles', (req: Request, res: Response) => {
 
 router.post('/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const { vehicle_id, role, notes } = req.body;
     if (!vehicle_id) { res.status(400).json({ error: 'vehicle_id required' }); return; }
@@ -958,6 +973,7 @@ router.delete('/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervis
 // ── Properties ──────────────────────────────────────────────
 router.get('/:id/properties', (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const rows = db.prepare(`
       SELECT cpr.id as link_id, cpr.role, cpr.created_at as linked_at,
@@ -975,6 +991,7 @@ router.get('/:id/properties', (req: Request, res: Response) => {
 
 router.post('/:id/properties', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const { property_id, role } = req.body;
     if (!property_id) { res.status(400).json({ error: 'property_id required' }); return; }
@@ -998,6 +1015,7 @@ router.delete('/:id/properties/:linkId', requireRole('admin', 'manager', 'superv
 // ── Evidence ────────────────────────────────────────────────
 router.get('/:id/evidence', (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const rows = db.prepare(`
       SELECT ce.id as link_id, ce.created_at as linked_at,
@@ -1016,6 +1034,7 @@ router.get('/:id/evidence', (req: Request, res: Response) => {
 
 router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const { evidence_id } = req.body;
     if (!evidence_id) { res.status(400).json({ error: 'evidence_id required' }); return; }
@@ -1039,6 +1058,7 @@ router.delete('/:id/evidence/:linkId', requireRole('admin', 'manager', 'supervis
 // ── Warrants ────────────────────────────────────────────────
 router.get('/:id/warrants', (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const rows = db.prepare(`
       SELECT cw.id as link_id, cw.created_at as linked_at,
@@ -1057,6 +1077,7 @@ router.get('/:id/warrants', (req: Request, res: Response) => {
 
 router.post('/:id/warrants', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const { warrant_id } = req.body;
     if (!warrant_id) { res.status(400).json({ error: 'warrant_id required' }); return; }
@@ -1080,6 +1101,7 @@ router.delete('/:id/warrants/:linkId', requireRole('admin', 'manager', 'supervis
 // ── Citations ───────────────────────────────────────────────
 router.get('/:id/citations', (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const rows = db.prepare(`
       SELECT cc2.id as link_id, cc2.created_at as linked_at,
@@ -1098,6 +1120,7 @@ router.get('/:id/citations', (req: Request, res: Response) => {
 
 router.post('/:id/citations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    ensureCaseTables();
     const db = getDb();
     const { citation_id } = req.body;
     if (!citation_id) { res.status(400).json({ error: 'citation_id required' }); return; }
