@@ -137,7 +137,15 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     }
 
     const ocrData = await ocrResponse.json() as any;
-    console.log('[DL OCR] Raw response keys:', Object.keys(ocrData));
+    console.log('[DL OCR] Raw response:', JSON.stringify(ocrData).substring(0, 500));
+
+    // Check for API-level error in 200 response
+    if (ocrData.code && ocrData.message && !ocrData.result && !ocrData.data) {
+      console.error('[DL OCR] API returned error in 200:', ocrData.message);
+      res.status(502).json({ error: ocrData.message || 'OCR API error', code: 'OCR_API_ERROR', detail: JSON.stringify(ocrData) });
+      try { fs.unlinkSync(req.file.path); } catch {}
+      return;
+    }
 
     // Map OCR response to our person/DL record format
     const raw = ocrData.result || ocrData.data || ocrData;
