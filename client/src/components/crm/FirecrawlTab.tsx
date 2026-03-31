@@ -77,6 +77,10 @@ import {
   HelpCircle,
   FileType,
   CircleDot,
+  Radio,
+  Wrench,
+  Shield,
+  Mail,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -276,64 +280,138 @@ function SmallBtn({
   );
 }
 
+// ── Tool Categories ───────────────────────────────────────────
+
+const TOOL_CATEGORIES = [
+  { id: 'monitoring', label: 'Monitoring', icon: Eye },
+  { id: 'extraction', label: 'Extraction', icon: FileSearch },
+  { id: 'enrichment', label: 'Enrichment', icon: Sparkles },
+  { id: 'research', label: 'Research', icon: Search },
+  { id: 'automation', label: 'Automation', icon: Workflow },
+  { id: 'integration', label: 'Integrations', icon: Plug },
+  { id: 'tools', label: 'Tools', icon: Wrench },
+] as const;
+
+type ToolCategory = typeof TOOL_CATEGORIES[number]['id'];
+
 // ── Tab Definitions ───────────────────────────────────────────
 
-const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = [
-  { id: 'scouts', label: 'Scouts', icon: Radar },
-  { id: 'ai-ready', label: 'AI Ready', icon: BrainCircuit },
-  { id: 'cloner', label: 'Site Cloner', icon: Copy },
-  { id: 'brand', label: 'Brand Monitor', icon: Megaphone },
-  { id: 'compare', label: 'Page Compare', icon: GitCompareArrows },
-  { id: 'workflows', label: 'Workflows', icon: Workflow },
-  { id: 'search-engine', label: 'Search Engine', icon: Sparkles },
-  { id: 'enrich', label: 'Enrich', icon: Building2 },
-  { id: 'researcher', label: 'Researcher', icon: BookOpen },
-  { id: 'chatbot', label: 'Chatbot', icon: MessageSquare },
-  { id: 'observer', label: 'Observer', icon: Eye },
-  { id: 'deep-search', label: 'Deep Search', icon: ShieldCheck },
-  { id: 'llmstxt', label: 'LLMs.txt', icon: FileText },
-  { id: 'pdf-inspect', label: 'PDF Inspect', icon: FileSearch },
-  { id: 'graphs', label: 'Graphs', icon: BarChart3 },
-  { id: 'connectors', label: 'Connectors', icon: Plug },
-  { id: 'rag-eval', label: 'RAG Eval', icon: Target },
-  { id: 'trends', label: 'Trends', icon: TrendingUp },
-  { id: 'gen-ui', label: 'Gen UI', icon: LayoutDashboard },
-  { id: 'qa-cluster', label: 'QA Cluster', icon: Layers },
-  { id: 'extract', label: 'Extract', icon: Database },
-  { id: 'html-to-md', label: 'HTML→MD', icon: FileCode },
-  { id: 'coupons', label: 'Coupons', icon: Ticket },
-  { id: 'brand-extend', label: 'Brand Extend', icon: Palette },
-  { id: 'mcp', label: 'MCP', icon: Server },
-  { id: 'examples', label: 'Examples', icon: FolderOpen },
-  { id: 'llmstxt-v2', label: 'LLMs.txt V2', icon: FileText2 },
-  { id: 'mendable', label: 'Mendable', icon: Bot },
-  { id: 'news', label: 'News', icon: Newspaper },
-  { id: 'drafts', label: 'Drafts', icon: PenTool },
-  { id: 'slack', label: 'Slack', icon: MessageCircle },
-  { id: 'discord', label: 'Discord', icon: Hash },
-  { id: 'agents', label: 'Agents', icon: Cpu },
-  { id: 'doc-extract', label: 'Doc Extract', icon: FileDown },
-  { id: 'job-match', label: 'Job Match', icon: Briefcase },
-  { id: 'mhtml', label: 'MHTML', icon: Archive },
-  { id: 'api-console', label: 'API Console', icon: Terminal },
-  { id: 'cli', label: 'CLI', icon: Code2 },
-  { id: 'grok-enrich', label: 'Grok Enrich', icon: Zap },
-  { id: 'docs', label: 'Docs', icon: BookMarked },
-  { id: 'n8n', label: 'N8N', icon: GitBranch },
-  { id: 'mendable-py', label: 'Mendable Py', icon: Database },
-  { id: 'code-analyze', label: 'Code Analyze', icon: FileCode },
-  { id: 'skill-gen', label: 'Skill Gen', icon: Wand2 },
-  { id: 'sdks', label: 'SDKs', icon: Package },
-  { id: 'pipelines', label: 'Pipelines', icon: Filter },
-  { id: 'theme', label: 'Theme', icon: Palette },
-  { id: 'ai-chat', label: 'AI Chat', icon: MessageSquare },
-  { id: 'pdf-tools', label: 'PDF Tools', icon: FileType },
-  { id: 'assistant', label: 'Assistant', icon: HelpCircle },
-  { id: 'lead-gen', label: 'Lead Gen', icon: Users },
-  { id: 'support-bot', label: 'Support Bot', icon: Bot },
-  { id: 'trend-cron', label: 'TrendCron', icon: Clock },
-  { id: 'site-migrator', label: 'Migrator', icon: ArrowRight },
-  { id: 'code-repo', label: 'Code Repo', icon: Code2 },
+const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType; category: ToolCategory; description: string }[] = [
+  // Monitoring
+  { id: 'scouts', label: 'Scouts', icon: Radar, category: 'monitoring', description: 'Monitor any website and get alerts when content changes' },
+  { id: 'observer', label: 'Observer', icon: Eye, category: 'monitoring', description: 'Watch specific web pages and detect changes over time' },
+  { id: 'brand', label: 'Brand Monitor', icon: Megaphone, category: 'monitoring', description: 'Track brand mentions across the web' },
+  { id: 'trends', label: 'Trends', icon: TrendingUp, category: 'monitoring', description: 'Track trending topics and keywords over time' },
+  { id: 'trend-cron', label: 'TrendCron', icon: Clock, category: 'monitoring', description: 'Schedule recurring trend checks on a cron schedule' },
+  { id: 'news', label: 'News', icon: Newspaper, category: 'monitoring', description: 'Search and monitor news articles from across the web' },
+
+  // Extraction
+  { id: 'extract', label: 'Extract', icon: Database, category: 'extraction', description: 'Extract structured data from web pages using AI' },
+  { id: 'doc-extract', label: 'Doc Extract', icon: FileDown, category: 'extraction', description: 'Extract text and data from uploaded documents' },
+  { id: 'pdf-inspect', label: 'PDF Inspect', icon: FileSearch, category: 'extraction', description: 'Analyze and extract content from PDF files' },
+  { id: 'pdf-tools', label: 'PDF Tools', icon: FileType, category: 'extraction', description: 'Convert, merge, and manipulate PDF documents' },
+  { id: 'html-to-md', label: 'HTML\u2192MD', icon: FileCode, category: 'extraction', description: 'Convert HTML pages to clean Markdown format' },
+  { id: 'mhtml', label: 'MHTML', icon: Archive, category: 'extraction', description: 'Save and process MHTML web archive files' },
+  { id: 'cloner', label: 'Site Cloner', icon: Copy, category: 'extraction', description: 'Clone website structure and content for analysis' },
+  { id: 'llmstxt', label: 'LLMs.txt', icon: FileText, category: 'extraction', description: 'Generate LLMs.txt files for AI discoverability' },
+  { id: 'llmstxt-v2', label: 'LLMs.txt V2', icon: FileText2, category: 'extraction', description: 'Next-gen LLMs.txt with enhanced metadata' },
+
+  // Enrichment
+  { id: 'enrich', label: 'Enrich', icon: Building2, category: 'enrichment', description: 'Turn an email address into rich company and person data' },
+  { id: 'grok-enrich', label: 'Grok Enrich', icon: Zap, category: 'enrichment', description: 'Enrich contacts using Grok AI for deeper insights' },
+  { id: 'lead-gen', label: 'Lead Gen', icon: Users, category: 'enrichment', description: 'Generate and qualify leads from web sources' },
+  { id: 'job-match', label: 'Job Match', icon: Briefcase, category: 'enrichment', description: 'Match candidates to job requirements using AI' },
+  { id: 'brand-extend', label: 'Brand Extend', icon: Palette, category: 'enrichment', description: 'Extend brand analysis with visual and content insights' },
+  { id: 'coupons', label: 'Coupons', icon: Ticket, category: 'enrichment', description: 'Find and track promotional codes and coupons' },
+
+  // Research
+  { id: 'researcher', label: 'Researcher', icon: BookOpen, category: 'research', description: 'Deep AI-powered research on any topic with citations' },
+  { id: 'deep-search', label: 'Deep Search', icon: ShieldCheck, category: 'research', description: 'Break complex queries into sub-questions for thorough answers' },
+  { id: 'search-engine', label: 'Search Engine', icon: Sparkles, category: 'research', description: 'Full-text web search with AI-powered ranking' },
+  { id: 'compare', label: 'Page Compare', icon: GitCompareArrows, category: 'research', description: 'Compare two web pages side-by-side with diff view' },
+  { id: 'ai-ready', label: 'AI Ready', icon: BrainCircuit, category: 'research', description: 'Score how well a website is optimized for AI consumption' },
+  { id: 'graphs', label: 'Graphs', icon: BarChart3, category: 'research', description: 'Visualize data relationships and knowledge graphs' },
+  { id: 'rag-eval', label: 'RAG Eval', icon: Target, category: 'research', description: 'Evaluate RAG pipeline quality and accuracy' },
+  { id: 'qa-cluster', label: 'QA Cluster', icon: Layers, category: 'research', description: 'Cluster Q&A pairs to find knowledge gaps' },
+  { id: 'code-analyze', label: 'Code Analyze', icon: FileCode, category: 'research', description: 'Analyze code repositories for patterns and insights' },
+  { id: 'code-repo', label: 'Code Repo', icon: Code2, category: 'research', description: 'Browse and analyze code repositories' },
+
+  // Automation
+  { id: 'workflows', label: 'Workflows', icon: Workflow, category: 'automation', description: 'Build multi-step scrape/search/extract workflows' },
+  { id: 'pipelines', label: 'Pipelines', icon: Filter, category: 'automation', description: 'Create data processing pipelines with chained steps' },
+  { id: 'agents', label: 'Agents', icon: Cpu, category: 'automation', description: 'Deploy autonomous web agents for complex tasks' },
+  { id: 'gen-ui', label: 'Gen UI', icon: LayoutDashboard, category: 'automation', description: 'Generate UI components from web page analysis' },
+  { id: 'skill-gen', label: 'Skill Gen', icon: Wand2, category: 'automation', description: 'Generate agent skills from documentation URLs' },
+  { id: 'site-migrator', label: 'Migrator', icon: ArrowRight, category: 'automation', description: 'Migrate website content between platforms' },
+  { id: 'drafts', label: 'Drafts', icon: PenTool, category: 'automation', description: 'Generate content drafts from research data' },
+
+  // Integrations
+  { id: 'connectors', label: 'Connectors', icon: Plug, category: 'integration', description: 'Connect Firecrawl to external services and APIs' },
+  { id: 'slack', label: 'Slack', icon: MessageCircle, category: 'integration', description: 'Send Firecrawl results to Slack channels' },
+  { id: 'discord', label: 'Discord', icon: Hash, category: 'integration', description: 'Push alerts and results to Discord servers' },
+  { id: 'n8n', label: 'N8N', icon: GitBranch, category: 'integration', description: 'Integrate with N8N automation workflows' },
+  { id: 'mcp', label: 'MCP', icon: Server, category: 'integration', description: 'Model Context Protocol server for AI tool use' },
+  { id: 'mendable', label: 'Mendable', icon: Bot, category: 'integration', description: 'Mendable AI search integration' },
+  { id: 'mendable-py', label: 'Mendable Py', icon: Database, category: 'integration', description: 'Python SDK for Mendable integration' },
+
+  // Tools
+  { id: 'chatbot', label: 'Chatbot', icon: MessageSquare, category: 'tools', description: 'Build an AI chatbot trained on scraped content' },
+  { id: 'ai-chat', label: 'AI Chat', icon: MessageSquare, category: 'tools', description: 'Chat with AI about scraped web content' },
+  { id: 'assistant', label: 'Assistant', icon: HelpCircle, category: 'tools', description: 'AI assistant powered by your crawled data' },
+  { id: 'support-bot', label: 'Support Bot', icon: Bot, category: 'tools', description: 'Customer support bot trained on your docs' },
+  { id: 'api-console', label: 'API Console', icon: Terminal, category: 'tools', description: 'Test Firecrawl API endpoints interactively' },
+  { id: 'cli', label: 'CLI', icon: Code2, category: 'tools', description: 'Command-line interface for Firecrawl operations' },
+  { id: 'sdks', label: 'SDKs', icon: Package, category: 'tools', description: 'SDK documentation and code examples' },
+  { id: 'docs', label: 'Docs', icon: BookMarked, category: 'tools', description: 'Firecrawl documentation and guides' },
+  { id: 'examples', label: 'Examples', icon: FolderOpen, category: 'tools', description: 'Example configurations and use cases' },
+  { id: 'theme', label: 'Theme', icon: Palette, category: 'tools', description: 'Customize the Firecrawl panel appearance' },
+];
+
+// ── Workflow Templates ───────────────────────────────────────
+
+const WORKFLOW_TEMPLATES = [
+  {
+    id: 'competitor-intel',
+    name: 'Competitor Intelligence',
+    description: 'Clone a competitor site, extract key data, and monitor for changes',
+    steps: ['cloner', 'extract', 'observer'] as FirecrawlSubTab[],
+    icon: Target,
+  },
+  {
+    id: 'lead-research',
+    name: 'Lead Research Pipeline',
+    description: 'Enrich a lead email, research their company, and generate a report',
+    steps: ['enrich', 'researcher', 'drafts'] as FirecrawlSubTab[],
+    icon: Users,
+  },
+  {
+    id: 'security-scan',
+    name: 'Security & OSINT Scan',
+    description: 'Deep search a person, check news mentions, and scan social profiles',
+    steps: ['deep-search', 'news', 'brand'] as FirecrawlSubTab[],
+    icon: Shield,
+  },
+  {
+    id: 'content-audit',
+    name: 'Website Content Audit',
+    description: 'Analyze AI readiness, generate LLMs.txt, and inspect PDFs',
+    steps: ['ai-ready', 'llmstxt', 'pdf-inspect'] as FirecrawlSubTab[],
+    icon: FileSearch,
+  },
+  {
+    id: 'process-service-intel',
+    name: 'Process Service Intel',
+    description: 'Research a serve target, check property records, and generate a dossier',
+    steps: ['deep-search', 'enrich', 'researcher'] as FirecrawlSubTab[],
+    icon: Briefcase,
+  },
+  {
+    id: 'web-monitoring',
+    name: 'Web Monitoring Setup',
+    description: 'Set up scouts, observers, and brand monitors for ongoing surveillance',
+    steps: ['scouts', 'observer', 'brand', 'trend-cron'] as FirecrawlSubTab[],
+    icon: Radio,
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -10437,34 +10515,361 @@ function CodeRepoPanel() {
 // ██ MAIN FIRECRAWL TAB COMPONENT
 // ══════════════════════════════════════════════════════════════
 
-export default function FirecrawlTab() {
-  const [activeTab, setActiveTab] = useState<FirecrawlSubTab>('scouts');
+// ── Quick Action Definitions ─────────────────────────────────
 
+const QUICK_ACTIONS = [
+  { id: 'quick-scrape', label: 'Scrape URL', icon: Globe, placeholder: 'https://example.com', tab: 'extract' as FirecrawlSubTab },
+  { id: 'quick-search', label: 'Search Web', icon: Search, placeholder: 'Search query...', tab: 'search-engine' as FirecrawlSubTab },
+  { id: 'quick-enrich', label: 'Enrich Email', icon: Mail, placeholder: 'name@company.com', tab: 'enrich' as FirecrawlSubTab },
+  { id: 'quick-research', label: 'Research Topic', icon: BookOpen, placeholder: 'Research topic...', tab: 'researcher' as FirecrawlSubTab },
+];
+
+// ── Workflow Step Indicator ──────────────────────────────────
+
+function WorkflowStepIndicator({
+  template,
+  currentStep,
+  onStepClick,
+  onClose,
+}: {
+  template: typeof WORKFLOW_TEMPLATES[number];
+  currentStep: number;
+  onStepClick: (step: number) => void;
+  onClose: () => void;
+}) {
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Sub-tab bar */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark">
-        <span className="text-[10px] font-bold text-orange-400 tracking-wider uppercase mr-3 shrink-0">
-          FIRECRAWL
-        </span>
-        {TABS.map(tab => (
+    <div className="flex items-center gap-2 px-3 py-1 bg-orange-500/10 border-b border-orange-500/30">
+      <Workflow className="w-3 h-3 text-orange-400 shrink-0" />
+      <span className="text-[10px] font-bold text-orange-300 shrink-0">{template.name}</span>
+      <div className="flex items-center gap-1">
+        {template.steps.map((stepId, i) => {
+          const tab = TABS.find(t => t.id === stepId);
+          return (
+            <React.Fragment key={stepId}>
+              {i > 0 && <ArrowRight className="w-2.5 h-2.5 text-rmpg-500" />}
+              <button
+                onClick={() => onStepClick(i)}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-medium transition-colors ${
+                  i === currentStep
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
+                    : i < currentStep
+                      ? 'text-emerald-400 border border-emerald-500/30 bg-emerald-500/10'
+                      : 'text-rmpg-500 border border-rmpg-600'
+                }`}
+              >
+                {i < currentStep && <CheckCircle className="w-2.5 h-2.5" />}
+                {tab?.label || stepId}
+              </button>
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <span className="text-[9px] text-rmpg-500 ml-auto">Step {currentStep + 1}/{template.steps.length}</span>
+      <button onClick={onClose} className="text-rmpg-500 hover:text-white p-0.5"><X className="w-3 h-3" /></button>
+    </div>
+  );
+}
+
+// ── Templates Landing ────────────────────────────────────────
+
+function TemplatesLanding({ onSelect }: { onSelect: (template: typeof WORKFLOW_TEMPLATES[number]) => void }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-white mb-1">Workflow Templates</h2>
+        <p className="text-[10px] text-rmpg-400">Pre-built multi-step workflows for common tasks. Click to start a guided workflow.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {WORKFLOW_TEMPLATES.map(tmpl => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
-                : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
-            }`}
+            key={tmpl.id}
+            onClick={() => onSelect(tmpl)}
+            className="flex flex-col gap-1.5 p-3 rounded-sm border border-rmpg-600 bg-rmpg-800/50 hover:bg-rmpg-700/50 hover:border-orange-500/40 text-left transition-colors group"
           >
-            <tab.icon className="w-3 h-3" />
-            {tab.label}
+            <div className="flex items-center gap-2">
+              <tmpl.icon className="w-4 h-4 text-orange-400 group-hover:text-orange-300" />
+              <span className="text-[11px] font-bold text-white group-hover:text-orange-200">{tmpl.name}</span>
+            </div>
+            <p className="text-[9px] text-rmpg-400 leading-relaxed">{tmpl.description}</p>
+            <div className="flex items-center gap-1 mt-1">
+              {tmpl.steps.map((stepId, i) => {
+                const tab = TABS.find(t => t.id === stepId);
+                return (
+                  <React.Fragment key={stepId}>
+                    {i > 0 && <ArrowRight className="w-2 h-2 text-rmpg-600" />}
+                    <span className="text-[8px] text-rmpg-500 bg-rmpg-700/60 px-1 py-0.5 rounded-sm">{tab?.label || stepId}</span>
+                  </React.Fragment>
+                );
+              })}
+            </div>
           </button>
         ))}
       </div>
 
+      {/* Get started guidance */}
+      <div className="border border-rmpg-600 rounded-sm p-3 bg-rmpg-800/30">
+        <h3 className="text-[11px] font-bold text-white mb-2">Getting Started</h3>
+        <div className="space-y-2 text-[10px] text-rmpg-400">
+          <div className="flex items-start gap-2">
+            <Radar className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Scouts</span> — Monitor any website and get alerts when content changes. Great for tracking competitor pricing or regulatory updates.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Building2 className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Enrich</span> — Turn an email address into rich company and person data. Essential for lead qualification and process service research.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <BookOpen className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Researcher</span> — Deep AI-powered research on any topic with citations. Perfect for background investigations and intel reports.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Deep Search</span> — Break complex queries into sub-questions for thorough answers. Use for OSINT and due diligence.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Eye className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Observer</span> — Watch specific web pages and detect changes over time. Ideal for tracking court records or public filings.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+export default function FirecrawlTab() {
+  const [activeTab, setActiveTab] = useState<FirecrawlSubTab | null>(null);
+  const [toolSearch, setToolSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<ToolCategory | 'all'>('all');
+  const [activeWorkflow, setActiveWorkflow] = useState<typeof WORKFLOW_TEMPLATES[number] | null>(null);
+  const [workflowStep, setWorkflowStep] = useState(0);
+  const [quickAction, setQuickAction] = useState<string | null>(null);
+  const [quickInput, setQuickInput] = useState('');
+
+  // Filter tabs by search and category
+  const filteredTabs = TABS.filter(tab => {
+    if (toolSearch) {
+      const q = toolSearch.toLowerCase();
+      return tab.label.toLowerCase().includes(q) || tab.description.toLowerCase().includes(q) || tab.category.includes(q);
+    }
+    if (activeCategory !== 'all') return tab.category === activeCategory;
+    return true;
+  });
+
+  // Group filtered tabs by category for display
+  const groupedTabs = activeCategory === 'all' && !toolSearch
+    ? TOOL_CATEGORIES.map(cat => ({
+        ...cat,
+        tabs: filteredTabs.filter(t => t.category === cat.id),
+      })).filter(g => g.tabs.length > 0)
+    : null;
+
+  function handleWorkflowSelect(template: typeof WORKFLOW_TEMPLATES[number]) {
+    setActiveWorkflow(template);
+    setWorkflowStep(0);
+    setActiveTab(template.steps[0]);
+  }
+
+  function handleWorkflowStepClick(step: number) {
+    if (activeWorkflow) {
+      setWorkflowStep(step);
+      setActiveTab(activeWorkflow.steps[step]);
+    }
+  }
+
+  function handleQuickAction(actionId: string) {
+    if (quickAction === actionId) {
+      setQuickAction(null);
+      setQuickInput('');
+    } else {
+      setQuickAction(actionId);
+      setQuickInput('');
+    }
+  }
+
+  function handleQuickGo(tab: FirecrawlSubTab) {
+    setActiveTab(tab);
+    setQuickAction(null);
+    setQuickInput('');
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Quick Actions toolbar */}
+      <div className="flex items-center gap-1 px-3 py-1 border-b border-rmpg-600 bg-surface-sunken">
+        <span className="text-[9px] font-bold text-rmpg-500 tracking-wider uppercase mr-2 shrink-0">QUICK</span>
+        {QUICK_ACTIONS.map(qa => (
+          <button
+            key={qa.id}
+            onClick={() => handleQuickAction(qa.id)}
+            className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
+              quickAction === qa.id
+                ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                : 'border-rmpg-600 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+            }`}
+          >
+            <qa.icon className="w-2.5 h-2.5" />
+            {qa.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Quick action inline input */}
+      {quickAction && (() => {
+        const qa = QUICK_ACTIONS.find(a => a.id === quickAction);
+        if (!qa) return null;
+        return (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-orange-500/30 bg-orange-500/5">
+            <qa.icon className="w-3 h-3 text-orange-400 shrink-0" />
+            <input
+              type="text"
+              value={quickInput}
+              onChange={e => setQuickInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && quickInput.trim() && handleQuickGo(qa.tab)}
+              placeholder={qa.placeholder}
+              className="flex-1 bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-0.5 text-[10px] text-white placeholder-rmpg-500 focus:outline-none focus:border-orange-500/50"
+              autoFocus
+            />
+            <SmallBtn variant="primary" onClick={() => quickInput.trim() && handleQuickGo(qa.tab)}>
+              <Play className="w-2.5 h-2.5" /> Go
+            </SmallBtn>
+            <button onClick={() => { setQuickAction(null); setQuickInput(''); }} className="text-rmpg-500 hover:text-white">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Workflow step indicator */}
+      {activeWorkflow && (
+        <WorkflowStepIndicator
+          template={activeWorkflow}
+          currentStep={workflowStep}
+          onStepClick={handleWorkflowStepClick}
+          onClose={() => { setActiveWorkflow(null); setWorkflowStep(0); }}
+        />
+      )}
+
+      {/* Search + category bar */}
+      <div className="px-3 py-1.5 border-b border-rmpg-600 bg-surface-sunken space-y-1">
+        {/* Search input */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold text-orange-400 tracking-wider uppercase shrink-0">FIRECRAWL</span>
+          <div className="relative flex-1">
+            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+            <input
+              type="text"
+              value={toolSearch}
+              onChange={e => { setToolSearch(e.target.value); setActiveCategory('all'); }}
+              placeholder="Search 53 tools..."
+              className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm pl-5 pr-2 py-0.5 text-[10px] text-white placeholder-rmpg-500 focus:outline-none focus:border-orange-500/50"
+            />
+            {toolSearch && (
+              <button
+                onClick={() => setToolSearch('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {!activeTab && (
+            <span className="text-[9px] text-rmpg-500 shrink-0">{filteredTabs.length} tools</span>
+          )}
+        </div>
+
+        {/* Category pills */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark">
+          <button
+            onClick={() => { setActiveCategory('all'); setToolSearch(''); }}
+            className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
+              activeCategory === 'all' && !toolSearch
+                ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+            }`}
+          >
+            All
+          </button>
+          {TOOL_CATEGORIES.map(cat => {
+            const count = TABS.filter(t => t.category === cat.id).length;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => { setActiveCategory(cat.id); setToolSearch(''); }}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
+                  activeCategory === cat.id
+                    ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                    : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }`}
+              >
+                <cat.icon className="w-2.5 h-2.5" />
+                {cat.label}
+                <span className="text-[8px] text-rmpg-500 ml-0.5">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tool buttons */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark">
+        {groupedTabs ? (
+          // Grouped by category
+          <div className="px-3 py-1">
+            {groupedTabs.map(group => (
+              <div key={group.id} className="mb-1 last:mb-0">
+                <div className="flex items-center gap-1 mb-0.5">
+                  <group.icon className="w-2.5 h-2.5 text-rmpg-500" />
+                  <span className="text-[8px] font-bold text-rmpg-500 tracking-wider uppercase">{group.label}</span>
+                </div>
+                <div className="flex flex-wrap gap-0.5">
+                  {group.tabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      title={tab.description}
+                      className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
+                        activeTab === tab.id
+                          ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                          : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                      }`}
+                    >
+                      <tab.icon className="w-2.5 h-2.5" />
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // Flat filtered list
+          <div className="flex flex-wrap gap-0.5 px-3 py-1">
+            {filteredTabs.length === 0 && (
+              <span className="text-[10px] text-rmpg-500 py-1">No tools match &ldquo;{toolSearch}&rdquo;</span>
+            )}
+            {filteredTabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                title={tab.description}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                    : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }`}
+              >
+                <tab.icon className="w-2.5 h-2.5" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-dark">
+        {!activeTab && <TemplatesLanding onSelect={handleWorkflowSelect} />}
         {activeTab === 'scouts' && <ScoutsPanel />}
         {activeTab === 'ai-ready' && <AiReadyPanel />}
         {activeTab === 'cloner' && <ClonerPanel />}
