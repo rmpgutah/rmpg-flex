@@ -1651,4 +1651,28 @@ router.put('/:id/link-call', requireRole('admin', 'manager', 'supervisor', 'offi
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ── POST /incidents/swap-numbers — Swap incident numbers between two incidents (admin)
+router.post('/swap-numbers', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { incident_id_a, incident_id_b } = req.body;
+    if (!incident_id_a || !incident_id_b) { res.status(400).json({ error: 'incident_id_a and incident_id_b required' }); return; }
+
+    const a = db.prepare('SELECT id, incident_number FROM incidents WHERE id = ?').get(incident_id_a) as any;
+    const b = db.prepare('SELECT id, incident_number FROM incidents WHERE id = ?').get(incident_id_b) as any;
+    if (!a || !b) { res.status(404).json({ error: 'One or both incidents not found' }); return; }
+
+    const now = localNow();
+    const tempNum = `SWAP_TEMP_${Date.now()}`;
+    db.transaction(() => {
+      db.prepare('UPDATE incidents SET incident_number = ?, updated_at = ? WHERE id = ?').run(tempNum, now, a.id);
+      db.prepare('UPDATE incidents SET incident_number = ?, updated_at = ? WHERE id = ?').run(a.incident_number, now, b.id);
+      db.prepare('UPDATE incidents SET incident_number = ?, updated_at = ? WHERE id = ?').run(b.incident_number, now, a.id);
+    })();
+
+    auditLog(req, 'ADMIN_OVERRIDE', 'incident', a.id, `Swapped incident numbers: ${a.incident_number} ↔ ${b.incident_number}`);
+    res.json({ success: true, swapped: [{ id: a.id, new_number: b.incident_number }, { id: b.id, new_number: a.incident_number }] });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;
