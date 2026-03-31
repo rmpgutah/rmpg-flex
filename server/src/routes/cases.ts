@@ -526,6 +526,26 @@ function initCaseJunctionTables(): void {
   try {
     const db = getDb();
     db.exec(`
+      CREATE TABLE IF NOT EXISTS case_persons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        person_id INTEGER,
+        person_name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'involved',
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS case_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        user_id INTEGER,
+        author_id INTEGER,
+        content TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
       CREATE TABLE IF NOT EXISTS case_calls (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         case_id INTEGER NOT NULL,
@@ -811,12 +831,12 @@ router.get('/:id/full', (req: Request, res: Response) => {
     const calls = db.prepare(`SELECT cc.id as link_id, cfs.* FROM case_calls cc JOIN calls_for_service cfs ON cc.call_id = cfs.id WHERE cc.case_id = ? ORDER BY cfs.created_at DESC`).all(req.params.id);
     const incidents = db.prepare(`SELECT ci.id as link_id, i.* FROM case_incidents ci JOIN incidents i ON ci.incident_id = i.id WHERE ci.case_id = ? ORDER BY i.created_at DESC`).all(req.params.id);
     const persons = db.prepare(`SELECT cp.*, p.first_name, p.last_name, p.dob, p.phone, p.address FROM case_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.case_id = ? ORDER BY cp.created_at DESC`).all(req.params.id);
-    const vehicles = db.prepare(`SELECT cv.id as link_id, cv.role, v.* FROM case_vehicles cv JOIN vehicles v ON cv.vehicle_id = v.id WHERE cv.case_id = ? ORDER BY cv.created_at DESC`).all(req.params.id);
+    const vehicles = db.prepare(`SELECT cv.id as link_id, cv.role, v.* FROM case_vehicles cv JOIN vehicles_records v ON cv.vehicle_id = v.id WHERE cv.case_id = ? ORDER BY cv.created_at DESC`).all(req.params.id);
     const properties = db.prepare(`SELECT cpr.id as link_id, cpr.role, p.* FROM case_properties cpr JOIN properties p ON cpr.property_id = p.id WHERE cpr.case_id = ? ORDER BY cpr.created_at DESC`).all(req.params.id);
-    const evidence = db.prepare(`SELECT ce.id as link_id, e.* FROM case_evidence ce JOIN evidence_items e ON ce.evidence_id = e.id WHERE ce.case_id = ? ORDER BY e.created_at DESC`).all(req.params.id);
-    const warrants = db.prepare(`SELECT cw.id as link_id, w.* FROM case_warrants cw JOIN warrants w ON cw.warrant_id = w.id WHERE cw.case_id = ? ORDER BY w.created_at DESC`).all(req.params.id);
+    const evidence = db.prepare(`SELECT ce.id as link_id, e.* FROM case_evidence ce JOIN evidence e ON ce.evidence_id = e.id WHERE ce.case_id = ? ORDER BY e.created_at DESC`).all(req.params.id);
+    const warrants = db.prepare(`SELECT cw.id as link_id, w.*, sp.full_name as subject_name FROM case_warrants cw JOIN warrants w ON cw.warrant_id = w.id LEFT JOIN persons sp ON w.subject_person_id = sp.id WHERE cw.case_id = ? ORDER BY w.created_at DESC`).all(req.params.id);
     const citations = db.prepare(`SELECT cc2.id as link_id, ct.* FROM case_citations cc2 JOIN citations ct ON cc2.citation_id = ct.id WHERE cc2.case_id = ? ORDER BY ct.created_at DESC`).all(req.params.id);
-    const notes = db.prepare(`SELECT cn.*, u.full_name as author_name FROM case_notes cn LEFT JOIN users u ON cn.author_id = u.id WHERE cn.case_id = ? ORDER BY cn.created_at DESC`).all(req.params.id);
+    const notes = db.prepare(`SELECT cn.*, u.full_name as author_name FROM case_notes cn LEFT JOIN users u ON COALESCE(cn.author_id, cn.user_id) = u.id WHERE cn.case_id = ? ORDER BY cn.created_at DESC`).all(req.params.id);
 
     res.json({
       ...caseRow,
@@ -938,7 +958,7 @@ router.get('/:id/vehicles', (req: Request, res: Response) => {
         v.id, v.plate_number, v.plate_state, v.vin, v.year, v.make, v.model, v.color, v.owner_name,
         u.full_name as added_by_name
       FROM case_vehicles cv
-      JOIN vehicles v ON cv.vehicle_id = v.id
+      JOIN vehicles_records v ON cv.vehicle_id = v.id
       LEFT JOIN users u ON cv.added_by = u.id
       WHERE cv.case_id = ?
       ORDER BY cv.created_at DESC
@@ -1023,7 +1043,7 @@ router.get('/:id/evidence', (req: Request, res: Response) => {
         e.collected_by, e.location_found,
         u.full_name as added_by_name
       FROM case_evidence ce
-      JOIN evidence_items e ON ce.evidence_id = e.id
+      JOIN evidence e ON ce.evidence_id = e.id
       LEFT JOIN users u ON ce.added_by = u.id
       WHERE ce.case_id = ?
       ORDER BY e.created_at DESC
@@ -1062,11 +1082,13 @@ router.get('/:id/warrants', (req: Request, res: Response) => {
     const db = getDb();
     const rows = db.prepare(`
       SELECT cw.id as link_id, cw.created_at as linked_at,
-        w.id, w.warrant_number, w.type, w.status, w.subject_name,
-        w.charge_description,
+        w.id, w.warrant_number, w.type, w.status,
+        w.charge_description, w.offense_level,
+        sp.full_name as subject_name,
         u.full_name as added_by_name
       FROM case_warrants cw
       JOIN warrants w ON cw.warrant_id = w.id
+      LEFT JOIN persons sp ON w.subject_person_id = sp.id
       LEFT JOIN users u ON cw.added_by = u.id
       WHERE cw.case_id = ?
       ORDER BY w.created_at DESC
