@@ -936,8 +936,8 @@ function initTables(): void {
 }
 
 // Initialize tables on module load
-try { initTables(); } catch (e) {
-  console.error('[FirecrawlTools] Table init deferred — DB may not be ready yet:', (e as Error).message);
+try { initTables(); } catch {
+  // Tables will be created lazily on first request via ensureTables()
 }
 
 // Helper to ensure tables exist (called on first request if init failed)
