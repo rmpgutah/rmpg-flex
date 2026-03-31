@@ -984,8 +984,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Flags — before Scene Conditions
   y = checkPageBreak(doc, y, 15, prio);
   { const flagSec = openAutoSection(doc, 'Flags', y);
-    // Match other sections' content padding (SECTION_CONTENT_PAD = 1.2mm)
-    y = flagSec.contentY;
+    // Checkboxes draw at y-1.5, so need extra offset to clear header bar
+    y = flagSec.contentY + 2;
     const flagCols = 6;
     const flagColW = ffw / flagCols;
     const flagRowH = 3.5;
