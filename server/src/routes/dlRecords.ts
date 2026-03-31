@@ -126,7 +126,13 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     if (!ocrResponse.ok) {
       const errorText = await ocrResponse.text().catch(() => '');
       console.error(`[DL OCR] API error (${ocrResponse.status}):`, errorText.slice(0, 500));
-      res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: errorText.slice(0, 200) });
+      if (ocrResponse.status === 403) {
+        res.status(503).json({ error: 'DL OCR API subscription expired or access denied. Check your RapidAPI subscription for "U.S. Driver License OCR".', code: 'OCR_SUBSCRIPTION_EXPIRED' });
+      } else if (ocrResponse.status === 429) {
+        res.status(429).json({ error: 'DL OCR API rate limit exceeded. Wait a few minutes and try again, or upgrade your RapidAPI plan.', code: 'OCR_RATE_LIMITED' });
+      } else {
+        res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: errorText.slice(0, 200) });
+      }
       return;
     }
 

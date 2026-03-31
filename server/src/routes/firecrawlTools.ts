@@ -3370,14 +3370,35 @@ router.post(
     }
 
     try {
-      // Scrape the PDF
-      const scrapeResult = await firecrawlScrape({
-        url: url.trim(),
-        formats: ['markdown'],
-        onlyMainContent: false,
-      });
+      // Reject local file:// URLs — server can't access client's local files
+      if (url.trim().startsWith('file://')) {
+        res.status(400).json({ error: 'Cannot inspect local files. Upload the PDF or provide a web URL (https://).', code: 'LOCAL_FILE_NOT_SUPPORTED' }); return;
+      }
 
-      const content = (scrapeResult.data as any)?.markdown || '';
+      let content = '';
+      const isPdf = url.trim().toLowerCase().endsWith('.pdf') || url.includes('application/pdf');
+
+      // For PDF URLs, use pdf-parse for proper text extraction
+      if (isPdf) {
+        try {
+          const pdfParse = (await import('pdf-parse')).default;
+          const pdfRes = await fetch(url.trim(), { signal: AbortSignal.timeout(30_000) });
+          if (pdfRes.ok) {
+            const buffer = Buffer.from(await pdfRes.arrayBuffer());
+            const parsed = await pdfParse(buffer);
+            content = parsed.text || '';
+          }
+        } catch (pdfErr) {
+          console.warn('[PDF Inspect] pdf-parse failed, falling back to scrape:', pdfErr);
+        }
+      }
+
+      // Fallback to Firecrawl scrape
+      if (!content) {
+        const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
+        content = (scrapeResult.data as any)?.markdown || '';
+      }
+
       const contentLower = content.toLowerCase();
 
       // Estimate page count (~3000 chars per page)
@@ -3427,10 +3448,29 @@ router.post(
       const uniqueNames = [...new Set(nameMatches)].slice(0, 20) as string[];
       names.push(...uniqueNames);
 
+      // Phone numbers
+      const phoneMatches = content.match(/(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
+      const phones = [...new Set(phoneMatches)].slice(0, 15);
+
+      // Email addresses
+      const emailMatches = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+      const emails = [...new Set(emailMatches)].slice(0, 15);
+
+      // Addresses (street pattern)
+      const addrMatches = content.match(/\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Way|Ct|Pl|Cir|Pkwy|Hwy)[.,]?\s+(?:[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)?,?\s*[A-Z]{2}\s+\d{5}/g) || [];
+      const addresses = [...new Set(addrMatches)].slice(0, 10);
+
+      // Case/reference numbers
+      const caseMatches = content.match(/(?:Case|Docket|Ref|No\.?|#)\s*:?\s*[\w-]{4,20}/gi) || [];
+      const caseNumbers = [...new Set(caseMatches)].slice(0, 10);
+
       // Summary
       const summary = content.substring(0, 500).replace(/\n{2,}/g, ' ').trim();
 
-      const extractedEntities = { names, dates, amounts };
+      // Word count and character count
+      const wordCount = content.split(/\s+/).filter(Boolean).length;
+
+      const extractedEntities = { names, dates, amounts, phones, emails, addresses, caseNumbers };
 
       // Store in DB
       const db = getDb();
@@ -3456,6 +3496,9 @@ router.post(
         summary,
         key_sections: keySections,
         extracted_entities: extractedEntities,
+        word_count: wordCount,
+        character_count: content.length,
+        full_text: content.substring(0, 100000),
       });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -7349,6 +7392,47 @@ router.post(
             const scrapeResult = await firecrawlScrape({ url: input_url.trim(), formats: ['markdown'], onlyMainContent: true });
             currentData = (scrapeResult.data as any)?.markdown || '';
             stepResults.push({ type: 'ingest', status: 'success', content_length: currentData.length });
+          } else if (step.type === 'extract') {
+            // Extract structured data from URL or current content
+            const extractUrl = step.config?.url || input_url;
+            if (extractUrl) {
+              const scrapeResult = await firecrawlScrape({ url: extractUrl.trim(), formats: ['markdown'], onlyMainContent: true });
+              const md = (scrapeResult.data as any)?.markdown || '';
+              currentData = md;
+              // Extract metadata too
+              const metadata = (scrapeResult.data as any)?.metadata || {};
+              stepResults.push({
+                type: 'extract', status: 'success',
+                url: extractUrl,
+                content_length: md.length,
+                title: metadata.title || '',
+                description: metadata.description || '',
+                content_preview: md.substring(0, 500),
+              });
+            } else {
+              stepResults.push({ type: 'extract', status: 'skipped', reason: 'No URL provided' });
+            }
+          } else if (step.type === 'scrape') {
+            // Alias for ingest/extract
+            const scrapeUrl = step.config?.url || input_url;
+            if (scrapeUrl) {
+              const scrapeResult = await firecrawlScrape({ url: scrapeUrl.trim(), formats: ['markdown'], onlyMainContent: true });
+              currentData = (scrapeResult.data as any)?.markdown || '';
+              stepResults.push({ type: 'scrape', status: 'success', url: scrapeUrl, content_length: currentData.length });
+            } else {
+              stepResults.push({ type: 'scrape', status: 'skipped', reason: 'No URL' });
+            }
+          } else if (step.type === 'search') {
+            // Web search step
+            const query = step.config?.query || input_text;
+            if (query) {
+              const searchResult = await firecrawlSearch({ query, limit: 5 });
+              const results = (searchResult.data || []).map((r: any) => ({ url: r.url, title: r.title, snippet: r.description }));
+              currentData = JSON.stringify(results);
+              stepResults.push({ type: 'search', status: 'success', query, results_count: results.length, results });
+            } else {
+              stepResults.push({ type: 'search', status: 'skipped', reason: 'No query' });
+            }
           } else if (step.type === 'transform') {
             stepResults.push({ type: 'transform', status: 'success', applied: true, config: step.config });
           } else if (step.type === 'filter') {
@@ -7589,10 +7673,33 @@ router.post(
     }
 
     try {
-      const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
-      const data = scrapeResult.data as any;
-      const md = data?.markdown || '';
-      const metadata = data?.metadata || {};
+      let md = '';
+      let metadata: any = {};
+
+      // For PDF URLs, fetch the raw PDF and use pdf-parse for text extraction
+      const isPdf = url.trim().toLowerCase().endsWith('.pdf') || url.includes('/pdf') || url.includes('application/pdf');
+      if (isPdf) {
+        try {
+          const pdfParse = (await import('pdf-parse')).default;
+          const pdfRes = await fetch(url.trim(), { signal: AbortSignal.timeout(30_000) });
+          if (pdfRes.ok) {
+            const buffer = Buffer.from(await pdfRes.arrayBuffer());
+            const parsed = await pdfParse(buffer);
+            md = parsed.text || '';
+            metadata = { title: parsed.info?.Title || null, author: parsed.info?.Author || null, pages: parsed.numpages || 0 };
+          }
+        } catch (pdfErr) {
+          console.warn('[PDF Tools] pdf-parse failed, falling back to scrape:', pdfErr);
+        }
+      }
+
+      // Fallback to Firecrawl scrape if PDF parse didn't produce text
+      if (!md) {
+        const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
+        const data = scrapeResult.data as any;
+        md = data?.markdown || '';
+        metadata = data?.metadata || {};
+      }
 
       const results: any = {};
 
@@ -7829,6 +7936,12 @@ router.post('/leads/search', requireRole('admin', 'manager'), async (req: Reques
       if (!getRes.ok) {
         const errText = await getRes.text().catch(() => '');
         console.error(`[LeadGen] API error (${getRes.status}):`, errText.slice(0, 300));
+        if (getRes.status === 429) {
+          res.status(429).json({ error: 'Lead Generation API rate limit exceeded. Wait and retry, or upgrade your RapidAPI plan.', code: 'LEADGEN_RATE_LIMITED' }); return;
+        }
+        if (getRes.status === 403) {
+          res.status(503).json({ error: 'Lead Generation API subscription expired or access denied. Check your RapidAPI subscription.', code: 'LEADGEN_SUBSCRIPTION_EXPIRED' }); return;
+        }
         res.status(502).json({ error: `Lead Generation API returned ${getRes.status}`, detail: errText.slice(0, 200) }); return;
       }
 
