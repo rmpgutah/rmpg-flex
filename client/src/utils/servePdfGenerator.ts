@@ -22,7 +22,6 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
-  formSectionPageBreak,
   sanitizePdfText,
 } from './pdfGenerator';
 import {
@@ -31,7 +30,7 @@ import {
   getLeftX, getRightColumnX, getHalfFieldWidth,
   getProportionalColumns,
 } from './pdfTokens';
-import { drawNibrsHeader, drawFormSection, type FormRow } from './pdfFormHelpers';
+import { drawNibrsHeader } from './pdfFormHelpers';
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -268,86 +267,54 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   });
 
   // ── Court Information ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'COURT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. COURT NAME', value: data.courtName, ratio: 1, valueBold: true },
-      ]},
-      { cells: [
-        { label: '2. CASE NUMBER', value: data.caseNumber, ratio: 1, valueBold: true },
-        { label: '3. JURISDICTION', value: data.jurisdiction, ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
+    y = addFieldPair(doc, '1. Court Name', data.courtName, lx, y, ffw);
+    const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Server Information ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'SERVER' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '4. SERVER NAME', value: data.serverName, ratio: 2, valueBold: true },
-        { label: '5. BADGE / LICENSE #', value: data.serverBadge, ratio: 1 },
-      ]},
-      { cells: [
-        { label: '6. COMPANY', value: data.serverCompany, ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Server Information', y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '4. Server Name', data.serverName, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    y = addFieldPair(doc, '6. Company', data.serverCompany, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Recipient Information ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'RECIPIENT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '7. RECIPIENT NAME', value: data.recipientName, ratio: 1, valueBold: true },
-      ]},
-      { cells: [
-        { label: '8. ADDRESS', value: data.recipientAddress, ratio: 1 },
-      ]},
-      { cells: [
-        { label: '9. DOCUMENT TYPE SERVED', value: data.documentType, ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Recipient Information', y); y = sec.contentY;
+    y = addFieldPair(doc, '7. Recipient Name', data.recipientName, lx, y, ffw);
+    y = addFieldPair(doc, '8. Address', data.recipientAddress, lx, y, ffw);
+    y = addFieldPair(doc, '9. Document Type Served', data.documentType, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Service Details ──
   const methodLabel = data.serviceMethod === 'personal' ? 'Personal Service'
     : data.serviceMethod === 'substitute' ? 'Substitute Service'
     : 'Posting';
-  const serviceRows: FormRow[] = [
-    { cells: [
-      { label: '10. DATE OF SERVICE', value: data.serviceDate, ratio: 1 },
-      { label: '11. TIME', value: data.serviceTime, ratio: 1, align: 'center' },
-      { label: '12. METHOD', value: methodLabel, ratio: 1, valueBold: true },
-      { label: '13. GPS', value: `${data.gpsLat.toFixed(6)}, ${data.gpsLng.toFixed(6)}`, ratio: 1 },
-    ]},
-  ];
-  if (data.serviceMethod === 'substitute' && data.substituteInfo) {
-    serviceRows.push(
-      { cells: [
-        { label: '14. SUBSTITUTE NAME', value: data.substituteInfo.name, ratio: 2 },
-        { label: '15. RELATIONSHIP', value: data.substituteInfo.relationship, ratio: 1 },
-        { label: '16. DESCRIPTION', value: data.substituteInfo.description, ratio: 2 },
-      ]},
-    );
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Service Details', y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '10. Date of Service', data.serviceDate, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '11. Time', data.serviceTime, rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    const fy3 = addFieldPair(doc, '12. Method', methodLabel, lx, y, hfw);
+    const fy4 = addFieldPair(doc, '13. GPS', `${data.gpsLat.toFixed(6)}, ${data.gpsLng.toFixed(6)}`, rx, y, hfw);
+    y = Math.max(fy3, fy4);
+    if (data.serviceMethod === 'substitute' && data.substituteInfo) {
+      const fy5 = addFieldPair(doc, '14. Substitute Name', data.substituteInfo.name, lx, y, hfw);
+      const fy6 = addFieldPair(doc, '15. Relationship', data.substituteInfo.relationship, rx, y, hfw);
+      y = Math.max(fy5, fy6);
+      y = addFieldPair(doc, '16. Description', data.substituteInfo.description, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
-  y = drawFormSection(doc, {
-    sideTab: { label: 'SERVICE' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: serviceRows,
-    y,
-  });
 
   // ── Photos ──
   if (data.photos && data.photos.length > 0) {
@@ -432,54 +399,32 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   });
 
   // ── Court Information ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'COURT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. COURT NAME', value: data.courtName, ratio: 1, valueBold: true },
-      ]},
-      { cells: [
-        { label: '2. CASE NUMBER', value: data.caseNumber, ratio: 1, valueBold: true },
-        { label: '3. JURISDICTION', value: data.jurisdiction, ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
+    y = addFieldPair(doc, '1. Court Name', data.courtName, lx, y, ffw);
+    const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Server Information ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'SERVER' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '4. SERVER NAME', value: data.serverName, ratio: 2, valueBold: true },
-        { label: '5. BADGE / LICENSE #', value: data.serverBadge, ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Server Information', y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '4. Server Name', data.serverName, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Recipient Information ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'RECIPIENT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '6. RECIPIENT NAME', value: data.recipientName, ratio: 1, valueBold: true },
-      ]},
-      { cells: [
-        { label: '7. ADDRESS', value: data.recipientAddress, ratio: 1 },
-      ]},
-      { cells: [
-        { label: '8. DOCUMENT TYPE', value: data.documentType, ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Recipient Information', y); y = sec.contentY;
+    y = addFieldPair(doc, '6. Recipient Name', data.recipientName, lx, y, ffw);
+    y = addFieldPair(doc, '7. Address', data.recipientAddress, lx, y, ffw);
+    y = addFieldPair(doc, '8. Document Type', data.documentType, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Attempt History Table ──
   y = checkPageBreak(doc, y, 30);
@@ -644,42 +589,31 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   });
 
   // ── Officer Information ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'OFFICER' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. OFFICER NAME', value: data.officerName, ratio: 2, valueBold: true },
-        { label: '2. BADGE #', value: data.officerBadge, ratio: 1 },
-      ]},
-      { cells: [
-        { label: '3. DATE RANGE', value: dateRangeLabel, ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Officer Information', y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '1. Officer Name', data.officerName, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '2. Badge #', data.officerBadge, rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    y = addFieldPair(doc, '3. Date Range', dateRangeLabel, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Summary Statistics ──
   const served = data.jobs.filter(j => j.result.toLowerCase() === 'served').length;
   const failed = data.jobs.filter(j => ['failed', 'unable'].some(s => j.result.toLowerCase().includes(s))).length;
   const pending = data.jobs.filter(j => j.result.toLowerCase() === 'pending').length;
 
-  y = drawFormSection(doc, {
-    sideTab: { label: 'SUMMARY' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '4. TOTAL JOBS', value: String(data.jobs.length), ratio: 1, align: 'center', valueBold: true },
-        { label: '5. SERVED', value: String(served), ratio: 1, align: 'center' },
-        { label: '6. FAILED', value: String(failed), ratio: 1, align: 'center' },
-        { label: '7. PENDING', value: String(pending), ratio: 1, align: 'center' },
-        { label: '8. MILES DRIVEN', value: data.totalMileage.toFixed(1), ratio: 1, align: 'center' },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Summary Statistics', y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '4. Total Jobs', String(data.jobs.length), lx, y, hfw);
+    const fy2 = addFieldPair(doc, '5. Served', String(served), rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    const fy3 = addFieldPair(doc, '6. Failed', String(failed), lx, y, hfw);
+    const fy4 = addFieldPair(doc, '7. Pending', String(pending), rx, y, hfw);
+    y = Math.max(fy3, fy4);
+    y = addFieldPair(doc, '8. Miles Driven', data.totalMileage.toFixed(1), lx, y, hfw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Job Details Table ──
   y = checkPageBreak(doc, y, 30);

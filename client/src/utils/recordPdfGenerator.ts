@@ -1524,58 +1524,52 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 1. Subject Identification ─────────────────────────────
-  y = drawFormSection(doc, {
-    sideTab: { label: 'SUBJECT ID' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. LAST NAME', value: data.last_name || '', ratio: 2, valueBold: true },
-        { label: '2. FIRST NAME', value: data.first_name || '', ratio: 2, valueBold: true },
-        { label: '3. MIDDLE NAME', value: data.middle_name || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '4. ALIAS / NICKNAME', value: data.alias_nickname || '', ratio: 2 },
-        { label: '5. DATE OF BIRTH', value: fmtDate(data.date_of_birth), ratio: 1 },
-        { label: '6. GENDER', value: data.gender || '', ratio: 1 },
-        { label: '7. RACE', value: data.race || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '8. MARITAL STATUS', value: data.marital_status || '', ratio: 1 },
-        { label: '9. CITIZENSHIP', value: data.citizenship || '', ratio: 1 },
-        { label: '10. PLACE OF BIRTH', value: data.place_of_birth || '', ratio: 1 },
-        { label: '11. LANGUAGE', value: data.language || '', ratio: 1 },
-        { label: '12. RECORD ID', value: data.id || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
+    const fifthW = ffw / 5;
+    // Row 1: Last Name (2/5), First Name (2/5), Middle Name (1/5)
+    const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, ffw * 0.4);
+    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.4, y, ffw * 0.4);
+    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.8, y, ffw * 0.2);
+    y = Math.max(fy1, fy2, fy3);
+    // Row 2: Alias (2/5), DOB (1/5), Gender (1/5), Race (1/5)
+    const thirdW = hfw / 1.5;
+    const fy4 = addFieldPair(doc, 'Alias / Nickname', data.alias_nickname || '', lx, y, hfw);
+    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), rx, y, thirdW);
+    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', rx + thirdW, y, thirdW * 0.5);
+    const fy7 = addFieldPair(doc, 'Race', data.race || '', rx + thirdW * 1.5, y, thirdW * 0.5);
+    y = Math.max(fy4, fy5, fy6, fy7);
+    // Row 3: Marital Status, Citizenship, Place of Birth, Language, Record ID
+    const fy8 = addFieldPair(doc, 'Marital Status', data.marital_status || '', lx, y, fifthW);
+    const fy9 = addFieldPair(doc, 'Citizenship', data.citizenship || '', lx + fifthW, y, fifthW);
+    const fy10 = addFieldPair(doc, 'Place of Birth', data.place_of_birth || '', lx + 2 * fifthW, y, fifthW);
+    const fy11 = addFieldPair(doc, 'Language', data.language || '', lx + 3 * fifthW, y, fifthW);
+    const fy12 = addFieldPair(doc, 'Record ID', String(data.id || ''), lx + 4 * fifthW, y, fifthW);
+    y = Math.max(fy8, fy9, fy10, fy11, fy12);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── 2. Physical Description ───────────────────────────────
-  y = drawFormSection(doc, {
-    sideTab: { label: 'PHYSICAL' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '13. HEIGHT', value: data.height || '', ratio: 1 },
-        { label: '14. WEIGHT', value: data.weight || '', ratio: 1 },
-        { label: '15. BUILD', value: data.build || '', ratio: 1 },
-        { label: '16. COMPLEXION', value: data.complexion || '', ratio: 1 },
-        { label: '17. BLOOD TYPE', value: data.blood_type || '', ratio: 1 },
-        { label: '18. SHOE SIZE', value: data.shoe_size || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '19. HAIR COLOR', value: data.hair_color || '', ratio: 1 },
-        { label: '20. HAIR LENGTH', value: data.hair_length || '', ratio: 1 },
-        { label: '21. HAIR STYLE', value: data.hair_style || '', ratio: 1 },
-        { label: '22. EYE COLOR', value: data.eye_color || '', ratio: 1 },
-        { label: '23. FACIAL HAIR', value: data.facial_hair || '', ratio: 1 },
-        { label: '24. GLASSES', value: data.glasses || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 18, prio);
+  { const sec = openAutoSection(doc, 'Physical Description', y); y = sec.contentY;
+    const sixthW = ffw / 6;
+    // Row 1: Height, Weight, Build, Complexion, Blood Type, Shoe Size
+    const p1 = addFieldPair(doc, 'Height', data.height || '', lx, y, sixthW);
+    const p2 = addFieldPair(doc, 'Weight', data.weight || '', lx + sixthW, y, sixthW);
+    const p3 = addFieldPair(doc, 'Build', data.build || '', lx + 2 * sixthW, y, sixthW);
+    const p4 = addFieldPair(doc, 'Complexion', data.complexion || '', lx + 3 * sixthW, y, sixthW);
+    const p5 = addFieldPair(doc, 'Blood Type', data.blood_type || '', lx + 4 * sixthW, y, sixthW);
+    const p6 = addFieldPair(doc, 'Shoe Size', data.shoe_size || '', lx + 5 * sixthW, y, sixthW);
+    y = Math.max(p1, p2, p3, p4, p5, p6);
+    // Row 2: Hair Color, Hair Length, Hair Style, Eye Color, Facial Hair, Glasses
+    const h1 = addFieldPair(doc, 'Hair Color', data.hair_color || '', lx, y, sixthW);
+    const h2 = addFieldPair(doc, 'Hair Length', data.hair_length || '', lx + sixthW, y, sixthW);
+    const h3 = addFieldPair(doc, 'Hair Style', data.hair_style || '', lx + 2 * sixthW, y, sixthW);
+    const h4 = addFieldPair(doc, 'Eye Color', data.eye_color || '', lx + 3 * sixthW, y, sixthW);
+    const h5 = addFieldPair(doc, 'Facial Hair', data.facial_hair || '', lx + 4 * sixthW, y, sixthW);
+    const h6 = addFieldPair(doc, 'Glasses', data.glasses || '', lx + 5 * sixthW, y, sixthW);
+    y = Math.max(h1, h2, h3, h4, h5, h6);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── 3. Scars / Marks / Tattoos ────────────────────────────
   y = addNarrativeSection(doc, 'Scars / Marks / Tattoos', data.scars_marks_tattoos || '', y, prio);
@@ -1584,92 +1578,77 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   y = addNarrativeSection(doc, 'Clothing Description', data.clothing_description || '', y, prio);
 
   // ── 5. Contact Information ────────────────────────────────
-  const fullAddress = `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim();
-  const contactRows: FormRow[] = [
-    { cells: [
-      { label: '25. PHONE (PRIMARY)', value: data.phone || '', ratio: 1 },
-      { label: '26. PHONE (SECONDARY)', value: data.phone_secondary || '', ratio: 1 },
-      { label: '27. EMAIL', value: data.email || '', ratio: 2 },
-    ]},
-    { cells: [
-      { label: '28. ADDRESS', value: fullAddress, ratio: 3 },
-    ]},
-  ];
-  if (data.social_media) {
-    contactRows.push({ cells: [
-      { label: '29. SOCIAL MEDIA', value: data.social_media, ratio: 3 },
-    ]});
+  y = checkPageBreak(doc, y, 18, prio);
+  { const sec = openAutoSection(doc, 'Contact Information', y); y = sec.contentY;
+    const fullAddress = `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim();
+    const thirdW = ffw / 3;
+    // Row 1: Phone Primary, Phone Secondary, Email
+    const c1 = addFieldPair(doc, 'Phone (Primary)', data.phone || '', lx, y, thirdW);
+    const c2 = addFieldPair(doc, 'Phone (Secondary)', data.phone_secondary || '', lx + thirdW, y, thirdW);
+    const c3 = addFieldPair(doc, 'Email', data.email || '', lx + 2 * thirdW, y, thirdW);
+    y = Math.max(c1, c2, c3);
+    // Row 2: Address (full width)
+    y = addFieldPair(doc, 'Address', fullAddress, lx, y, ffw);
+    // Row 3: Social Media (if present)
+    if (data.social_media) {
+      y = addFieldPair(doc, 'Social Media', data.social_media, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
-  y = drawFormSection(doc, {
-    sideTab: { label: 'CONTACT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: contactRows,
-    y,
-  });
 
   // ── 6. Identification Documents ───────────────────────────
-  y = drawFormSection(doc, {
-    sideTab: { label: 'ID DOCS' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '30. DL NUMBER', value: data.dl_number || '', ratio: 2 },
-        { label: '31. DL STATE', value: data.dl_state || '', ratio: 1, align: 'center' },
-        { label: '32. DL CLASS', value: data.dl_class || '', ratio: 1 },
-        { label: '33. DL EXPIRY', value: fmtDate(data.dl_expiry), ratio: 1 },
-      ]},
-      { cells: [
-        { label: '34. ID TYPE', value: data.id_type || '', ratio: 1 },
-        { label: '35. ID NUMBER', value: data.id_number || '', ratio: 2 },
-        { label: '36. ID STATE', value: data.id_state || '', ratio: 1, align: 'center' },
-        { label: '37. ID EXPIRY', value: fmtDate(data.id_expiry), ratio: 1 },
-      ]},
-      { cells: [
-        { label: '38. SSN LAST 4', value: data.ssn_last4 ? `***-**-${data.ssn_last4}` : '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 22, prio);
+  { const sec = openAutoSection(doc, 'Identification Documents', y); y = sec.contentY;
+    const fifthW = ffw / 5;
+    // Row 1: DL Number (2/5), DL State (1/5), DL Class (1/5), DL Expiry (1/5)
+    const d1 = addFieldPair(doc, 'DL Number', data.dl_number || '', lx, y, fifthW * 2);
+    const d2 = addFieldPair(doc, 'DL State', data.dl_state || '', lx + fifthW * 2, y, fifthW);
+    const d3 = addFieldPair(doc, 'DL Class', data.dl_class || '', lx + fifthW * 3, y, fifthW);
+    const d4 = addFieldPair(doc, 'DL Expiry', fmtDate(data.dl_expiry), lx + fifthW * 4, y, fifthW);
+    y = Math.max(d1, d2, d3, d4);
+    // Row 2: ID Type (1/5), ID Number (2/5), ID State (1/5), ID Expiry (1/5)
+    const i1 = addFieldPair(doc, 'ID Type', data.id_type || '', lx, y, fifthW);
+    const i2 = addFieldPair(doc, 'ID Number', data.id_number || '', lx + fifthW, y, fifthW * 2);
+    const i3 = addFieldPair(doc, 'ID State', data.id_state || '', lx + fifthW * 3, y, fifthW);
+    const i4 = addFieldPair(doc, 'ID Expiry', fmtDate(data.id_expiry), lx + fifthW * 4, y, fifthW);
+    y = Math.max(i1, i2, i3, i4);
+    // Row 3: SSN Last 4
+    y = addFieldPair(doc, 'SSN Last 4', data.ssn_last4 ? `***-**-${data.ssn_last4}` : '', lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── 7. Employment / Demographics ──────────────────────────
-  y = drawFormSection(doc, {
-    sideTab: { label: 'EMPLOY' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '39. EMPLOYER', value: data.employer || '', ratio: 2 },
-        { label: '40. OCCUPATION', value: data.occupation || '', ratio: 1 },
-        { label: '41. LANGUAGE', value: data.language || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 12, prio);
+  { const sec = openAutoSection(doc, 'Employment', y); y = sec.contentY;
+    const thirdW = ffw / 3;
+    const e1 = addFieldPair(doc, 'Employer', data.employer || '', lx, y, thirdW);
+    const e2 = addFieldPair(doc, 'Occupation', data.occupation || '', lx + thirdW, y, thirdW);
+    const e3 = addFieldPair(doc, 'Language', data.language || '', lx + 2 * thirdW, y, thirdW);
+    y = Math.max(e1, e2, e3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── 8. Flags & Warnings ───────────────────────────────────
-  const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
-  y = drawFormSection(doc, {
-    sideTab: { label: 'FLAGS' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: 'SEX OFFENDER', value: '', checkbox: true, checked: !!data.is_sex_offender, ratio: 1 },
-        { label: 'VETERAN', value: '', checkbox: true, checked: !!data.is_veteran, ratio: 1 },
-        { label: 'ACTIVE BOLO', value: '', checkbox: true, checked: !!data.bolo_active, ratio: 1 },
-      ]},
-      { cells: [
-        { label: '42. GANG AFFILIATION', value: data.gang_affiliation || '', ratio: 1 },
-        { label: '43. PROBATION / PAROLE', value: probParole, ratio: 2 },
-      ]},
-      ...(data.known_associates ? [{ cells: [
-        { label: '44. KNOWN ASSOCIATES', value: data.known_associates, ratio: 3 },
-      ]} as FormRow] : []),
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 18, prio);
+  { const sec = openAutoSection(doc, 'Flags & Warnings', y); y = sec.contentY;
+    // Checkbox row
+    let flagX = lx;
+    flagX = addCheckboxField(doc, 'Sex Offender', !!data.is_sex_offender, flagX, y);
+    flagX = addCheckboxField(doc, 'Veteran', !!data.is_veteran, flagX + SPACING.SM, y);
+    addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
+    y += SPACING.LG;
+    // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
+    const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
+    const thirdW = ffw / 3;
+    const f1 = addFieldPair(doc, 'Gang Affiliation', data.gang_affiliation || '', lx, y, thirdW);
+    const f2 = addFieldPair(doc, 'Probation / Parole', probParole, lx + thirdW, y, thirdW * 2);
+    y = Math.max(f1, f2);
+    // Row 3: Known Associates (if present)
+    if (data.known_associates) {
+      y = addFieldPair(doc, 'Known Associates', data.known_associates, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // Active Flags — colored pill badges (kept as-is)
   if (data.flags && data.flags.length > 0) {
@@ -1688,30 +1667,20 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 9. Emergency Contact ──────────────────────────────────
-  y = drawFormSection(doc, {
-    sideTab: { label: 'EMERG' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '45. NAME', value: data.emergency_contact_name || '', ratio: 2 },
-        { label: '46. PHONE', value: data.emergency_contact_phone || '', ratio: 1 },
-        { label: '47. RELATIONSHIP', value: data.emergency_contact_relationship || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 12, prio);
+  { const sec = openAutoSection(doc, 'Emergency Contact', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    const ec1 = addFieldPair(doc, 'Name', data.emergency_contact_name || '', lx, y, quarterW * 2);
+    const ec2 = addFieldPair(doc, 'Phone', data.emergency_contact_phone || '', lx + quarterW * 2, y, quarterW);
+    const ec3 = addFieldPair(doc, 'Relationship', data.emergency_contact_relationship || '', lx + quarterW * 3, y, quarterW);
+    y = Math.max(ec1, ec2, ec3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── 10. Active Warrants ───────────────────────────────────
   if (data.warrants && data.warrants.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    y = drawFormSection(doc, {
-      sideTab: { label: 'WARRANTS' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [],
-      y,
-    });
+    { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.contentY; }
     const warrantRows = data.warrants.map(w => [
       w.warrant_number || 'N/A',
       titleCase(w.type || ''),
@@ -1739,13 +1708,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 11. Incident History ──────────────────────────────────
   if (data.incidents && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    y = drawFormSection(doc, {
-      sideTab: { label: 'INCIDENTS' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [],
-      y,
-    });
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.contentY; }
     const incidentRows = data.incidents.map(inc => [
       inc.incident_number || 'N/A',
       titleCase((inc.incident_type || '').replace(/_/g, ' ')),
@@ -1771,13 +1734,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 12. Citation History ──────────────────────────────────
   if (data.citations && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    y = drawFormSection(doc, {
-      sideTab: { label: 'CITATIONS' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [],
-      y,
-    });
+    { const sec = openAutoSection(doc, 'Citation History', y); y = sec.contentY; }
     const citationRows = data.citations.map(c => [
       c.citation_number || 'N/A',
       titleCase(c.type || ''),
@@ -1803,13 +1760,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 13. Dispatch Call History ──────────────────────────────
   if (data.calls && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    y = drawFormSection(doc, {
-      sideTab: { label: 'CALLS' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [],
-      y,
-    });
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.contentY; }
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
@@ -1837,13 +1788,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     doc.addPage();
     addConfidentialWatermark(doc);
     y = 12; // start near top of new page
-    y = drawFormSection(doc, {
-      sideTab: { label: 'CRIMINAL' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [],
-      y,
-    });
+    { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.contentY; }
 
     // Summary table — quick reference overview
     const crCw = getContentWidth(doc);
@@ -1978,7 +1923,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 // ── Vehicle Record ───────────────────────────────────────────
 
 function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
-  const cw = getContentWidth(doc);
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
 
   setActiveCaseNumber(data.license_plate || 'N/A');
   let y = drawNibrsHeader(doc, {
@@ -1989,110 +1937,93 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     caseNumber: data.license_plate || 'N/A',
   });
 
-  // Vehicle Identification
-  y = drawFormSection(doc, {
-    sideTab: { label: 'VEHICLE ID' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. LICENSE PLATE', value: data.license_plate, ratio: 2, valueBold: true },
-        { label: '2. STATE', value: data.plate_state || '', ratio: 1, align: 'center' },
-        { label: '3. PLATE TYPE', value: data.plate_type || '', ratio: 1 },
-        { label: '4. VIN', value: data.vin || '', ratio: 2 },
-      ]},
-      { cells: [
-        { label: '5. YEAR', value: data.year ? String(data.year) : '', ratio: 1, align: 'center' },
-        { label: '6. MAKE', value: data.make || '', ratio: 1 },
-        { label: '7. MODEL', value: data.model || '', ratio: 1 },
-        { label: '8. BODY STYLE', value: data.body_style || '', ratio: 1 },
-        { label: '9. TRIM', value: data.trim || '', ratio: 1 },
-        { label: '10. DOORS', value: data.doors ? String(data.doors) : '', ratio: 1, align: 'center' },
-      ]},
-      { cells: [
-        { label: '11. COLOR', value: data.color || '', ratio: 1 },
-        { label: '12. SECONDARY COLOR', value: data.secondary_color || '', ratio: 1 },
-        { label: '13. ENGINE', value: data.engine_type || '', ratio: 1 },
-        { label: '14. FUEL', value: data.fuel_type || '', ratio: 1 },
-        { label: '15. TRANSMISSION', value: data.transmission || '', ratio: 1 },
-        { label: '16. DRIVE', value: data.drive_type || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  // ── Vehicle Identification ──
+  y = checkPageBreak(doc, y, 25);
+  { const sec = openAutoSection(doc, 'Vehicle Identification', y); y = sec.contentY;
+    const sixthW = ffw / 6;
+    // Row 1: License Plate (2/6), State (1/6), Plate Type (1/6), VIN (2/6)
+    const r1a = addFieldPair(doc, 'License Plate', data.license_plate || '', lx, y, sixthW * 2);
+    const r1b = addFieldPair(doc, 'State', data.plate_state || '', lx + sixthW * 2, y, sixthW);
+    const r1c = addFieldPair(doc, 'Plate Type', data.plate_type || '', lx + sixthW * 3, y, sixthW);
+    const r1d = addFieldPair(doc, 'VIN', data.vin || '', lx + sixthW * 4, y, sixthW * 2);
+    y = Math.max(r1a, r1b, r1c, r1d);
+    // Row 2: Year, Make, Model, Body Style, Trim, Doors (6 cols)
+    const r2a = addFieldPair(doc, 'Year', data.year ? String(data.year) : '', lx, y, sixthW);
+    const r2b = addFieldPair(doc, 'Make', data.make || '', lx + sixthW, y, sixthW);
+    const r2c = addFieldPair(doc, 'Model', data.model || '', lx + sixthW * 2, y, sixthW);
+    const r2d = addFieldPair(doc, 'Body Style', data.body_style || '', lx + sixthW * 3, y, sixthW);
+    const r2e = addFieldPair(doc, 'Trim', data.trim || '', lx + sixthW * 4, y, sixthW);
+    const r2f = addFieldPair(doc, 'Doors', data.doors ? String(data.doors) : '', lx + sixthW * 5, y, sixthW);
+    y = Math.max(r2a, r2b, r2c, r2d, r2e, r2f);
+    // Row 3: Color, Secondary Color, Engine, Fuel, Transmission, Drive (6 cols)
+    const r3a = addFieldPair(doc, 'Color', data.color || '', lx, y, sixthW);
+    const r3b = addFieldPair(doc, 'Secondary Color', data.secondary_color || '', lx + sixthW, y, sixthW);
+    const r3c = addFieldPair(doc, 'Engine', data.engine_type || '', lx + sixthW * 2, y, sixthW);
+    const r3d = addFieldPair(doc, 'Fuel', data.fuel_type || '', lx + sixthW * 3, y, sixthW);
+    const r3e = addFieldPair(doc, 'Transmission', data.transmission || '', lx + sixthW * 4, y, sixthW);
+    const r3f = addFieldPair(doc, 'Drive', data.drive_type || '', lx + sixthW * 5, y, sixthW);
+    y = Math.max(r3a, r3b, r3c, r3d, r3e, r3f);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
-  // Owner Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'OWNER' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '17. OWNER NAME', value: data.owner_name || '', ratio: 2, valueBold: true },
-        { label: '18. PHONE', value: data.owner_phone || '', ratio: 1 },
-        { label: '19. ODOMETER', value: data.odometer || '', ratio: 1, align: 'center' },
-      ]},
-      { cells: [
-        { label: '20. OWNER ADDRESS', value: data.owner_address || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: 'COMMERCIAL', value: '', checkbox: true, checked: !!data.commercial_vehicle, ratio: 1 },
-        { label: 'HAZMAT', value: '', checkbox: true, checked: !!data.hazmat, ratio: 1 },
-        { label: '21. LIEN HOLDER', value: data.lien_holder || '', ratio: 3 },
-      ]},
-    ],
-    y,
-  });
+  // ── Owner Information ──
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'Owner Information', y); y = sec.contentY;
+    // Row 1: Owner Name (half), Phone (quarter), Odometer (quarter)
+    const r1a = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hfw);
+    const quarterW = ffw / 4;
+    const r1b = addFieldPair(doc, 'Phone', data.owner_phone || '', rx, y, quarterW);
+    const r1c = addFieldPair(doc, 'Odometer', data.odometer || '', rx + quarterW, y, quarterW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Owner Address (full width)
+    y = addFieldPair(doc, 'Owner Address', data.owner_address || '', lx, y, ffw);
+    // Row 3: Checkboxes + Lien Holder
+    let flagX = lx;
+    flagX = addCheckboxField(doc, 'Commercial', !!data.commercial_vehicle, flagX, y);
+    flagX = addCheckboxField(doc, 'Hazmat', !!data.hazmat, flagX + SPACING.SM, y);
+    y += SPACING.LG;
+    y = addFieldPair(doc, 'Lien Holder', data.lien_holder || '', lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
-  // Insurance & Registration
-  y = drawFormSection(doc, {
-    sideTab: { label: 'INSURANCE' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '22. INSURANCE COMPANY', value: data.insurance_company || '', ratio: 2 },
-        { label: '23. POLICY NUMBER', value: data.insurance_policy || '', ratio: 2 },
-        { label: '24. REG. EXPIRY', value: fmtDate(data.registration_expiry), ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  // ── Insurance & Registration ──
+  y = checkPageBreak(doc, y, 12);
+  { const sec = openAutoSection(doc, 'Insurance & Registration', y); y = sec.contentY;
+    const fifthW = ffw / 5;
+    const r1a = addFieldPair(doc, 'Insurance Company', data.insurance_company || '', lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'Policy Number', data.insurance_policy || '', lx + fifthW * 2, y, fifthW * 2);
+    const r1c = addFieldPair(doc, 'Reg. Expiry', fmtDate(data.registration_expiry), lx + fifthW * 4, y, fifthW);
+    y = Math.max(r1a, r1b, r1c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
-  // Legal Status
-  y = drawFormSection(doc, {
-    sideTab: { label: 'LEGAL STATUS' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '25. STOLEN STATUS', value: (data.stolen_status || 'Not Stolen').toUpperCase(), ratio: 1, valueBold: true, align: 'center' },
-        { label: '26. STOLEN DATE', value: fmtDate(data.stolen_date), ratio: 1 },
-        { label: '27. RECOVERY DATE', value: fmtDate(data.recovery_date), ratio: 1 },
-      ]},
-      { cells: [
-        { label: '28. TOW STATUS', value: data.tow_status || '', ratio: 1 },
-        { label: '29. TOW COMPANY', value: data.tow_company || '', ratio: 1 },
-        { label: '30. TOW DATE', value: fmtDate(data.tow_date), ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  // ── Legal Status ──
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Legal Status', y); y = sec.contentY;
+    const thirdW = ffw / 3;
+    // Row 1: Stolen Status, Stolen Date, Recovery Date
+    const r1a = addFieldPair(doc, 'Stolen Status', (data.stolen_status || 'Not Stolen').toUpperCase(), lx, y, thirdW);
+    const r1b = addFieldPair(doc, 'Stolen Date', fmtDate(data.stolen_date), lx + thirdW, y, thirdW);
+    const r1c = addFieldPair(doc, 'Recovery Date', fmtDate(data.recovery_date), lx + thirdW * 2, y, thirdW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Tow Status, Tow Company, Tow Date
+    const r2a = addFieldPair(doc, 'Tow Status', data.tow_status || '', lx, y, thirdW);
+    const r2b = addFieldPair(doc, 'Tow Company', data.tow_company || '', lx + thirdW, y, thirdW);
+    const r2c = addFieldPair(doc, 'Tow Date', fmtDate(data.tow_date), lx + thirdW * 2, y, thirdW);
+    y = Math.max(r2a, r2b, r2c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // Free-form sections (keep as narrative — these have long text)
   y = addNarrativeSection(doc, 'Distinguishing Features', data.distinguishing_features || '', y);
   y = addNarrativeSection(doc, 'Damage Description', data.damage_description || '', y);
 
   if (data.flags && data.flags.length > 0) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'FLAGS' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [{ cells: [
-        { label: 'ACTIVE FLAGS', value: data.flags.join(', '), ratio: 1 },
-      ]}],
-      y,
-    });
+    y = checkPageBreak(doc, y, 10);
+    { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
+      y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
@@ -2107,6 +2038,11 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 // ── Warrant ──────────────────────────────────────────────────
 
 function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
+
   const statusPrio = data.status === 'active' ? 'critical' : data.status === 'served' ? 'low' : 'medium';
 
   setActiveCaseNumber(data.warrant_number);
@@ -2119,111 +2055,101 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
-  // Warrant Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'WARRANT INFO' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. WARRANT NUMBER', value: data.warrant_number, ratio: 2, valueBold: true },
-        { label: '2. TYPE', value: (data.type || '').toUpperCase(), ratio: 1, align: 'center' },
-        { label: '3. STATUS', value: (data.status || '').toUpperCase(), ratio: 1, align: 'center', valueBold: true },
-        { label: '4. OFFENSE LEVEL', value: (data.offense_level || '').toUpperCase(), ratio: 1, align: 'center' },
-      ]},
-      { cells: [
-        { label: '5. CHARGE DESCRIPTION', value: data.charge_description || '', ratio: 1 },
-      ], height: data.charge_description && data.charge_description.length > 60 ? 12 : undefined },
-    ],
-    y,
-  });
-
-  // Subject Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'SUBJECT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '6. LAST NAME', value: data.subject_last_name || '', ratio: 2, valueBold: true },
-        { label: '7. FIRST NAME', value: data.subject_first_name || '', ratio: 2, valueBold: true },
-        { label: '8. DOB', value: fmtDate(data.subject_dob), ratio: 1 },
-      ]},
-      { cells: [
-        { label: '9. GENDER', value: data.subject_gender || '', ratio: 1, align: 'center' },
-        { label: '10. RACE', value: data.subject_race || '', ratio: 1, align: 'center' },
-        { label: '11. HEIGHT', value: data.subject_height || '', ratio: 1, align: 'center' },
-        { label: '12. WEIGHT', value: data.subject_weight || '', ratio: 1, align: 'center' },
-        { label: '13. HAIR', value: data.subject_hair_color || '', ratio: 1, align: 'center' },
-        { label: '14. EYES', value: data.subject_eye_color || '', ratio: 1, align: 'center' },
-      ]},
-      ...(data.subject_address ? [{ cells: [
-        { label: '15. ADDRESS', value: data.subject_address, ratio: 1 },
-      ]} as FormRow] : []),
-    ],
-    y,
-  });
-
-  // Court Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'COURT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '16. ISSUING COURT', value: data.issuing_court || '', ratio: 2 },
-        { label: '17. ISSUING JUDGE', value: data.issuing_judge || '', ratio: 2 },
-      ]},
-      { cells: [
-        { label: '18. BAIL AMOUNT', value: fmtCurrency(data.bail_amount), ratio: 1, align: 'center', valueBold: true },
-        { label: '19. EXPIRATION DATE', value: fmtDate(data.expires_at), ratio: 1, align: 'center' },
-        { label: '20. ENTERED BY', value: data.entered_by_name || '', ratio: 1 },
-        { label: '21. ENTRY DATE', value: fmtTimestamp(data.created_at), ratio: 1 },
-      ]},
-    ],
-    y,
-  });
-
-  // Service Information (conditional)
-  if (data.served_at || data.served_by_name) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'SERVICE' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '22. SERVED BY', value: data.served_by_name || '', ratio: 2 },
-          { label: '23. SERVED DATE', value: fmtTimestamp(data.served_at), ratio: 1 },
-          { label: '24. SERVED LOCATION', value: data.served_location || '', ratio: 2 },
-        ]},
-      ],
-      y,
-    });
+  // ── Warrant Information ──
+  y = checkPageBreak(doc, y, 18, statusPrio);
+  { const sec = openAutoSection(doc, 'Warrant Information', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    // Row 1: Warrant Number (2/5), Type (1/5), Status (1/5), Offense Level (1/5)
+    const fifthW = ffw / 5;
+    const r1a = addFieldPair(doc, 'Warrant Number', data.warrant_number || '', lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'Type', (data.type || '').toUpperCase(), lx + fifthW * 2, y, fifthW);
+    const r1c = addFieldPair(doc, 'Status', (data.status || '').toUpperCase(), lx + fifthW * 3, y, fifthW);
+    const r1d = addFieldPair(doc, 'Offense Level', (data.offense_level || '').toUpperCase(), lx + fifthW * 4, y, fifthW);
+    y = Math.max(r1a, r1b, r1c, r1d);
+    // Row 2: Charge Description (full width)
+    y = addFieldPair(doc, 'Charge Description', data.charge_description || '', lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Source / Verification (conditional — present for Utah/scraped search results)
+  // ── Subject Information ──
+  y = checkPageBreak(doc, y, 20, statusPrio);
+  { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
+    const sixthW = ffw / 6;
+    // Row 1: Last Name (2/5), First Name (2/5), DOB (1/5)
+    const fifthW = ffw / 5;
+    const r1a = addFieldPair(doc, 'Last Name', data.subject_last_name || '', lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'First Name', data.subject_first_name || '', lx + fifthW * 2, y, fifthW * 2);
+    const r1c = addFieldPair(doc, 'DOB', fmtDate(data.subject_dob), lx + fifthW * 4, y, fifthW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Gender, Race, Height, Weight, Hair, Eyes (6 cols)
+    const r2a = addFieldPair(doc, 'Gender', data.subject_gender || '', lx, y, sixthW);
+    const r2b = addFieldPair(doc, 'Race', data.subject_race || '', lx + sixthW, y, sixthW);
+    const r2c = addFieldPair(doc, 'Height', data.subject_height || '', lx + sixthW * 2, y, sixthW);
+    const r2d = addFieldPair(doc, 'Weight', data.subject_weight || '', lx + sixthW * 3, y, sixthW);
+    const r2e = addFieldPair(doc, 'Hair', data.subject_hair_color || '', lx + sixthW * 4, y, sixthW);
+    const r2f = addFieldPair(doc, 'Eyes', data.subject_eye_color || '', lx + sixthW * 5, y, sixthW);
+    y = Math.max(r2a, r2b, r2c, r2d, r2e, r2f);
+    // Row 3: Address (full width, conditional)
+    if (data.subject_address) {
+      y = addFieldPair(doc, 'Address', data.subject_address, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Court Information ──
+  y = checkPageBreak(doc, y, 18, statusPrio);
+  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
+    // Row 1: Issuing Court (half), Issuing Judge (half)
+    const r1a = addFieldPair(doc, 'Issuing Court', data.issuing_court || '', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Issuing Judge', data.issuing_judge || '', rx, y, hfw);
+    y = Math.max(r1a, r1b);
+    // Row 2: Bail Amount, Expiration Date, Entered By, Entry Date (4 cols)
+    const quarterW = ffw / 4;
+    const r2a = addFieldPair(doc, 'Bail Amount', fmtCurrency(data.bail_amount), lx, y, quarterW);
+    const r2b = addFieldPair(doc, 'Expiration Date', fmtDate(data.expires_at), lx + quarterW, y, quarterW);
+    const r2c = addFieldPair(doc, 'Entered By', data.entered_by_name || '', lx + quarterW * 2, y, quarterW);
+    const r2d = addFieldPair(doc, 'Entry Date', fmtTimestamp(data.created_at), lx + quarterW * 3, y, quarterW);
+    y = Math.max(r2a, r2b, r2c, r2d);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Service Information (conditional) ──
+  if (data.served_at || data.served_by_name) {
+    y = checkPageBreak(doc, y, 12, statusPrio);
+    { const sec = openAutoSection(doc, 'Service Information', y); y = sec.contentY;
+      const fifthW = ffw / 5;
+      const r1a = addFieldPair(doc, 'Served By', data.served_by_name || '', lx, y, fifthW * 2);
+      const r1b = addFieldPair(doc, 'Served Date', fmtTimestamp(data.served_at), lx + fifthW * 2, y, fifthW);
+      const r1c = addFieldPair(doc, 'Served Location', data.served_location || '', lx + fifthW * 3, y, fifthW * 2);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── Source / Verification (conditional) ──
   if (data.data_source || data.search_date || data.verified_by) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'SOURCE' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '25. DATA SOURCE', value: data.data_source || '', ratio: 2 },
-          { label: '26. SEARCH DATE', value: data.search_date || '', ratio: 1 },
-        ]},
-        ...(data.county || data.case_number ? [{ cells: [
-          { label: '27. COUNTY', value: data.county || '', ratio: 1 },
-          { label: '28. CASE NUMBER', value: data.case_number || '', ratio: 1 },
-          { label: '29. FILING DATE', value: fmtDate(data.filing_date), ratio: 1 },
-        ]} as FormRow] : []),
-        ...(data.verified_by ? [{ cells: [
-          { label: '30. VERIFIED BY', value: data.verified_by || '', ratio: 1 },
-          { label: '31. VERIFICATION DATE', value: data.verification_date || '', ratio: 1 },
-        ]} as FormRow] : []),
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 18, statusPrio);
+    { const sec = openAutoSection(doc, 'Source / Verification', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      // Row 1: Data Source (2/3), Search Date (1/3)
+      const r1a = addFieldPair(doc, 'Data Source', data.data_source || '', lx, y, thirdW * 2);
+      const r1b = addFieldPair(doc, 'Search Date', data.search_date || '', lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b);
+      // Row 2: County, Case Number, Filing Date (conditional)
+      if (data.county || data.case_number) {
+        const r2a = addFieldPair(doc, 'County', data.county || '', lx, y, thirdW);
+        const r2b = addFieldPair(doc, 'Case Number', data.case_number || '', lx + thirdW, y, thirdW);
+        const r2c = addFieldPair(doc, 'Filing Date', fmtDate(data.filing_date), lx + thirdW * 2, y, thirdW);
+        y = Math.max(r2a, r2b, r2c);
+      }
+      // Row 3: Verified By, Verification Date (conditional)
+      if (data.verified_by) {
+        const r3a = addFieldPair(doc, 'Verified By', data.verified_by || '', lx, y, hfw);
+        const r3b = addFieldPair(doc, 'Verification Date', data.verification_date || '', rx, y, hfw);
+        y = Math.max(r3a, r3b);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // Notes
@@ -2237,6 +2163,8 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
 
 function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
   setActiveCaseNumber(data.evidence_number);
@@ -2248,58 +2176,54 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     caseNumber: data.evidence_number,
   });
 
-  // Evidence Identification
-  y = drawFormSection(doc, {
-    sideTab: { label: 'EVIDENCE ID' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. EVIDENCE NUMBER', value: data.evidence_number, ratio: 2, valueBold: true },
-        { label: '2. TYPE', value: (data.evidence_type || '').replace(/_/g, ' ').toUpperCase(), ratio: 1 },
-        { label: '3. CATEGORY', value: data.category || '', ratio: 1 },
-        { label: '4. STATUS', value: (data.status || '').replace(/_/g, ' ').toUpperCase(), ratio: 1, align: 'center', valueBold: true },
-      ]},
-      { cells: [
-        { label: '5. RELATED INCIDENT', value: data.incident_number || '', ratio: 1 },
-        { label: '6. SERIAL NUMBER', value: data.serial_number || '', ratio: 1 },
-        { label: '7. BRAND', value: data.brand || '', ratio: 1 },
-        { label: '8. MODEL', value: data.model || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '9. DIMENSIONS', value: data.dimensions || '', ratio: 1 },
-        { label: '10. WEIGHT', value: data.weight || '', ratio: 1 },
-        { label: '11. EST. VALUE', value: fmtCurrency(data.estimated_value), ratio: 1, align: 'center' },
-        { label: '12. QUANTITY', value: data.quantity != null ? String(data.quantity) : '', ratio: 1, align: 'center' },
-      ]},
-    ],
-    y,
-  });
+  // ── Evidence Identification ──
+  y = checkPageBreak(doc, y, 25);
+  { const sec = openAutoSection(doc, 'Evidence Identification', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    // Row 1: Evidence Number (2/5), Type (1/5), Category (1/5), Status (1/5)
+    const fifthW = ffw / 5;
+    const r1a = addFieldPair(doc, 'Evidence Number', data.evidence_number || '', lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'Type', (data.evidence_type || '').replace(/_/g, ' ').toUpperCase(), lx + fifthW * 2, y, fifthW);
+    const r1c = addFieldPair(doc, 'Category', data.category || '', lx + fifthW * 3, y, fifthW);
+    const r1d = addFieldPair(doc, 'Status', (data.status || '').replace(/_/g, ' ').toUpperCase(), lx + fifthW * 4, y, fifthW);
+    y = Math.max(r1a, r1b, r1c, r1d);
+    // Row 2: Related Incident, Serial Number, Brand, Model (4 cols)
+    const r2a = addFieldPair(doc, 'Related Incident', data.incident_number || '', lx, y, quarterW);
+    const r2b = addFieldPair(doc, 'Serial Number', data.serial_number || '', lx + quarterW, y, quarterW);
+    const r2c = addFieldPair(doc, 'Brand', data.brand || '', lx + quarterW * 2, y, quarterW);
+    const r2d = addFieldPair(doc, 'Model', data.model || '', lx + quarterW * 3, y, quarterW);
+    y = Math.max(r2a, r2b, r2c, r2d);
+    // Row 3: Dimensions, Weight, Est. Value, Quantity (4 cols)
+    const r3a = addFieldPair(doc, 'Dimensions', data.dimensions || '', lx, y, quarterW);
+    const r3b = addFieldPair(doc, 'Weight', data.weight || '', lx + quarterW, y, quarterW);
+    const r3c = addFieldPair(doc, 'Est. Value', fmtCurrency(data.estimated_value), lx + quarterW * 2, y, quarterW);
+    const r3d = addFieldPair(doc, 'Quantity', data.quantity != null ? String(data.quantity) : '', lx + quarterW * 3, y, quarterW);
+    y = Math.max(r3a, r3b, r3c, r3d);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // Description (narrative — can be long)
   if (data.description) {
     y = addNarrativeSection(doc, 'Item Description', data.description, y);
   }
 
-  // Collection Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'COLLECTION' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '13. COLLECTED BY', value: data.collected_by || '', ratio: 2 },
-        { label: '14. COLLECTION DATE', value: fmtTimestamp(data.collected_date), ratio: 1 },
-        { label: '15. PACKAGING', value: data.packaging_type || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '16. LOCATION FOUND', value: data.location_found || '', ratio: 2 },
-        { label: '17. PHOTO TAKEN', value: data.photo_taken ? 'Yes' : 'No', ratio: 1, align: 'center' },
-        { label: '18. STORAGE LOCATION', value: data.storage_location || '', ratio: 2 },
-      ]},
-    ],
-    y,
-  });
+  // ── Collection Information ──
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Collection Information', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    // Row 1: Collected By (half), Collection Date (quarter), Packaging (quarter)
+    const r1a = addFieldPair(doc, 'Collected By', data.collected_by || '', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Collection Date', fmtTimestamp(data.collected_date), rx, y, quarterW);
+    const r1c = addFieldPair(doc, 'Packaging', data.packaging_type || '', rx + quarterW, y, quarterW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Location Found (2/5), Photo Taken (1/5), Storage Location (2/5)
+    const fifthW = ffw / 5;
+    const r2a = addFieldPair(doc, 'Location Found', data.location_found || '', lx, y, fifthW * 2);
+    const r2b = addFieldPair(doc, 'Photo Taken', data.photo_taken ? 'Yes' : 'No', lx + fifthW * 2, y, fifthW);
+    const r2c = addFieldPair(doc, 'Storage Location', data.storage_location || '', lx + fifthW * 3, y, fifthW * 2);
+    y = Math.max(r2a, r2b, r2c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // Chain of Custody (table — keep existing pattern, it works well)
   if (data.chain_of_custody && data.chain_of_custody.length > 0) {
@@ -2328,38 +2252,31 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Lab Analysis (conditional)
+  // ── Lab Analysis (conditional) ──
   if (data.lab_submitted) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'LAB' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'SUBMITTED TO LAB', value: '', checkbox: true, checked: true, ratio: 1 },
-          { label: '19. LAB NAME', value: data.lab_name || '', ratio: 2 },
-          { label: '20. LAB CASE #', value: data.lab_case_number || '', ratio: 2 },
-        ]},
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Lab Analysis', y); y = sec.contentY;
+      let flagX = lx;
+      flagX = addCheckboxField(doc, 'Submitted to Lab', true, flagX, y);
+      y += SPACING.LG;
+      const r1a = addFieldPair(doc, 'Lab Name', data.lab_name || '', lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Lab Case #', data.lab_case_number || '', rx, y, hfw);
+      y = Math.max(r1a, r1b);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
-  // Disposition / Disposal (conditional)
+  // ── Disposition / Disposal (conditional) ──
   if (data.disposal_method) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'DISPOSAL' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '21. METHOD', value: data.disposal_method, ratio: 1 },
-          { label: '22. DATE', value: fmtDate(data.disposal_date), ratio: 1 },
-          { label: '23. AUTHORIZED BY', value: data.disposal_authorized_by || '', ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Disposition / Disposal', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const r1a = addFieldPair(doc, 'Method', data.disposal_method, lx, y, thirdW);
+      const r1b = addFieldPair(doc, 'Date', fmtDate(data.disposal_date), lx + thirdW, y, thirdW);
+      const r1c = addFieldPair(doc, 'Authorized By', data.disposal_authorized_by || '', lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // Notes
@@ -2378,6 +2295,9 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 
 function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
   const cw = getContentWidth(doc);
 
   const reportType = data.report_type || 'status';
@@ -2398,44 +2318,37 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     caseNumber: data.vehicle_number,
   });
 
-  // Vehicle Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'VEHICLE' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. UNIT NUMBER', value: data.vehicle_number, ratio: 1, valueBold: true },
-        { label: '2. MAKE', value: data.make || '', ratio: 1 },
-        { label: '3. MODEL', value: data.model || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '4. YEAR', value: data.year ? String(data.year) : '', ratio: 1, align: 'center' },
-        { label: '5. COLOR', value: data.color || '', ratio: 1 },
-        { label: '6. VIN', value: data.vin || '', ratio: 2 },
-      ]},
-      { cells: [
-        { label: '7. PLATE NUMBER', value: data.plate_number || '', ratio: 1 },
-        { label: '8. PLATE STATE', value: data.plate_state || '', ratio: 1, align: 'center' },
-        { label: '9. STATUS', value: (data.status || '').replace(/_/g, ' ').toUpperCase(), ratio: 1, valueBold: true },
-      ]},
-    ],
-    y,
-  });
+  // ── Vehicle Information ──
+  y = checkPageBreak(doc, y, 25);
+  { const sec = openAutoSection(doc, 'Vehicle Information', y); y = sec.contentY;
+    const thirdW = ffw / 3;
+    // Row 1: Unit Number, Make, Model (3 cols)
+    const r1a = addFieldPair(doc, 'Unit Number', data.vehicle_number || '', lx, y, thirdW);
+    const r1b = addFieldPair(doc, 'Make', data.make || '', lx + thirdW, y, thirdW);
+    const r1c = addFieldPair(doc, 'Model', data.model || '', lx + thirdW * 2, y, thirdW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Year, Color, VIN (year 1/4, color 1/4, VIN 2/4)
+    const quarterW = ffw / 4;
+    const r2a = addFieldPair(doc, 'Year', data.year ? String(data.year) : '', lx, y, quarterW);
+    const r2b = addFieldPair(doc, 'Color', data.color || '', lx + quarterW, y, quarterW);
+    const r2c = addFieldPair(doc, 'VIN', data.vin || '', lx + quarterW * 2, y, quarterW * 2);
+    y = Math.max(r2a, r2b, r2c);
+    // Row 3: Plate Number, Plate State, Status (3 cols)
+    const r3a = addFieldPair(doc, 'Plate Number', data.plate_number || '', lx, y, thirdW);
+    const r3b = addFieldPair(doc, 'Plate State', data.plate_state || '', lx + thirdW, y, thirdW);
+    const r3c = addFieldPair(doc, 'Status', (data.status || '').replace(/_/g, ' ').toUpperCase(), lx + thirdW * 2, y, thirdW);
+    y = Math.max(r3a, r3b, r3c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
-  // Assignment
-  y = drawFormSection(doc, {
-    sideTab: { label: 'ASSIGN' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '10. ASSIGNED UNIT', value: data.assigned_unit_call_sign || 'Unassigned', ratio: 1 },
-        { label: '11. CURRENT MILEAGE', value: data.current_mileage ? data.current_mileage.toLocaleString() : '', ratio: 1, align: 'center' },
-      ]},
-    ],
-    y,
-  });
+  // ── Assignment ──
+  y = checkPageBreak(doc, y, 12);
+  { const sec = openAutoSection(doc, 'Assignment', y); y = sec.contentY;
+    const r1a = addFieldPair(doc, 'Assigned Unit', data.assigned_unit_call_sign || 'Unassigned', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Current Mileage', data.current_mileage ? data.current_mileage.toLocaleString() : '', rx, y, hfw);
+    y = Math.max(r1a, r1b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── FUEL LOG REPORT ──
   if (reportType === 'fuel_logs' && data.fuel_logs && data.fuel_logs.length > 0) {
@@ -2453,35 +2366,29 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     const costPerMile = fs?.cost_per_mile ?? null;
     const fuelCostPerDay = fs?.fuel_cost_per_day ?? null;
 
-    // Summary section — row 1: core stats
-    y = drawFormSection(doc, {
-      sideTab: { label: 'FUEL' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'TOTAL GALLONS', value: totalGal.toFixed(2), ratio: 1, align: 'center' },
-          { label: 'TOTAL COST', value: `$${totalCost.toFixed(2)}`, ratio: 1, align: 'center' },
-          { label: 'AVG MPG', value: avgMpg != null ? `${avgMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
-        ]},
-        { cells: [
-          { label: 'BEST MPG', value: bestMpg != null ? `${bestMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'WORST MPG', value: worstMpg != null ? `${worstMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'TOTAL DISTANCE', value: totalDist != null ? `${totalDist.toLocaleString(undefined, { maximumFractionDigits: 1 })} MI` : 'N/A', ratio: 1, align: 'center' },
-        ]},
-        { cells: [
-          { label: 'COST/MILE', value: costPerMile != null ? `$${costPerMile.toFixed(3)}` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'FUEL $/DAY', value: fuelCostPerDay != null ? `$${fuelCostPerDay.toFixed(2)}` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'FILL COUNT', value: String(data.fuel_logs!.length), ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
+    // ── Fuel Summary ──
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Fuel Summary', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      // Row 1: Total Gallons, Total Cost, Avg MPG
+      const r1a = addFieldPair(doc, 'Total Gallons', totalGal.toFixed(2), lx, y, thirdW);
+      const r1b = addFieldPair(doc, 'Total Cost', `$${totalCost.toFixed(2)}`, lx + thirdW, y, thirdW);
+      const r1c = addFieldPair(doc, 'Avg MPG', avgMpg != null ? `${avgMpg.toFixed(1)} MPG` : 'N/A', lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b, r1c);
+      // Row 2: Best MPG, Worst MPG, Total Distance
+      const r2a = addFieldPair(doc, 'Best MPG', bestMpg != null ? `${bestMpg.toFixed(1)} MPG` : 'N/A', lx, y, thirdW);
+      const r2b = addFieldPair(doc, 'Worst MPG', worstMpg != null ? `${worstMpg.toFixed(1)} MPG` : 'N/A', lx + thirdW, y, thirdW);
+      const r2c2 = addFieldPair(doc, 'Total Distance', totalDist != null ? `${totalDist.toLocaleString(undefined, { maximumFractionDigits: 1 })} MI` : 'N/A', lx + thirdW * 2, y, thirdW);
+      y = Math.max(r2a, r2b, r2c2);
+      // Row 3: Cost/Mile, Fuel $/Day, Fill Count
+      const r3a = addFieldPair(doc, 'Cost/Mile', costPerMile != null ? `$${costPerMile.toFixed(3)}` : 'N/A', lx, y, thirdW);
+      const r3b = addFieldPair(doc, 'Fuel $/Day', fuelCostPerDay != null ? `$${fuelCostPerDay.toFixed(2)}` : 'N/A', lx + thirdW, y, thirdW);
+      const r3c2 = addFieldPair(doc, 'Fill Count', String(data.fuel_logs!.length), lx + thirdW * 2, y, thirdW);
+      y = Math.max(r3a, r3b, r3c2);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Fuel logs table — columns: Date, Station, Gallons, $/Gal, Cost, Odometer, Distance, MPG, $/Mile
-    const fuelColW = [18, cw - 148, 14, 14, 18, 22, 16, 14, 16];
-    // Ensure cols fit: Date(18) + Station(remainder) + Gal(14) + $/Gal(14) + Cost(18) + Odo(22) + Dist(16) + MPG(14) + $/Mi(16)
-    // Total non-station = 18+14+14+18+22+16+14+16 = 132, station = cw - 132
     const adjFuelColW = [18, cw - 132, 14, 14, 18, 22, 16, 14, 16];
     const fuelColPos: number[] = [];
     { let cx = lx; for (const w of adjFuelColW) { fuelColPos.push(cx); cx += w; } }
@@ -2511,19 +2418,16 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Summary row
     const totalCost = data.maintenance_logs.reduce((sum, m) => sum + (m.cost || 0), 0);
     const totalLabor = data.maintenance_logs.reduce((sum, m) => sum + (m.labor_cost || 0), 0);
-    y = drawFormSection(doc, {
-      sideTab: { label: 'MAINT' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'TOTAL COST', value: `$${totalCost.toFixed(2)}`, ratio: 1, align: 'center' },
-          { label: 'TOTAL LABOR', value: `$${totalLabor.toFixed(2)}`, ratio: 1, align: 'center' },
-          { label: 'RECORDS', value: String(data.maintenance_logs.length), ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
+
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Maintenance Summary', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const r1a = addFieldPair(doc, 'Total Cost', `$${totalCost.toFixed(2)}`, lx, y, thirdW);
+      const r1b = addFieldPair(doc, 'Total Labor', `$${totalLabor.toFixed(2)}`, lx + thirdW, y, thirdW);
+      const r1c = addFieldPair(doc, 'Records', String(data.maintenance_logs.length), lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Maintenance table — standardised via addTableWithShading
     const maintColW = [22, 50, 20, 22, cw - 114];
@@ -2558,19 +2462,15 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     const totalGal = sortedDates.reduce((s, d) => s + byDate[d].gallons, 0);
     const totalCost = sortedDates.reduce((s, d) => s + byDate[d].cost, 0);
 
-    y = drawFormSection(doc, {
-      sideTab: { label: 'MILEAGE' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'TOTAL DISTANCE', value: `${totalDist.toFixed(1)} mi`, ratio: 1, align: 'center' },
-          { label: 'TOTAL FUEL', value: `${totalGal.toFixed(2)} gal`, ratio: 1, align: 'center' },
-          { label: 'TOTAL COST', value: `$${totalCost.toFixed(2)}`, ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Mileage Summary', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const r1a = addFieldPair(doc, 'Total Distance', `${totalDist.toFixed(1)} mi`, lx, y, thirdW);
+      const r1b = addFieldPair(doc, 'Total Fuel', `${totalGal.toFixed(2)} gal`, lx + thirdW, y, thirdW);
+      const r1c = addFieldPair(doc, 'Total Cost', `$${totalCost.toFixed(2)}`, lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Mileage summary table — standardised via addTableWithShading
     const mileColW = [30, 30, 30, cw - 90];
@@ -2592,37 +2492,27 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
 
   // ── STATUS REPORT (default) extras ──
   if (reportType === 'status') {
-    // Compliance
-    y = drawFormSection(doc, {
-      sideTab: { label: 'SERVICE' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '12. REGISTRATION EXPIRY', value: fmtDate(data.registration_expiry), ratio: 1 },
-          { label: '13. INSURANCE EXPIRY', value: fmtDate(data.insurance_expiry), ratio: 1 },
-        ]},
-        { cells: [
-          { label: '14. NEXT SERVICE DUE', value: fmtDate(data.next_service_due), ratio: 1 },
-          { label: '15. LAST SERVICE DATE', value: fmtDate(data.last_service_date), ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    // ── Service / Compliance ──
+    y = checkPageBreak(doc, y, 18);
+    { const sec = openAutoSection(doc, 'Service / Compliance', y); y = sec.contentY;
+      // Row 1: Registration Expiry, Insurance Expiry
+      const r1a = addFieldPair(doc, 'Registration Expiry', fmtDate(data.registration_expiry), lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Insurance Expiry', fmtDate(data.insurance_expiry), rx, y, hfw);
+      y = Math.max(r1a, r1b);
+      // Row 2: Next Service Due, Last Service Date
+      const r2a = addFieldPair(doc, 'Next Service Due', fmtDate(data.next_service_due), lx, y, hfw);
+      const r2b = addFieldPair(doc, 'Last Service Date', fmtDate(data.last_service_date), rx, y, hfw);
+      y = Math.max(r2a, r2b);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
-    // Equipment
+    // ── Equipment ──
     if (data.equipment && data.equipment.length > 0) {
-      y = drawFormSection(doc, {
-        sideTab: { label: 'EQUIP' },
-        topBanner: true,
-        onPageBreak: formSectionPageBreak,
-        rows: [
-          { cells: [
-            { label: '16. INSTALLED EQUIPMENT', value: data.equipment.join(', '), ratio: 1 },
-          ]},
-        ],
-        y,
-      });
+      y = checkPageBreak(doc, y, 10);
+      { const sec = openAutoSection(doc, 'Installed Equipment', y); y = sec.contentY;
+        y = addFieldPair(doc, 'Equipment', data.equipment.join(', '), lx, y, ffw);
+        y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+      }
     }
   }
 
@@ -2637,6 +2527,9 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
 
 function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
   const cw = getContentWidth(doc);
 
   const reportType = data.report_type || 'full';
@@ -2655,112 +2548,90 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     caseNumber: data.badge_number || data.employee_id || 'N/A',
   });
 
-  // ── OFFICER IDENTIFICATION (always shown) ──
-  y = drawFormSection(doc, {
-    sideTab: { label: 'OFFICER' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. LAST NAME', value: data.last_name, ratio: 2, valueBold: true },
-        { label: '2. FIRST NAME', value: data.first_name, ratio: 2 },
-        { label: '3. MIDDLE NAME', value: data.middle_name || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '4. BADGE NUMBER', value: data.badge_number || '', ratio: 1, valueBold: true },
-        { label: '5. EMPLOYEE ID', value: data.employee_id || '', ratio: 1 },
-        { label: '6. RANK', value: data.rank || '', ratio: 1 },
-        { label: '7. ROLE', value: (data.role || '').toUpperCase(), ratio: 1 },
-        { label: '8. DEPARTMENT', value: data.department || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  // ── Officer Identification (always shown) ──
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'Officer Identification', y); y = sec.contentY;
+    const fifthW = ffw / 5;
+    // Row 1: Last Name (2/5), First Name (2/5), Middle Name (1/5)
+    const r1a = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'First Name', data.first_name || '', lx + fifthW * 2, y, fifthW * 2);
+    const r1c = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + fifthW * 4, y, fifthW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Badge Number, Employee ID, Rank, Role, Department (5 cols)
+    const r2a = addFieldPair(doc, 'Badge Number', data.badge_number || '', lx, y, fifthW);
+    const r2b = addFieldPair(doc, 'Employee ID', data.employee_id || '', lx + fifthW, y, fifthW);
+    const r2c = addFieldPair(doc, 'Rank', data.rank || '', lx + fifthW * 2, y, fifthW);
+    const r2d = addFieldPair(doc, 'Role', (data.role || '').toUpperCase(), lx + fifthW * 3, y, fifthW);
+    const r2e = addFieldPair(doc, 'Department', data.department || '', lx + fifthW * 4, y, fifthW);
+    y = Math.max(r2a, r2b, r2c, r2d, r2e);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── FULL / DEFAULT sections ──
   if (reportType === 'full') {
-    // Personal Information
-    y = drawFormSection(doc, {
-      sideTab: { label: 'PERSONAL' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '9. DATE OF BIRTH', value: fmtDate(data.date_of_birth), ratio: 1 },
-          { label: '10. GENDER', value: data.gender || '', ratio: 1, align: 'center' },
-          { label: '11. BLOOD TYPE', value: data.blood_type || '', ratio: 1, align: 'center' },
-        ]},
-        ...(data.allergies ? [{ cells: [
-          { label: '12. ALLERGIES', value: data.allergies, ratio: 1 },
-        ]}] : []),
-      ],
-      y,
-    });
+    // ── Personal Information ──
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Personal Information', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const r1a = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), lx, y, thirdW);
+      const r1b = addFieldPair(doc, 'Gender', data.gender || '', lx + thirdW, y, thirdW);
+      const r1c = addFieldPair(doc, 'Blood Type', data.blood_type || '', lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b, r1c);
+      if (data.allergies) {
+        y = addFieldPair(doc, 'Allergies', data.allergies, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
-    // Contact
-    y = drawFormSection(doc, {
-      sideTab: { label: 'CONTACT' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '13. PHONE', value: data.phone || '', ratio: 1 },
-          { label: '14. EMAIL', value: data.email || '', ratio: 2 },
-        ]},
-        { cells: [
-          { label: '15. ADDRESS', value: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(), ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    // ── Contact ──
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Contact Information', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      // Row 1: Phone, Email
+      const r1a = addFieldPair(doc, 'Phone', data.phone || '', lx, y, thirdW);
+      const r1b = addFieldPair(doc, 'Email', data.email || '', lx + thirdW, y, thirdW * 2);
+      y = Math.max(r1a, r1b);
+      // Row 2: Address (full width)
+      const fullAddr = `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim();
+      y = addFieldPair(doc, 'Address', fullAddr, lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
-    // Employment
-    y = drawFormSection(doc, {
-      sideTab: { label: 'EMPLOY' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '16. HIRE DATE', value: fmtDate(data.hire_date), ratio: 1 },
-          { label: '17. TERMINATION DATE', value: fmtDate(data.termination_date), ratio: 1 },
-        ]},
-        { cells: [
-          { label: '18. SHIFT PREFERENCE', value: data.shift_preference || '', ratio: 1 },
-          { label: '19. UNIFORM SIZE', value: data.uniform_size || '', ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
+    // ── Employment ──
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Employment', y); y = sec.contentY;
+      // Row 1: Hire Date, Termination Date
+      const r1a = addFieldPair(doc, 'Hire Date', fmtDate(data.hire_date), lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Termination Date', fmtDate(data.termination_date), rx, y, hfw);
+      y = Math.max(r1a, r1b);
+      // Row 2: Shift Preference, Uniform Size
+      const r2a = addFieldPair(doc, 'Shift Preference', data.shift_preference || '', lx, y, hfw);
+      const r2b = addFieldPair(doc, 'Uniform Size', data.uniform_size || '', rx, y, hfw);
+      y = Math.max(r2a, r2b);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
-    // Identification
-    y = drawFormSection(doc, {
-      sideTab: { label: 'ID' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '20. DL NUMBER', value: data.dl_number || '', ratio: 2 },
-          { label: '21. DL STATE', value: data.dl_state || '', ratio: 1, align: 'center' },
-          { label: '22. DL EXPIRY', value: fmtDate(data.dl_expiry), ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    // ── Identification ──
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Identification', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const r1a = addFieldPair(doc, 'DL Number', data.dl_number || '', lx, y, hfw);
+      const r1b = addFieldPair(doc, 'DL State', data.dl_state || '', rx, y, quarterW);
+      const r1c = addFieldPair(doc, 'DL Expiry', fmtDate(data.dl_expiry), rx + quarterW, y, quarterW);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
-    // Emergency Contact
-    y = drawFormSection(doc, {
-      sideTab: { label: 'EMERG' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '23. EMERGENCY CONTACT NAME', value: data.emergency_contact_name || '', ratio: 2 },
-          { label: '24. PHONE', value: data.emergency_contact_phone || '', ratio: 1 },
-          { label: '25. RELATIONSHIP', value: data.emergency_contact_relationship || '', ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    // ── Emergency Contact ──
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Emergency Contact', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const r1a = addFieldPair(doc, 'Contact Name', data.emergency_contact_name || '', lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Phone', data.emergency_contact_phone || '', rx, y, quarterW);
+      const r1c = addFieldPair(doc, 'Relationship', data.emergency_contact_relationship || '', rx + quarterW, y, quarterW);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Certifications
     y = addNarrativeSection(doc, 'Certifications', data.certifications || '', y);
@@ -2768,17 +2639,11 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
   // ── CREDENTIALS TABLE ──
   if ((reportType === 'full' || reportType === 'credentials') && data.credentials && data.credentials.length > 0) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'CREDS' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'CREDENTIALS', value: `${data.credentials.length} on file`, ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Credentials', y); y = sec.contentY;
+      y = addFieldPair(doc, 'Credentials', `${data.credentials.length} on file`, lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Credentials table — standardised via addTableWithShading
     const credColW = [cw * 0.22, cw * 0.18, cw * 0.22, cw * 0.14, cw * 0.14, cw * 0.10];
@@ -2802,19 +2667,16 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     // Summary stats
     const totalHours = data.training_records.reduce((s, t) => s + (t.hours || 0), 0);
     const completedCount = data.training_records.filter(t => t.status === 'completed').length;
-    y = drawFormSection(doc, {
-      sideTab: { label: 'TRAIN' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'TOTAL COURSES', value: String(data.training_records.length), ratio: 1, align: 'center' },
-          { label: 'COMPLETED', value: String(completedCount), ratio: 1, align: 'center' },
-          { label: 'TOTAL HOURS', value: totalHours.toFixed(1), ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
+
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Training Summary', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const r1a = addFieldPair(doc, 'Total Courses', String(data.training_records.length), lx, y, thirdW);
+      const r1b = addFieldPair(doc, 'Completed', String(completedCount), lx + thirdW, y, thirdW);
+      const r1c = addFieldPair(doc, 'Total Hours', totalHours.toFixed(1), lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Training table — standardised via addTableWithShading
     const trainColW = [cw * 0.28, cw * 0.14, cw * 0.20, cw * 0.12, cw * 0.10, cw * 0.08, cw * 0.08];
@@ -2836,17 +2698,11 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
   // ── EQUIPMENT TABLE ──
   if ((reportType === 'full' || reportType === 'equipment') && data.equipment_list && data.equipment_list.length > 0) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'EQUIP' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'ASSIGNED EQUIPMENT', value: `${data.equipment_list.length} items`, ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Assigned Equipment', y); y = sec.contentY;
+      y = addFieldPair(doc, 'Equipment', `${data.equipment_list.length} items`, lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Equipment table — standardised via addTableWithShading
     const equipColW = [cw * 0.20, cw * 0.18, cw * 0.18, cw * 0.14, cw * 0.14, cw * 0.16];
@@ -2867,17 +2723,11 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
   // ── BODY CAMERAS TABLE ──
   if ((reportType === 'full' || reportType === 'equipment') && data.body_cameras && data.body_cameras.length > 0) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'CAMS' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'BODY CAMERAS', value: `${data.body_cameras.length} assigned`, ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Body Cameras', y); y = sec.contentY;
+      y = addFieldPair(doc, 'Cameras', `${data.body_cameras.length} assigned`, lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Body cameras table — standardised via addTableWithShading
     const camColW = [cw * 0.18, cw * 0.20, cw * 0.20, cw * 0.14, cw * 0.14, cw * 0.14];
@@ -2898,17 +2748,11 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
   // ── DEPLOYMENTS TABLE ──
   if ((reportType === 'full') && data.deployments && data.deployments.length > 0) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'DEPLOY' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'DEPLOYMENTS', value: `${data.deployments.length} records`, ratio: 1 },
-        ]},
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Deployments', y); y = sec.contentY;
+      y = addFieldPair(doc, 'Deployments', `${data.deployments.length} records`, lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Deployments table — standardised via addTableWithShading
     const depColW = [cw * 0.28, cw * 0.14, cw * 0.16, cw * 0.16, cw * 0.12, cw * 0.14];
@@ -2930,18 +2774,14 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   // ── TIME & ATTENDANCE TABLE ──
   if ((reportType === 'full' || reportType === 'time') && data.time_entries && data.time_entries.length > 0) {
     const totalHours = data.time_entries.reduce((s, t) => s + (t.total_hours || 0), 0);
-    y = drawFormSection(doc, {
-      sideTab: { label: 'TIME' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'ENTRIES', value: String(data.time_entries.length), ratio: 1, align: 'center' },
-          { label: 'TOTAL HOURS', value: totalHours.toFixed(1), ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
+
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Time & Attendance', y); y = sec.contentY;
+      const r1a = addFieldPair(doc, 'Entries', String(data.time_entries.length), lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Total Hours', totalHours.toFixed(1), rx, y, hfw);
+      y = Math.max(r1a, r1b);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
 
     // Time & attendance table — standardised via addTableWithShading
     const timeColW = [cw * 0.30, cw * 0.30, cw * 0.20, cw * 0.20];
@@ -2973,7 +2813,10 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 // ── Property Record ──────────────────────────────────────────
 
 function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
-  const cw = getContentWidth(doc);
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
 
   setActiveCaseNumber(data.name || 'N/A');
   let y = drawNibrsHeader(doc, {
@@ -2984,55 +2827,43 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     caseNumber: data.name || 'N/A',
   });
 
-  // Property Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'PROPERTY' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. PROPERTY NAME', value: data.name || '', ratio: 2, valueBold: true },
-        { label: '2. CLIENT', value: data.client_name || '', ratio: 2 },
-      ]},
-      { cells: [
-        { label: '3. PROPERTY TYPE', value: data.property_type || '', ratio: 1 },
-        { label: '4. STATUS', value: data.is_active ? 'ACTIVE' : 'INACTIVE', ratio: 1, align: 'center' },
-      ]},
-    ],
-    y,
-  });
+  // ── Property Information ──
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Property Information', y); y = sec.contentY;
+    // Row 1: Property Name (half), Client (half)
+    const r1a = addFieldPair(doc, 'Property Name', data.name || '', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Client', data.client_name || '', rx, y, hfw);
+    y = Math.max(r1a, r1b);
+    // Row 2: Property Type (half), Status (half)
+    const r2a = addFieldPair(doc, 'Property Type', data.property_type || '', lx, y, hfw);
+    const r2b = addFieldPair(doc, 'Status', data.is_active ? 'ACTIVE' : 'INACTIVE', rx, y, hfw);
+    y = Math.max(r2a, r2b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
-  // Location
-  y = drawFormSection(doc, {
-    sideTab: { label: 'LOCATION' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '5. ADDRESS', value: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(), ratio: 1 },
-      ]},
-      { cells: [
-        { label: '6. LATITUDE', value: data.latitude != null ? String(data.latitude) : '', ratio: 1, align: 'center' },
-        { label: '7. LONGITUDE', value: data.longitude != null ? String(data.longitude) : '', ratio: 1, align: 'center' },
-      ]},
-    ],
-    y,
-  });
+  // ── Location ──
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Location', y); y = sec.contentY;
+    const fullAddr = `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim();
+    // Row 1: Address (full width)
+    y = addFieldPair(doc, 'Address', fullAddr, lx, y, ffw);
+    // Row 2: Latitude, Longitude
+    const r2a = addFieldPair(doc, 'Latitude', data.latitude != null ? String(data.latitude) : '', lx, y, hfw);
+    const r2b = addFieldPair(doc, 'Longitude', data.longitude != null ? String(data.longitude) : '', rx, y, hfw);
+    y = Math.max(r2a, r2b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
-  // Access & Security
-  y = drawFormSection(doc, {
-    sideTab: { label: 'ACCESS' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '8. GATE CODE', value: data.gate_code || '', ratio: 1 },
-        { label: '9. ALARM CODE', value: data.alarm_code || '', ratio: 1 },
-        { label: '10. EMERGENCY CONTACT', value: data.emergency_contact || '', ratio: 2 },
-      ]},
-    ],
-    y,
-  });
+  // ── Access & Security ──
+  y = checkPageBreak(doc, y, 12);
+  { const sec = openAutoSection(doc, 'Access & Security', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    const r1a = addFieldPair(doc, 'Gate Code', data.gate_code || '', lx, y, quarterW);
+    const r1b = addFieldPair(doc, 'Alarm Code', data.alarm_code || '', lx + quarterW, y, quarterW);
+    const r1c = addFieldPair(doc, 'Emergency Contact', data.emergency_contact || '', lx + quarterW * 2, y, quarterW * 2);
+    y = Math.max(r1a, r1b, r1c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // Access Instructions
   y = addNarrativeSection(doc, 'Access Instructions', data.access_instructions || '', y);
@@ -3055,6 +2886,11 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 // ── Citation Report ──────────────────────────────────────────
 
 function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
+
   // Map citation type to a priority for the standard classification bar
   const typePrioMap: Record<string, string> = {
     traffic: 'medium',
@@ -3073,110 +2909,92 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     caseNumber: data.citation_number,
   });
 
-  // Citation Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'CITATION' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. CITATION NUMBER', value: data.citation_number, ratio: 2, valueBold: true },
-        { label: '2. TYPE', value: (data.type || '').replace(/_/g, ' ').toUpperCase(), ratio: 1, align: 'center' },
-        { label: '3. STATUS', value: (data.status || '').replace(/_/g, ' ').toUpperCase(), ratio: 1, align: 'center' },
-      ]},
-      { cells: [
-        { label: '4. DATE OF VIOLATION', value: data.violation_date || '', ratio: 1 },
-        { label: '5. TIME', value: data.violation_time || '', ratio: 1, align: 'center' },
-        { label: '6. LOCATION', value: data.location || '', ratio: 2 },
-      ]},
-    ],
-    y,
-  });
-
-  // Violation Details
-  y = drawFormSection(doc, {
-    sideTab: { label: 'OFFENSE' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '7. STATUTE / CODE', value: data.statute_citation || '', ratio: 2 },
-        { label: '8. OFFENSE LEVEL', value: (data.offense_level || '').replace(/_/g, ' ').toUpperCase(), ratio: 1, align: 'center' },
-        { label: '9. FINE AMOUNT', value: data.fine_amount != null ? fmtCurrency(data.fine_amount) : '', ratio: 1, align: 'center' },
-      ]},
-      ...(data.violation_description ? [{ cells: [
-        { label: '10. VIOLATION DESCRIPTION', value: data.violation_description, ratio: 1 },
-      ]}] : []),
-    ],
-    y,
-  });
-
-  // Subject Information
-  y = drawFormSection(doc, {
-    sideTab: { label: 'SUBJECT' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '11. NAME', value: data.person_name || '', ratio: 2, valueBold: true },
-        { label: '12. DATE OF BIRTH', value: fmtDate(data.person_dob), ratio: 1 },
-      ]},
-      { cells: [
-        { label: "13. DRIVER'S LICENSE", value: data.person_dl || '', ratio: 1 },
-        { label: '14. ADDRESS', value: data.person_address || '', ratio: 2 },
-      ]},
-    ],
-    y,
-  });
-
-  // Vehicle Information
-  if (data.vehicle_description || data.vehicle_plate) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'VEHICLE' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '15. VEHICLE DESCRIPTION', value: data.vehicle_description || '', ratio: 2 },
-          { label: '16. PLATE', value: data.vehicle_plate || '', ratio: 1 },
-          { label: '17. STATE', value: data.vehicle_state || '', ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
+  // ── Citation Information ──
+  y = checkPageBreak(doc, y, 18, prio);
+  { const sec = openAutoSection(doc, 'Citation Information', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    // Row 1: Citation Number (half), Type (quarter), Status (quarter)
+    const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Type', (data.type || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', (data.status || '').replace(/_/g, ' ').toUpperCase(), rx + quarterW, y, quarterW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Date of Violation, Time, Location
+    const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);
+    const r2b = addFieldPair(doc, 'Time', data.violation_time || '', lx + quarterW, y, quarterW);
+    const r2c = addFieldPair(doc, 'Location', data.location || '', lx + quarterW * 2, y, quarterW * 2);
+    y = Math.max(r2a, r2b, r2c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Issuing Officer
-  y = drawFormSection(doc, {
-    sideTab: { label: 'OFFICER' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '18. OFFICER NAME', value: data.issuing_officer_name || '', ratio: 2 },
-        { label: '19. BADGE NUMBER', value: data.badge_number || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  // ── Violation Details ──
+  y = checkPageBreak(doc, y, 15, prio);
+  { const sec = openAutoSection(doc, 'Violation Details', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    // Row 1: Statute/Code (half), Offense Level (quarter), Fine Amount (quarter)
+    const r1a = addFieldPair(doc, 'Statute / Code', data.statute_citation || '', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Offense Level', (data.offense_level || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
+    const r1c = addFieldPair(doc, 'Fine Amount', data.fine_amount != null ? fmtCurrency(data.fine_amount) : '', rx + quarterW, y, quarterW);
+    y = Math.max(r1a, r1b, r1c);
+    // Row 2: Violation Description (full width, conditional)
+    if (data.violation_description) {
+      y = addFieldPair(doc, 'Violation Description', data.violation_description, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
-  // Court Information
+  // ── Subject Information ──
+  y = checkPageBreak(doc, y, 15, prio);
+  { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
+    const thirdW = ffw / 3;
+    // Row 1: Name (2/3), Date of Birth (1/3)
+    const r1a = addFieldPair(doc, 'Name', data.person_name || '', lx, y, thirdW * 2);
+    const r1b = addFieldPair(doc, 'Date of Birth', fmtDate(data.person_dob), lx + thirdW * 2, y, thirdW);
+    y = Math.max(r1a, r1b);
+    // Row 2: Driver's License (1/3), Address (2/3)
+    const r2a = addFieldPair(doc, "Driver's License", data.person_dl || '', lx, y, thirdW);
+    const r2b = addFieldPair(doc, 'Address', data.person_address || '', lx + thirdW, y, thirdW * 2);
+    y = Math.max(r2a, r2b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Vehicle Information ──
+  if (data.vehicle_description || data.vehicle_plate) {
+    y = checkPageBreak(doc, y, 12, prio);
+    { const sec = openAutoSection(doc, 'Vehicle Information', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const r1a = addFieldPair(doc, 'Vehicle Description', data.vehicle_description || '', lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Plate', data.vehicle_plate || '', rx, y, quarterW);
+      const r1c = addFieldPair(doc, 'State', data.vehicle_state || '', rx + quarterW, y, quarterW);
+      y = Math.max(r1a, r1b, r1c);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── Issuing Officer ──
+  y = checkPageBreak(doc, y, 12, prio);
+  { const sec = openAutoSection(doc, 'Issuing Officer', y); y = sec.contentY;
+    const thirdW = ffw / 3;
+    const r1a = addFieldPair(doc, 'Officer Name', data.issuing_officer_name || '', lx, y, thirdW * 2);
+    const r1b = addFieldPair(doc, 'Badge Number', data.badge_number || '', lx + thirdW * 2, y, thirdW);
+    y = Math.max(r1a, r1b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Court Information ──
   if (data.court_name || data.court_date) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'COURT' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '20. COURT NAME', value: data.court_name || '', ratio: 2 },
-          { label: '21. COURT DATE', value: fmtDate(data.court_date), ratio: 1 },
-        ]},
-        ...(data.court_address ? [{ cells: [
-          { label: '22. COURT ADDRESS', value: data.court_address, ratio: 1 },
-        ]}] : []),
-      ],
-      y,
-    });
+    y = checkPageBreak(doc, y, 15, prio);
+    { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      // Row 1: Court Name (2/3), Court Date (1/3)
+      const r1a = addFieldPair(doc, 'Court Name', data.court_name || '', lx, y, thirdW * 2);
+      const r1b = addFieldPair(doc, 'Court Date', fmtDate(data.court_date), lx + thirdW * 2, y, thirdW);
+      y = Math.max(r1a, r1b);
+      // Row 2: Court Address (full width, conditional)
+      if (data.court_address) {
+        y = addFieldPair(doc, 'Court Address', data.court_address, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // Notes

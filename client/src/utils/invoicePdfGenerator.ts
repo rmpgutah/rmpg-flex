@@ -23,7 +23,6 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
-  formSectionPageBreak,
   sanitizePdfText,
   addSignatureBlock,
   wordWrapText,
@@ -33,7 +32,7 @@ import {
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
-import { drawNibrsHeader, drawFormSection, type FormRow } from './pdfFormHelpers';
+import { drawNibrsHeader } from './pdfFormHelpers';
 import { FORM_NUMBERS } from './pdfAssets';
 
 // ── Data interface ────────────────────────────────────────
@@ -122,44 +121,30 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   });
 
   // ── Invoice Information ─────────────────────────────
-  y = drawFormSection(doc, {
-    sideTab: { label: 'INVOICE' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '1. INVOICE NUMBER', value: data.invoice_number, ratio: 2, valueBold: true },
-        { label: '2. STATUS', value: (data.status || 'draft').toUpperCase(), ratio: 1, align: 'center', valueBold: true },
-        { label: '3. ISSUE DATE', value: data.issue_date?.substring(0, 10) || '', ratio: 1 },
-        { label: '4. DUE DATE', value: data.due_date?.substring(0, 10) || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '5. PAYMENT TERMS', value: data.payment_terms || 'Net 30', ratio: 1 },
-        { label: '6. BILLING PERIOD', value: `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, ratio: 2 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Invoice Information', y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '1. Invoice Number', data.invoice_number, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '2. Status', (data.status || 'draft').toUpperCase(), rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    const fy3 = addFieldPair(doc, '3. Issue Date', data.issue_date?.substring(0, 10) || '', lx, y, hfw);
+    const fy4 = addFieldPair(doc, '4. Due Date', data.due_date?.substring(0, 10) || '', rx, y, hfw);
+    y = Math.max(fy3, fy4);
+    const fy5 = addFieldPair(doc, '5. Payment Terms', data.payment_terms || 'Net 30', lx, y, hfw);
+    const fy6 = addFieldPair(doc, '6. Billing Period', `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, rx, y, hfw);
+    y = Math.max(fy5, fy6);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Client / Bill To ──────────────────────────────
-  y = drawFormSection(doc, {
-    sideTab: { label: 'BILL TO' },
-    topBanner: true,
-    onPageBreak: formSectionPageBreak,
-    rows: [
-      { cells: [
-        { label: '7. CLIENT NAME', value: data.client_name || '', ratio: 1, valueBold: true },
-      ]},
-      { cells: [
-        { label: '8. BILLING ADDRESS', value: data.billing_address || data.client_address || '', ratio: 1 },
-      ]},
-      { cells: [
-        { label: '9. CONTACT', value: data.contact_name || '', ratio: 1 },
-        { label: '10. EMAIL', value: data.billing_email || data.contact_email || '', ratio: 1 },
-      ]},
-    ],
-    y,
-  });
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Client / Bill To', y); y = sec.contentY;
+    y = addFieldPair(doc, '7. Client Name', data.client_name || '', lx, y, ffw);
+    y = addFieldPair(doc, '8. Billing Address', data.billing_address || data.client_address || '', lx, y, ffw);
+    const fy1 = addFieldPair(doc, '9. Contact', data.contact_name || '', lx, y, hfw);
+    const fy2 = addFieldPair(doc, '10. Email', data.billing_email || data.contact_email || '', rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Line Items Table ─────────────────────────────────
   {
