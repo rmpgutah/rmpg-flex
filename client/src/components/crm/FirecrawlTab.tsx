@@ -103,6 +103,21 @@ function safeObj(val: any): Record<string, any> {
 
 type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant' | 'lead-gen' | 'support-bot' | 'trend-cron' | 'site-migrator' | 'code-repo';
 
+// Cross-tool context for chaining between panels
+interface ToolContext {
+  url?: string;
+  name?: string;
+  email?: string;
+  topic?: string;
+  query?: string;
+}
+
+interface PanelChainProps {
+  toolContext: ToolContext;
+  setToolContext: React.Dispatch<React.SetStateAction<ToolContext>>;
+  switchTab: (tab: FirecrawlSubTab) => void;
+}
+
 interface Scout {
   id: number;
   name: string;
@@ -418,7 +433,7 @@ const WORKFLOW_TEMPLATES = [
 // ██ SCOUTS PANEL
 // ══════════════════════════════════════════════════════════════
 
-function ScoutsPanel() {
+function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [scouts, setScouts] = useState<Scout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -437,6 +452,12 @@ function ScoutsPanel() {
   const [formKeywords, setFormKeywords] = useState('');
   const [formInterval, setFormInterval] = useState('24');
   const [formEmail, setFormEmail] = useState('');
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.url && !formUrl) setFormUrl(toolContext.url);
+    if (toolContext.name && !formName) setFormName(toolContext.name);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     try {
@@ -562,6 +583,13 @@ function ScoutsPanel() {
       {/* New Scout Form */}
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Scout</span>
+            <button type="button" onClick={() => {
+              setFormName('RMPG Website Monitor'); setFormUrl('https://rmpgutah.us'); setFormQuery('security services');
+              setFormInterval('24'); setFormEmail('');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
@@ -671,6 +699,17 @@ function ScoutsPanel() {
                         <span className="text-rmpg-400">{run.matched} matched</span>
                         {run.error && (
                           <span className="text-red-400 truncate max-w-[300px]">{run.error}</span>
+                        )}
+                        {!run.error && run.matched > 0 && (
+                          <>
+                            <button type="button" onClick={() => {
+                              setToolContext({ query: scouts.find(s => s.id === run.scout_id)?.query || '' });
+                              switchTab('deep-search');
+                            }} className="text-[9px] text-brand-400 hover:text-brand-300 ml-auto">Deep search matches &rarr;</button>
+                            <button type="button" onClick={() => {
+                              switchTab('enrich');
+                            }} className="text-[9px] text-brand-400 hover:text-brand-300">Enrich contacts &rarr;</button>
+                          </>
                         )}
                       </div>
                     ))
@@ -1579,6 +1618,7 @@ function WorkflowsPanel() {
           </div>
 
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Steps</div>
+          <div className="text-[8px] text-rmpg-500 mt-0.5 mb-1">Each step runs in sequence. Choose scrape to fetch a URL, search to find results, or extract to pull structured data.</div>
           <div className="space-y-1.5">
             {formSteps.map((step, idx) => (
               <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
@@ -1899,7 +1939,7 @@ interface EnrichResult {
   created_at: string;
 }
 
-function EnrichPanel() {
+function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [input, setInput] = useState('');
   const [enriching, setEnriching] = useState(false);
@@ -1911,6 +1951,12 @@ function EnrichPanel() {
   const [bulkInput, setBulkInput] = useState('');
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkResults, setBulkResults] = useState<EnrichResult[]>([]);
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.email && !input) setInput(toolContext.email);
+    else if (toolContext.url && !input) setInput(toolContext.url);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadHistory = useCallback(async () => {
     try {
@@ -1980,17 +2026,22 @@ function EnrichPanel() {
 
       {/* Single Input */}
       {!bulkMode && (
-        <div className="flex items-center gap-2">
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && enrich()}
-            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
-            placeholder="email@company.com or company.com"
-          />
-          <SmallBtn onClick={enrich} loading={enriching} variant="primary">
-            <Building2 className="w-3 h-3" /> Enrich
-          </SmallBtn>
+        <div className="space-y-1">
+          <div className="flex items-center justify-end">
+            <button type="button" onClick={() => setInput('info@rmpgutah.us')} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && enrich()}
+              className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder="email@company.com or company.com"
+            />
+            <SmallBtn onClick={enrich} loading={enriching} variant="primary">
+              <Building2 className="w-3 h-3" /> Enrich
+            </SmallBtn>
+          </div>
         </div>
       )}
 
@@ -2091,6 +2142,21 @@ function EnrichPanel() {
               <div className="text-[10px] text-rmpg-300 font-mono whitespace-pre-wrap">{typeof result.contact_info === 'string' ? result.contact_info : JSON.stringify(safeObj(result.contact_info), null, 2)}</div>
             </div>
           )}
+
+          {/* Chain action buttons */}
+          <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
+            <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Next</span>
+            <button type="button" onClick={() => {
+              setToolContext({ topic: result.company_name || result.domain || '' });
+              switchTab('researcher');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300">Research this company &rarr;</button>
+            {result.domain && (
+              <button type="button" onClick={() => {
+                setToolContext({ url: `https://${result.domain}`, name: `${result.company_name || result.domain} Monitor` });
+                switchTab('observer');
+              }} className="text-[9px] text-brand-400 hover:text-brand-300">Monitor for changes &rarr;</button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2142,7 +2208,7 @@ interface ResearchResult {
   created_at: string;
 }
 
-function ResearcherPanel() {
+function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [topic, setTopic] = useState('');
   const [questions, setQuestions] = useState('');
@@ -2153,6 +2219,11 @@ function ResearcherPanel() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedFinding, setExpandedFinding] = useState<number | null>(null);
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.topic && !topic) setTopic(toolContext.topic);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadHistory = useCallback(async () => {
     try {
@@ -2203,6 +2274,11 @@ function ResearcherPanel() {
 
       {/* Topic Input */}
       <div className="space-y-2">
+        <div className="flex items-center justify-end">
+          <button type="button" onClick={() => {
+            setTopic('Process serving laws and requirements in Utah'); setDepth('thorough');
+          }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+        </div>
         <div className="flex items-center gap-2">
           <input
             value={topic}
@@ -2334,6 +2410,22 @@ function ResearcherPanel() {
               </div>
             </div>
           )}
+
+          {/* Chain action buttons */}
+          <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
+            <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Next</span>
+            <button type="button" onClick={() => {
+              setToolContext({ topic: result.topic });
+              switchTab('drafts');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300">Create draft report &rarr;</button>
+            {safeArr(result.sources).length > 0 && (
+              <button type="button" onClick={() => {
+                const firstSrc = safeArr(result.sources)[0];
+                setToolContext({ url: firstSrc?.url, name: `${result.topic} Sources` });
+                switchTab('observer');
+              }} className="text-[9px] text-brand-400 hover:text-brand-300">Monitor sources &rarr;</button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2636,7 +2728,7 @@ interface ObserverChange {
   detected_at: string;
 }
 
-function ObserverPanel() {
+function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [watches, setWatches] = useState<ObserverWatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2652,6 +2744,12 @@ function ObserverPanel() {
   const [formName, setFormName] = useState('');
   const [formUrl, setFormUrl] = useState('');
   const [formInterval, setFormInterval] = useState('24');
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.url && !formUrl) setFormUrl(toolContext.url);
+    if (toolContext.name && !formName) setFormName(toolContext.name);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     try {
@@ -2756,6 +2854,12 @@ function ObserverPanel() {
       {/* Create Form */}
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Watch</span>
+            <button type="button" onClick={() => {
+              setFormName('Utah Courts Monitor'); setFormUrl('https://www.utcourts.gov'); setFormInterval('12');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
@@ -2872,7 +2976,7 @@ interface DeepSearchResult {
   created_at: string;
 }
 
-function DeepSearchPanel() {
+function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [query, setQuery] = useState('');
   const [validate, setValidate] = useState(true);
@@ -2882,6 +2986,11 @@ function DeepSearchPanel() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedClaim, setExpandedClaim] = useState<number | null>(null);
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.query && !query) setQuery(toolContext.query);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadHistory = useCallback(async () => {
     try {
@@ -2926,26 +3035,31 @@ function DeepSearchPanel() {
       </PanelTitleBar>
 
       {/* Query Input */}
-      <div className="flex items-center gap-2">
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && search()}
-          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
-          placeholder="Enter a claim or question to verify..."
-        />
-        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
+      <div className="space-y-1">
+        <div className="flex items-center justify-end">
+          <button type="button" onClick={() => setQuery('How do Utah courts issue and serve warrants?')} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+        </div>
+        <div className="flex items-center gap-2">
           <input
-            type="checkbox"
-            checked={validate}
-            onChange={e => setValidate(e.target.checked)}
-            className="rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/50 w-3 h-3"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && search()}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+            placeholder="Enter a claim or question to verify..."
           />
-          Validate
-        </label>
-        <SmallBtn onClick={search} loading={searching} variant="primary">
-          <ShieldCheck className="w-3 h-3" /> Search
-        </SmallBtn>
+          <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
+            <input
+              type="checkbox"
+              checked={validate}
+              onChange={e => setValidate(e.target.checked)}
+              className="rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/50 w-3 h-3"
+            />
+            Validate
+          </label>
+          <SmallBtn onClick={search} loading={searching} variant="primary">
+            <ShieldCheck className="w-3 h-3" /> Search
+          </SmallBtn>
+        </div>
       </div>
 
       {/* History Dropdown */}
@@ -4706,6 +4820,7 @@ function ExtractPanel() {
           <span className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider">Schema Fields</span>
           <SmallBtn onClick={addField}><Plus className="w-3 h-3" /> Add Field</SmallBtn>
         </div>
+        <div className="text-[8px] text-rmpg-500 -mt-1">{'Define what data to extract. Example: name (string), price (number), description (string).'}</div>
         {fields.map((f, idx) => (
           <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
             <input
@@ -9298,6 +9413,7 @@ function PipelinesPanel() {
               <label className="text-[10px] text-rmpg-400">Steps</label>
               <SmallBtn onClick={addStep}><Plus className="w-3 h-3" /> Add Step</SmallBtn>
             </div>
+            <div className="text-[8px] text-rmpg-500 mb-1">Ingest fetches data, Transform reshapes it, Filter removes unwanted rows, Enrich adds metadata, Output saves results.</div>
             {formSteps.map((step, idx) => (
               <div key={idx} className="flex items-center gap-2 mb-1">
                 <span className="text-[9px] text-rmpg-500 w-4 text-right">{idx + 1}</span>
@@ -10645,6 +10761,38 @@ export default function FirecrawlTab() {
   const [workflowStep, setWorkflowStep] = useState(0);
   const [quickAction, setQuickAction] = useState<string | null>(null);
   const [quickInput, setQuickInput] = useState('');
+  const [toolContext, setToolContext] = useState<ToolContext>({});
+  const [tabBadges, setTabBadges] = useState<Record<string, number>>({});
+
+  // Shared switch function that clears context when navigating without chaining
+  const switchTab = useCallback((tab: FirecrawlSubTab) => {
+    setActiveTab(tab);
+  }, []);
+
+  const chainProps: PanelChainProps = { toolContext, setToolContext, switchTab };
+
+  // Fetch badge counts for active-item tabs
+  useEffect(() => {
+    const fetchCounts = async () => {
+      const counts: Record<string, number> = {};
+      try {
+        const [scouts, observers, chatbots, agents, workflows] = await Promise.allSettled([
+          apiFetch<any[]>('/firecrawl-tools/scouts'),
+          apiFetch<any[]>('/firecrawl-tools/observer/watches'),
+          apiFetch<any[]>('/firecrawl-tools/chatbot'),
+          apiFetch<any[]>('/firecrawl-tools/agents'),
+          apiFetch<any[]>('/firecrawl-tools/workflows'),
+        ]);
+        if (scouts.status === 'fulfilled') counts.scouts = scouts.value.length;
+        if (observers.status === 'fulfilled') counts.observer = observers.value.length;
+        if (chatbots.status === 'fulfilled') counts.chatbot = chatbots.value.length;
+        if (agents.status === 'fulfilled') counts.agents = agents.value.length;
+        if (workflows.status === 'fulfilled') counts.workflows = workflows.value.length;
+      } catch { /* silent */ }
+      setTabBadges(counts);
+    };
+    fetchCounts();
+  }, [activeTab]); // re-fetch when switching tabs (lightweight)
 
   // Filter tabs by search and category
   const filteredTabs = TABS.filter(tab => {
@@ -10828,7 +10976,7 @@ export default function FirecrawlTab() {
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       title={tab.description}
-                      className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
+                      className={`relative flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
                         activeTab === tab.id
                           ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
                           : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
@@ -10836,6 +10984,9 @@ export default function FirecrawlTab() {
                     >
                       <tab.icon className="w-2.5 h-2.5" />
                       {tab.label}
+                      {tabBadges[tab.id] != null && tabBadges[tab.id] > 0 && (
+                        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-green-500 text-[7px] text-white rounded-full flex items-center justify-center font-bold leading-none">{tabBadges[tab.id]}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -10853,7 +11004,7 @@ export default function FirecrawlTab() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 title={tab.description}
-                className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
+                className={`relative flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
                     : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
@@ -10861,6 +11012,9 @@ export default function FirecrawlTab() {
               >
                 <tab.icon className="w-2.5 h-2.5" />
                 {tab.label}
+                {tabBadges[tab.id] != null && tabBadges[tab.id] > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-green-500 text-[7px] text-white rounded-full flex items-center justify-center font-bold leading-none">{tabBadges[tab.id]}</span>
+                )}
               </button>
             ))}
           </div>
@@ -10870,18 +11024,18 @@ export default function FirecrawlTab() {
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-dark">
         {!activeTab && <TemplatesLanding onSelect={handleWorkflowSelect} />}
-        {activeTab === 'scouts' && <ScoutsPanel />}
+        {activeTab === 'scouts' && <ScoutsPanel {...chainProps} />}
         {activeTab === 'ai-ready' && <AiReadyPanel />}
         {activeTab === 'cloner' && <ClonerPanel />}
         {activeTab === 'brand' && <BrandMonitorPanel />}
         {activeTab === 'compare' && <PageComparePanel />}
         {activeTab === 'workflows' && <WorkflowsPanel />}
         {activeTab === 'search-engine' && <SearchEnginePanel />}
-        {activeTab === 'enrich' && <EnrichPanel />}
-        {activeTab === 'researcher' && <ResearcherPanel />}
+        {activeTab === 'enrich' && <EnrichPanel {...chainProps} />}
+        {activeTab === 'researcher' && <ResearcherPanel {...chainProps} />}
         {activeTab === 'chatbot' && <ChatbotPanel />}
-        {activeTab === 'observer' && <ObserverPanel />}
-        {activeTab === 'deep-search' && <DeepSearchPanel />}
+        {activeTab === 'observer' && <ObserverPanel {...chainProps} />}
+        {activeTab === 'deep-search' && <DeepSearchPanel {...chainProps} />}
         {activeTab === 'llmstxt' && <LlmsTxtPanel />}
         {activeTab === 'pdf-inspect' && <PdfInspectPanel />}
         {activeTab === 'graphs' && <GraphsPanel />}
