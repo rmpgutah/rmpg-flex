@@ -1215,6 +1215,24 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
     params.push(req.params.id);
     db.prepare(`UPDATE calls_for_service SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
+    // Propagate case_number to all related calls in the chain (parent + siblings)
+    if (case_number !== undefined) {
+      try {
+        const now = localNow();
+        // Update children (calls that have this call as parent)
+        db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE parent_call_id = ? AND id != ?')
+          .run(case_number || null, now, call.id, call.id);
+        // Update parent (if this call has a parent)
+        if (call.parent_call_id) {
+          db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE id = ?')
+            .run(case_number || null, now, call.parent_call_id);
+          // Update siblings (other children of the same parent)
+          db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE parent_call_id = ? AND id != ?')
+            .run(case_number || null, now, call.parent_call_id, call.id);
+        }
+      } catch { /* non-critical — best effort propagation */ }
+    }
+
     // Upgrade 19: Detailed activity log showing what changed
     const changedFields = updates.filter(u => !u.includes('updated_at') && !u.includes('priority_score') && !u.includes('status_changed_at')).map(u => u.split(' = ')[0]);
     db.prepare(`

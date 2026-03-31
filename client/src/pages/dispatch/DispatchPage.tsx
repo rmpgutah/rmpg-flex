@@ -3138,12 +3138,13 @@ export default function DispatchPage() {
                     editingTimestamp === 'case_number' ? (
                       <input
                         type="text"
-                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[140px]"
+                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={selectedCall.case_number || ''}
-                        placeholder="Case #"
+                        placeholder="Enter case number..."
                         autoFocus
                         onKeyDown={async (e) => {
                           if (e.key === 'Enter') {
+                            e.preventDefault();
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
@@ -3156,7 +3157,19 @@ export default function DispatchPage() {
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
                         }}
-                        onBlur={() => setEditingTimestamp(null)}
+                        onBlur={async (e) => {
+                          // Save on blur (don't discard changes)
+                          const val = e.target.value.trim();
+                          if (val !== (selectedCall.case_number || '')) {
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                            } catch { /* silent on blur */ }
+                          }
+                          setEditingTimestamp(null);
+                        }}
                       />
                     ) : (
                       <span
