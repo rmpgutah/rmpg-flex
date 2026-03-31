@@ -8467,4 +8467,82 @@ router.delete(
   },
 );
 
+// ════════════════════════════════════════════════════════════
+// Convenience alias routes — the FirecrawlTab UI expects
+// plural list endpoints at /observers, /enrichments, /chatbots,
+// /deep-searches, /research, /llmstxt, /trends. The actual
+// routes use different path patterns. These aliases forward
+// to the correct data.
+// ════════════════════════════════════════════════════════════
+
+// GET /observers → alias for /observer/watches
+router.get('/observers', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  ensureTables();
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM firecrawl_observers ORDER BY created_at DESC').all();
+    res.json(parseJsonRows(rows as any[], ['diff_sections', 'key_sections']));
+  } catch (e: any) { handleFirecrawlError(res, e, 'list observers'); }
+});
+
+// GET /enrichments → alias for /enrich/history
+router.get('/enrichments', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  ensureTables();
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM firecrawl_enrichments ORDER BY created_at DESC LIMIT 100').all();
+    res.json(parseJsonRows(rows as any[], ['input_data', 'result_data']));
+  } catch (e: any) { handleFirecrawlError(res, e, 'list enrichments'); }
+});
+
+// GET /research → list research sessions (POST /research starts a new one)
+router.get('/research', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  ensureTables();
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM firecrawl_research_sessions ORDER BY created_at DESC LIMIT 50').all();
+    res.json(parseJsonRows(rows as any[], ['questions', 'findings', 'sources']));
+  } catch (e: any) { handleFirecrawlError(res, e, 'list research'); }
+});
+
+// GET /chatbots → alias for /chatbot (plural)
+router.get('/chatbots', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  ensureTables();
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM firecrawl_chatbots ORDER BY created_at DESC').all();
+    res.json(parseJsonRows(rows as any[], ['source_urls', 'indexed_pages']));
+  } catch (e: any) { handleFirecrawlError(res, e, 'list chatbots'); }
+});
+
+// GET /deep-searches → alias for /deep-search/history
+router.get('/deep-searches', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  ensureTables();
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM firecrawl_deep_searches ORDER BY created_at DESC LIMIT 50').all();
+    res.json(parseJsonRows(rows as any[], ['sub_queries', 'findings', 'sources']));
+  } catch (e: any) { handleFirecrawlError(res, e, 'list deep searches'); }
+});
+
+// GET /llmstxt → list llmstxt generations
+router.get('/llmstxt', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  ensureTables();
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM firecrawl_llmstxt ORDER BY created_at DESC LIMIT 50').all();
+    res.json(rows);
+  } catch (e: any) { handleFirecrawlError(res, e, 'list llmstxt'); }
+});
+
+// GET /trends → list trend scans
+router.get('/trends', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  ensureTables();
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM firecrawl_trend_scans ORDER BY created_at DESC LIMIT 50').all();
+    res.json(parseJsonRows(rows as any[], ['trending_topics', 'sources']));
+  } catch (e: any) { handleFirecrawlError(res, e, 'list trends'); }
+});
+
 export default router;
