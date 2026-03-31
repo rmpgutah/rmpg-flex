@@ -1450,13 +1450,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   if (data.notes && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
-    // Render notes: DATE/TIME on left, AUTHOR on right, content below — tight layout
-    y += 0.5;  // Tight space after sub-header
+    // Render notes: DATE/TIME on left, AUTHOR on right, content below
+    y += 1.5;  // Space after header bar
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
-      y = checkPageBreak(doc, y, 6, prio);
-      doc.setDrawColor(255, 255, 255);
-      doc.setLineWidth(0);
+      y = checkPageBreak(doc, y, 10, prio);
       // Date/time on far left, author on far right — same line
       doc.setFont('courier', 'bold');
       doc.setFontSize(6);
@@ -1466,15 +1464,22 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const authorName = (n.author || 'System').toUpperCase();
       const authorW = doc.getTextWidth(authorName);
       doc.text(authorName, lx + ffw - authorW, y);
-      y += 2;
+      y += 3.5;  // More space between timestamp and content
       // Note content
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
-      // Minimal gap between entries
-      if (ni < data.notes.length - 1) y += 0.5;
+      // Visible gap between entries (matching Resolution Details spacing)
+      if (ni < data.notes.length - 1) {
+        y += 2;
+        // Light separator line between notes
+        doc.setDrawColor(...COLOR.BORDER_TABLE);
+        doc.setLineWidth(BORDER.TABLE_ROW);
+        doc.line(lx, y, lx + ffw, y);
+        y += 2.5;
+      }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
