@@ -836,7 +836,7 @@ router.get('/:id/full', (req: Request, res: Response) => {
     const evidence = db.prepare(`SELECT ce.id as link_id, e.* FROM case_evidence ce JOIN evidence e ON ce.evidence_id = e.id WHERE ce.case_id = ? ORDER BY e.created_at DESC`).all(req.params.id);
     const warrants = db.prepare(`SELECT cw.id as link_id, w.*, sp.first_name || ' ' || sp.last_name as subject_name FROM case_warrants cw JOIN warrants w ON cw.warrant_id = w.id LEFT JOIN persons sp ON w.subject_person_id = sp.id WHERE cw.case_id = ? ORDER BY w.created_at DESC`).all(req.params.id);
     const citations = db.prepare(`SELECT cc2.id as link_id, ct.* FROM case_citations cc2 JOIN citations ct ON cc2.citation_id = ct.id WHERE cc2.case_id = ? ORDER BY ct.created_at DESC`).all(req.params.id);
-    const notes = db.prepare(`SELECT cn.*, u.full_name as author_name FROM case_notes cn LEFT JOIN users u ON COALESCE(cn.author_id, cn.user_id) = u.id WHERE cn.case_id = ? ORDER BY cn.created_at DESC`).all(req.params.id);
+    const notes = db.prepare(`SELECT cn.*, u.full_name as author_name FROM case_notes cn LEFT JOIN users u ON cn.author_id = u.id WHERE cn.case_id = ? ORDER BY cn.created_at DESC`).all(req.params.id);
 
     res.json({
       ...caseRow,
@@ -955,7 +955,7 @@ router.get('/:id/vehicles', (req: Request, res: Response) => {
     const db = getDb();
     const rows = db.prepare(`
       SELECT cv.id as link_id, cv.role, cv.notes, cv.created_at as linked_at,
-        v.id, v.plate_number, v.state, v.vin, v.year, v.make, v.model, v.color, v.owner_name,
+        v.id, v.plate_number, v.state, v.vin, v.year, v.make, v.model, v.color, v.owner_person_id,
         u.full_name as added_by_name
       FROM case_vehicles cv
       JOIN vehicles_records v ON cv.vehicle_id = v.id
