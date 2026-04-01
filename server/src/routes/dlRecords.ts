@@ -103,47 +103,84 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
       return;
     }
 
-    // Read image file
+    // Read image file and convert to base64
     const imageBuffer = fs.readFileSync(req.file.path);
+    const base64Image = imageBuffer.toString('base64');
+    const mimeType = req.file.mimetype || 'image/jpeg';
 
-    // Call RapidAPI U.S. Driver License OCR using native FormData (Node 18+)
-    const blob = new Blob([imageBuffer], { type: req.file.mimetype || 'image/jpeg' });
-    const formData = new FormData();
-    formData.append('image', blob, req.file.originalname || 'dl-scan.jpg');
+    // Clean up uploaded file
+    try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
 
-    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
+    // Try base64 JSON body first (most RapidAPI OCR endpoints prefer this)
+    let ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'x-rapidapi-key': apiKey,
         'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
       },
-      body: formData,
+      body: JSON.stringify({ image: `data:${mimeType};base64,${base64Image}` }),
+      signal: AbortSignal.timeout(30_000),
     });
 
-    // Clean up uploaded file after sending to API
-    try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+    // Check if the base64 approach returned an error
+    let ocrText = await ocrResponse.text();
+    if (ocrText.includes('Unable to access the image') || ocrText.includes('"FAILED"')) {
+      console.log('[DL OCR] Base64 JSON failed, trying multipart FormData...');
+      // Fallback: try multipart FormData with the buffer
+      const formData = new FormData();
+      const blob = new Blob([imageBuffer], { type: mimeType });
+      formData.append('image', blob, 'dl-scan.jpg');
+
+      ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
+        method: 'POST',
+        headers: {
+          'x-rapidapi-key': apiKey,
+          'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
+        },
+        body: formData,
+        signal: AbortSignal.timeout(30_000),
+      });
+      ocrText = await ocrResponse.text();
+    }
+
+    // If still failing, try raw base64 without data URI prefix
+    if (ocrText.includes('Unable to access the image') || ocrText.includes('"FAILED"')) {
+      console.log('[DL OCR] FormData also failed, trying raw base64...');
+      ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-rapidapi-key': apiKey,
+          'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
+        },
+        body: JSON.stringify({ image: base64Image }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      ocrText = await ocrResponse.text();
+    }
 
     if (!ocrResponse.ok) {
-      const errorText = await ocrResponse.text().catch(() => '');
-      console.error(`[DL OCR] API error (${ocrResponse.status}):`, errorText.slice(0, 500));
+      console.error(`[DL OCR] API error (${ocrResponse.status}):`, ocrText.slice(0, 500));
       if (ocrResponse.status === 403) {
-        res.status(503).json({ error: 'DL OCR API subscription expired or access denied. Check your RapidAPI subscription for "U.S. Driver License OCR".', code: 'OCR_SUBSCRIPTION_EXPIRED' });
+        res.status(503).json({ error: 'DL OCR API subscription expired or access denied.', code: 'OCR_SUBSCRIPTION_EXPIRED' });
       } else if (ocrResponse.status === 429) {
-        res.status(429).json({ error: 'DL OCR API rate limit exceeded. Wait a few minutes and try again, or upgrade your RapidAPI plan.', code: 'OCR_RATE_LIMITED' });
+        res.status(429).json({ error: 'DL OCR API rate limit exceeded. Wait and try again.', code: 'OCR_RATE_LIMITED' });
       } else {
-        res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: errorText.slice(0, 200) });
+        res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: ocrText.slice(0, 200) });
       }
       return;
     }
 
-    const ocrData = await ocrResponse.json() as any;
-    console.log('[DL OCR] Raw response:', JSON.stringify(ocrData).substring(0, 500));
+    // Parse from the text we already read (body was consumed by .text())
+    let ocrData: any;
+    try { ocrData = JSON.parse(ocrText); } catch { ocrData = {}; }
+    console.log('[DL OCR] Raw response:', ocrText.substring(0, 500));
 
     // Check for API-level error in 200 response
     if (ocrData.code && ocrData.message && !ocrData.result && !ocrData.data) {
       console.error('[DL OCR] API returned error in 200:', ocrData.message);
-      res.status(502).json({ error: ocrData.message || 'OCR API error', code: 'OCR_API_ERROR', detail: JSON.stringify(ocrData) });
-      try { fs.unlinkSync(req.file.path); } catch {}
+      res.status(502).json({ error: ocrData.message || 'OCR API error', code: 'OCR_API_ERROR', detail: ocrText.slice(0, 200) });
       return;
     }
 
