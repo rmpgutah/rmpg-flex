@@ -343,6 +343,7 @@ export const GlobalSearch: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-label="Global search"
+      style={{ touchAction: 'manipulation' }}
     >
       <div
         className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[60vh] flex flex-col animate-scale-in"
@@ -372,8 +373,8 @@ export const GlobalSearch: React.FC = () => {
               <Command className="w-3 h-3 inline" />
               K
             </kbd>
-            <button type="button" onClick={handleClose} className="hover:text-rmpg-200" aria-label="Close search" title="Close search">
-              <X className="w-4 h-4" />
+            <button type="button" onClick={handleClose} className="p-2 sm:p-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-rmpg-200 transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close" title="Close search">
+              <X className="w-5 h-5 sm:w-4 sm:h-4" />
             </button>
           </div>
         </div>

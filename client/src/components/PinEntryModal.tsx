@@ -203,10 +203,11 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99998 }}
+      style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99998, touchAction: 'manipulation' }}
       role="dialog"
       aria-modal="true"
       aria-label="Offline authorization PIN entry"
+      onClick={onClose}
     >
       <div
         className="w-full max-w-sm mx-4"
@@ -215,6 +216,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
           border: '1px solid #1e3048',
           borderTop: '3px solid #d97706',
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
@@ -224,9 +226,10 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-400 hover:text-white transition-colors"
-            aria-label="Close PIN entry">
-            <X className="w-4 h-4" />
+            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-white transition-colors"
+            style={{ touchAction: 'manipulation' }}
+            aria-label="Close">
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
 

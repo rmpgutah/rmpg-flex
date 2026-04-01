@@ -275,18 +275,19 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   // Body scroll lock — prevent background scrolling when modal is open
   useEffect(() => {
     if (isOpen) {
+      const scrollY = window.scrollY;
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
-    } else {
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+      document.body.style.top = `-${scrollY}px`;
     }
     return () => {
+      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
       document.body.style.overflow = '';
       document.body.style.position = '';
       document.body.style.width = '';
+      document.body.style.top = '';
+      if (scrollY > 0) window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -399,12 +400,12 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} onClick={isSubmitting ? undefined : handleClose} style={{ touchAction: 'manipulation' }}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={isSubmitting ? undefined : handleClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" role="presentation" />
 
       {/* 78: Modal with deeper shadow for elevation */}
-      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }}>
+      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
           <div className="flex items-center gap-2">
@@ -434,9 +435,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <button type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
-            aria-label="Close modal">
-            <X className="w-4 h-4" />
+            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
+            style={{ touchAction: 'manipulation' }}
+            aria-label="Close">
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
 

@@ -100,9 +100,9 @@ export default function FormModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guardedClose} />
-      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-scale-in panel-beveled`} style={{ background: '#141e2b' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-scale-in panel-beveled`} style={{ background: '#141e2b' }} onClick={(e) => e.stopPropagation()}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#1a5a9e' }} />
@@ -118,12 +118,13 @@ export default function FormModal({
             <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>□</button>
             <button type="button"
               onClick={guardedClose}
-              className="toolbar-btn"
-              style={{ padding: '1px 4px' }}
+              className="toolbar-btn min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+              style={{ padding: '1px 4px', touchAction: 'manipulation' }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#164d87'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
+              aria-label="Close"
             >
-              <X style={{ width: 10, height: 10 }} />
+              <X className="w-4 h-4 sm:w-2.5 sm:h-2.5" />
             </button>
           </div>
         </div>
@@ -143,9 +144,9 @@ export default function FormModal({
 
       {/* ── Discard Confirmation Overlay ──────────────────── */}
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={handleCancelDiscard} />
-          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={handleCancelDiscard} style={{ touchAction: 'manipulation' }}>
+          <div className="absolute inset-0 bg-black/50" role="presentation" />
+          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
               style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}

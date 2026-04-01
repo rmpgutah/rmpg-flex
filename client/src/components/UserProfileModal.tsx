@@ -138,18 +138,19 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   // Body scroll lock — prevent background scrolling when modal is open
   useEffect(() => {
     if (isOpen) {
+      const scrollY = window.scrollY;
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
-    } else {
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+      document.body.style.top = `-${scrollY}px`;
     }
     return () => {
+      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
       document.body.style.overflow = '';
       document.body.style.position = '';
       document.body.style.width = '';
+      document.body.style.top = '';
+      if (scrollY > 0) window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -500,13 +501,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={onClose} role="presentation" style={{ touchAction: 'manipulation' }}>
       {/* Overlay */}
       <div className="absolute inset-0 bg-black/60" />
 
       {/* Modal */}
       <div
-        className="relative w-[520px] max-h-[80vh] flex flex-col"
+        className="relative w-[520px] max-w-[95vw] max-h-[80vh] flex flex-col"
         style={{
           background: '#141e2b',
           border: '1px solid #3a5070',
@@ -522,8 +523,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         <div className="panel-title-bar">
           <User className="title-icon" style={{ width: 14, height: 14 }} />
           <span>ACCOUNT SETTINGS</span>
-          <button type="button" onClick={onClose} className="ml-auto p-0.5 hover:text-red-400 transition-colors">
-            <X style={{ width: 12, height: 12 }} />
+          <button type="button" onClick={onClose} className="ml-auto p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close">
+            <X className="w-5 h-5 sm:w-3 sm:h-3" />
           </button>
         </div>
 

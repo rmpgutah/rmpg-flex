@@ -43,18 +43,19 @@ export default function DocumentViewer({
   // Body scroll lock — prevent background scrolling when viewer is open
   useEffect(() => {
     if (isOpen) {
+      const scrollY = window.scrollY;
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
-    } else {
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+      document.body.style.top = `-${scrollY}px`;
     }
     return () => {
+      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
       document.body.style.overflow = '';
       document.body.style.position = '';
       document.body.style.width = '';
+      document.body.style.top = '';
+      if (scrollY > 0) window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -124,7 +125,7 @@ export default function DocumentViewer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90" role="dialog" aria-modal="true" style={{ touchAction: 'manipulation' }}>
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -223,8 +224,8 @@ export default function DocumentViewer({
           {/* Close */}
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn"
-            style={{ fontSize: '9px' }}
+            className="toolbar-btn min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+            style={{ fontSize: '9px', touchAction: 'manipulation' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#991b1b';
               e.currentTarget.style.color = '#ffffff';
@@ -234,9 +235,9 @@ export default function DocumentViewer({
               e.currentTarget.style.color = '';
             }}
             title="Close"
-            aria-label="Close document viewer"
+            aria-label="Close"
           >
-            <X style={{ width: 16, height: 16 }} />
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
       </div>

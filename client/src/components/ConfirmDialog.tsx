@@ -36,18 +36,19 @@ export default function ConfirmDialog({
   // Body scroll lock — prevent background scrolling when dialog is open
   useEffect(() => {
     if (isOpen) {
+      const scrollY = window.scrollY;
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
-    } else {
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+      document.body.style.top = `-${scrollY}px`;
     }
     return () => {
+      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
       document.body.style.overflow = '';
       document.body.style.position = '';
       document.body.style.width = '';
+      document.body.style.top = '';
+      if (scrollY > 0) window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -98,9 +99,9 @@ export default function ConfirmDialog({
   const iconColor = confirmVariant === 'danger' ? 'text-red-400' : confirmVariant === 'warning' ? 'text-amber-400' : 'text-brand-400';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} ref={dialogRef}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} ref={dialogRef} onClick={onClose} style={{ touchAction: 'manipulation' }}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
           style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
@@ -109,8 +110,8 @@ export default function ConfirmDialog({
             <HeaderIcon className={`w-4 h-4 ${iconColor}`} />
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" aria-label="Close dialog">
-            <X className="w-4 h-4" />
+          <button type="button" onClick={onClose} className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close">
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
         <div className="p-6">
