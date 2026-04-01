@@ -1330,10 +1330,13 @@ export default function DispatchPage() {
   const handleMileageSubmit = (mileage: number, vehicleId: string) => {
     if (!mileagePrompt) return;
     const body: Record<string, any> = { responding_vehicle_id: vehicleId || undefined };
-    if (mileagePrompt.status === 'enroute') {
-      body.starting_mileage = mileage;
-    } else {
-      body.ending_mileage = mileage;
+    // Only include mileage if user entered a value (skip sends 0)
+    if (mileage > 0) {
+      if (mileagePrompt.status === 'enroute') {
+        body.starting_mileage = mileage;
+      } else {
+        body.ending_mileage = mileage;
+      }
     }
     setMileagePrompt(null);
     handleStatusChange(mileagePrompt.callId, mileagePrompt.status, body);
