@@ -138,41 +138,231 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
           console.log('[DL OCR] Google Vision extracted', fullText.length, 'chars');
           ocrText = JSON.stringify({ vision_text: fullText });
 
-          // Parse DL fields from OCR text
+          // ── Comprehensive ID document parser ──────────────────
+          // Handles: US Driver's License, State ID, Passport, Military ID
           const lines = fullText.split('\n').map((l: string) => l.trim()).filter(Boolean);
           const text = fullText.toUpperCase();
 
-          // Extract common DL fields using regex patterns
-          const dlNum = text.match(/(?:DL|LIC|LICENSE|ID)\s*(?:#|NO|NUM|NUMBER)?:?\s*([A-Z0-9]{5,15})/)?.[1] || '';
-          const dobMatch = text.match(/(?:DOB|BIRTH|BORN|BD):?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/)?.[1] || '';
-          const expMatch = text.match(/(?:EXP|EXPIRES?):?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/)?.[1] || '';
-          const nameLines = lines.filter((l: string) => /^[A-Z][a-z]+\s+[A-Z]/.test(l) && !/\d{4}/.test(l)).slice(0, 2);
-          const addrLines = lines.filter((l: string) => /\d+\s+\w+\s+(st|ave|blvd|dr|rd|ln|way|ct|pl|cir)/i.test(l));
-          const stateMatch = text.match(/\b(UTAH|CALIFORNIA|NEVADA|ARIZONA|COLORADO|IDAHO|WYOMING|MONTANA|NEW MEXICO|OREGON|WASHINGTON)\b/)?.[1] || '';
-          const classMatch = text.match(/(?:CLASS|CL):?\s*([A-D])/)?.[1] || '';
-          const sexMatch = text.match(/(?:SEX|GENDER):?\s*(M|F|MALE|FEMALE)/)?.[1] || '';
-          const htMatch = text.match(/(?:HT|HEIGHT):?\s*(\d['\-]\d{1,2})/)?.[1] || '';
-          const wtMatch = text.match(/(?:WT|WEIGHT):?\s*(\d{2,3})/)?.[1] || '';
-          const eyeMatch = text.match(/(?:EYES?):?\s*(BLU|BRN|GRN|HAZ|BLK|GRY)/)?.[1] || '';
+          // Helper: find value after a label pattern (case-insensitive)
+          const afterLabel = (patterns: RegExp[], fallback = ''): string => {
+            for (const p of patterns) {
+              const m = text.match(p);
+              if (m?.[1]) return m[1].trim();
+            }
+            return fallback;
+          };
 
+          // ── Last Name (LN, LAST NAME, SURNAME, FAMILY NAME) ──
+          const lastName = afterLabel([
+            /(?:LN|LAST\s*NAME|SURNAME|FAMILY\s*NAME)[:\s]+([A-Z][A-Z'-]+)/,
+            /(?:^|\n)\s*1\s+([A-Z][A-Z'-]{2,})\s*(?:\n|$)/m,    // Line starting with "1" (passport format)
+          ]);
+
+          // ── First Name (FN, FIRST NAME, GIVEN NAME) ──
+          const firstName = afterLabel([
+            /(?:FN|FIRST\s*NAME|GIVEN\s*NAME)[:\s]+([A-Z][A-Z'-]+)/,
+            /(?:^|\n)\s*2\s+([A-Z][A-Z'-]{2,})\s*(?:\n|$)/m,    // Line starting with "2" (passport format)
+          ]);
+
+          // ── Middle Name ──
+          const middleName = afterLabel([
+            /(?:MN|MIDDLE\s*NAME|MIDDLE)[:\s]+([A-Z][A-Z'-]+)/,
+          ]);
+
+          // ── If labeled extraction failed, try name-line heuristic ──
+          let finalFirst = firstName;
+          let finalLast = lastName;
+          let finalMiddle = middleName;
+          if (!finalFirst && !finalLast) {
+            // Look for lines that are just names (no numbers, no labels)
+            const nameCandidate = lines.find((l: string) =>
+              /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$/.test(l) && !/\d/.test(l) && l.length < 40
+            );
+            if (nameCandidate) {
+              const parts = nameCandidate.split(/\s+/);
+              finalFirst = parts[0] || '';
+              finalLast = parts.length > 2 ? parts[parts.length - 1] : parts[1] || '';
+              finalMiddle = parts.length > 2 ? parts.slice(1, -1).join(' ') : '';
+            }
+            // Also try "LAST, FIRST" format
+            const commaName = lines.find((l: string) => /^[A-Z][A-Z'-]+,\s*[A-Z]/.test(l.toUpperCase()));
+            if (commaName && !finalFirst) {
+              const [last, rest] = commaName.split(',').map(s => s.trim());
+              finalLast = last;
+              const restParts = (rest || '').split(/\s+/);
+              finalFirst = restParts[0] || '';
+              finalMiddle = restParts.slice(1).join(' ') || '';
+            }
+          }
+
+          // ── DL / ID Number ──
+          const dlNum = afterLabel([
+            /(?:DL|LIC(?:ENSE)?|ID)\s*(?:#|NO\.?|NUM(?:BER)?)?[:\s]+([A-Z0-9]{4,15})/,
+            /(?:DOCUMENT\s*(?:#|NO|NUM))[:\s]+([A-Z0-9]{5,15})/,
+            /(?:^|\s)(\d{4,10})(?:\s|$)/,  // Standalone number (Utah DLs are numeric)
+          ]);
+
+          // ── Passport Number (for passports) ──
+          const passportNum = afterLabel([
+            /(?:PASSPORT\s*(?:#|NO|NUM))[:\s]+([A-Z0-9]{6,12})/,
+          ]);
+
+          // ── Date of Birth ──
+          const dob = afterLabel([
+            /(?:DOB|D\.O\.B|BIRTH|BORN|BD|DATE\s*OF\s*BIRTH)[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
+            /(?:DOB|BIRTH)[:\s]*(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/,  // YYYY-MM-DD format
+          ]);
+
+          // ── Issue Date ──
+          const issueDate = afterLabel([
+            /(?:ISS(?:UED?)?|ISSUE\s*DATE|ISS\s*DATE)[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
+          ]);
+
+          // ── Expiry Date ──
+          const expiryDate = afterLabel([
+            /(?:EXP(?:IRES?|IRY)?|EXPIRATION)[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
+          ]);
+
+          // ── Address (street + city/state/zip) ──
+          const addrLines2 = lines.filter((l: string) => /\d+\s+\w+\s+(st|ave|blvd|dr|rd|ln|way|ct|pl|cir|pkwy|hwy)/i.test(l));
+          const address = addrLines2[0] || afterLabel([/(?:ADDR(?:ESS)?|RESIDENCE)[:\s]+(.{10,60})/]) || '';
+
+          // ── City / State / Zip ──
+          const cityStateZip = afterLabel([
+            /(?:CITY|CSZ)[:\s]+(.+)/,
+          ]);
+          const zipMatch = text.match(/\b(\d{5}(?:-\d{4})?)\b/);
+          const zip = zipMatch?.[1] || '';
+
+          // ── State (issuing state for DL, nationality for passport) ──
+          const allStates = 'ALABAMA|ALASKA|ARIZONA|ARKANSAS|CALIFORNIA|COLORADO|CONNECTICUT|DELAWARE|FLORIDA|GEORGIA|HAWAII|IDAHO|ILLINOIS|INDIANA|IOWA|KANSAS|KENTUCKY|LOUISIANA|MAINE|MARYLAND|MASSACHUSETTS|MICHIGAN|MINNESOTA|MISSISSIPPI|MISSOURI|MONTANA|NEBRASKA|NEVADA|NEW HAMPSHIRE|NEW JERSEY|NEW MEXICO|NEW YORK|NORTH CAROLINA|NORTH DAKOTA|OHIO|OKLAHOMA|OREGON|PENNSYLVANIA|RHODE ISLAND|SOUTH CAROLINA|SOUTH DAKOTA|TENNESSEE|TEXAS|UTAH|VERMONT|VIRGINIA|WASHINGTON|WEST VIRGINIA|WISCONSIN|WYOMING|DISTRICT OF COLUMBIA';
+          const stateMatch2 = text.match(new RegExp(`\\b(${allStates})\\b`));
+          const state = stateMatch2?.[1] || afterLabel([/(?:STATE|ST)[:\s]+([A-Z]{2})/]) || '';
+
+          // ── Sex / Gender ──
+          const sex = afterLabel([
+            /(?:SEX|GENDER)[:\s]*(M(?:ALE)?|F(?:EMALE)?)/,
+          ]);
+
+          // ── Height ──
+          const height = afterLabel([
+            /(?:HT|HEIGHT)[:\s]*(\d['\-]\d{1,2}["']?)/,
+            /(?:HT|HEIGHT)[:\s]*(\d{3})\b/,  // "510" format (5'10")
+          ]);
+
+          // ── Weight ──
+          const weight = afterLabel([
+            /(?:WT|WEIGHT|WGT)[:\s]*(\d{2,3})\s*(?:LBS?|KG)?/,
+          ]);
+
+          // ── Eye Color ──
+          const eyeColor = afterLabel([
+            /(?:EYES?|EYE\s*COLOR)[:\s]*(BLU|BRN|GRN|HAZ|BLK|GRY|BLUE|BROWN|GREEN|HAZEL|BLACK|GRAY|GREY)/,
+          ]);
+
+          // ── Hair Color ──
+          const hairColor = afterLabel([
+            /(?:HAIR|HAIR\s*COLOR)[:\s]*(BLK|BRN|BLN|RED|GRY|WHI|BLACK|BROWN|BLONDE|BLOND|RED|GRAY|GREY|WHITE|SANDY|AUBURN)/,
+          ]);
+
+          // ── Race / Ethnicity ──
+          const race = afterLabel([
+            /(?:RACE|ETHNICITY)[:\s]*(W|B|H|A|I|WHITE|BLACK|HISPANIC|ASIAN|INDIAN|NATIVE|PACIFIC)/,
+          ]);
+
+          // ── DL Class ──
+          const dlClass = afterLabel([
+            /(?:CLASS|CL|DL\s*CLASS)[:\s]*([A-D])\b/,
+          ]);
+
+          // ── Restrictions / Endorsements ──
+          const restrictions = afterLabel([
+            /(?:REST(?:RICTIONS?)?|RSTR)[:\s]+([A-Z0-9,\s]+)/,
+          ]);
+          const endorsements = afterLabel([
+            /(?:END(?:ORSEMENTS?)?|ENDR)[:\s]+([A-Z0-9,\s]+)/,
+          ]);
+
+          // ── Organ Donor ──
+          const organDonor = /DONOR|ORGAN\s*DONOR/i.test(text);
+
+          // ── Veteran ──
+          const veteran = /VETERAN/i.test(text);
+
+          // ── Document Type Detection ──
+          const isPassport = /PASSPORT/i.test(text);
+          const isMilitary = /MILITARY|ARMED\s*FORCES|DOD/i.test(text);
+          const docType = isPassport ? 'passport' : isMilitary ? 'military_id' : (dlNum ? 'drivers_license' : 'state_id');
+
+          // ── Nationality (passport) ──
+          const nationality = afterLabel([
+            /(?:NATIONALITY|CITIZEN(?:SHIP)?)[:\s]+([A-Z\s]+)/,
+          ]) || (isPassport ? 'UNITED STATES' : '');
+
+          // ── Place of Birth (passport) ──
+          const placeOfBirth = afterLabel([
+            /(?:PLACE\s*OF\s*BIRTH|POB|BIRTHPLACE)[:\s]+([A-Z\s,]+)/,
+          ]);
+
+          // ── Passport MRZ (Machine Readable Zone) ──
+          const mrzLines = lines.filter((l: string) => /^[A-Z0-9<]{30,}$/.test(l.replace(/\s/g, '')));
+          let mrzFirst = '', mrzLast = '', mrzPassport = '', mrzDob = '', mrzNationality = '';
+          if (mrzLines.length >= 2) {
+            const mrz1 = mrzLines[0].replace(/\s/g, '');
+            const mrz2 = mrzLines[1].replace(/\s/g, '');
+            // Line 1: P<USASMITH<<JOHN<MIDDLE<<<...
+            const nameField = mrz1.substring(5).replace(/</g, ' ').trim();
+            const mrzNameParts = nameField.split(/\s{2,}/);
+            mrzLast = mrzNameParts[0]?.trim() || '';
+            mrzFirst = mrzNameParts[1]?.split(/\s+/)?.[0]?.trim() || '';
+            // Line 2: passport#, nationality, DOB
+            mrzPassport = mrz2.substring(0, 9).replace(/</g, '').trim();
+            mrzNationality = mrz2.substring(10, 13).replace(/</g, '').trim();
+            const mrzDobRaw = mrz2.substring(13, 19);
+            if (/^\d{6}$/.test(mrzDobRaw)) {
+              const yr = parseInt(mrzDobRaw.substring(0, 2));
+              const century = yr > 30 ? '19' : '20';
+              mrzDob = `${mrzDobRaw.substring(2, 4)}/${mrzDobRaw.substring(4, 6)}/${century}${mrzDobRaw.substring(0, 2)}`;
+            }
+          }
+
+          // ── Build result — prefer labeled extraction, fall back to MRZ, then heuristic ──
           ocrData = {
             result: {
-              dl_number: dlNum,
-              name: nameLines[0] || '',
-              first_name: nameLines[0]?.split(/\s+/)?.[0] || '',
-              last_name: nameLines[0]?.split(/\s+/)?.slice(1).join(' ') || '',
-              date_of_birth: dobMatch,
-              expiry_date: expMatch,
-              address: addrLines[0] || '',
-              state: stateMatch,
-              class_of_vehicle: classMatch,
-              sex: sexMatch,
-              height: htMatch,
-              weight: wtMatch,
-              eye_color: eyeMatch,
+              document_type: docType,
+              dl_number: dlNum || passportNum || mrzPassport || '',
+              first_name: finalFirst || mrzFirst || '',
+              last_name: finalLast || mrzLast || '',
+              middle_name: finalMiddle || '',
+              full_name: [finalLast || mrzLast, finalFirst || mrzFirst, finalMiddle].filter(Boolean).join(', '),
+              date_of_birth: dob || mrzDob || '',
+              issue_date: issueDate,
+              expiry_date: expiryDate,
+              address: address,
+              city_state_zip: cityStateZip,
+              zip: zip,
+              state: state,
+              sex: sex,
+              height: height,
+              weight: weight,
+              eye_color: eyeColor,
+              hair_color: hairColor,
+              race: race,
+              dl_class: dlClass,
+              restrictions: restrictions,
+              endorsements: endorsements,
+              organ_donor: organDonor,
+              veteran: veteran,
+              nationality: nationality || mrzNationality || '',
+              place_of_birth: placeOfBirth,
               raw_text: fullText,
             },
           };
+
+          console.log('[DL OCR] Parsed:', JSON.stringify({
+            doc: docType, first: ocrData.result.first_name, last: ocrData.result.last_name,
+            dob: ocrData.result.date_of_birth, dl: ocrData.result.dl_number,
+          }));
         }
       } catch (visionErr) {
         console.warn('[DL OCR] Google Vision failed:', (visionErr as Error).message);
@@ -234,18 +424,30 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     const eyeColor = extractField('eyes', 'eye_color', 'eyeColor', 'Eyes', 'EYE');
     const hairColor = extractField('hair', 'hair_color', 'hairColor', 'Hair', 'HAIR');
 
+    // Additional fields from new parser
+    const race = extractField('race', 'Race', 'ethnicity');
+    const organDonor = raw.organ_donor === true || /donor/i.test(extractField('organ_donor'));
+    const veteran = raw.veteran === true || /veteran/i.test(extractField('veteran'));
+    const nationality = extractField('nationality', 'Nationality', 'citizenship');
+    const placeOfBirth = extractField('place_of_birth', 'placeOfBirth', 'birthplace');
+    const documentType = extractField('document_type') || 'drivers_license';
+    const cityStateZip = extractField('city_state_zip');
+
     const parsed = {
+      document_type: documentType,
       first_name: firstName,
       middle_name: middleName,
       last_name: lastName,
       full_name: fullName || [firstName, middleName, lastName].filter(Boolean).join(' '),
       date_of_birth: dob,
       gender: gender,
+      race: race,
       height: height,
       weight: weight,
       eye_color: eyeColor,
       hair_color: hairColor,
       address: fullAddress,
+      city_state_zip: cityStateZip,
       city: city,
       state: stateVal,
       zip: zip,
@@ -256,6 +458,10 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
       dl_issue_date: dlIssueDate,
       dl_restrictions: dlRestrictions,
       dl_endorsements: dlEndorsements,
+      organ_donor: organDonor,
+      veteran: veteran,
+      nationality: nationality,
+      place_of_birth: placeOfBirth,
       source: 'DL_OCR_SCAN',
       raw_ocr: ocrData,
     };
