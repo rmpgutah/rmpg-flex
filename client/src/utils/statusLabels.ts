@@ -403,22 +403,48 @@ export function formatDateShort(dateStr: string | null | undefined): string {
 }
 
 // ── Address Formatting ────────────────────────────────
-/** Title-case street names while keeping directionals (N/S/E/W) uppercase */
+/** Tokens that must stay UPPERCASE in formatted addresses */
+const ADDRESS_UPPER_TOKENS = new Set([
+  // Country
+  'USA', 'US',
+  // US state abbreviations
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'DC', 'PR', 'VI', 'GU', 'AS', 'MP',
+  // Directionals
+  'N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW',
+  // Address abbreviations
+  'PO', 'APT', 'STE', 'BLDG', 'RM',
+  // Business suffixes
+  'LLC', 'INC', 'LTD', 'CORP',
+]);
+
+/** Title-case street names while keeping state abbrevs, directionals, and USA uppercase */
 export function formatAddressDisplay(address: string | null | undefined): string {
   if (!address) return '\u2014';
-  // Split into words and title-case each one
-  return address.replace(/\b(\w+)\b/g, (word) => {
-    // Keep single-letter directionals uppercase
-    if (/^[NSEW]$/i.test(word)) return word.toUpperCase();
-    // Keep common directional abbreviations uppercase
-    if (/^(NE|NW|SE|SW|N|S|E|W)$/i.test(word)) return word.toUpperCase();
-    // Keep all-numeric words (street numbers, zip codes) as-is
-    if (/^\d+$/.test(word)) return word;
-    // Keep ordinals like 11TH, 2ND as-is if they look like ordinals
-    if (/^\d+(st|nd|rd|th)$/i.test(word)) return word;
+  // Split on whitespace and commas, preserving delimiters
+  return address.split(/(\s+|,)/).map(token => {
+    const trimmed = token.trim();
+    if (!trimmed || /^\s+$/.test(token) || token === ',') return token;
+    // Strip trailing punctuation for lookup
+    const stripped = trimmed.replace(/[.,]/g, '').toUpperCase();
+    // Keep tokens that should be uppercase
+    if (ADDRESS_UPPER_TOKENS.has(stripped)) return token.toUpperCase();
+    // Keep zip codes as-is (5 or 5+4 format)
+    if (/^\d{5}(-\d{4})?$/.test(trimmed)) return trimmed;
+    // Keep all-numeric tokens as-is (street numbers)
+    if (/^\d+$/.test(trimmed)) return trimmed;
+    // Keep ordinals like 11th, 2nd as-is
+    if (/^\d+(st|nd|rd|th)$/i.test(trimmed)) return trimmed;
     // Title-case everything else
-    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-  });
+    if (/^[a-zA-Z]/.test(trimmed)) {
+      return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+    }
+    return token;
+  }).join('');
 }
 
 // ── Title Case Utility ────────────────────────────────

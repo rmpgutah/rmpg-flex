@@ -11,6 +11,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { formatAddressDisplay } from '../utils/statusLabels';
 
 interface PersonResult {
   id: string;
@@ -405,7 +406,7 @@ export default function CriminalHistoryPage() {
                           <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                             {entry.status && <span>Status: {toDisplayLabel(entry.status)}</span>}
                             {entry.officer_name && <span>Officer: {entry.officer_name}</span>}
-                            {entry.location && <span><MapPin className="w-2.5 h-2.5 inline" /> {entry.location}</span>}
+                            {entry.location && <span><MapPin className="w-2.5 h-2.5 inline" /> {formatAddressDisplay(entry.location)}</span>}
                           </div>
                         </div>
                       </div>
@@ -443,7 +444,7 @@ export default function CriminalHistoryPage() {
                               <div className="mt-2 pt-2 border-t border-rmpg-700 space-y-1">
                                 {entry.status && <div className="text-[9px] text-rmpg-400">Status: <span className="text-white">{toDisplayLabel(entry.status)}</span></div>}
                                 {entry.officer_name && <div className="text-[9px] text-rmpg-400">Officer: <span className="text-white">{entry.officer_name}</span></div>}
-                                {entry.location && <div className="text-[9px] text-rmpg-400 flex items-center gap-1"><MapPin className="w-2.5 h-2.5" />{entry.location}</div>}
+                                {entry.location && <div className="text-[9px] text-rmpg-400 flex items-center gap-1"><MapPin className="w-2.5 h-2.5" />{formatAddressDisplay(entry.location)}</div>}
                               </div>
                             )}
                           </button>

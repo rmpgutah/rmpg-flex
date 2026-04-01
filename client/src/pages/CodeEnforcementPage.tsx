@@ -22,6 +22,7 @@ import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr } from '../utils/dateUtils';
+import { formatAddressDisplay } from '../utils/statusLabels';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -436,7 +437,7 @@ export default function CodeEnforcementPage() {
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{v.description}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <MapPin style={{ width: 9, height: 9 }} />
-                  <span className="truncate">{v.location}</span>
+                  <span className="truncate">{formatAddressDisplay(v.location)}</span>
                   {v.fine_amount && !isNaN(Number(v.fine_amount)) && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
                   {((v as any).section_id || (v as any).zone_id || (v as any).beat_id) && (
                     <span className="font-mono text-rmpg-400">{[(v as any).section_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>

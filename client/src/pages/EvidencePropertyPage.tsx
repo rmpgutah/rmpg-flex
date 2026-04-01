@@ -18,6 +18,7 @@ import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { humanizeType, humanizeStatus } from '../utils/statusLabels';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -991,8 +992,8 @@ export default function EvidencePropertyPage() {
                       {linkedRecords.incident && (
                         <div className="panel-beveled p-2">
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold">Linked Incident</div>
-                          <div className="text-xs text-white">{linkedRecords.incident.incident_number} — {linkedRecords.incident.incident_type}</div>
-                          <div className="text-[10px] text-rmpg-500">Status: {linkedRecords.incident.status}</div>
+                          <div className="text-xs text-white">{linkedRecords.incident.incident_number} — {humanizeType(linkedRecords.incident.incident_type)}</div>
+                          <div className="text-[10px] text-rmpg-500">Status: {humanizeStatus(linkedRecords.incident.status, 'incident')}</div>
                         </div>
                       )}
                       {linkedRecords.cases?.length > 0 && (

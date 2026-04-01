@@ -15,6 +15,7 @@ import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { formatAddressDisplay } from '../utils/statusLabels';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -369,7 +370,7 @@ export default function TrespassOrdersPage() {
                     {Math.round(o.days_remaining)}d
                   </span>
                   <span className="text-white">{o.subject_first_name} {o.subject_last_name}</span>
-                  <span className="text-rmpg-500">{o.property_name || o.location}</span>
+                  <span className="text-rmpg-500">{o.property_name || formatAddressDisplay(o.location)}</span>
                   <span className="text-rmpg-500 ml-auto">{o.expiration_date}</span>
                 </div>
               ))}
@@ -479,7 +480,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate">{order.property_name || order.location}</span>
+                  <span className="truncate">{order.property_name || formatAddressDisplay(order.location)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-rmpg-500 mt-0.5">
                   <span>{order.issued_by_name || order.issued_by_display}</span>
@@ -567,7 +568,7 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? new Date(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-white">{selectedOrder.property_name || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{selectedOrder.location}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{formatAddressDisplay(selectedOrder.location)}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-white capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? new Date(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>

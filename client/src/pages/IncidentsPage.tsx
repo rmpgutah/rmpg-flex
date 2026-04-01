@@ -61,7 +61,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
-import { humanizeStatus, humanizePriority, getStatusTooltip } from '../utils/statusLabels';
+import { humanizeStatus, humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -919,7 +919,7 @@ export default function IncidentsPage() {
                   <td>
                     <StatusBadge status={inc.status} type="incident_status" size="sm" title={getStatusTooltip(inc.status, 'incident')} />
                   </td>
-                  {!isMobile && <td className="text-xs text-rmpg-300 max-w-[200px] truncate">{inc.location}</td>}
+                  {!isMobile && <td className="text-xs text-rmpg-300 max-w-[200px] truncate">{formatAddressDisplay(inc.location)}</td>}
                   {!isMobile && <td className="text-xs text-rmpg-200">{inc.officer_name}</td>}
                   <td className="text-xs text-rmpg-300 font-mono">{formatDate(inc.occurred_at)}</td>
                 </tr>
@@ -1297,7 +1297,7 @@ export default function IncidentsPage() {
             </div>
             <div>
               <label className="field-label">Location:</label>
-              <p className="text-sm text-rmpg-200">{selectedIncident.location}</p>
+              <p className="text-sm text-rmpg-200">{formatAddressDisplay(selectedIncident.location)}</p>
               {inc.property_name && (
                 <p className="text-[10px] text-rmpg-400 mt-0.5">{inc.property_name}</p>
               )}
@@ -1428,7 +1428,7 @@ export default function IncidentsPage() {
               {inc.process_service_type && (
                 <div>
                   <label className="field-label">Document Type:</label>
-                  <p className="text-xs text-rmpg-200">{(inc.process_service_type || '').replace(/_/g, ' ')}</p>
+                  <p className="text-xs text-rmpg-200">{(inc.process_service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</p>
                 </div>
               )}
               {inc.process_served_to && (
@@ -1446,7 +1446,7 @@ export default function IncidentsPage() {
               {inc.process_served_address && (
                 <div>
                   <label className="field-label">Service Address:</label>
-                  <p className="text-xs text-rmpg-200">{inc.process_served_address}</p>
+                  <p className="text-xs text-rmpg-200">{formatAddressDisplay(inc.process_served_address)}</p>
                 </div>
               )}
               {inc.process_served_at && (
@@ -1465,7 +1465,7 @@ export default function IncidentsPage() {
                       ? 'bg-red-900/40 text-red-400 border-red-600/40'
                       : 'bg-amber-900/40 text-amber-400 border-amber-600/40'
                   }`}>
-                    {(inc.process_service_result || '').replace(/_/g, ' ')}
+                    {(inc.process_service_result || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                   </span>
                 </div>
               )}

@@ -28,7 +28,7 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
-import { titleCase, formatPhoneDisplay, formatAddressDisplay } from '../../utils/statusLabels';
+import { titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType, cleanDisplay } from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -802,9 +802,9 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
                 <div key={inc.id} className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700">
                   <span className="text-white font-mono font-bold">{inc.incident_number}</span>
                   <span className="px-1 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold">
-                    {(inc.role || '').replace(/_/g, ' ')}
+                    {cleanDisplay(inc.role)}
                   </span>
-                  <span className="text-rmpg-300">{(inc.incident_type || '').replace(/_/g, ' ')}</span>
+                  <span className="text-rmpg-300">{humanizeType(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
                   <span className="text-rmpg-400 ml-auto">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</span>
                 </div>

@@ -3030,7 +3030,7 @@ export default function DispatchPage() {
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a3e58'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
-                      <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || tpl.incident_type}</span>
+                      <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
                       {tpl.description && <span className="text-rmpg-400 truncate w-full" style={{ fontSize: '10px' }}>{tpl.description}</span>}
                     </button>
                   ))
@@ -3643,7 +3643,7 @@ export default function DispatchPage() {
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-rmpg-300" />
-                          <p className="text-sm text-white">{selectedCall.location}</p>
+                          <p className="text-sm text-white">{formatAddressDisplay(selectedCall.location)}</p>
                         </div>
                       )}
                       {!isEditing && selectedCall.property_name && (

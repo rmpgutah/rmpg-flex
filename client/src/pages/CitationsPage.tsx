@@ -41,6 +41,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import ExportButton from '../components/ExportButton';
+import { formatAddressDisplay } from '../utils/statusLabels';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -985,7 +986,7 @@ export default function CitationsPage() {
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
               <div><span className="text-rmpg-400">Date:</span> <span className="text-rmpg-200">{formatDate(c.violation_date)}</span></div>
               {c.violation_time && <div><span className="text-rmpg-400">Time:</span> <span className="text-rmpg-200">{c.violation_time}</span></div>}
-              {c.location && <div><span className="text-rmpg-400">Location:</span> <span className="text-rmpg-200">{c.location}</span></div>}
+              {c.location && <div><span className="text-rmpg-400">Location:</span> <span className="text-rmpg-200">{formatAddressDisplay(c.location)}</span></div>}
               {(c.section_id || c.zone_id || c.beat_id) && (
                 <div><span className="text-rmpg-400">S/Z/B:</span> <span className="text-rmpg-200 font-mono">{c.section_id || '—'} / {c.zone_id || '—'} / {c.beat_id || '—'}</span></div>
               )}

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { HealthMetric, CleanupSection } from './AISharedComponents';
+import { humanizeType, humanizeStatus } from '../../../utils/statusLabels';
 
 interface Props {
   setError: (e: string | null) => void;
@@ -201,7 +202,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-white font-mono">{item.call_number}</div>
                       <div className="text-[10px] text-rmpg-500">
-                        {item.incident_type} &mdash; stuck in "{item.status}" for {item.hours_in_status}h
+                        {humanizeType(item.incident_type)} &mdash; stuck in &ldquo;{humanizeStatus(item.status, 'call')}&rdquo; for {item.hours_in_status}h
                       </div>
                     </div>
                     <div className="flex gap-1.5 shrink-0">

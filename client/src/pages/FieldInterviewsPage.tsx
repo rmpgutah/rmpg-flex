@@ -19,6 +19,7 @@ import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import WarrantBadge from '../components/WarrantBadge';
+import { formatAddressDisplay } from '../utils/statusLabels';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -406,7 +407,7 @@ export default function FieldInterviewsPage() {
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate">{fi.location}</span>
+                  <span className="truncate">{formatAddressDisplay(fi.location)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-rmpg-500 mt-0.5">
                   <span>{fi.officer_name || fi.officer_display_name || 'Unknown Officer'}</span>
@@ -488,7 +489,7 @@ export default function FieldInterviewsPage() {
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Build</span><div className="text-white mt-0.5">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Hair / Eyes</span><div className="text-white mt-0.5">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Clothing</span><div className="text-white mt-0.5">{selectedFi.subject_clothing || '—'}</div></div>
-              <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-white mt-0.5">{selectedFi.location}</div></div>
+              <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-white mt-0.5">{formatAddressDisplay(selectedFi.location)}</div></div>
               {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
                 <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}

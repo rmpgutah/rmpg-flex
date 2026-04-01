@@ -490,7 +490,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                 {(person.address || person.city) && (
                   <div className="flex items-center gap-1 mt-0.5 text-[9px] text-rmpg-500 truncate">
                     <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
-                    {[formatAddressDisplay(person.address), person.city, person.state].filter(Boolean).join(', ')}
+                    {[formatAddressDisplay(person.address), formatAddressDisplay(person.city), person.state?.toUpperCase(), person.zip].filter(Boolean).join(', ')}
                   </div>
                 )}
               </div>
@@ -653,7 +653,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {renderInfoRow('Phone', selectedPerson.phone ? formatPhoneDisplay(selectedPerson.phone) : undefined, Phone)}
             {renderInfoRow('Phone 2', selectedPerson.phone_secondary ? formatPhoneDisplay(selectedPerson.phone_secondary) : undefined, Phone)}
             {renderInfoRow('Email', selectedPerson.email, Mail)}
-            {renderInfoRow('Address', [formatAddressDisplay(selectedPerson.address), selectedPerson.city, selectedPerson.state, selectedPerson.zip].filter(Boolean).join(', '), MapPin)}
+            {renderInfoRow('Address', [formatAddressDisplay(selectedPerson.address), formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', '), MapPin)}
             {renderInfoRow('Employer', selectedPerson.employer, Briefcase)}
             {renderInfoRow('Occupation', selectedPerson.occupation)}
             {renderInfoRow('Social Media', selectedPerson.social_media)}
