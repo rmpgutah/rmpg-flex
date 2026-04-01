@@ -263,7 +263,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                   <div className="text-[10px] text-rmpg-300 mt-0.5 truncate">{ev.description}</div>
                   <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                     <span className="uppercase">{(ev.evidence_type || 'physical').replace(/_/g, ' ')}</span>
-                    {ev.category && <span>{ev.category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>}
+                    {ev.category && <span>{ev.category.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>}
                     {ev.incident_number && (
                       <span className="flex items-center gap-0.5">
                         <Link2 className="w-2.5 h-2.5" />{ev.incident_number}

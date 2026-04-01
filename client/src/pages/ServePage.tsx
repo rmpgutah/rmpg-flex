@@ -1125,7 +1125,7 @@ export default function ServePage() {
                     {deadlines.overdue.map((d: any) => (
                       <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
                         <span>{d.recipient_name}</span>
-                        <span className="text-rmpg-500">{(d.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                        <span className="text-rmpg-500">{(d.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                         <span className="ml-auto">{Math.abs(Math.round(d.days_remaining))}d overdue</span>
                       </div>
                     ))}
