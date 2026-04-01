@@ -196,19 +196,28 @@ let phraseQueue: VoicePhrase[] = [];
 let isSpeaking = false;
 
 function speakPhrase(phrase: VoicePhrase): Promise<void> {
-  return new Promise((resolve) => {
-    if (!isSpeechAvailable()) { resolve(); return; }
-
-    const utterance = new SpeechSynthesisUtterance(phrase.text);
-    const voice = selectFemaleVoice();
-    if (voice) utterance.voice = voice;
-    utterance.rate = SPEECH_RATE;
-    utterance.pitch = SPEECH_PITCH;
-    utterance.volume = SPEECH_VOLUME;
-    utterance.lang = 'en-US';
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve(); // don't block queue on errors
-    speechSynthesis.speak(utterance);
+  // Route ALL speech through Edge TTS (neural voice) — no browser SpeechSynthesis
+  return new Promise(async (resolve) => {
+    try {
+      const { speak: edgeSpeak } = await import('./edgeTTS');
+      await edgeSpeak(phrase.text);
+    } catch {
+      // Edge TTS unavailable — fall back to browser SpeechSynthesis as last resort
+      if (isSpeechAvailable()) {
+        const utterance = new SpeechSynthesisUtterance(phrase.text);
+        const voice = selectFemaleVoice();
+        if (voice) utterance.voice = voice;
+        utterance.rate = SPEECH_RATE;
+        utterance.pitch = SPEECH_PITCH;
+        utterance.volume = SPEECH_VOLUME;
+        utterance.lang = 'en-US';
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+        speechSynthesis.speak(utterance);
+        return;
+      }
+    }
+    resolve();
   });
 }
 

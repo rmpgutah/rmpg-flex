@@ -430,7 +430,7 @@ app.use(express.static(clientDistPath, {
   maxAge: '5m',
 }));
 
-// SPA fallback: serve index.html for non-API, non-download routes
+// SPA fallback: serve index.html for non-API, non-download routes (always fresh)
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
@@ -438,6 +438,9 @@ app.get('*', (req, res) => {
     // Already handled by download routes — if we get here, 404
     res.status(404).json({ error: 'Not found' });
   } else {
+    // Force no-cache on SPA fallback to ensure fresh JS bundle references
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
       if (err) {
         res.status(404).json({ error: 'Not found' });
