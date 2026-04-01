@@ -103,62 +103,30 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
       return;
     }
 
-    // Read image file and convert to base64
+    // Read image file
     const imageBuffer = fs.readFileSync(req.file.path);
-    const base64Image = imageBuffer.toString('base64');
     const mimeType = req.file.mimetype || 'image/jpeg';
 
     // Clean up uploaded file
     try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
 
-    // Try base64 JSON body first (most RapidAPI OCR endpoints prefer this)
-    let ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
+    // Send as base64 in JSON body — the RapidAPI DL OCR endpoint accepts this format
+    const base64Image = imageBuffer.toString('base64');
+    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-rapidapi-key': apiKey,
         'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
       },
-      body: JSON.stringify({ image: `data:${mimeType};base64,${base64Image}` }),
-      signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({
+        image_base64: base64Image,
+        image: base64Image,
+      }),
+      signal: AbortSignal.timeout(45_000),
     });
-
-    // Check if the base64 approach returned an error
-    let ocrText = await ocrResponse.text();
-    if (ocrText.includes('Unable to access the image') || ocrText.includes('"FAILED"')) {
-      console.log('[DL OCR] Base64 JSON failed, trying multipart FormData...');
-      // Fallback: try multipart FormData with the buffer
-      const formData = new FormData();
-      const blob = new Blob([imageBuffer], { type: mimeType });
-      formData.append('image', blob, 'dl-scan.jpg');
-
-      ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
-        method: 'POST',
-        headers: {
-          'x-rapidapi-key': apiKey,
-          'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
-        },
-        body: formData,
-        signal: AbortSignal.timeout(30_000),
-      });
-      ocrText = await ocrResponse.text();
-    }
-
-    // If still failing, try raw base64 without data URI prefix
-    if (ocrText.includes('Unable to access the image') || ocrText.includes('"FAILED"')) {
-      console.log('[DL OCR] FormData also failed, trying raw base64...');
-      ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-rapidapi-key': apiKey,
-          'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
-        },
-        body: JSON.stringify({ image: base64Image }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      ocrText = await ocrResponse.text();
-    }
+    const ocrText = await ocrResponse.text();
+    console.log('[DL OCR] Status:', ocrResponse.status, 'Response:', ocrText.substring(0, 300));
 
     if (!ocrResponse.ok) {
       console.error(`[DL OCR] API error (${ocrResponse.status}):`, ocrText.slice(0, 500));
