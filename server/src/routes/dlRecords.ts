@@ -187,27 +187,10 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
 
     console.log('[DL OCR] Result keys:', Object.keys(ocrData.result || {}));
 
-    if (!ocrResponse.ok) {
-      console.error(`[DL OCR] API error (${ocrResponse.status}):`, ocrText.slice(0, 500));
-      if (ocrResponse.status === 403) {
-        res.status(503).json({ error: 'DL OCR API subscription expired or access denied.', code: 'OCR_SUBSCRIPTION_EXPIRED' });
-      } else if (ocrResponse.status === 429) {
-        res.status(429).json({ error: 'DL OCR API rate limit exceeded. Wait and try again.', code: 'OCR_RATE_LIMITED' });
-      } else {
-        res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: ocrText.slice(0, 200) });
-      }
-      return;
-    }
-
-    // Parse from the text we already read (body was consumed by .text())
-    let ocrData: any;
-    try { ocrData = JSON.parse(ocrText); } catch { ocrData = {}; }
-    console.log('[DL OCR] Raw response:', ocrText.substring(0, 500));
-
-    // Check for API-level error in 200 response
-    if (ocrData.code && ocrData.message && !ocrData.result && !ocrData.data) {
-      console.error('[DL OCR] API returned error in 200:', ocrData.message);
-      res.status(502).json({ error: ocrData.message || 'OCR API error', code: 'OCR_API_ERROR', detail: ocrText.slice(0, 200) });
+    // Check for API-level error
+    if (ocrData.code && ocrData.message && !ocrData.result) {
+      console.error('[DL OCR] OCR error:', ocrData.message);
+      res.status(502).json({ error: ocrData.message || 'OCR failed', code: 'OCR_API_ERROR' });
       return;
     }
 
