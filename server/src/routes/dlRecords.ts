@@ -103,30 +103,89 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
       return;
     }
 
-    // Read image file
+    // Read image file and convert to base64
     const imageBuffer = fs.readFileSync(req.file.path);
-    const mimeType = req.file.mimetype || 'image/jpeg';
+    const base64Image = imageBuffer.toString('base64');
 
     // Clean up uploaded file
     try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
 
-    // Send as base64 in JSON body — the RapidAPI DL OCR endpoint accepts this format
-    const base64Image = imageBuffer.toString('base64');
-    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/usa_driver_license_recognition', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-rapidapi-key': apiKey,
-        'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
-      },
-      body: JSON.stringify({
-        image_base64: base64Image,
-        image: base64Image,
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
-    const ocrText = await ocrResponse.text();
-    console.log('[DL OCR] Status:', ocrResponse.status, 'Response:', ocrText.substring(0, 300));
+    // Use Google Cloud Vision OCR as primary (free tier: 1000/month)
+    // Falls back to basic text extraction if Vision API unavailable
+    let ocrText = '';
+    let ocrData: any = {};
+
+    // Try Google Vision TEXT_DETECTION first (uses same Maps API key)
+    const visionKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (visionKey) {
+      try {
+        const visionRes = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requests: [{
+              image: { content: base64Image },
+              features: [{ type: 'TEXT_DETECTION', maxResults: 1 }, { type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 }],
+            }],
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        const visionData = await visionRes.json() as any;
+        const annotations = visionData?.responses?.[0];
+        const fullText = annotations?.fullTextAnnotation?.text || annotations?.textAnnotations?.[0]?.description || '';
+
+        if (fullText.length > 10) {
+          console.log('[DL OCR] Google Vision extracted', fullText.length, 'chars');
+          ocrText = JSON.stringify({ vision_text: fullText });
+
+          // Parse DL fields from OCR text
+          const lines = fullText.split('\n').map((l: string) => l.trim()).filter(Boolean);
+          const text = fullText.toUpperCase();
+
+          // Extract common DL fields using regex patterns
+          const dlNum = text.match(/(?:DL|LIC|LICENSE|ID)\s*(?:#|NO|NUM|NUMBER)?:?\s*([A-Z0-9]{5,15})/)?.[1] || '';
+          const dobMatch = text.match(/(?:DOB|BIRTH|BORN|BD):?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/)?.[1] || '';
+          const expMatch = text.match(/(?:EXP|EXPIRES?):?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/)?.[1] || '';
+          const nameLines = lines.filter((l: string) => /^[A-Z][a-z]+\s+[A-Z]/.test(l) && !/\d{4}/.test(l)).slice(0, 2);
+          const addrLines = lines.filter((l: string) => /\d+\s+\w+\s+(st|ave|blvd|dr|rd|ln|way|ct|pl|cir)/i.test(l));
+          const stateMatch = text.match(/\b(UTAH|CALIFORNIA|NEVADA|ARIZONA|COLORADO|IDAHO|WYOMING|MONTANA|NEW MEXICO|OREGON|WASHINGTON)\b/)?.[1] || '';
+          const classMatch = text.match(/(?:CLASS|CL):?\s*([A-D])/)?.[1] || '';
+          const sexMatch = text.match(/(?:SEX|GENDER):?\s*(M|F|MALE|FEMALE)/)?.[1] || '';
+          const htMatch = text.match(/(?:HT|HEIGHT):?\s*(\d['\-]\d{1,2})/)?.[1] || '';
+          const wtMatch = text.match(/(?:WT|WEIGHT):?\s*(\d{2,3})/)?.[1] || '';
+          const eyeMatch = text.match(/(?:EYES?):?\s*(BLU|BRN|GRN|HAZ|BLK|GRY)/)?.[1] || '';
+
+          ocrData = {
+            result: {
+              dl_number: dlNum,
+              name: nameLines[0] || '',
+              first_name: nameLines[0]?.split(/\s+/)?.[0] || '',
+              last_name: nameLines[0]?.split(/\s+/)?.slice(1).join(' ') || '',
+              date_of_birth: dobMatch,
+              expiry_date: expMatch,
+              address: addrLines[0] || '',
+              state: stateMatch,
+              class_of_vehicle: classMatch,
+              sex: sexMatch,
+              height: htMatch,
+              weight: wtMatch,
+              eye_color: eyeMatch,
+              raw_text: fullText,
+            },
+          };
+        }
+      } catch (visionErr) {
+        console.warn('[DL OCR] Google Vision failed:', (visionErr as Error).message);
+      }
+    }
+
+    // If Vision didn't produce results, return error with guidance
+    if (!ocrData.result) {
+      ocrText = '{}';
+      ocrData = { code: '503', message: 'OCR extraction unavailable. Enable Google Cloud Vision API on your API key for DL scanning.' };
+    }
+
+    console.log('[DL OCR] Result keys:', Object.keys(ocrData.result || {}));
 
     if (!ocrResponse.ok) {
       console.error(`[DL OCR] API error (${ocrResponse.status}):`, ocrText.slice(0, 500));
