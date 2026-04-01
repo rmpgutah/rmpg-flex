@@ -40,6 +40,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
         flexShrink: 0,
         // Safe area inset for phones with gesture nav bars
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        WebkitTransform: 'translateZ(0)',
       }}
     >
       {NAV_ITEMS.map(item => {

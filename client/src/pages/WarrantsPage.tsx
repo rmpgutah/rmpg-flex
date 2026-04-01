@@ -1195,7 +1195,7 @@ export default function WarrantsPage() {
           TAB 1: DASHBOARD
          ================================================================ */}
       {activeTab === 'dashboard' && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
           <div className="p-4 space-y-4">
             {/* Quick Search */}
             <div className="relative">

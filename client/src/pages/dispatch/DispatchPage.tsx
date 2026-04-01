@@ -2276,7 +2276,7 @@ export default function DispatchPage() {
               </div>
 
               {/* Mobile Status Action Buttons — large touch targets for gloved use */}
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" style={{ willChange: 'transform' }}>
                 {selectedCall.status === 'pending' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
@@ -3619,7 +3619,7 @@ export default function DispatchPage() {
               </div>
 
               {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col">
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -3769,7 +3769,7 @@ export default function DispatchPage() {
                       {isEditing ? (
                         <div className="space-y-1 mt-0.5">
                           <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
-                          <input type="text" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
+                          <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
                           <input type="text" className="input-dark text-xs" placeholder="Caller address" value={editData.caller_address} onChange={(e) => updateEditField('caller_address', e.target.value)} />
                           <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
@@ -4483,7 +4483,7 @@ export default function DispatchPage() {
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
                           <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -5734,7 +5734,7 @@ export default function DispatchPage() {
               </div>
               <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
             </div>
-            <div className="p-3 flex-1 overflow-auto">
+            <div className="p-3 flex-1 overflow-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               {handoffMeta.updated_by && (
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Last updated by <span className="text-amber-400">{handoffMeta.updated_by}</span>

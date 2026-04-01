@@ -55,6 +55,8 @@ export default function MobileHeader({
         background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
         borderBottom: '1px solid #1e3048',
         flexShrink: 0,
+        WebkitBackdropFilter: 'blur(8px)',
+        backdropFilter: 'blur(8px)',
       }}
     >
       {/* Blue accent at very top */}

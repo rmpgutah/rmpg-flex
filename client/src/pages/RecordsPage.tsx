@@ -521,7 +521,7 @@ export default function RecordsPage() {
       )}
 
       {/* Active TabList Content */}
-      <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`}>
+      <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`} style={{ overscrollBehavior: 'contain' }}>
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading records" />

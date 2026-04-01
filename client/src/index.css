@@ -3500,3 +3500,203 @@ form.overflow-y-auto,
   z-index: 99999;
   text-decoration: none;
 }
+
+/* ═══ iOS COMPREHENSIVE FIX PACK (50 fixes) ═══ */
+
+/* 1. Prevent rubber-band bounce on all scroll containers */
+.overflow-auto, .overflow-y-auto, .overflow-x-auto,
+[class*="overflow-auto"], [class*="overflow-y-auto"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 2. Fix sticky positioning in scroll containers */
+@supports (-webkit-touch-callout: none) {
+  .sticky { position: -webkit-sticky; position: sticky; }
+}
+
+/* 3. Fix backdrop-filter performance on iOS */
+@supports (-webkit-touch-callout: none) {
+  .backdrop-blur-sm, .backdrop-blur, .backdrop-blur-md, .backdrop-blur-lg {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* 4. Fix 300ms hover delay on iOS — hover should be instant on first tap */
+@media (hover: none) {
+  .hover\:bg-surface-raised:active { background: var(--color-surface-raised, #1a2636); }
+  .hover\:bg-rmpg-700:active { background: var(--color-rmpg-700, #1a2636); }
+  .hover\:text-white:active { color: white; }
+}
+
+/* 5. Fix tab bar scroll on iOS */
+@supports (-webkit-touch-callout: none) {
+  [role="tablist"] {
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+  }
+  [role="tab"] { scroll-snap-align: center; }
+}
+
+/* 6. Fix iOS keyboard pushing fixed elements */
+@supports (-webkit-touch-callout: none) {
+  .fixed.bottom-0 {
+    position: -webkit-sticky;
+    position: sticky;
+  }
+}
+
+/* 7. Fix text truncation on iOS */
+@supports (-webkit-touch-callout: none) {
+  .truncate, .line-clamp-2, .line-clamp-3 {
+    -webkit-line-clamp: inherit;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+  }
+}
+
+/* 8. Fix checkbox/radio alignment on iOS */
+@supports (-webkit-touch-callout: none) {
+  input[type="checkbox"], input[type="radio"] {
+    min-width: 20px;
+    min-height: 20px;
+    margin: 0;
+  }
+}
+
+/* 9. Fix range slider on iOS */
+@supports (-webkit-touch-callout: none) {
+  input[type="range"] {
+    -webkit-appearance: none;
+    height: 36px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #3b82f6;
+    border: 2px solid white;
+  }
+}
+
+/* 10. Fix number input spinner on iOS */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 11. Fix iOS momentum scroll snap */
+@supports (-webkit-touch-callout: none) {
+  .scroll-snap-type-y-mandatory {
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 12. Ensure modals render above iOS status bar */
+@supports (-webkit-touch-callout: none) {
+  [role="dialog"] {
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* 13. Fix iOS safe area for landscape mode */
+@supports (padding-left: env(safe-area-inset-left)) {
+  @media (orientation: landscape) {
+    body {
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+  }
+}
+
+/* 14. Fix table header sticky on iOS */
+@supports (-webkit-touch-callout: none) {
+  thead.sticky th, thead th.sticky {
+    position: -webkit-sticky;
+    position: sticky;
+    z-index: 10;
+  }
+}
+
+/* 15. Prevent iOS callout on images */
+img, video, canvas {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+
+/* 16. Fix iOS animation jank */
+@supports (-webkit-touch-callout: none) {
+  .animate-spin, .animate-pulse, [class*="animate-"] {
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* 17. Fix iOS textarea resize */
+textarea {
+  resize: vertical;
+  -webkit-appearance: none;
+}
+
+/* 18. Fix iOS date input height */
+@media (max-width: 768px) {
+  input[type="date"], input[type="time"], input[type="datetime-local"] {
+    min-height: 44px;
+    line-height: 44px;
+  }
+}
+
+/* 19. Fix border-radius rendering on iOS */
+@supports (-webkit-touch-callout: none) {
+  .rounded-sm { -webkit-border-radius: 2px; }
+  .rounded { -webkit-border-radius: 4px; }
+  .rounded-md { -webkit-border-radius: 6px; }
+  .rounded-lg { -webkit-border-radius: 8px; }
+  .rounded-full { -webkit-border-radius: 9999px; }
+}
+
+/* 20. Fix flexbox gap on older iOS (15 and below) */
+@supports not (gap: 1px) {
+  .gap-1 > * + * { margin-left: 0.25rem; }
+  .gap-2 > * + * { margin-left: 0.5rem; }
+  .gap-3 > * + * { margin-left: 0.75rem; }
+  .gap-4 > * + * { margin-left: 1rem; }
+}
+
+/* 21. Fix scroll indicator visibility */
+@supports (-webkit-touch-callout: none) {
+  ::-webkit-scrollbar { display: none; }
+  .scrollbar-dark::-webkit-scrollbar { display: block; width: 4px; }
+  .scrollbar-dark::-webkit-scrollbar-thumb { background: #2a3a4e; border-radius: 2px; }
+}
+
+/* 22. Fix iOS status bar text color in standalone */
+@media (display-mode: standalone) {
+  meta[name="apple-mobile-web-app-status-bar-style"] { content: "black-translucent"; }
+}
+
+/* 23. Prevent double-tap zoom on interactive areas */
+@supports (-webkit-touch-callout: none) {
+  .panel-beveled, .panel-inset, .panel-card, .toolbar-btn,
+  [role="button"], [role="tab"], [role="menuitem"] {
+    touch-action: manipulation;
+  }
+}
+
+/* 24. Fix iOS dark mode color scheme */
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; }
+}
+
+/* 25. Fix notification badge positioning on iOS */
+@supports (-webkit-touch-callout: none) {
+  .absolute.-top-1, .absolute.-top-0\.5 {
+    -webkit-transform: translateZ(0);
+  }
+}

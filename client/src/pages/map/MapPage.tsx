@@ -2079,7 +2079,7 @@ export default function MapPage() {
         <div
           ref={mapRef}
           className="absolute inset-0 bg-surface-deep"
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', touchAction: 'pan-x pan-y' }}
           role="application"
           aria-label="Tactical Map"
         />
@@ -2401,7 +2401,7 @@ export default function MapPage() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="bg-surface-deep border border-rmpg-600 shadow-2xl overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate' }} role="region" aria-label="Map layer controls">
+          <div className="bg-surface-deep border border-rmpg-600 shadow-2xl overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
@@ -4443,7 +4443,7 @@ export default function MapPage() {
 
         {/* ── Weather / Environment Panel ── */}
         {!isMobile && showEnvironmentInfo && (
-          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment || showSafetyDashboard ? 320 : 8, maxWidth: 320 }}>
+          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment || showSafetyDashboard ? 320 : 8, maxWidth: 320, willChange: 'contents' }}>
             <WeatherPanel
               lighting={environment?.lighting || 'daylight'}
               sunriseSunset={environment?.sunriseSunset || null}
@@ -5102,7 +5102,7 @@ export default function MapPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
               {sidebarTab === 'units' && (
                 <div className="divide-y divide-rmpg-700/50">
                   {filteredUnits.map((unit) => {

@@ -711,7 +711,7 @@ export default function CitationsPage() {
       </div>
 
       {/* List body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             <Loader2 size={20} className="animate-spin text-brand-400" role="status" aria-label="Loading" />

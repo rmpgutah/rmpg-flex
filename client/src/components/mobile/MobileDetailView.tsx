@@ -256,7 +256,7 @@ export default function MobileDetailView({
         {/* ── Scrollable Content ──────────────────────────── */}
         <div
           className="flex-1 overflow-y-auto overflow-x-hidden"
-          style={{ WebkitOverflowScrolling: 'touch' }}
+          style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
         >
           {children}
         </div>

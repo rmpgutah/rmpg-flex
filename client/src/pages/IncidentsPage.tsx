@@ -833,7 +833,7 @@ export default function IncidentsPage() {
       )}
 
       {/* Table / Loading / Error */}
-      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <table className="table-dark">
             <thead className="sticky top-0 z-10">

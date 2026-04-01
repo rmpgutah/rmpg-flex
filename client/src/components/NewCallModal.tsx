@@ -578,7 +578,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Phone</label>
-                  <input type="text" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
+                  <input type="text" inputMode="tel" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Billing Code</label>
@@ -652,6 +652,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Phone</label>
               <input
                 type="text"
+                inputMode="tel"
                 className="input-dark"
                 placeholder="(801) 555-0000"
                 value={formData.caller_phone}
