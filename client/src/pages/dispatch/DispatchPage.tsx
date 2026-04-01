@@ -2296,7 +2296,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
@@ -2305,7 +2305,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
@@ -2314,7 +2314,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
@@ -2324,21 +2324,21 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80', touchAction: 'manipulation' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
                     <button type="button"
                       onClick={() => handleHoldCall(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
                     >
                       ⏸ Hold
                     </button>
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a', touchAction: 'manipulation' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
@@ -2348,7 +2348,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000', touchAction: 'manipulation' }}
                   >
                     ▶ Resume
                   </button>
@@ -2358,7 +2358,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#374151', border: '1px solid #4b5563', color: '#d1d5db' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#374151', border: '1px solid #4b5563', color: '#d1d5db', touchAction: 'manipulation' }}
                     >
                       Close
                     </button>
@@ -2366,7 +2366,7 @@ export default function DispatchPage() {
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -2378,7 +2378,7 @@ export default function DispatchPage() {
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
@@ -2388,7 +2388,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
                   >
                     <Undo2 style={{ width: 16, height: 16 }} /> Back
                   </button>
@@ -2397,7 +2397,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af', touchAction: 'manipulation' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
@@ -2406,7 +2406,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af', touchAction: 'manipulation' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -2478,7 +2478,7 @@ export default function DispatchPage() {
                               }}
                             />
                             {ts.value && ts.field !== 'created_at' && (
-                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
+                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
                                 <X className="w-3 h-3" />
                               </button>
                             )}
@@ -3852,7 +3852,7 @@ export default function DispatchPage() {
                                   }}
                                 />
                                 {ts.value && ts.field !== 'created_at' && (
-                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
+                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
                                     <X className="w-3 h-3" />
                                   </button>
                                 )}

@@ -831,6 +831,8 @@ body.fx-noise::after {
     transition: background 0.1s;
     white-space: nowrap;
     flex-shrink: 0;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .toolbar-btn:hover {
@@ -3190,6 +3192,12 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
+/* iOS Safari: eliminate 300ms click delay on all interactive elements */
+button, [role="button"], .toolbar-btn, a, input[type="button"], input[type="submit"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* iOS-specific overrides (detects iOS Safari via -webkit-touch-callout) */
 @supports (-webkit-touch-callout: none) {
   /* Fix min-h-screen: iOS Safari 100vh includes the URL bar */
@@ -3247,6 +3255,34 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   }
   .backdrop-blur-xl {
     -webkit-backdrop-filter: blur(24px);
+  }
+
+  /* iOS Safari: prevent button tap issues in scrollable containers */
+  button, [role="button"], .toolbar-btn {
+    /* Prevent scroll container from capturing button taps */
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Ensure buttons in overflow:auto containers are tappable */
+  .overflow-auto button,
+  .overflow-y-auto button,
+  .overflow-x-auto button {
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* Responsive breakpoints for very small phones */
+@media (max-width: 480px) {
+  .toolbar-btn {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .toolbar-btn-primary {
+    min-height: 48px;
+    padding: 10px 16px;
   }
 }
 

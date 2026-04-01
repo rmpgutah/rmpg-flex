@@ -170,7 +170,7 @@ export default React.memo(function UnitStatusBoard({
                   {unit.status === 'available' && !assignedUnitIds.includes(unit.id) ? (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); onAssignUnit!(unit.id); }}
-                      className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 active:bg-green-700/50 transition-colors"
+                      className="flex items-center gap-1 px-2 py-0.5 sm:py-0.5 min-h-[44px] sm:min-h-0 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 active:bg-green-700/50 transition-colors"
                       title={`Assign ${unit.call_sign} to call`}
                       aria-label={`Assign ${unit.call_sign} to call`}
                     >
@@ -190,7 +190,7 @@ export default React.memo(function UnitStatusBoard({
                     {onEditUnit && (
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); onEditUnit(unit); }}
-                        className="p-0.5 text-rmpg-400 hover:text-brand-400 transition-colors"
+                        className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-brand-400 transition-colors"
                         title={`Edit ${unit.call_sign}`}
                       >
                         <Edit className="w-3 h-3" />
@@ -199,7 +199,7 @@ export default React.memo(function UnitStatusBoard({
                     {onDeleteUnit && !unit.current_call_id && (
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); onDeleteUnit(unit); }}
-                        className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
+                        className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-red-400 transition-colors"
                         title={`Delete ${unit.call_sign}`}
                       >
                         <Trash2 className="w-3 h-3" />
