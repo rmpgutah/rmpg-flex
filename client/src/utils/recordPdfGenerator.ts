@@ -784,7 +784,7 @@ function fmtCurrency(val?: number | null): string {
 /** Capitalize the first letter of each word (e.g., "suspect" → "Suspect", "co owner" → "Co Owner") */
 function titleCase(str: string): string {
   if (!str) return '';
-  return str.replace(/\b\w/g, c => c.toUpperCase());
+  return str.replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ── Call for Service Report ──────────────────────────────────

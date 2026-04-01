@@ -237,12 +237,12 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 
 function formatServiceType(val: string | undefined | null): string {
   if (!val) return '';
-  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
-  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 export default function DispatchPage() {

@@ -1661,7 +1661,7 @@ export default function SkipTracerV2Page() {
                                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
                                 style={{ backgroundColor: color + '22', color }}
                               >
-                                {(ev.category || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                {(ev.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                               </span>
                               {ev.date && (
                                 <span className="text-[9px] font-mono text-[#8899aa]">{ev.date}</span>
@@ -1832,7 +1832,7 @@ export default function SkipTracerV2Page() {
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 rounded-sm"
                       style={{ backgroundColor: categoryColor(s.category) + '22', color: categoryColor(s.category) }}
-                    >{(s.category || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                    >{(s.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     {s.costPerLookup > 0
                       ? <span className="text-[9px] text-[#556677] font-mono">${s.costPerLookup.toFixed(4)}/lookup</span>
                       : <span className="text-[9px] text-green-600 font-mono">FREE</span>}

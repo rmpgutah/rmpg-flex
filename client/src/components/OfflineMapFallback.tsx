@@ -467,7 +467,7 @@ export default function OfflineMapFallback({
         marker.bindTooltip(
           `<div style="text-align:center;">
             <div style="font-weight:900;font-size:9px;">${call.call_number}</div>
-            <div style="font-size:8px;opacity:0.7;">${(call.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</div>
+            <div style="font-size:8px;opacity:0.7;">${(call.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
             <div style="font-size:7px;opacity:0.5;margin-top:1px;">${call.location_address || ''}</div>
           </div>`,
           { direction: 'top', offset: [0, -4], className: 'leaflet-tooltip-dark' }

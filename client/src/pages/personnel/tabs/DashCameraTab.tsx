@@ -135,7 +135,7 @@ export default function DashCameraTab({
   }
 
   function eventLabel(eventType: string): string {
-    return eventType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return eventType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
   }
 
   function statusLedClass(isActive: boolean): string {

@@ -328,7 +328,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                 {usersActivity.data.slice(0, 10).map((u: any) => (
                   <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised">
                     <td className="py-1 px-2 text-white font-bold">{u.full_name}</td>
-                    <td className="py-1 px-2 text-rmpg-400">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</td>
+                    <td className="py-1 px-2 text-rmpg-400">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                     <td className="py-1 px-2 text-right font-mono text-brand-400">{u.recent_action_count}</td>
                     <td className="py-1 px-2 text-right font-mono">{u.incidents_30d}</td>
                     <td className="py-1 px-2 text-right font-mono">{u.messages_30d}</td>

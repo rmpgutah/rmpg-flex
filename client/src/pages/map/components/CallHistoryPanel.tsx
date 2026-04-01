@@ -265,7 +265,7 @@ export default function CallHistoryPanel({
                         </div>
                       </div>
                       <div className="text-[9px] font-mono text-rmpg-300 truncate">
-                        {(call.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        {(call.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
                         <MapPin size={8} className="text-rmpg-600 shrink-0" />

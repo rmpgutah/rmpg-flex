@@ -55,7 +55,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
     return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const eventLabel = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const eventLabel = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
   // Stats
   const hardBrakes = events.filter(e => e.event_type === 'hard_brake').length;

@@ -912,8 +912,8 @@ export default function CourtTrackerPage() {
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`w-2 h-2 rounded-full ${wit.contact_status === 'confirmed' ? 'bg-green-500' : wit.contact_status === 'contacted' ? 'bg-amber-500' : 'bg-rmpg-600'}`} />
                       <span className="text-[10px] text-white flex-1">{wit.name}</span>
-                      <span className="text-[9px] text-rmpg-500">{(wit.role || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
-                      <span className="text-[9px] text-rmpg-600">{(wit.contact_status || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                      <span className="text-[9px] text-rmpg-500">{(wit.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[9px] text-rmpg-600">{(wit.contact_status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
                   ));
                 })()}

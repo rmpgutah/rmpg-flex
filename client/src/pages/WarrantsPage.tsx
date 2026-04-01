@@ -1511,7 +1511,7 @@ export default function WarrantsPage() {
                       <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
                       <div className="text-xs text-rmpg-400 truncate mt-0.5">{w.charge_description}</div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}` : ''}
+                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
                       </div>
                       {/* UPGRADE 42: Expiration warning highlight */}
@@ -1974,7 +1974,7 @@ export default function WarrantsPage() {
                                   w.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                                   'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
                                 }`}>
-                                  {(w.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                  {(w.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                                 </span>
                               ) : (
                                 <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded font-bold uppercase">ACTIVE</span>
@@ -2004,10 +2004,10 @@ export default function WarrantsPage() {
                             <span className="text-sm font-bold text-white">{w.warrant_number}</span>
                             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
                               STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                            }`}>{(w.status || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                            }`}>{(w.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
                               TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                            }`}>{(w.type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                            }`}>{(w.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                           </div>
                           <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
                           <div className="text-[10px] text-rmpg-400 mt-1">
@@ -2261,7 +2261,7 @@ export default function WarrantsPage() {
                                   r.status === 'completed' ? 'bg-green-900/30 text-green-400' :
                                   r.status === 'running' ? 'bg-brand-blue/20 text-brand-blue' :
                                   'bg-red-900/30 text-red-400'
-                                }`}>{(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                                }`}>{(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                               </td>
                             </tr>
                           ))}
@@ -2994,7 +2994,7 @@ export default function WarrantsPage() {
                             utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                             utahDetailWarrant.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                             'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                          }`}>{(utahDetailWarrant.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                          }`}>{(utahDetailWarrant.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                         </div>
                       </div>
                     )}

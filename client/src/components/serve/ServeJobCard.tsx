@@ -169,7 +169,7 @@ export default React.memo(function ServeJobCard({
           {/* Enhancement 50: Document type with icon */}
           <span className="text-[9px] font-mono text-rmpg-400 bg-rmpg-800/60 border border-rmpg-700/40 px-1 py-0 inline-flex items-center gap-0.5">
             {(() => { const DocIcon = DOC_TYPE_ICONS[job.document_type] || FileText; return <DocIcon className="w-2.5 h-2.5" />; })()}
-            {(job.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+            {(job.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
           </span>
 
           {/* Priority */}

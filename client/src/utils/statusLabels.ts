@@ -283,13 +283,13 @@ export function humanizeStatus(status: string | null | undefined, type?: 'call' 
     unit: UNIT_STATUS_LABELS,
   };
   const map = type ? maps[type] : { ...CALL_STATUS_LABELS, ...INCIDENT_STATUS_LABELS, ...UNIT_STATUS_LABELS };
-  return map[status] || status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return map[status] || status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 /** Convert an incident type code to a readable label */
 export function humanizeType(type: string | null | undefined): string {
   if (!type) return '\u2014';
-  return INCIDENT_TYPE_LABELS[type] || type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return INCIDENT_TYPE_LABELS[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 /** Convert a priority code to a descriptive label */
@@ -320,7 +320,7 @@ export function humanizeRace(race: string | null | undefined): string {
 /** Convert a case type code to a readable label */
 export function humanizeCaseType(caseType: string | null | undefined): string {
   if (!caseType) return '\u2014';
-  return CASE_TYPE_LABELS[caseType] || caseType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return CASE_TYPE_LABELS[caseType] || caseType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 /** Translate a disposition code to its full description */
@@ -331,7 +331,7 @@ export function humanizeDisposition(code: string | null | undefined): string {
 
 /** Translate a solvability factor key to its description */
 export function humanizeSolvabilityFactor(key: string): string {
-  return SOLVABILITY_FACTOR_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return SOLVABILITY_FACTOR_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 /** Get a human-readable description for a person flag */
@@ -425,11 +425,11 @@ export function formatAddressDisplay(address: string | null | undefined): string
 /** Simple title case: "hello world" -> "Hello World" */
 export function titleCase(str: string | null | undefined): string {
   if (!str) return '\u2014';
-  return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return str.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 /** Remove underscores from any string and title-case it \u2014 use as last-resort formatter */
 export function cleanDisplay(val: string | null | undefined): string {
   if (!val) return '\u2014';
-  return val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }

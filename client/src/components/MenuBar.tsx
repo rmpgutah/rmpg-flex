@@ -1152,7 +1152,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
   }, [search, activeState, activeCategory, fetchStatutes]);
 
   const formatOffense = (level: string | null) =>
-    level ? level.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+    level ? level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Law reference" onClick={onClose}>

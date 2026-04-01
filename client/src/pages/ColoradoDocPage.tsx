@@ -337,7 +337,7 @@ export default function ColoradoDocPage() {
                       <td className="px-2.5 py-1.5">
                         {r.status ? (
                           <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[9px] uppercase tracking-wider font-bold border ${statusClass(r.status)}`}>
-                            {(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                            {(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                           </span>
                         ) : (
                           <span className="text-rmpg-600">--</span>

@@ -747,7 +747,7 @@ const PatrolPage: React.FC = () => {
               <div key={i} className="flex gap-2">
                 <span className="text-rmpg-500 w-24">{safeTimeStr(e.time)}</span>
                 <span className="text-white flex-1">{e.checkpoint}</span>
-                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : e.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : e.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                 {e.time_since_prev_min != null && <span className="text-rmpg-500">{e.time_since_prev_min}m</span>}
               </div>
             ))}

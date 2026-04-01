@@ -163,7 +163,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
                           {r.state && <div>State: <span className="text-rmpg-300">{r.state}</span></div>}
-                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span></div>}
+                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
                           {r.sentence && <div>Sentence: <span className="text-rmpg-300">{r.sentence}</span></div>}
                         </div>
                       </div>
@@ -188,8 +188,8 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
                           {r.state && <div>State: <span className="text-rmpg-300">{r.state}</span></div>}
-                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span></div>}
-                          {r.status && <div>Status: <span className="text-rmpg-300">{r.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span></div>}
+                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
+                          {r.status && <div>Status: <span className="text-rmpg-300">{r.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
                         </div>
                       </div>
                     ))}
@@ -217,7 +217,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.state && <div>State: <span className="text-red-300/80">{r.state}</span></div>}
-                          {r.status && <div>Status: <span className="text-red-300/80">{r.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span></div>}
+                          {r.status && <div>Status: <span className="text-red-300/80">{r.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
                           {r.offense_date && <div>Date: <span className="text-red-300/80">{r.offense_date}</span></div>}
                           {r.court && <div>Jurisdiction: <span className="text-red-300/80">{r.court}</span></div>}
                           {r.registry_address && (

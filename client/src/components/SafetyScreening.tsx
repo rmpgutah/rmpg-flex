@@ -234,7 +234,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                   <span className="font-bold">Criminal History:</span>
                   {item.criminalHistory.slice(0, 3).map((ch) => (
                     <div key={ch.id} className="ml-4 text-rmpg-300">
-                      {ch.charge} {ch.disposition && `— ${ch.disposition.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`}
+                      {ch.charge} {ch.disposition && `— ${ch.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}`}
                     </div>
                   ))}
                   {item.criminalHistory.length > 3 && (

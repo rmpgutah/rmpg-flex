@@ -302,7 +302,7 @@ export default function AIPromptWorkshopPanel() {
                   <>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-white truncate flex-1">{t.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#1a3550] text-gray-400 rounded shrink-0">{(t.category || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#1a3550] text-gray-400 rounded shrink-0">{(t.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
                     <p className="text-[10px] text-gray-600 line-clamp-2">{t.system_prompt.slice(0, 80)}{t.system_prompt.length > 80 ? '...' : ''}</p>
                     <div className="flex gap-2 pt-1">

@@ -575,7 +575,7 @@ export async function announceDispatchEvent(call: CallFlags & {
   if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
   if (call.incident_type) {
     // Convert snake_case incident types to natural spoken form
-    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
     phrases.push({ text: `${type}.` });
   }
   if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
@@ -611,7 +611,7 @@ export async function announceNewCall(call: CallFlags & {
   const phrases: VoicePhrase[] = [{ text: naturalPhrase('NEW CALL') }];
   if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
   if (call.incident_type) {
-    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
     phrases.push({ text: `${type}.` });
   }
   if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });

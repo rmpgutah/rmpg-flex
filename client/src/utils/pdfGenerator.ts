@@ -1864,8 +1864,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const rx = getRightColumnX(doc);
   const mx = LAYOUT.PAGE_MARGIN;  // margin x
   const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-  const formatServiceType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
-  const formatDocumentType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+  const formatServiceType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
+  const formatDocumentType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
 
 
   let y = drawNibrsHeader(doc, {

@@ -53,7 +53,7 @@ function formatDate(d?: string | null): string {
 }
 
 function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ════════════════════════════════════════════════════════

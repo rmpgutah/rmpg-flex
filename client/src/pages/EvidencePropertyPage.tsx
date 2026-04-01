@@ -1012,7 +1012,7 @@ export default function EvidencePropertyPage() {
                           {linkedRecords.forensic_cases.map((fc: any) => (
                             <div key={fc.id} className="panel-beveled p-2 mb-1">
                               <div className="text-xs text-white">{fc.lab_number} — {fc.title}</div>
-                              <div className="text-[10px] text-rmpg-500">{(fc.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} | {(fc.status || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</div>
+                              <div className="text-[10px] text-rmpg-500">{(fc.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} | {(fc.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
                             </div>
                           ))}
                         </div>

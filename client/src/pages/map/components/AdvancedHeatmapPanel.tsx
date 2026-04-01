@@ -654,7 +654,7 @@ export default function AdvancedHeatmapPanel({
                     className="text-[9px] flex-1 truncate"
                     style={{ color: checked ? '#e2e8f0' : '#64748b' }}
                   >
-                    {(t.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    {(t.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                   </span>
                   <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{t.count}</span>
                 </button>
@@ -871,7 +871,7 @@ export default function AdvancedHeatmapPanel({
                   {stats.topTypes.slice(0, 3).map((t, i) => (
                     <div key={t.type} className="flex items-center gap-2">
                       <span className="text-[9px] text-rmpg-400 w-24 truncate shrink-0">
-                        {(t.type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        {(t.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                       </span>
                       <div className="flex-1 h-3 rounded-sm overflow-hidden" style={{ background: '#0d1520' }}>
                         <div

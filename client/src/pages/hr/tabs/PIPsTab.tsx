@@ -175,7 +175,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[p.status] || STATUS_COLORS.active}`}>{(p.status || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                      <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[p.status] || STATUS_COLORS.active}`}>{(p.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                       <span className="text-xs font-bold text-white">{p.officer_name}</span>
                       {p.status === 'active' && <span className={`text-[10px] ${days <= 7 ? 'text-red-400' : days <= 14 ? 'text-amber-400' : 'text-rmpg-400'}`}><Clock className="w-3 h-3 inline" /> {days}d remaining</span>}
                     </div>
