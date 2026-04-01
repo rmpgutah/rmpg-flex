@@ -28,6 +28,7 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
+import { titleCase, formatPhoneDisplay, formatAddressDisplay } from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -708,8 +709,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('State', selectedVehicle.plate_state)}
             {renderInfoRow('Plate Type', selectedVehicle.plate_type)}
             {renderInfoRow('Year', selectedVehicle.year ? String(selectedVehicle.year) : null)}
-            {renderInfoRow('Make', selectedVehicle.make)}
-            {renderInfoRow('Model', selectedVehicle.model)}
+            {renderInfoRow('Make', selectedVehicle.make ? titleCase(selectedVehicle.make) : undefined)}
+            {renderInfoRow('Model', selectedVehicle.model ? titleCase(selectedVehicle.model) : undefined)}
             {renderInfoRow('Trim', selectedVehicle.trim)}
             {renderInfoRow('Color', `${selectedVehicle.color}${selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}`)}
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
@@ -747,8 +748,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
-            {renderInfoRow('Owner Address', selectedVehicle.owner_address, MapPin)}
-            {renderInfoRow('Owner Phone', selectedVehicle.owner_phone, Phone)}
+            {renderInfoRow('Owner Address', selectedVehicle.owner_address ? formatAddressDisplay(selectedVehicle.owner_address) : undefined, MapPin)}
+            {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
           </div>
         </CollapsibleSection>
 

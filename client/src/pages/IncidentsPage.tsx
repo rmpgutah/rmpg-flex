@@ -61,6 +61,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
+import { humanizeStatus, humanizePriority, getStatusTooltip } from '../utils/statusLabels';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -913,10 +914,10 @@ export default function IncidentsPage() {
                     </span>
                   </td>
                   <td>
-                    <StatusBadge status={inc.priority} type="priority" size="sm" />
+                    <StatusBadge status={inc.priority} type="priority" size="sm" title={humanizePriority(inc.priority)} />
                   </td>
                   <td>
-                    <StatusBadge status={inc.status} type="incident_status" size="sm" />
+                    <StatusBadge status={inc.status} type="incident_status" size="sm" title={getStatusTooltip(inc.status, 'incident')} />
                   </td>
                   {!isMobile && <td className="text-xs text-rmpg-300 max-w-[200px] truncate">{inc.location}</td>}
                   {!isMobile && <td className="text-xs text-rmpg-200">{inc.officer_name}</td>}
@@ -1139,8 +1140,8 @@ export default function IncidentsPage() {
     <div ref={incidentDetailRef} className={`flex flex-col h-full overflow-hidden animate-slide-in-right${isEditing ? ' edit-mode-active' : ''}`}>
       {/* Detail Header */}
       <PanelTitleBar title={selectedIncident.incident_number} icon={FileText} className="flex-shrink-0" titleClassName="text-green-400 font-mono">
-        <StatusBadge status={selectedIncident.priority} type="priority" size="sm" />
-        <StatusBadge status={selectedIncident.status} type="incident_status" size="sm" />
+        <StatusBadge status={selectedIncident.priority} type="priority" size="sm" title={humanizePriority(selectedIncident.priority)} />
+        <StatusBadge status={selectedIncident.status} type="incident_status" size="sm" title={getStatusTooltip(selectedIncident.status, 'incident')} />
         <button type="button"
           onClick={() => openIncidentWindow(selectedIncident.id)}
           className="toolbar-btn"
@@ -1309,7 +1310,7 @@ export default function IncidentsPage() {
             </div>
             <div>
               <label className="field-label">Officer:</label>
-              <p className="text-sm text-rmpg-200">{selectedIncident.officer_name}</p>
+              <p className="text-sm text-rmpg-200">{selectedIncident.officer_name}{inc?.badge_number ? ` (#${inc.badge_number})` : ''}</p>
             </div>
             <div>
               <label className="field-label">Occurred:</label>

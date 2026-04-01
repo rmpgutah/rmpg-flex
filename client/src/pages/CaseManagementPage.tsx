@@ -21,6 +21,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-blue-900/50 text-blue-400 border-blue-700/50' },
@@ -705,7 +706,7 @@ export default function CaseManagementPage() {
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{c.title}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <span className={`font-bold ${getPriorityColor(c.priority)}`}>{c.priority.toUpperCase()}</span>
-                  <span>{TYPE_OPTIONS.find(t => t.value === c.case_type)?.label || c.case_type}</span>
+                  <span>{humanizeCaseType(c.case_type)}</span>
                   {c.solvability_score != null && (
                     <span className="flex items-center gap-0.5">
                       <Target style={{ width: 9, height: 9 }} />
@@ -888,7 +889,7 @@ export default function CaseManagementPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
                       ['Case Number', selected.case_number],
-                      ['Type', TYPE_OPTIONS.find(t => t.value === selected.case_type)?.label],
+                      ['Type', humanizeCaseType(selected.case_type)],
                       ['Lead Investigator', selected.lead_investigator_name || '—'],
                       ['Opened', selected.opened_date ? new Date(selected.opened_date).toLocaleDateString() : '—'],
                       ['Due Date', selected.due_date ? new Date(selected.due_date).toLocaleDateString() : '—'],
@@ -1146,7 +1147,7 @@ export default function CaseManagementPage() {
                             onChange={e => setSolvFactors(prev => ({ ...prev, [f.key]: e.target.checked }))}
                             className="accent-brand-500"
                           />
-                          <span className="text-xs text-white flex-1">{f.label}</span>
+                          <span className="text-xs text-white flex-1" title={humanizeSolvabilityFactor(f.key)}>{f.label}</span>
                           <span className="text-[9px] font-mono text-rmpg-500">+{f.weight}pts</span>
                         </label>
                       ))}

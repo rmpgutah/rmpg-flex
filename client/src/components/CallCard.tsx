@@ -6,6 +6,7 @@ import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus, type TimerSeverity } from '../utils/dispatchTimers';
+import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
 
 // Feature 15: Call Source Icons
 const SOURCE_ICONS: Record<string, React.ElementType> = {
@@ -282,8 +283,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <StatusBadge status={call.priority} type="priority" size="sm" />
-          <StatusBadge status={call.status} type="call_status" size="sm" />
+          <StatusBadge status={call.priority} type="priority" size="sm" title={humanizePriority(call.priority)} />
+          <StatusBadge status={call.status} type="call_status" size="sm" title={getStatusTooltip(call.status, 'call')} />
           {shouldEscalate && (
             <span className="text-[8px] font-bold font-mono text-amber-400 bg-amber-900/30 border border-amber-700/50 px-1 py-0 animate-pulse">
               ESCALATE
@@ -353,7 +354,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
         <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
         <div className="truncate">
-          <span className="truncate">{call.location}</span>
+          <span className="truncate">{formatAddressDisplay(call.location)}</span>
           {/* Enhancement 28: Show property name below address */}
           {call.property_name && (
             <div className="text-[9px] text-rmpg-400 truncate">{call.property_name}</div>

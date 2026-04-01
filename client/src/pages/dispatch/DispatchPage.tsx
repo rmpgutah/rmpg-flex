@@ -94,6 +94,7 @@ import PersonFormModal, { type PersonFormData } from '../../components/PersonFor
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
+import { humanizeStatus, humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay, formatAddressDisplay, timeAgo } from '../../utils/statusLabels';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -2280,8 +2281,8 @@ export default function DispatchPage() {
             <div className="p-3 space-y-4">
               {/* Status & Priority */}
               <div className="flex items-center gap-2 flex-wrap">
-                <StatusBadge status={selectedCall.priority} type="priority" />
-                <StatusBadge status={selectedCall.status} type="call_status" />
+                <StatusBadge status={selectedCall.priority} type="priority" title={humanizePriority(selectedCall.priority)} />
+                <StatusBadge status={selectedCall.status} type="call_status" title={getStatusTooltip(selectedCall.status, 'call')} />
                 {callWarnings.length > 0 && (
                   <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse">
                     <AlertTriangle style={{ width: 10, height: 10 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
@@ -2427,7 +2428,7 @@ export default function DispatchPage() {
                     <div className="field-label mb-1">Caller</div>
                     <div className="text-sm text-rmpg-200">{selectedCall.caller_name}</div>
                     {selectedCall.caller_phone && (
-                      <div className="text-xs text-rmpg-400 mt-0.5">{selectedCall.caller_phone}</div>
+                      <div className="text-xs text-rmpg-400 mt-0.5">{formatPhoneDisplay(selectedCall.caller_phone)}</div>
                     )}
                   </div>
                 )}
@@ -2601,10 +2602,10 @@ export default function DispatchPage() {
                     <div className="space-y-1 text-xs text-rmpg-200">
                       {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</div>}
                       {selectedCall.pso_requestor_name && <div><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</div>}
-                      {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</div>}
+                      {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {humanizeDisposition(selectedCall.disposition)}</div>}
                     </div>
 
                     {/* Serve Queue Integration — Gold Status Panel */}
@@ -3318,8 +3319,8 @@ export default function DispatchPage() {
                       </span>
                     ) : null
                   )}
-                  <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
-                  <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
+                  <StatusBadge status={selectedCall.priority} type="priority" size="sm" title={humanizePriority(selectedCall.priority)} />
+                  <StatusBadge status={selectedCall.status} type="call_status" size="sm" title={getStatusTooltip(selectedCall.status, 'call')} />
                   {callWarnings.length > 0 && (
                     <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse whitespace-nowrap">
                       <AlertTriangle style={{ width: 9, height: 9 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
@@ -3805,7 +3806,7 @@ export default function DispatchPage() {
                               {selectedCall.caller_phone && (
                                 <div className="flex items-center gap-1.5 ml-5">
                                   <Phone className="w-3 h-3 text-rmpg-400" />
-                                  <p className="text-xs text-rmpg-300">{selectedCall.caller_phone}</p>
+                                  <p className="text-xs text-rmpg-300">{formatPhoneDisplay(selectedCall.caller_phone)}</p>
                                 </div>
                               )}
                             </>
@@ -4992,8 +4993,8 @@ export default function DispatchPage() {
                         <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#1a263620] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #1e3048' }}>
                           {/* Step connector dot */}
                           <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0d1520' }} />
-                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }}>
-                            {entry.created_at ? formatTime(entry.created_at) : '--'}
+                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
+                            {entry.created_at ? `${formatTime(entry.created_at)} (${timeAgo(entry.created_at)})` : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
                             <div className="flex-1 flex gap-1">
