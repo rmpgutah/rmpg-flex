@@ -136,7 +136,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Play alert tone for high-priority calls (P1/P2)
-          if (message.type === 'calls:created' || message.type === 'calls:updated') {
+          if ((message.type as string) === 'calls:created' || (message.type as string) === 'calls:updated') {
             const payload = (message as any).data || (message as any).call || message;
             const priority = payload?.priority;
             if (priority === 'P1' || priority === 'P2') {
