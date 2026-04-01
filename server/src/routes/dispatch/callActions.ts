@@ -224,16 +224,27 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
       return;
     }
 
-    // Prevent double-dispatch: if unit is already on a different active call, warn
+    // Allow multi-dispatch: units can be assigned to multiple calls at the same location
+    // Only block if the other call is at a DIFFERENT location (safety check)
     if (unit.current_call_id && unit.current_call_id !== call.id) {
-      const otherCall = db.prepare('SELECT call_number, status FROM calls_for_service WHERE id = ?').get(unit.current_call_id) as any;
+      const otherCall = db.prepare('SELECT call_number, status, location_address FROM calls_for_service WHERE id = ?').get(unit.current_call_id) as any;
       if (otherCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(otherCall.status)) {
-        res.status(409).json({
-          error: `Unit ${unit.call_sign} is already assigned to active call ${otherCall.call_number} (${otherCall.status})`,
-          code: 'UNIT_ALREADY_DISPATCHED',
-          current_call: otherCall.call_number,
-        });
-        return;
+        // Allow if same location (case-insensitive, trimmed comparison)
+        const sameLocation = otherCall.location_address && call.location_address &&
+          otherCall.location_address.trim().toLowerCase() === call.location_address.trim().toLowerCase();
+        if (!sameLocation && req.user?.role !== 'admin') {
+          // Different location — warn but don't hard-block (include override hint)
+          res.status(409).json({
+            error: `Unit ${unit.call_sign} is already assigned to call ${otherCall.call_number} at a different location. Clear that call first, or have admin override.`,
+            code: 'UNIT_ALREADY_DISPATCHED',
+            current_call: otherCall.call_number,
+            current_location: otherCall.location_address,
+            target_location: call.location_address,
+          });
+          return;
+        }
+        // Same location or admin — allow multi-dispatch (log it)
+        console.log(`[Dispatch] Multi-dispatch: ${unit.call_sign} assigned to ${otherCall.call_number} + ${call.call_number} (${sameLocation ? 'same location' : 'admin override'})`);
       }
     }
 
