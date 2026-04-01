@@ -281,7 +281,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                     style={{ background: '#4ade80' }}
                   />
                   <span className="text-[9px] uppercase tracking-wide" style={{ color: '#4ade80' }}>
-                    {selectedEmployee.role} — Badge {selectedEmployee.badge_number || 'N/A'}
+                    {(selectedEmployee.role || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} — Badge {selectedEmployee.badge_number || 'N/A'}
                   </span>
                 </div>
               )}

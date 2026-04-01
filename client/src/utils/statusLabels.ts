@@ -427,3 +427,9 @@ export function titleCase(str: string | null | undefined): string {
   if (!str) return '\u2014';
   return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
+
+/** Remove underscores from any string and title-case it \u2014 use as last-resort formatter */
+export function cleanDisplay(val: string | null | undefined): string {
+  if (!val) return '\u2014';
+  return val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}

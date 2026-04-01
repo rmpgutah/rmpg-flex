@@ -324,7 +324,7 @@ export default function MdtPage() {
       if (data.incidents.length > 0) {
         lines.push('───── INCIDENT REPORTS ─────────────────────────────────');
         data.incidents.forEach((i: any) => {
-          lines.push(`  ${i.incident_number}  ${i.incident_type?.toUpperCase()}  ${i.status}`);
+          lines.push(`  ${i.incident_number}  ${(i.incident_type || '').replace(/_/g, ' ').toUpperCase()}  ${(i.status || '').replace(/_/g, ' ').toUpperCase()}`);
           lines.push(`    Location: ${i.location_address || 'N/A'}`);
           lines.push('');
         });

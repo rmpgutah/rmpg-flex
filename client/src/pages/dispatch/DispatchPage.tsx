@@ -1285,25 +1285,7 @@ export default function DispatchPage() {
   };
 
   const handleStatusChange = async (callId: string, newStatus: CallStatus, extraBody?: Record<string, any>) => {
-    // Intercept enroute/onscene to prompt for mileage (officer role only)
-    if ((newStatus === 'enroute' || newStatus === 'onscene') && !extraBody) {
-      const call = calls.find(c => c.id === callId);
-      if (call) {
-        // Find vehicle ID from assigned units on this call
-        const assignedUnit = call.assigned_units.length > 0
-          ? units.find(u => call.assigned_units.includes(u.id))
-          : undefined;
-        setMileagePrompt({
-          callId,
-          callNumber: call.call_number,
-          status: newStatus,
-          vehicleId: assignedUnit?.vehicle || call.responding_vehicle_id || '',
-          startingMileage: newStatus === 'onscene' ? (call.starting_mileage ?? undefined) : undefined,
-        });
-        return;
-      }
-    }
-
+    // Status changes go through immediately — no mileage prompt blocking
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
         method: 'POST',
@@ -4874,7 +4856,7 @@ export default function DispatchPage() {
                                   {(visit.status || '').toUpperCase()}
                                 </span>
                                 {visit.disposition && (
-                                  <span className="text-[9px] text-rmpg-300">{visit.disposition}</span>
+                                  <span className="text-[9px] text-rmpg-300">{(visit.disposition || '').replace(/_/g, ' ')}</span>
                                 )}
                               </div>
                               {unitsList.length > 0 && (
@@ -5156,7 +5138,7 @@ export default function DispatchPage() {
                         >
                           <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
                           <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
-                          <span className="text-xs text-rmpg-400 uppercase font-semibold">{inc.status || '--'}</span>
+                          <span className="text-xs text-rmpg-400 uppercase font-semibold">{(inc.status || '--').replace(/_/g, ' ')}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">
                               <User className="w-3 h-3" /> {inc.officer_name}

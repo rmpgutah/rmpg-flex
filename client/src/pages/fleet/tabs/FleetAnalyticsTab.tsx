@@ -1205,7 +1205,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return (
                     <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
                       <td className="py-1.5 pr-3 font-mono font-bold text-white">{m.vehicle_number}</td>
-                      <td className="py-1.5 pr-3 text-rmpg-300">{m.service_type}</td>
+                      <td className="py-1.5 pr-3 text-rmpg-300">{(m.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         {m.due_date || '--'}
                       </td>
@@ -1314,7 +1314,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             {serviceAlerts.slice(0, 8).map((a: any) => (
               <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-blue-900/20 border-blue-800/40 text-blue-400'}`}>
                 <span className="font-mono font-bold">{a.vehicle_number}</span>
-                <span>{a.service_type}</span>
+                <span>{(a.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
                 <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>
               </div>
             ))}

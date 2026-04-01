@@ -804,7 +804,7 @@ export default function CommunicationsPage() {
                 <span className="text-rmpg-500 text-[9px]">
                   {msgPriorityStats.byPriority.map(p => (
                     <span key={p.priority} className={`mr-2 ${p.priority === 'emergency' ? 'text-red-400' : p.priority === 'urgent' ? 'text-amber-400' : 'text-rmpg-400'}`}>
-                      {p.priority}: {p.total}
+                      {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}: {p.total}
                     </span>
                   ))}
                 </span>
@@ -1174,7 +1174,7 @@ export default function CommunicationsPage() {
                   {boloStats.byCategory.slice(0, 2).map((cat) => (
                     <div key={cat.category} className="bg-surface-sunken p-2 text-center">
                       <div className="text-lg font-bold text-rmpg-200">{cat.active_count}</div>
-                      <div className="text-[9px] text-rmpg-400 uppercase">{cat.category}</div>
+                      <div className="text-[9px] text-rmpg-400 uppercase">{(cat.category || '').replace(/_/g, ' ')}</div>
                     </div>
                   ))}
                 </div>

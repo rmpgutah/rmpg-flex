@@ -1003,19 +1003,19 @@ export default function DashCamDetailPage() {
                   {incidentLink.incident_type && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Type</span>
-                      <span className="text-[11px] text-rmpg-200">{incidentLink.incident_type}</span>
+                      <span className="text-[11px] text-rmpg-200">{(incidentLink.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
                     </div>
                   )}
                   {incidentLink.status && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Status</span>
-                      <span className="text-[11px] text-rmpg-200 capitalize">{incidentLink.status}</span>
+                      <span className="text-[11px] text-rmpg-200 capitalize">{(incidentLink.status || '').replace(/_/g, ' ')}</span>
                     </div>
                   )}
                   {incidentLink.disposition && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Disposition</span>
-                      <span className="text-[11px] text-rmpg-200">{incidentLink.disposition}</span>
+                      <span className="text-[11px] text-rmpg-200">{(incidentLink.disposition || '').replace(/_/g, ' ')}</span>
                     </div>
                   )}
                 </div>

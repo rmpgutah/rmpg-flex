@@ -173,7 +173,7 @@ export default function RecordDetailWindow() {
                   <tr key={inc.id || `incident-${i}`} className="border-t border-rmpg-700/50">
                     <td className="py-1.5 text-white font-mono font-bold text-xs">{inc.incident_number}</td>
                     <td className="py-1.5 text-brand-400">{formatIncidentType(inc.incident_type || '')}</td>
-                    <td className="py-1.5 text-rmpg-300">{(inc.role || '').replace(/_/g, ' ')}</td>
+                    <td className="py-1.5 text-rmpg-300">{(inc.role || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</td>
                     <td className="py-1.5 text-rmpg-300">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>
                     <td className="py-1.5">
                       <StatusBadge status={inc.status || 'draft'} type="incident_status" size="sm" />
@@ -289,7 +289,7 @@ export default function RecordDetailWindow() {
                 <tr key={inc.id || `incident-${i}`} className="border-t border-rmpg-700/50">
                   <td className="py-1.5 text-white font-mono font-bold text-xs">{inc.incident_number}</td>
                   <td className="py-1.5 text-brand-400">{formatIncidentType(inc.incident_type || '')}</td>
-                  <td className="py-1.5 text-rmpg-300">{(inc.role || '').replace(/_/g, ' ')}</td>
+                  <td className="py-1.5 text-rmpg-300">{(inc.role || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</td>
                   <td className="py-1.5 text-rmpg-300">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>
                   <td className="py-1.5">
                     <StatusBadge status={inc.status || 'draft'} type="incident_status" size="sm" />

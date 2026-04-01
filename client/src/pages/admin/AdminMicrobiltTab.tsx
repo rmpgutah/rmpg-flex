@@ -464,7 +464,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
               <div key={cat.category}>
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <CatIcon className="w-3 h-3 text-rmpg-400" />
-                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{cat.category}</span>
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{(cat.category || '').replace(/_/g, ' ')}</span>
                 </div>
                 <div className="space-y-0.5">
                   {cat.products.map((product) => {

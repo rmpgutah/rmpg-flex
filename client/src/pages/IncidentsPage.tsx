@@ -1351,7 +1351,7 @@ export default function IncidentsPage() {
                 <label className="field-label">Disposition:</label>
                 <p className="text-sm text-rmpg-200">
                   <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
-                    {inc.disposition}
+                    {(inc.disposition || '').replace(/_/g, ' ').toUpperCase()}
                   </span>
                   {(() => {
                     const match = dispositionCodes.find((d) => d.code === inc.disposition);

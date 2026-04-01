@@ -1212,7 +1212,7 @@ export default function ForensicLabPage() {
                             <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
                               {ex.item_type && <span>Type: {ex.item_type}</span>}
                               {ex.condition_received && <span>Condition: {ex.condition_received}</span>}
-                              <span className="font-bold uppercase" style={{ color: exStatus.color }}>{ex.status}</span>
+                              <span className="font-bold uppercase" style={{ color: exStatus.color }}>{(ex.status || '').replace(/_/g, ' ')}</span>
                             </div>
                             {ex.examination_requested && (
                               <div className="text-[10px] text-rmpg-400 mt-1">
@@ -1275,7 +1275,7 @@ export default function ForensicLabPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <Beaker size={12} style={{ color: anStatus }} />
                           <span className="text-xs font-semibold text-rmpg-200">{typeLabel}</span>
-                          <span className="text-[9px] font-bold uppercase ml-auto" style={{ color: anStatus }}>{an.status}</span>
+                          <span className="text-[9px] font-bold uppercase ml-auto" style={{ color: anStatus }}>{(an.status || '').replace(/_/g, ' ')}</span>
                         </div>
                         {an.examiner_name && <div className="text-[10px] text-rmpg-400">Examiner: {an.examiner_name}</div>}
                         {an.methodology && <div className="text-[10px] text-rmpg-400 mt-1">Method: {an.methodology}</div>}

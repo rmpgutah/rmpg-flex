@@ -551,7 +551,7 @@ export default function ServePage() {
           <div style="color:#fff;background:#141e2b;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
             <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
             <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace('_', ' ')} &middot; ${job.document_type}</div>
+            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
           </div>
         `);
         infoWindowRef.current?.open(mapRef.current!, marker);
@@ -1125,7 +1125,7 @@ export default function ServePage() {
                     {deadlines.overdue.map((d: any) => (
                       <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
                         <span>{d.recipient_name}</span>
-                        <span className="text-rmpg-500">{d.document_type}</span>
+                        <span className="text-rmpg-500">{(d.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
                         <span className="ml-auto">{Math.abs(Math.round(d.days_remaining))}d overdue</span>
                       </div>
                     ))}
