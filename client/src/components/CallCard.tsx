@@ -314,7 +314,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {formatIncidentType(call.incident_type)}
         </span>
         {call.incident_type === 'pso_client_request' && call.pso_service_type && (
-          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type}</span>
+          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
         )}
         {call.case_number && (
           <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 px-1">
