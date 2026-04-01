@@ -272,6 +272,44 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const onCloseRef = useRef(handleClose);
   onCloseRef.current = handleClose;
 
+  // Body scroll lock — prevent background scrolling when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+    };
+  }, [isOpen]);
+
+  // Adjust modal height when iOS keyboard appears
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const handleResize = () => {
+      const keyboardHeight = window.innerHeight - vv.height;
+      const modalEl = document.querySelector('[data-modal-content]');
+      if (modalEl && keyboardHeight > 100) {
+        (modalEl as HTMLElement).style.maxHeight = `${vv.height * 0.7}px`;
+      } else if (modalEl) {
+        (modalEl as HTMLElement).style.maxHeight = '';
+      }
+    };
+
+    vv.addEventListener('resize', handleResize);
+    return () => vv.removeEventListener('resize', handleResize);
+  }, [isOpen]);
+
   // Focus trap — only re-run on open/close transitions
   useEffect(() => {
     if (!isOpen) return;
@@ -415,7 +453,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
         {/* Form */}
         {/* 81: Form with dark scrollbar; 82: Increased padding for readability */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto scrollbar-dark">
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70dvh] sm:max-h-[70vh] overflow-y-auto scrollbar-dark" data-modal-content>
           {/* Row 1: Type + Source */}
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div>

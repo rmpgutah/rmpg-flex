@@ -5014,10 +5014,10 @@ export default function DispatchPage() {
                             <>
                               <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
+                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
+                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -5070,8 +5070,8 @@ export default function DispatchPage() {
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#60a5fa] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#60a5fa] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                               </div>
                             )}
                           </>

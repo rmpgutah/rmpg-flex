@@ -1224,6 +1224,14 @@ body.fx-noise::after {
    Optimized for 360-430px phone screens
    ============================================================ */
 @media (max-width: 768px) {
+  /* Prevent sub-11px text on mobile — officers need readability in sunlight */
+  .text-\[8px\], .text-\[9px\] {
+    font-size: 11px !important;
+  }
+  .text-\[10px\] {
+    font-size: 11px !important;
+  }
+
   /* Increase base font for readability on phones */
   html {
     font-size: 14px;
@@ -3190,6 +3198,16 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
+}
+
+/* iOS: safe area insets for modals and fixed overlays */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .fixed.inset-0, [class*="fixed inset-0"] {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }
 
 /* iOS Safari: eliminate 300ms click delay on all interactive elements */

@@ -135,6 +135,24 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [regenCodes, setRegenCodes] = useState<string[] | null>(null);
   const [regenError, setRegenError] = useState('');
 
+  // Body scroll lock — prevent background scrolling when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     if (isOpen && user) {
       setFirstName(user.first_name || '');

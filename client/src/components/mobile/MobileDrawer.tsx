@@ -319,11 +319,11 @@ export default function MobileDrawer({
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               {user?.badge_number && (
-                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-300 border border-rmpg-700">
+                <span className="text-[11px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-300 border border-rmpg-700">
                   {user.badge_number}
                 </span>
               )}
-              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+              <span className="text-[11px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
                 {toDisplayLabel(user?.role || '')}
               </span>
             </div>
@@ -353,7 +353,7 @@ export default function MobileDrawer({
               <div key={group.label} className="mb-1">
                 {/* Group label */}
                 <div
-                  className="px-4 py-2 text-[9px] font-bold uppercase tracking-[0.12em] font-mono"
+                  className="px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] font-mono"
                   style={{ color: '#5a6e80' }}
                 >
                   {group.label}
@@ -425,7 +425,7 @@ export default function MobileDrawer({
                 GPS {gpsTracking ? 'ON' : 'OFF'}
               </span>
               {gpsTracking && gpsAccuracy != null && (
-                <span className="text-[9px] font-mono text-rmpg-400">
+                <span className="text-[11px] font-mono text-rmpg-400">
                   ±{Math.round(gpsAccuracy)}m
                 </span>
               )}
