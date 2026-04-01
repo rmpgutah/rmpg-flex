@@ -1000,8 +1000,8 @@ export default function EvidencePropertyPage() {
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Linked Cases ({linkedRecords.cases.length})</div>
                           {linkedRecords.cases.map((c: any) => (
                             <div key={c.id} className="panel-beveled p-2 mb-1">
-                              <div className="text-xs text-white">{c.case_number} — {(c.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}</div>
-                              <div className="text-[10px] text-rmpg-500">Status: {(c.status || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}</div>
+                              <div className="text-xs text-white">{c.case_number} — {(c.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
+                              <div className="text-[10px] text-rmpg-500">Status: {(c.status || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
                             </div>
                           ))}
                         </div>

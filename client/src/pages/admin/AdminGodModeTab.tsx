@@ -537,7 +537,7 @@ export default function AdminGodModeTab() {
                   <tr key={i} className="border-b border-[#1a2636]/50">
                     <td className="px-2 py-1 font-mono text-gray-400">{c.userId}</td>
                     <td className="px-2 py-1 text-white">{c.username}</td>
-                    <td className="px-2 py-1 text-gray-400">{(c.role || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}</td>
+                    <td className="px-2 py-1 text-gray-400">{(c.role || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</td>
                     <td className="px-2 py-1 font-mono text-gray-500">{c.ip}</td>
                     <td className="px-2 py-1 text-gray-500">{c.connectedAt ? new Date(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
                   </tr>
