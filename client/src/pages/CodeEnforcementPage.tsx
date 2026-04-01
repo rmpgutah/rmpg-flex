@@ -23,6 +23,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import EmptyState from '../components/EmptyState';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -406,7 +407,7 @@ export default function CodeEnforcementPage() {
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
           {activeTab === 'violations' ? (
             vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
-            violations.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><p className="text-sm">No violations found</p><p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p></div> :
+            violations.length === 0 ? <EmptyState icon={Construction} title="No violations found" description="Try adjusting your filters or create a new one." /> :
             violations.map(v => (
               <button type="button"
                 key={v.id}
@@ -447,7 +448,7 @@ export default function CodeEnforcementPage() {
             ))
           ) : (
             tLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
-            tows.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><p className="text-sm">No tows found</p><p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p></div> :
+            tows.length === 0 ? <EmptyState icon={Truck} title="No tows found" description="Try adjusting your filters or create a new one." /> :
             tows.map(t => (
               <button type="button"
                 key={t.id}

@@ -739,7 +739,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Weather Widget */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions">
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions" style={{ minWidth: 260 }}>
           <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
           <div className="p-3">
             {weather ? (() => {

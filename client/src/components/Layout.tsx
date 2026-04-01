@@ -1220,11 +1220,11 @@ export default function Layout() {
                       height: 42,
                       padding: '2px 4px',
                       background: isActive
-                        ? 'linear-gradient(180deg, rgba(26,90,158,0.35) 0%, rgba(26,90,158,0.15) 100%)'
+                        ? 'linear-gradient(180deg, rgba(26,90,158,0.45) 0%, rgba(26,90,158,0.20) 100%)'
                         : isDropdownOpen
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
-                      borderBottom: isActive ? '2px solid #3b8ad4' : '2px solid transparent',
+                      borderBottom: isActive ? '2px solid #5aa8e8' : '2px solid transparent',
                       color: isActive ? '#ffffff' : '#8a9aaa',
                       cursor: 'pointer',
                     }}
@@ -1247,7 +1247,7 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        color: isActive ? '#3b8ad4' : '#5a6e80',
+                        color: isActive ? '#5aa8e8' : '#5a6e80',
                         marginBottom: 1,
                       }}
                     />
@@ -1280,7 +1280,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? '#3b8ad4' : '#3a4e60',
+                          color: isActive ? '#5aa8e8' : '#3a4e60',
                         }}
                       >
                         {item.shortcut}

@@ -385,7 +385,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       {/* 41: Description with smoother transition and better truncation */}
       {call.description && (
-        <p className="mt-1.5 text-[11px] text-rmpg-400 italic line-clamp-2 border-t border-rmpg-700/30 pt-1.5" style={{ lineHeight: '1.4' }}>
+        <p className="mt-1.5 text-[11px] text-rmpg-400 italic line-clamp-3 border-t border-rmpg-700/30 pt-1.5" style={{ lineHeight: '1.4' }}>
           {call.description}
         </p>
       )}

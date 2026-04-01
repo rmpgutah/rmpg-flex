@@ -80,24 +80,31 @@ export default function StatusBar({
 
       {/* 30: GPS Status with tabular-nums for accuracy/time */}
       <div className="status-bar-section">
-        {gpsTracking ? (
-          <>
-            <span className="led-dot led-green animate-led-blink" />
-            <span style={{ color: '#22c55e', fontWeight: 700 }}>
-              GPS: {gpsUnitCallSign || 'ON'}
-            </span>
-            {gpsAccuracy != null && (
-              <span className="tabular-nums" style={{ color: '#5a6e80', marginLeft: 4 }}>
-                ±{Math.round(gpsAccuracy)}m
+        {gpsTracking ? (() => {
+          const ageSec = gpsLastSent ? (Date.now() - new Date(gpsLastSent).getTime()) / 1000 : Infinity;
+          const isLost = ageSec > 600;     // >10 min
+          const isStale = ageSec > 120;    // >2 min
+          const ledClass = isLost ? 'led-red' : isStale ? 'led-amber' : 'led-green';
+          const gpsColor = isLost ? '#ef4444' : isStale ? '#f59e0b' : '#22c55e';
+          return (
+            <>
+              <span className={`led-dot ${ledClass} animate-led-blink`} />
+              <span style={{ color: gpsColor, fontWeight: 700 }}>
+                GPS: {gpsUnitCallSign || 'ON'}
               </span>
-            )}
-            {gpsLastSent && (
-              <span className="tabular-nums" style={{ color: '#505050', marginLeft: 4 }}>
-                {safeTimeStr(gpsLastSent)}
-              </span>
-            )}
-          </>
-        ) : (
+              {gpsAccuracy != null && (
+                <span className="tabular-nums" style={{ color: '#5a6e80', marginLeft: 4 }}>
+                  ±{Math.round(gpsAccuracy)}m
+                </span>
+              )}
+              {gpsLastSent && (
+                <span className="tabular-nums" style={{ color: isStale ? gpsColor : '#505050', marginLeft: 4 }}>
+                  {safeTimeStr(gpsLastSent)}
+                </span>
+              )}
+            </>
+          );
+        })() : (
           <span style={{ color: '#3a4e60' }}>GPS: OFF</span>
         )}
       </div>

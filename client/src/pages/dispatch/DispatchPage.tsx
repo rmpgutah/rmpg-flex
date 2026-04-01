@@ -4966,7 +4966,7 @@ export default function DispatchPage() {
                     </div>
                   )}
                   {activityEntries.length > 0 ? (
-                    <div className="space-y-0 max-h-60 overflow-y-auto">
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {activityEntries.map((entry: any, idx: number) => {
                         const actionColor = (entry.action || '').includes('dispatch') ? '#f59e0b' :
                           (entry.action || '').includes('enroute') ? '#3b82f6' :

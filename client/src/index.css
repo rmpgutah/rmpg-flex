@@ -66,20 +66,21 @@
 
 /* --- Scrollbar Styling (Dark Theme) --- */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface-base);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: #2a3a4e;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a5070;
+  background: #3a4a5e;
 }
 
 /* Firefox scrollbar */
@@ -367,7 +368,7 @@ body.fx-noise::after {
   }
 
   .table-dark tbody tr:hover {
-    background: rgba(26, 90, 158, 0.1);
+    background: rgba(26, 90, 158, 0.15);
   }
 
   .table-dark tbody tr:nth-child(even) {
@@ -594,7 +595,8 @@ body.fx-noise::after {
   }
   .input-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.45), 0 0 0 3px rgba(26, 90, 158, 0.15);
+    outline: none;
   }
 
   .select-dark {
@@ -828,7 +830,7 @@ body.fx-noise::after {
     border-bottom-color: #0d1520;
     border-right-color: #0d1520;
     cursor: pointer;
-    transition: background 0.1s;
+    transition: all 0.15s ease;
     white-space: nowrap;
     flex-shrink: 0;
     touch-action: manipulation;
@@ -3301,6 +3303,44 @@ button, [role="button"], .toolbar-btn, a, input[type="button"], input[type="subm
   .toolbar-btn-primary {
     min-height: 48px;
     padding: 10px 16px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Modal backdrop blur — polished overlay effect
+   ═══════════════════════════════════════════════════════════════ */
+.fixed.inset-0.bg-black\/50,
+.fixed.inset-0.bg-black\/60,
+.fixed.inset-0.bg-black\/70 {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Panel card shadows — subtle elevation for cards and panels
+   ═══════════════════════════════════════════════════════════════ */
+.panel-beveled {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  transition: background-color 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Button disabled state consistency
+   ═══════════════════════════════════════════════════════════════ */
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Dispatch print styles — clean printout of dispatch page
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  .toolbar-btn, .status-bar, nav, .mobile-nav,
+  .mobile-bottom-nav, .mobile-header,
+  [data-nav-dropdown] {
+    display: none !important;
   }
 }
 

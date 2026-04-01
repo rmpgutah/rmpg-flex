@@ -76,15 +76,15 @@ export const PRIORITY_LABELS: Record<CallPriority, string> = {
 // ── Call Status ─────────────────────────────────────────────
 
 export const CALL_STATUS_CLASSES: Record<CallStatus, string> = {
-  pending: 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/50',
-  dispatched: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
-  enroute: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
-  onscene: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  cleared: 'bg-rmpg-600/50 text-rmpg-200 border border-rmpg-500/50',
+  pending: 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/60',
+  dispatched: 'bg-blue-900/50 text-blue-300 border border-blue-600/60',
+  enroute: 'bg-cyan-900/50 text-cyan-300 border border-cyan-600/60',
+  onscene: 'bg-red-900/50 text-red-300 border border-red-600/60',
+  cleared: 'bg-green-900/50 text-green-300 border border-green-600/60',
   closed: 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50',
   cancelled: 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50',
-  archived: 'bg-slate-800/50 text-slate-400 border border-slate-600/50',
-  on_hold: 'bg-amber-900/50 text-amber-400 border border-amber-600/50 animate-pulse',
+  archived: 'bg-slate-800/50 text-slate-500 border border-slate-700/50',
+  on_hold: 'bg-amber-900/50 text-amber-300 border border-amber-600/60 animate-pulse',
 };
 
 export const CALL_STATUS_LABELS: Record<CallStatus, string> = {

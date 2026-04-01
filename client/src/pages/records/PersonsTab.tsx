@@ -136,6 +136,17 @@ const FLAG_COLORS: Record<string, string> = {
 
 // ── Helpers ──────────────────────────────────────
 
+// Name-hash avatar colors for initials circles
+const AVATAR_COLORS = [
+  '#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed',
+  '#db2777', '#0891b2', '#65a30d', '#ea580c', '#4f46e5',
+];
+function getAvatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
   const Icon = icon;
@@ -456,8 +467,12 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               {person.id_image_url ? (
                 <img src={person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-full object-cover border border-rmpg-600" />
               ) : (
-                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300 select-none" aria-hidden="true">
-                  {(person.first_name || '')[0]}{(person.last_name || '')[0]}
+                <div
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white select-none"
+                  style={{ background: getAvatarColor(`${person.first_name}${person.last_name}`), border: '2px solid rgba(255,255,255,0.15)' }}
+                  aria-hidden="true"
+                >
+                  {(person.first_name || '')[0]?.toUpperCase()}{(person.last_name || '')[0]?.toUpperCase()}
                 </div>
               )}
               <div className="flex-1 min-w-0">
