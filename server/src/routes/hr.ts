@@ -926,7 +926,13 @@ router.put('/payroll/periods/:id', validateParamIdMiddleware, requireRole('admin
     if (start_date) { updates.push('start_date = ?'); params.push(start_date); }
     if (end_date) { updates.push('end_date = ?'); params.push(end_date); }
     if (pay_date) { updates.push('pay_date = ?'); params.push(pay_date); }
-    if (status) { updates.push('status = ?'); params.push(status); }
+    if (status) {
+      const validStatuses = ['open', 'processing', 'finalized', 'paid', 'closed'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`, code: 'INVALID_PAY_PERIOD_STATUS' });
+      }
+      updates.push('status = ?'); params.push(status);
+    }
     if (!updates.length) return res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
 
     params.push(id);

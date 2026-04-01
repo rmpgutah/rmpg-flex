@@ -193,7 +193,7 @@ router.post('/', (req: Request, res: Response) => {
       order_type, reason, conditions,
       duration_days || null, effective_date || now, exp,
       originating_call_id || null, originating_incident_id || null,
-      user.id, user.full_name, authorized_by, notes,
+      user.userId || user.id, user.fullName || user.full_name, authorized_by, notes,
       now, now
     );
 
@@ -279,7 +279,7 @@ router.put('/:id/serve', (req: Request, res: Response) => {
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found', code: 'TRESPASS_ORDER_NOT_FOUND' }); return; }
     db.prepare(`UPDATE trespass_orders SET status = 'served', served_at = ?, served_by = ?, updated_at = ? WHERE id = ?`)
-      .run(now, user.id, now, id);
+      .run(now, user.userId || user.id, now, id);
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(id);
     auditLog(req, 'UPDATE', 'trespass_order', id, `Served trespass order #${id}`);
     broadcast('alerts', 'trespass_order_served', updated);
@@ -365,7 +365,7 @@ router.post('/:id/renew', (req: Request, res: Response) => {
       existing.property_id, existing.property_name, existing.location,
       existing.order_type, existing.reason, existing.conditions,
       duration, effectiveDate.toISOString().split('T')[0], expirationDate.toISOString().split('T')[0],
-      user.id, user.full_name, existing.authorized_by,
+      user.userId || user.id, user.fullName || user.full_name, existing.authorized_by,
       `Renewed from ${existing.order_number}. ${existing.notes || ''}`.trim(),
       now, now
     );
@@ -550,7 +550,7 @@ router.post('/bulk', (req: Request, res: Response) => {
           property_id || null, property_name || '', location,
           order_type || 'trespass_warning', reason || '', conditions || '',
           duration_days || null, effectiveDate, exp,
-          user.id, user.full_name, authorized_by || '', notes || '', now, now
+          user.userId || user.id, user.fullName || user.full_name, authorized_by || '', notes || '', now, now
         );
         created.push({ id: info.lastInsertRowid, order_number, name: `${person.first_name} ${person.last_name}` });
       }
@@ -674,7 +674,7 @@ router.post('/:id/violations', (req: Request, res: Response) => {
     if (!order) { res.status(404).json({ error: 'Trespass order not found', code: 'NOT_FOUND' }); return; }
     const { violation_date, location, description, linked_incident_id, linked_call_id, notes } = req.body;
     const now = localNow();
-    const result = db.prepare('INSERT INTO trespass_violations (order_id, violation_date, location, description, officer_id, officer_name, linked_incident_id, linked_call_id, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(req.params.id, violation_date || now, location || null, description || null, user.id, user.full_name, linked_incident_id || null, linked_call_id || null, notes || null, now);
+    const result = db.prepare('INSERT INTO trespass_violations (order_id, violation_date, location, description, officer_id, officer_name, linked_incident_id, linked_call_id, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(req.params.id, violation_date || now, location || null, description || null, user.userId || user.id, user.fullName || user.full_name, linked_incident_id || null, linked_call_id || null, notes || null, now);
     // Update order status to violated
     db.prepare("UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?").run(now, req.params.id);
     auditLog(req, 'CREATE', 'trespass_violation', Number(result.lastInsertRowid), `Violation recorded on order ${order.order_number}`);
