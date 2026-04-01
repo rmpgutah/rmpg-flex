@@ -51,6 +51,7 @@ export default function MobileHeader({
         height: 48,
         paddingLeft: 8,
         paddingRight: 8,
+        paddingTop: 'env(safe-area-inset-top, 0px)',
         background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
         borderBottom: '1px solid #1e3048',
         flexShrink: 0,

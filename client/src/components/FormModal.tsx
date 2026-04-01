@@ -100,9 +100,9 @@ export default function FormModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
-      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-scale-in panel-beveled`} style={{ background: '#141e2b' }} onClick={(e) => e.stopPropagation()}>
+      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-scale-in panel-beveled`} style={{ background: '#141e2b' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#1a5a9e' }} />
@@ -128,7 +128,7 @@ export default function FormModal({
             </button>
           </div>
         </div>
-        <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
           {children}
           <div className="flex items-center justify-end gap-3 pt-4 mt-2" style={{ borderTop: '1px solid #1e3048' }}>
             <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting} style={{ padding: '4px 12px' }}>

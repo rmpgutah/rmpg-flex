@@ -785,6 +785,9 @@ export default function Layout() {
         </div>
       )}
 
+      {/* Fix 30: Skip to main content link for keyboard/screen reader users */}
+      <a href="#main-content" className="skip-to-content">Skip to main content</a>
+
       {/* ============================================================ */}
       {/* MOBILE: Compact header + context bar + drawer + bottom nav   */}
       {/* ============================================================ */}
@@ -1386,7 +1389,7 @@ export default function Layout() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
-        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#1a2636', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+        <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#1a2636', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">

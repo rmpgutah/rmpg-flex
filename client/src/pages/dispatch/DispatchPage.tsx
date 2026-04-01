@@ -3153,7 +3153,7 @@ export default function DispatchPage() {
         )}
 
         {/* Call List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable' }}>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
               <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0d152050', border: '1px solid #1e304830' }}>

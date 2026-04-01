@@ -214,6 +214,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           ? 'rgba(180, 130, 0, 0.08)'
           : isSelected ? undefined : '#141e2b',
         borderLeftColor: call.status === 'on_hold' ? '#f59e0b' : undefined,
+        scrollSnapAlign: 'start',
+        WebkitTouchCallout: 'none',
         ...(isDragOver ? {
           boxShadow: '0 0 8px rgba(34, 197, 94, 0.5)',
           borderColor: 'rgb(34, 197, 94)',

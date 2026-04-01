@@ -216,6 +216,15 @@ export default function MobileDrawer({
     }
   }, [isOpen]);
 
+  // Android hardware back button — close drawer on back press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePopState = () => { onClose(); };
+    window.history.pushState({ mobileDrawer: true }, '');
+    window.addEventListener('popstate', handlePopState);
+    return () => { window.removeEventListener('popstate', handlePopState); };
+  }, [isOpen, onClose]);
+
   // ─── Swipe-to-close ────────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -266,6 +275,7 @@ export default function MobileDrawer({
       <div
         className="absolute inset-0 mobile-drawer-backdrop open"
         onClick={onClose}
+        style={{ touchAction: 'manipulation' }}
       />
 
       {/* Drawer Panel */}
@@ -332,7 +342,8 @@ export default function MobileDrawer({
           {/* Close button */}
           <button type="button"
             onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 text-rmpg-400"
+            className="flex items-center justify-center w-11 h-11 text-rmpg-400"
+            aria-label="Close navigation drawer"
           >
             <X style={{ width: 18, height: 18 }} />
           </button>

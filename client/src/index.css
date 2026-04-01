@@ -3355,3 +3355,140 @@ button:disabled,
     box-shadow: none;
   }
 }
+
+/* ============================================================
+   FIX 1: Touch-action + tap highlight on ALL interactive elements
+   Prevents 300ms delay and ghost highlights on iOS/Android
+   ============================================================ */
+button, a, select, [role="button"], [tabindex], label[for],
+.toolbar-btn, input[type="button"], input[type="submit"],
+input[type="checkbox"], input[type="radio"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================================
+   FIX 2: Minimum touch target on mobile (36px relaxed for inline)
+   ============================================================ */
+@media (max-width: 768px) {
+  button:not(.no-min-touch), [role="button"]:not(.no-min-touch) {
+    min-height: 36px;
+  }
+}
+
+/* ============================================================
+   FIX 3: Select elements on iOS — custom chevron + appearance fix
+   (Only for selects NOT using .select-dark which has its own styling)
+   ============================================================ */
+select:not(.select-dark) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+/* ============================================================
+   FIX 4: Focus-visible for keyboard users only
+   ============================================================ */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ============================================================
+   FIX 5: Smooth scroll behavior (respects reduced motion)
+   ============================================================ */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* ============================================================
+   FIX 6: Android/touch active press feedback (scale effect)
+   ============================================================ */
+@media (hover: none) and (pointer: coarse) {
+  button:active, .toolbar-btn:active, [role="button"]:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease;
+  }
+}
+
+/* ============================================================
+   FIX 7: Prevent text selection on buttons
+   ============================================================ */
+button, .toolbar-btn, [role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ============================================================
+   FIX 13: Modal scroll containers — prevent iOS rubber-band bounce
+   ============================================================ */
+.modal-scroll-contain,
+form.overflow-y-auto,
+[role="dialog"] .overflow-y-auto {
+  overscroll-behavior: contain;
+}
+
+/* ============================================================
+   FIX 18: Prevent iOS auto-zoom on input focus (font-size < 16px)
+   ============================================================ */
+@media (max-width: 768px) {
+  .input-dark, .select-dark, .textarea-dark,
+  input[type="text"], input[type="email"], input[type="password"],
+  input[type="tel"], input[type="number"], input[type="search"],
+  input[type="url"], textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* ============================================================
+   FIX 21: Google Maps zoom controls — larger on mobile
+   ============================================================ */
+@media (max-width: 768px) {
+  .gm-style .gm-control-active {
+    min-width: 40px !important;
+    min-height: 40px !important;
+  }
+}
+
+/* ============================================================
+   FIX 22-23: Table horizontal scroll + touch scrolling on mobile
+   ============================================================ */
+.table-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* ============================================================
+   FIX 30: Skip to content link (visually hidden, keyboard accessible)
+   ============================================================ */
+.skip-to-content {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 99999;
+}
+.skip-to-content:focus {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  padding: 8px 16px;
+  background: #1a5a9e;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  border: 2px solid #3b8ad4;
+  z-index: 99999;
+  text-decoration: none;
+}
