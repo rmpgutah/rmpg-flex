@@ -72,6 +72,7 @@ function getIconPath() {
 
 // ─── Splash Screen ──────────────────────────────────────────
 function createSplashWindow() {
+  if (!app.isReady()) { console.warn('[APP] createSplashWindow called before ready — skipping'); return; }
   splashWindow = new BrowserWindow({
     width: 420,
     height: 320,
@@ -295,6 +296,11 @@ function getOfflineHTML() {
 
 // ─── Window Creation ────────────────────────────────────────
 async function createMainWindow() {
+  // Guard: BrowserWindow cannot be created before app is ready
+  if (!app.isReady()) {
+    console.warn('[APP] createMainWindow called before app.isReady — deferring');
+    await app.whenReady();
+  }
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
