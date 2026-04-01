@@ -506,9 +506,11 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
-              ${selectedVehicle?.id === v.id
-                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
+              ${v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
+                ? 'bg-red-950/30 border-l-2 border-l-red-500'
+                : selectedVehicle?.id === v.id
+                  ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                  : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
               }
             `}
             aria-selected={selectedVehicle?.id === v.id}
@@ -524,7 +526,13 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
-                  <span className="text-[10px] text-rmpg-400">{v.plate_state}</span>
+                  {v.plate_state && (
+                    <span className={`px-1 py-0 text-[8px] font-bold border rounded-sm ${
+                      v.plate_state === 'UT' ? 'bg-blue-900/40 text-blue-300 border-blue-700/50' :
+                      v.plate_state === 'CA' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
+                      'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
+                    }`}>{v.plate_state}</span>
+                  )}
                   {v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered' && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50 animate-pulse">STOLEN</span>
                   )}

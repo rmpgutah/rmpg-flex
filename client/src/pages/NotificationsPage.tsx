@@ -370,7 +370,16 @@ export default function NotificationsPage() {
                     {n.body && <p className="text-[11px] text-rmpg-400 mt-0.5 line-clamp-2">{n.body}</p>}
                     <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                       <span>{n.type}</span>
-                      <span>{formatDateTime(n.created_at)}</span>
+                      <span title={formatDateTime(n.created_at)}>{(() => {
+                        const ms = Date.now() - new Date(n.created_at).getTime();
+                        const mins = Math.floor(ms / 60000);
+                        if (mins < 1) return 'just now';
+                        if (mins < 60) return `${mins}m ago`;
+                        const hrs = Math.floor(mins / 60);
+                        if (hrs < 24) return `${hrs}h ago`;
+                        if (hrs < 48) return 'yesterday';
+                        return `${Math.floor(hrs / 24)}d ago`;
+                      })()}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">

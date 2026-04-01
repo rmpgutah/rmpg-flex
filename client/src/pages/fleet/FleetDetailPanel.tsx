@@ -239,6 +239,9 @@ export default function FleetDetailPanel({
                 <Radio className="w-3 h-3" /> {detail.assigned_unit_call_sign}
               </span>
             )}
+            {maintenance.length > 0 && (
+              <span className="px-2 py-0.5 text-[9px] font-bold bg-brand-900/40 text-brand-300 border border-brand-700/50">{maintenance.length} service{maintenance.length !== 1 ? 's' : ''}</span>
+            )}
             {getExpiryStatus(detail.registration_expiry) === 'expired' && (
               <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">REG EXPIRED</span>
             )}

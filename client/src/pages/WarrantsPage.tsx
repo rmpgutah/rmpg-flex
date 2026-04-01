@@ -279,6 +279,14 @@ const TYPE_COLORS: Record<string, string> = {
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
 };
 
+const TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  arrest: Shield,
+  search: Search,
+  bench: Gavel,
+  civil: Scale,
+  other: FileText,
+};
+
 const SEVERITY_COLORS: Record<string, string> = {
   felony: 'bg-red-900/50 text-red-400 border-red-700/50',
   misdemeanor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
@@ -1571,7 +1579,8 @@ export default function WarrantsPage() {
                           </div>
                         </td>
                         <td>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                            {(() => { const Icon = TYPE_ICONS[w.type] || TYPE_ICONS.other; return <Icon className="w-3 h-3" />; })()}
                             {w.type.toUpperCase()}
                           </span>
                         </td>

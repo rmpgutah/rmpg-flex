@@ -307,6 +307,10 @@ export default function AdminUsersTab({
                         <span className="font-mono">@{user.username}</span>
                         {user.badge_number && <span>Badge: {user.badge_number}</span>}
                         {user.rank && <span>{user.rank}</span>}
+                        {/* Enhancement 45: Active sessions count */}
+                        {(user as any).active_sessions > 0 && (
+                          <span className="text-green-400 font-mono">{(user as any).active_sessions} session{(user as any).active_sessions > 1 ? 's' : ''}</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">

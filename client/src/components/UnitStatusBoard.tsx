@@ -154,6 +154,11 @@ export default React.memo(function UnitStatusBoard({
                   <div className="flex items-center gap-1 text-xs text-rmpg-300">
                     <MapPin className="w-3 h-3" />
                     <span className="truncate max-w-[150px]">{unit.location}</span>
+                    {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
+                      const mins = Math.floor((Date.now() - new Date(unit.gps_updated_at).getTime()) / 60000);
+                      const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#6b7280';
+                      return <span className="text-[8px] font-mono ml-1" style={{ color }}>{mins}m</span>;
+                    })()}
                   </div>
                 ) : (
                   <span className="text-rmpg-500 italic text-[10px]">No GPS</span>

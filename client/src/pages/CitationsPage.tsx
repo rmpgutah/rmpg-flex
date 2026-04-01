@@ -854,7 +854,14 @@ export default function CitationsPage() {
                 <div><span className="text-rmpg-400">Description:</span> <span className="text-rmpg-200">{c.violation_description}</span></div>
               )}
               {c.offense_level && (
-                <div><span className="text-rmpg-400">Offense Level:</span> <span className="text-rmpg-200 capitalize">{c.offense_level.replace(/_/g, ' ')}</span></div>
+                <div className="flex items-center gap-2">
+                  <span className="text-rmpg-400">Offense Level:</span>
+                  <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm border ${
+                    c.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                    c.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                    'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                  }`}>{c.offense_level.replace(/_/g, ' ')}</span>
+                </div>
               )}
               {c.fine_amount != null && (
                 <div><span className="text-rmpg-400">Fine:</span> <span className="text-green-400 font-bold">{formatCurrency(c.fine_amount)}</span></div>
@@ -1003,7 +1010,18 @@ export default function CitationsPage() {
                 <Scale size={10} /> Court Information
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
-                {c.court_date && <div><span className="text-rmpg-400">Court Date:</span> <span className="text-rmpg-200">{formatDate(c.court_date)}</span></div>}
+                {c.court_date && (() => {
+                  const daysUntil = Math.ceil((new Date(c.court_date + 'T00:00:00').getTime() - Date.now()) / 86400000);
+                  const cdColor = daysUntil < 0 ? '#ef4444' : daysUntil <= 7 ? '#f97316' : daysUntil <= 30 ? '#eab308' : '#22c55e';
+                  const cdLabel = daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? 'TODAY' : `${daysUntil}d away`;
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className="text-rmpg-400">Court Date:</span>
+                      <span className="text-rmpg-200">{formatDate(c.court_date)}</span>
+                      <span className="text-[9px] font-bold font-mono" style={{ color: cdColor }}>({cdLabel})</span>
+                    </div>
+                  );
+                })()}
                 {c.court_name && <div><span className="text-rmpg-400">Court:</span> <span className="text-rmpg-200">{c.court_name}</span></div>}
                 {c.court_address && <div><span className="text-rmpg-400">Address:</span> <span className="text-rmpg-200">{c.court_address}</span></div>}
               </div>

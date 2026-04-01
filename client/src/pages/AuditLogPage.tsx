@@ -10,7 +10,13 @@ import {
   Calendar,
   Loader2,
   Clock,
-  X
+  X,
+  Plus,
+  Edit,
+  Trash2,
+  LogIn,
+  LogOut,
+  Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -49,6 +55,19 @@ interface Filters {
   endDate: string;
   search: string;
 }
+
+// Enhancement 44: Action type icons
+const getActionIcon = (action: string): React.ElementType => {
+  if (!action) return ScrollText;
+  const a = action.toLowerCase();
+  if (a.includes('created') || a.includes('create')) return Plus;
+  if (a.includes('updated') || a.includes('update') || a.includes('status_change')) return Edit;
+  if (a.includes('deleted') || a.includes('delete') || a.includes('cancelled')) return Trash2;
+  if (a.includes('login') || a.includes('clock_in')) return LogIn;
+  if (a.includes('logout') || a.includes('clock_out')) return LogOut;
+  if (a.includes('view') || a.includes('export') || a.includes('download')) return Eye;
+  return ScrollText;
+};
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
@@ -606,7 +625,8 @@ const AuditLogPage: React.FC = () => {
                       {log.badge_number || <span className="text-rmpg-400">-</span>}
                     </td>
                     <td className="px-3 py-1.5 whitespace-nowrap">
-                      <span className={`font-semibold ${getActionColor(log.action)}`}>
+                      <span className={`font-semibold inline-flex items-center gap-1 ${getActionColor(log.action)}`}>
+                        {(() => { const Icon = getActionIcon(log.action); return <Icon className="w-3 h-3" />; })()}
                         {log.action}
                       </span>
                     </td>

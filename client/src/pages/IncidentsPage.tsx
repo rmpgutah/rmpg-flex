@@ -24,6 +24,9 @@ import {
   ChevronRight,
   Building2,
   AlertTriangle,
+  Heart,
+  Flame,
+  Eye,
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';
@@ -144,6 +147,16 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
 // ============================================================
 
 // formatDate and formatDateTime imported from ../utils/dateUtils
+
+// Enhancement 31: Incident type icons
+const INCIDENT_TYPE_ICONS: Record<string, React.ElementType> = {
+  accident: Car, traffic_accident: Car, vehicle_accident: Car,
+  medical: Heart, medical_emergency: Heart, injury: Heart,
+  use_of_force: Shield, force: Shield,
+  fire: Flame, arson: Flame,
+  surveillance: Eye, observation: Eye,
+  theft: AlertTriangle, assault: AlertTriangle, burglary: AlertTriangle,
+};
 
 type SortKey = 'incident_number' | 'type' | 'priority' | 'status' | 'location' | 'officer_name' | 'occurred_at';
 
@@ -893,7 +906,12 @@ export default function IncidentsPage() {
                   }`}
                 >
                   <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
-                  <td className="text-xs text-brand-400">{formatIncidentType(inc.type)}</td>
+                  <td className="text-xs text-brand-400">
+                    <span className="inline-flex items-center gap-1">
+                      {(() => { const Icon = INCIDENT_TYPE_ICONS[inc.type] || FileText; return <Icon className="w-3 h-3 flex-shrink-0" />; })()}
+                      {formatIncidentType(inc.type)}
+                    </span>
+                  </td>
                   <td>
                     <StatusBadge status={inc.priority} type="priority" size="sm" />
                   </td>
@@ -1165,6 +1183,25 @@ export default function IncidentsPage() {
         </button>
       </PanelTitleBar>
 
+      {/* Enhancement 32: Approval workflow progress bar */}
+      {(() => {
+        const steps = ['draft', 'submitted', 'under_review', 'approved'] as const;
+        const labels = ['Draft', 'Submitted', 'Review', 'Approved'];
+        const currentIdx = steps.indexOf(selectedIncident.status as any);
+        const idx = currentIdx >= 0 ? currentIdx : selectedIncident.status === 'returned' ? 1 : 0;
+        return (
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#1e3048]" style={{ background: '#0d1520' }}>
+            {labels.map((label, i) => (
+              <div key={label} className="flex items-center flex-1">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px #22c55e' } : {}} />
+                <span className={`text-[8px] font-mono uppercase ml-1 ${i <= idx ? 'text-green-400 font-bold' : 'text-rmpg-500'}`}>{label}</span>
+                {i < labels.length - 1 && <div className={`flex-1 h-px mx-1 ${i < idx ? 'bg-green-700' : 'bg-rmpg-700'}`} />}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Detail Body — Collapsible Sections */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4">
         {/* Returned Warning */}
@@ -1247,8 +1284,10 @@ export default function IncidentsPage() {
               {selectedIncident.call_number ? (
                 <button type="button"
                   onClick={() => navigate('/dispatch')}
-                  className="text-sm text-brand-300 hover:text-brand-200 hover:underline transition-colors font-mono"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-cyan-400 bg-cyan-900/20 border border-cyan-700/40 hover:bg-cyan-900/40 transition-colors"
+                  title="Go to dispatch"
                 >
+                  <ExternalLink className="w-3 h-3" />
                   {selectedIncident.call_number}
                 </button>
               ) : (
@@ -1284,6 +1323,13 @@ export default function IncidentsPage() {
               <label className="field-label">Created:</label>
               <p className="text-sm text-rmpg-300">{formatDateTime(selectedIncident.created_at)}</p>
             </div>
+            {/* Enhancement 35: Last edited timestamp */}
+            {selectedIncident.updated_at && selectedIncident.updated_at !== selectedIncident.created_at && (
+              <div>
+                <label className="field-label">Last Edited:</label>
+                <p className="text-sm text-rmpg-300">{timeAgo(selectedIncident.updated_at)}</p>
+              </div>
+            )}
             {(inc.dispatch_code || inc.section_id || inc.zone_id || inc.beat_id) && (
               <div>
                 <label className="field-label">District:</label>
@@ -1446,9 +1492,17 @@ export default function IncidentsPage() {
               />
             </>
           ) : (
-            <p className="text-sm text-rmpg-200 leading-relaxed whitespace-pre-wrap">
-              {selectedIncident.narrative || <span className="text-rmpg-500 italic">No narrative</span>}
-            </p>
+            <>
+              <p className="text-sm text-rmpg-200 leading-relaxed whitespace-pre-wrap">
+                {selectedIncident.narrative || <span className="text-rmpg-500 italic">No narrative</span>}
+              </p>
+              {/* Enhancement 34: Narrative word count */}
+              {selectedIncident.narrative && (
+                <div className="text-[9px] text-rmpg-500 font-mono mt-1 text-right">
+                  {selectedIncident.narrative.trim().split(/\s+/).filter(Boolean).length} words
+                </div>
+              )}
+            </>
           )}
         </CollapsibleSection>
 

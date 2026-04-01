@@ -12,6 +12,11 @@ import {
   Briefcase,
   Calendar,
   User,
+  FileText,
+  ScrollText,
+  Shield,
+  Gavel,
+  FileWarning,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall } from '../../types';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -58,6 +63,13 @@ const ATTEMPT_RESULT_LABELS: Record<string, string> = {
   wrong_address: 'Wrong Address',
   moved: 'Moved',
   other: 'Other',
+};
+
+// Enhancement 50: Document type icons
+const DOC_TYPE_ICONS: Record<string, React.ElementType> = {
+  Subpoena: ScrollText, Summons: FileText, Complaint: FileWarning,
+  Writ: Gavel, Order: Gavel, Notice: FileText, Petition: FileText,
+  Motion: FileText, Garnishment: FileWarning, Eviction: Shield,
 };
 
 function AttemptDots({ count, max }: { count: number; max: number }) {
@@ -154,8 +166,9 @@ export default React.memo(function ServeJobCard({
 
         {/* Badges row */}
         <div className="flex items-center gap-1.5 ml-4 flex-wrap">
-          {/* Document type */}
-          <span className="text-[9px] font-mono text-rmpg-400 bg-rmpg-800/60 border border-rmpg-700/40 px-1 py-0">
+          {/* Enhancement 50: Document type with icon */}
+          <span className="text-[9px] font-mono text-rmpg-400 bg-rmpg-800/60 border border-rmpg-700/40 px-1 py-0 inline-flex items-center gap-0.5">
+            {(() => { const DocIcon = DOC_TYPE_ICONS[job.document_type] || FileText; return <DocIcon className="w-2.5 h-2.5" />; })()}
             {job.document_type}
           </span>
 
@@ -170,12 +183,17 @@ export default React.memo(function ServeJobCard({
             {timeLabel}
           </span>
 
-          {/* Due soon / overdue badge */}
-          {isDueSoon && (
-            <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
-              DUE SOON
-            </span>
-          )}
+          {/* Enhancement 46: Deadline countdown */}
+          {isDueSoon && job.deadline && (() => {
+            const msLeft = new Date(job.deadline).getTime() - Date.now();
+            const hrsLeft = Math.floor(msLeft / 3600000);
+            const minsLeft = Math.floor((msLeft % 3600000) / 60000);
+            return (
+              <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
+                {hrsLeft}h {minsLeft}m LEFT
+              </span>
+            );
+          })()}
           {isOverdue && (
             <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/60 border border-red-500/60 px-1 py-0">
               OVERDUE
@@ -328,6 +346,16 @@ export default React.memo(function ServeJobCard({
 
       {/* Action buttons row */}
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
+        {/* Enhancement 49: Google Maps directions link */}
+        <button type="button"
+          onClick={(e) => { e.stopPropagation(); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-amber-900/20"
+          title="Open in Google Maps"
+          aria-label={`Open Google Maps to ${job.recipient_name}`}
+        >
+          <MapPin className="w-3 h-3" />
+          Map
+        </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-blue-900/20"

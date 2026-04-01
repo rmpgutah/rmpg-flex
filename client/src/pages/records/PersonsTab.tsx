@@ -355,6 +355,9 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     return (
       `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
       p.address?.toLowerCase().includes(q) ||
+      p.dl_number?.toLowerCase().includes(q) ||
+      p.ssn_last4?.includes(q) ||
+      p.phone?.includes(q) ||
       p.flags.some((f) => (typeof f === 'object' ? f.type : f).toLowerCase().includes(q))
     );
   });
@@ -393,7 +396,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             <input
               type="text"
               className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
-              placeholder="Search persons by name, address, flags..." aria-label="Search persons by name, address, flags..."
+              placeholder="Search by name, address, DL#, phone, flags..." aria-label="Search by name, address, DL#, phone, flags..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -449,9 +452,13 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             aria-selected={selectedPerson?.id === person.id}
           >
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300 select-none" aria-hidden="true">
-                {(person.first_name || '')[0]}{(person.last_name || '')[0]}
-              </div>
+              {person.id_image_url ? (
+                <img src={person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-full object-cover border border-rmpg-600" />
+              ) : (
+                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300 select-none" aria-hidden="true">
+                  {(person.first_name || '')[0]}{(person.last_name || '')[0]}
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white truncate">

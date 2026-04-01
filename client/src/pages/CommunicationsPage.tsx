@@ -1225,6 +1225,7 @@ export default function CommunicationsPage() {
                 <div
                   key={bolo.id}
                   className={`panel-beveled p-4 bg-surface-base ${bolo.priority === 'P1' ? 'border-red-700/50 animate-emergency-pulse' : bolo.priority === 'P2' ? 'border-amber-700/40' : ''}`}
+                  style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : bolo.priority === 'P3' ? '#eab308' : '#22c55e' }}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">

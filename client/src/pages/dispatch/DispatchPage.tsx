@@ -2493,6 +2493,19 @@ export default function DispatchPage() {
                         )}
                       </div>
                     ))}
+                    {/* Enhancement 26: Response time (dispatched → onscene) */}
+                    {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                      const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                      if (diff <= 0 || !isFinite(diff)) return null;
+                      const mins = Math.floor(diff / 60000);
+                      const secs = Math.floor((diff % 60000) / 1000);
+                      return (
+                        <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
+                          <span className="text-rmpg-400 text-[10px]">Response Time</span>
+                          <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -2917,6 +2930,11 @@ export default function DispatchPage() {
       <div className="w-[35%] min-w-[320px] border-r border-[#1e3048] flex flex-col" style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
+          {/* Enhancement 27: Live sync indicator */}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-green-400 bg-green-900/30 border border-green-700/40" title="Real-time updates active">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" style={{ boxShadow: '0 0 4px #22c55e' }} />
+            LIVE
+          </span>
           <RmpgLogo height={16} iconOnly />
           {/* Feature 1: Sound alert mute toggle */}
           <button type="button"
@@ -3211,7 +3229,12 @@ export default function DispatchPage() {
                   {selectedCall.priority === 'P1' && (
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
-                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
+                  <span
+                    className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap cursor-pointer hover:text-green-300 transition-colors"
+                    style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}
+                    title="Click to copy"
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(selectedCall.call_number || ''); addToast(`Copied ${selectedCall.call_number}`, 'success'); }}
+                  >{selectedCall.call_number}</span>
                   {/* Case Number — editable by admin/manager */}
                   {(selectedCall.case_number || isAdminOrManager) && (
                     editingTimestamp === 'case_number' ? (
@@ -3842,11 +3865,26 @@ export default function DispatchPage() {
                                 {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic text-[9px]">— not set —</span>}
                               </span>
                             )}
-                            {ts.showElapsed && ts.value && !editingTimestamp && (
-                              <span className="text-[#4b5563] text-[9px] font-mono tabular-nums">({formatElapsed(ts.value)})</span>
-                            )}
+                            {ts.showElapsed && ts.value && !editingTimestamp && (() => {
+                              const ageMin = Math.floor((Date.now() - new Date(ts.value).getTime()) / 60000);
+                              const ageColor = ageMin > 120 ? '#ef4444' : ageMin > 60 ? '#f97316' : ageMin > 30 ? '#eab308' : '#22c55e';
+                              return <span className="text-[9px] font-mono tabular-nums font-bold" style={{ color: ageColor }}>({formatElapsed(ts.value)})</span>;
+                            })()}
                           </div>
                         ))}
+                        {/* Enhancement 26: Response time (dispatched → onscene) */}
+                        {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                          const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                          if (diff <= 0 || !isFinite(diff)) return null;
+                          const mins = Math.floor(diff / 60000);
+                          const secs = Math.floor((diff % 60000) / 1000);
+                          return (
+                            <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
+                              <span className="text-rmpg-400 text-[10px]">Response Time</span>
+                              <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 

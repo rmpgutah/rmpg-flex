@@ -89,12 +89,20 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Vehicle Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Gauge className="w-3.5 h-3.5 mx-auto text-brand-400 mb-1" />
           <div className="text-sm font-bold font-mono text-brand-400">{detail.current_mileage?.toLocaleString() || '-'}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Mileage</div>
         </div>
+        {/* Fuel efficiency gauge */}
+        {fuelEfficiency?.avg_mpg != null && (
+          <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
+            <Fuel className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: fuelEfficiency.avg_mpg > 20 ? '#22c55e' : fuelEfficiency.avg_mpg > 12 ? '#f59e0b' : '#ef4444' }} />
+            <div className="text-sm font-bold font-mono" style={{ color: fuelEfficiency.avg_mpg > 20 ? '#22c55e' : fuelEfficiency.avg_mpg > 12 ? '#f59e0b' : '#ef4444' }}>{fuelEfficiency.avg_mpg.toFixed(1)}</div>
+            <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
+          </div>
+        )}
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Wrench className="w-3.5 h-3.5 mx-auto text-amber-400 mb-1" />
           <div className="text-sm font-bold font-mono text-amber-400">{maintenance.length}</div>
@@ -165,6 +173,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
             { label: 'VIN', value: detail.vin, mono: true, span: 2 },
             { label: 'Plate', value: detail.plate_number ? `${detail.plate_state || ''} ${detail.plate_number}` : null, mono: true },
             { label: 'Mileage', value: detail.current_mileage?.toLocaleString(), mono: true },
+            { label: 'Age', value: detail.year ? `${new Date().getFullYear() - detail.year} yrs` : null, mono: true },
           ].map((field, i) => (
             <div key={i} className={field.span === 2 ? 'col-span-2' : ''}>
               <div className="text-[9px] text-rmpg-500 uppercase font-semibold tracking-wider">{field.label}</div>

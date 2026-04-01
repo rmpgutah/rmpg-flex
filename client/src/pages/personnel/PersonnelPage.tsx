@@ -954,6 +954,20 @@ export default function PersonnelPage() {
                     {officer.rank && <span>{officer.rank}</span>}
                     {officer.department && <span>{officer.department}</span>}
                     {officer.badge_number && <span className="font-mono text-[10px]">#{officer.badge_number}</span>}
+                    {officer.hire_date && (() => {
+                      const yrs = Math.floor((Date.now() - new Date(officer.hire_date).getTime()) / (365.25 * 86400000));
+                      return yrs >= 0 ? <span className="text-[9px] text-cyan-400 font-mono">{yrs}yr</span> : null;
+                    })()}
+                    {officerCreds.length > 0 && (
+                      <span className="text-[9px] text-green-400 font-mono">{officerCreds.length} cert{officerCreds.length !== 1 ? 's' : ''}</span>
+                    )}
+                    {officer.date_of_birth && (() => {
+                      const today = new Date();
+                      const bday = new Date(officer.date_of_birth + 'T00:00:00');
+                      bday.setFullYear(today.getFullYear());
+                      const diff = Math.floor((bday.getTime() - today.getTime()) / 86400000);
+                      return (diff >= 0 && diff <= 7) ? <span title="Birthday soon!" className="text-[10px]">&#127874;</span> : null;
+                    })()}
                   </div>
                   <CredentialProgressBar credentials={officerCreds} />
                 </div>

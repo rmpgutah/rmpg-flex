@@ -683,6 +683,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               }}
               required
             />
+            {/* Address validation hint — zip code check */}
+            {formData.location.length > 5 && (
+              <div className="flex items-center gap-1 mt-0.5 text-[9px]">
+                {/\b\d{5}(-\d{4})?\b/.test(formData.location)
+                  ? <span className="text-green-400">&#10003; Address includes zip code</span>
+                  : <span className="text-amber-400">&#9888; No zip code detected — consider adding one</span>}
+              </div>
+            )}
             {/* Premise History — auto-checks when address has 3+ chars */}
             <PremiseHistory address={formData.location} compact />
             {/* Duplicate Call Warning — flags active calls at same address */}
