@@ -186,11 +186,15 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
 
           const unitColor = TRAIL_COLORS[idx % TRAIL_COLORS.length];
 
+          // Zoom-dependent trail rendering
+          const zoom = map.getZoom() || 12;
+          const zoomOpacityMultiplier = zoom >= 14 ? 1.0 : zoom >= 11 ? 0.7 : 0.4;
+
           for (let i = 0; i < points.length - 1; i++) {
             const p1 = points[i];
             const p2 = points[i + 1];
             const freshness = (i + 1) / points.length;
-            const opacity = 0.25 + freshness * 0.6;
+            const opacity = (0.25 + freshness * 0.6) * zoomOpacityMultiplier;
 
             let segColor: string;
             if (breadcrumbColorMode === 'speed') {
@@ -201,13 +205,18 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
               segColor = unitColor;
             }
 
+            // Thinner trail at low zoom levels for cleaner appearance
+            const weight = zoom < 12
+              ? 1
+              : breadcrumbColorMode === 'speed' ? speedToWeight(p1.speed) : 3;
+
             try { // Fix 17: try/catch around Polyline creation
               const seg = new google.maps.Polyline({
                 path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
                 geodesic: true,
                 strokeColor: segColor,
                 strokeOpacity: opacity,
-                strokeWeight: breadcrumbColorMode === 'speed' ? speedToWeight(p1.speed) : 3,
+                strokeWeight: weight,
                 map,
               });
               breadcrumbLinesRef.current.push(seg);
@@ -216,21 +225,33 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
             }
           }
 
+          // Zoom-dependent arrow interval: fewer arrows when zoomed out, more when zoomed in
+          const currentZoom = map.getZoom() || 12;
+          const arrowInterval = currentZoom >= 15 ? 5 : currentZoom >= 12 ? 15 : 30;
+          // Zoom-dependent arrow scale: smaller when zoomed out
+          const arrowScale = currentZoom >= 15 ? 2 : currentZoom >= 12 ? 1.5 : 1;
+          // Zoom-dependent trail opacity: more transparent when zoomed out
+          const baseOpacity = currentZoom >= 14 ? 0.8 : currentZoom >= 11 ? 0.5 : 0.3;
+          const maxArrows = 80;
+          let arrowCount = 0;
+
           points.forEach((pt, ptIdx) => {
-            if (ptIdx % 5 !== 2 || pt.heading == null) return;
+            if (ptIdx % arrowInterval !== 2 || pt.heading == null) return;
+            if (arrowCount >= maxArrows) return;
+            arrowCount++;
             const freshness = (ptIdx + 1) / points.length;
             const arrow = new google.maps.Marker({
               position: { lat: pt.lat, lng: pt.lng },
               map,
               icon: {
                 path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 2.5,
+                scale: arrowScale,
                 rotation: pt.heading,
                 fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : unitColor,
-                fillOpacity: 0.3 + freshness * 0.5,
+                fillOpacity: baseOpacity * (0.4 + freshness * 0.6),
                 strokeColor: '#fff',
                 strokeWeight: 0.5,
-                strokeOpacity: 0.6,
+                strokeOpacity: 0.4,
               },
               clickable: false,
               zIndex: 1,

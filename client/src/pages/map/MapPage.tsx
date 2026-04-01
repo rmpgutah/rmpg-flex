@@ -2075,7 +2075,7 @@ export default function MapPage() {
   return (
     <div className={`relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
       {/* Map Container — full-bleed on mobile, flex-1 on desktop */}
-      <div className="flex-1 relative" style={isMobile ? { flex: 1, minHeight: 0 } : undefined}>
+      <div className="flex-1 relative" style={isMobile ? { flex: 1, minHeight: 0, paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}>
         <div
           ref={mapRef}
           className="absolute inset-0 bg-surface-deep"
@@ -2129,7 +2129,7 @@ export default function MapPage() {
         )}
 
         {/* RMPG Brand Watermark — pushed down on mobile to avoid search bar */}
-        <div className={`absolute left-2 z-10 pointer-events-none opacity-40 ${isMobile ? 'top-14' : 'top-2'}`}>
+        <div className={`absolute left-2 z-10 pointer-events-none opacity-40 ${isMobile ? 'top-12' : 'top-2'}`}>
           <RmpgLogo height={20} iconOnly />
         </div>
 
@@ -2232,12 +2232,12 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* ── Mobile Address Search Bar - Top (full width) ── */}
+        {/* ── Mobile Address Search Bar - Top (full width, semi-transparent) ── */}
         {isMobile && (
-          <div className="absolute top-2 left-2 right-2 z-[1001]">
+          <div className="absolute top-1 left-1 right-1 z-[1001]">
             <div className="relative">
               <div className="relative flex items-center">
-                <Search className="absolute left-3 w-4 h-4 text-white/50 pointer-events-none" />
+                <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/50 pointer-events-none" />
                 <input
                   type="text"
                   value={addressSearch}
@@ -2249,8 +2249,8 @@ export default function MapPage() {
                   }}
                   placeholder="Search address..."
                   aria-label="Search address"
-                  className="w-full text-[13px] pl-10 pr-10 bg-black/60 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/70 focus:outline-none backdrop-blur-md shadow-lg font-mono"
-                  style={{ borderRadius: 2, height: 44 }}
+                  className="w-full text-[16px] pl-9 pr-9 bg-black/40 border border-white/10 text-white placeholder:text-white/35 focus:border-white/30 focus:bg-black/60 focus:outline-none backdrop-blur-md shadow-lg font-mono"
+                  style={{ borderRadius: 2, height: 38 }}
                 />
                 {addressSearch && (
                   <button

@@ -1362,11 +1362,11 @@ body.fx-noise::after {
     min-height: 44px;
   }
 
-  /* PANIC button: larger on mobile */
+  /* PANIC button: sized for mobile header — readable but not oversized */
   .panic-btn {
-    padding: 8px 16px;
-    font-size: 12px;
-    min-height: 44px;
+    padding: 6px 12px;
+    font-size: 11px;
+    min-height: 36px;
   }
 
   /* Cards: full width */
@@ -3699,4 +3699,109 @@ textarea {
   .absolute.-top-1, .absolute.-top-0\.5 {
     -webkit-transform: translateZ(0);
   }
+}
+
+/* ============================================================
+   26. iOS MOBILE MAP IMPROVEMENTS
+   Larger zoom controls, safe areas, touch targets, polish
+   ============================================================ */
+
+/* iOS status bar spacing for mobile header */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 768px) {
+    .mobile-header {
+      min-height: calc(48px + env(safe-area-inset-top, 0px));
+      padding-top: env(safe-area-inset-top, 0px);
+    }
+  }
+}
+
+/* Google Maps zoom controls — larger on mobile for 44px touch targets */
+@media (max-width: 768px) {
+  .gm-style .gm-control-active {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    font-size: 18px !important;
+  }
+  .gm-style .gm-bundled-control {
+    margin-right: 8px !important;
+    margin-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  /* Map type control — larger touch targets */
+  .gm-style .gm-style-mtc button {
+    min-height: 36px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* Map overlay buttons — 44px minimum on mobile */
+@media (max-width: 768px) {
+  .mobile-fab,
+  .map-overlay-btn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
+  }
+}
+
+/* Mobile search bar text — 16px prevents iOS Safari zoom on focus */
+@media (max-width: 768px) {
+  input[placeholder="Search address..."] {
+    font-size: 16px !important;
+  }
+}
+
+/* Mobile compact map panels */
+@media (max-width: 768px) {
+  .map-mobile-compact {
+    padding: 0.5rem !important;
+  }
+  .map-mobile-compact .text-sm {
+    font-size: 12px;
+  }
+}
+
+/* Scroll containers — iOS momentum scrolling + overscroll containment */
+@media (max-width: 768px) {
+  .overflow-y-auto,
+  .overflow-auto,
+  .overflow-y-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* Sliding panels — GPU acceleration on iOS */
+@media (max-width: 768px) {
+  .mobile-bottom-sheet,
+  [class*="translate-y"],
+  [class*="translate-x"] {
+    will-change: transform;
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* Bottom panels — safe-area-inset-bottom for iOS home indicator */
+@media (max-width: 768px) {
+  .mobile-bottom-sheet {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+}
+
+/* Smooth transitions on all interactive map elements */
+@media (max-width: 768px) {
+  .mobile-fab,
+  .map-overlay-btn,
+  button[aria-label*="layer"],
+  button[aria-label*="Toggle"] {
+    transition: background-color 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+  }
+}
+
+/* Prevent white flash on page load in dark mode */
+html, body {
+  background-color: #141e2b;
+}
+@media (prefers-color-scheme: dark) {
+  html { background-color: #141e2b; }
 }
