@@ -776,9 +776,12 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
       return;
     }
 
-    if (!['submitted', 'under_review'].includes(incident.status)) {
+    if (!['submitted', 'under_review'].includes(incident.status) && req.user?.role !== 'admin') {
       res.status(400).json({ error: 'Can only approve submitted or under-review incidents', code: 'CAN_ONLY_APPROVE_SUBMITTED' });
       return;
+    }
+    if (req.user?.role === 'admin' && !['submitted', 'under_review'].includes(incident.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin approved incident in '${incident.status}' status (bypassed submitted/under_review requirement)`);
     }
 
     const now = localNow();
