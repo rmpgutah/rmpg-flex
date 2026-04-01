@@ -38,6 +38,7 @@
     height: 100%; /* fallback for older browsers */
     max-width: 100vw;
     overflow-x: hidden;
+    overscroll-behavior: none;
   }
   html {
     font-size: 13px;
@@ -47,6 +48,13 @@
     overflow-x: hidden;
     /* iOS Safari: respect notch/home indicator safe areas */
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* --- PWA standalone mode: prevent iOS status bar overlap --- */
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
   }
 }
 

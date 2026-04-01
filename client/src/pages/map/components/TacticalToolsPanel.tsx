@@ -104,7 +104,7 @@ export default function TacticalToolsPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100vh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
+      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100dvh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
       style={{ top: 8, right: 8 }}
     >
       {/* Header */}

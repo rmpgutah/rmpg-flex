@@ -101,10 +101,10 @@ export default function DocumentViewer({
       const printWindow = window.open('', '_blank');
       if (printWindow) {
         const body = printWindow.document.body;
-        body.style.cssText = 'margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000;';
+        body.style.cssText = 'margin:0;display:flex;justify-content:center;align-items:center;min-height:100dvh;background:#000;';
         const img = printWindow.document.createElement('img');
         img.src = safeSrc;
-        img.style.cssText = 'max-width:100%;max-height:100vh;';
+        img.style.cssText = 'max-width:100%;max-height:100dvh;';
         body.appendChild(img);
         printWindow.document.close();
         img.onload = () => printWindow.print();

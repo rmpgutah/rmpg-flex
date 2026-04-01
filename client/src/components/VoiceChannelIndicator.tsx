@@ -33,7 +33,7 @@ export default function VoiceChannelIndicator() {
   // Idle with nothing to show — render only the mic button
   if (isIdle && !error && !lastCommand && !transcript) {
     return (
-      <div className="fixed bottom-8 right-4 z-[9999]">
+      <div className="fixed right-4 z-[9999]" style={{ bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}>
         <button
           onClick={activateManualListen}
           className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#1a5a9e] hover:text-white transition-colors text-xs font-mono"
@@ -47,7 +47,7 @@ export default function VoiceChannelIndicator() {
   }
 
   return (
-    <div className="fixed bottom-8 right-4 z-[9999] flex flex-col items-end gap-2 max-w-xs">
+    <div className="fixed right-4 z-[9999] flex flex-col items-end gap-2 max-w-xs" style={{ bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}>
       {/* State badge */}
       {!isIdle && <StateBadge state={state} onClickMic={activateManualListen} />}
 

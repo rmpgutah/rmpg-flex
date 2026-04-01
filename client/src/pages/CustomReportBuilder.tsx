@@ -325,7 +325,7 @@ export default function CustomReportBuilder() {
                 </button>
               </div>
             </div>
-            <div className={`overflow-auto ${isMobile ? 'max-h-[calc(100vh-200px)] -mx-3' : 'max-h-[calc(100vh-260px)]'}`}>
+            <div className={`overflow-auto ${isMobile ? 'max-h-[calc(100dvh-200px)] -mx-3' : 'max-h-[calc(100dvh-260px)]'}`}>
               <table className={`w-full text-[10px] border-collapse ${isMobile ? 'min-w-[600px]' : ''}`}>
                 <thead>
                   <tr>

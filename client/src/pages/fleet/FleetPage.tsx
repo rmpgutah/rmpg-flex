@@ -1205,7 +1205,7 @@ export default function FleetPage() {
 
       {/* Feature 20: Cost Per Mile Display */}
       {costPerMile && (
-        <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
+        <div className="fixed right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl" style={{ bottom: 'max(4rem, calc(4rem + env(safe-area-inset-bottom, 0px)))' }}>
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
             <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>

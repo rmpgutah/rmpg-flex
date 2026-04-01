@@ -69,7 +69,7 @@ export default function PerimeterToolsPanel({
         </button>
       </div>
 
-      <div className="p-3 space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+      <div className="p-3 space-y-3 max-h-[calc(100dvh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {/* 1. Perimeter Check */}
         <section className="space-y-1.5">
           <div className="flex items-center gap-1.5">

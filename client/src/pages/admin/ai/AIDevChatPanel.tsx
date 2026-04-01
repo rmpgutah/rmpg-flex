@@ -479,7 +479,7 @@ export default function AIDevChatPanel() {
     <style>{`
       @keyframes shimmer { 0% { transform: translateX(-200%); } 100% { transform: translateX(400%); } }
     `}</style>
-    <div className="flex h-[calc(100vh-280px)] min-h-[500px] bg-[#0d1520] rounded border border-[#1a3550] overflow-hidden">
+    <div className="flex h-[calc(100dvh-280px)] min-h-[500px] bg-[#0d1520] rounded border border-[#1a3550] overflow-hidden">
       {/* Session Sidebar */}
       <div className="w-60 flex-shrink-0 bg-[#0d1520] border-r border-[#1a3550] flex flex-col">
         <div className="p-3 border-b border-[#1a3550]">

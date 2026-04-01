@@ -1174,7 +1174,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           )}
 
           {/* 83: Actions bar with sticky bottom positioning */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700 sticky bottom-0 bg-surface-base pb-1">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700 sticky bottom-0 bg-surface-base pb-1" style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0.25rem))' }}>
             {/* 84: Cancel button with explicit aria-label */}
             <button type="button" onClick={onClose} disabled={isSubmitting} className="toolbar-btn" aria-label="Cancel and close">
               Cancel

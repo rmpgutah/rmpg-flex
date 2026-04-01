@@ -404,7 +404,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
       {/* Save footer */}
       {dirty && (
-        <div className="sticky bottom-0 bg-[#0d1520]/95 backdrop-blur-sm border-t border-amber-700/30 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status" aria-live="polite">
+        <div className="sticky bottom-0 bg-[#0d1520]/95 backdrop-blur-sm border-t border-amber-700/30 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status" aria-live="polite" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <span className="text-[10px] text-amber-400 flex items-center gap-1.5 font-medium">
             <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
             You have unsaved changes
