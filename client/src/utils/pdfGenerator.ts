@@ -2096,29 +2096,50 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECTION 6 — PERSONS INVOLVED
+  // SECTION 6 — LINKED PERSONS (CFS-style table)
   // ═══════════════════════════════════════════════════════════
-  y = checkPageBreak(doc, y, 20, data.priority);
   const persons = data.linked_persons || [];
-  { const sec = openAutoSection(doc, `Persons Involved (${persons.length})`, y); y = sec.contentY;
-    if (persons.length > 0) {
-      const colPositions = [lx, mx + 30, mx + 70, mx + 110];
-      const tableHeaders = [
-        { label: 'ROLE', x: colPositions[0] },
-        { label: 'LAST NAME', x: colPositions[1] },
-        { label: 'FIRST NAME', x: colPositions[2] },
-        { label: 'DOB', x: colPositions[3] },
+  if (persons.length > 0) {
+    y = checkPageBreak(doc, y, 20, data.priority);
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
+    const pHeaders = ['NAME', 'ROLE', 'DOB'];
+    const pColW = [ffw * 0.40, ffw * 0.30, ffw * 0.30];
+    const rowH = 4.5;
+    // Light gray header row
+    doc.setFillColor(...COLOR.BG_ZEBRA);
+    doc.rect(lx, y, ffw, rowH, 'F');
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    let phx = lx;
+    for (let i = 0; i < pHeaders.length; i++) {
+      doc.text(pHeaders[i], phx + 1.5, y + rowH * 0.65);
+      phx += pColW[i];
+    }
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.line(lx, y + rowH, lx + ffw, y + rowH);
+    y += rowH;
+    // Data rows
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    for (const p of persons) {
+      y = checkPageBreak(doc, y, rowH);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const pVals = [
+        `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '—',
+        capFirst(p.role?.replace(/_/g, ' ') || '').toUpperCase() || '—',
+        (p.dob || '—').toUpperCase(),
       ];
-      const tableRows = persons.map((p) => [
-        capFirst(p.role?.replace(/_/g, ' ') || ''),
-        (p.last_name || '').toUpperCase(),
-        p.first_name || '',
-        p.dob || '',
-      ]);
-      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-    } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
+      let pdx = lx;
+      for (let i = 0; i < pVals.length; i++) {
+        doc.text(pVals[i], pdx + 1.5, y + rowH * 0.65);
+        pdx += pColW[i];
+      }
+      y += rowH;
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(BORDER.TABLE_ROW);
+      doc.line(lx, y, lx + ffw, y);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2250,9 +2271,36 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECTION 11 — OFFICER NARRATIVE
+  // SECTION 11 — NARRATIVE / SERVICE NOTES (CFS-style)
   // ═══════════════════════════════════════════════════════════
-  y = addNarrativeSection(doc, 'Officer Narrative', data.narrative || '', y, data.priority);
+  y = checkPageBreak(doc, y, 25, data.priority);
+  { const sec = openAutoSection(doc, 'Narrative / Service Notes', y); y = sec.contentY;
+    y += SPACING.MD;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    // Page break callback with continuation header
+    const narrativeBreak = (newY: number): number => {
+      const nCw = getContentWidth(doc);
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H, 'F');
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(BORDER.TABLE_ROW);
+      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      const capH2 = FONT.SIZE_SECTION_TITLE * 0.35;
+      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH2) / 2);
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
+    };
+    y = addFormattedText(doc, (data.narrative || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, narrativeBreak);
+    y += SPACING.SM;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ═══════════════════════════════════════════════════════════
   // SECTION 12 — SUPPLEMENT REPORTS
