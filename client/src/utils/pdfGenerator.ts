@@ -1864,6 +1864,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const rx = getRightColumnX(doc);
   const mx = LAYOUT.PAGE_MARGIN;  // margin x
   const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  const formatServiceType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+  const formatDocumentType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
 
 
   let y = drawNibrsHeader(doc, {
@@ -1911,6 +1913,84 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     const fy18 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + w6 * 5, y, w6);
     y = Math.max(fy13, fy14, fy15, fy16, fy17, fy18);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 1B — CALLER INFORMATION
+  // ═══════════════════════════════════════════════════════════
+  if (data.caller_name || data.caller_phone) {
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
+      const fy1 = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
+      const fy2 = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
+      y = Math.max(fy1, fy2);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 1C — PSO CLIENT REQUEST DETAILS
+  // ═══════════════════════════════════════════════════════════
+  if (data.pso_service_type || data.pso_requestor_name || data.pso_billing_code) {
+    y = checkPageBreak(doc, y, 20);
+    { const sec = openAutoSection(doc, 'PSO Client Request Details', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const fy1 = addFieldPair(doc, 'Service Type', formatServiceType(data.pso_service_type), lx, y, thirdW);
+      const fy2 = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx + thirdW, y, thirdW);
+      const fy3 = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', lx + thirdW * 2, y, thirdW);
+      y = Math.max(fy1, fy2, fy3);
+      const fy4 = addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, thirdW);
+      const fy5 = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', lx + thirdW, y, thirdW);
+      const fy6 = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email || '', lx + thirdW * 2, y, thirdW);
+      y = Math.max(fy4, fy5, fy6);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 1D — PROCESS SERVICE DETAILS
+  // ═══════════════════════════════════════════════════════════
+  if (data.process_service_type || data.process_served_to) {
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Process Service Details', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const fy1 = addFieldPair(doc, 'Document Type', formatDocumentType(data.process_service_type), lx, y, thirdW);
+      const fy2 = addFieldPair(doc, 'Serve To', data.process_served_to || '', lx + thirdW, y, thirdW);
+      const fy3 = addFieldPair(doc, 'Attempts', data.process_attempts != null ? String(data.process_attempts) : '', lx + thirdW * 2, y, thirdW);
+      y = Math.max(fy1, fy2, fy3);
+      const fy4 = addFieldPair(doc, 'Service Address', data.process_served_address || data.location || '', lx, y, thirdW);
+      const fy5 = addFieldPair(doc, 'Served At', data.process_served_at || '', lx + thirdW, y, thirdW);
+      const fy6 = addFieldPair(doc, 'Result', data.process_service_result ? data.process_service_result.replace(/_/g, ' ').toUpperCase() : '', lx + thirdW * 2, y, thirdW);
+      y = Math.max(fy4, fy5, fy6);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 1E — INCIDENT LOCATION (ENHANCED)
+  // ═══════════════════════════════════════════════════════════
+  if (data.latitude != null || data.longitude != null || data.property_name) {
+    y = checkPageBreak(doc, y, 15);
+    { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
+      // Row 1: Full address, Property Name
+      const fy1 = addFieldPair(doc, 'Full Address', data.location || '', lx, y, hfw);
+      const fy2 = addFieldPair(doc, 'Property Name', data.property_name || '', rx, y, hfw);
+      y = Math.max(fy1, fy2);
+      // Row 2: Latitude, Longitude, Dispatch Code
+      const w3 = ffw / 3;
+      const latStr = data.latitude != null ? Number(data.latitude).toFixed(6) : '';
+      const lngStr = data.longitude != null ? Number(data.longitude).toFixed(6) : '';
+      const fy3 = addFieldPair(doc, 'Latitude', latStr, lx, y, w3);
+      const fy4 = addFieldPair(doc, 'Longitude', lngStr, lx + w3, y, w3);
+      const fy5 = addFieldPair(doc, 'Dispatch Code', data.dispatch_code || '', lx + w3 * 2, y, w3);
+      y = Math.max(fy3, fy4, fy5);
+      // Row 3: Section, Zone, Beat
+      const fy6 = addFieldPair(doc, 'Section', data.section_id || '', lx, y, w3);
+      const fy7 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w3, y, w3);
+      const fy8 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w3 * 2, y, w3);
+      y = Math.max(fy6, fy7, fy8);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
