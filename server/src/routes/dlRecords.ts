@@ -326,6 +326,165 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
             }
           }
 
+          // ── Suffix (Jr, Sr, II, III, IV) ──
+          const suffix = afterLabel([
+            /(?:SUFFIX|SFX)[:\s]+([A-Z]{1,4})/,
+          ]) || (text.match(/\b(JR|SR|II|III|IV|V)\b/)?.[1] || '');
+
+          // ── Date of Birth — additional formats ──
+          const dobAlt = !dob ? afterLabel([
+            /(\d{2}[\/\-]\d{2}[\/\-]\d{4})/,  // Any date pattern if DOB label missed
+          ]) : '';
+
+          // ── Age (sometimes printed directly) ──
+          const age = afterLabel([
+            /(?:AGE)[:\s]*(\d{1,3})/,
+          ]);
+
+          // ── SSN Last 4 (some state IDs show this) ──
+          const ssnLast4 = afterLabel([
+            /(?:SSN|SS#|SOC(?:IAL)?)[:\s]*(?:\*{3,5}[- ]?)(\d{4})/,
+            /(?:LAST\s*4)[:\s]*(\d{4})/,
+          ]);
+
+          // ── Build / Complexion ──
+          const build = afterLabel([
+            /(?:BUILD|BLD)[:\s]*(SLIM|THIN|MEDIUM|MED|HEAVY|HVY|LARGE|LRG|ATHLETIC|STOCKY|MUSCULAR)/,
+          ]);
+          const complexion = afterLabel([
+            /(?:COMP(?:LEXION)?|CMPLX)[:\s]*(LIGHT|LGT|MEDIUM|MED|DARK|DRK|FAIR|OLIVE|RUDDY|SALLOW|ALBINO)/,
+          ]);
+
+          // ── Corrective Lenses / Glasses ──
+          const correctiveLenses = /CORR(?:ECTIVE)?\s*LENS|GLASSES\s*REQ|LENSES\s*REQ/i.test(text);
+
+          // ── Concealed Carry Permit ──
+          const concealedCarry = /CONCEALED|CCW|CWP|CARRY\s*PERMIT|FIREARMS?\s*PERMIT/i.test(text);
+
+          // ── Commercial Driver (CDL) ──
+          const isCDL = /COMMERCIAL|CDL|CMV/i.test(text);
+
+          // ── REAL ID Compliant ──
+          const realIdCompliant = /REAL\s*ID|FEDERAL\s*LIMITS\s*APPLY|NOT\s*FOR\s*FEDERAL/i.test(text);
+          const realIdNotCompliant = /NOT\s*FOR\s*FEDERAL|FEDERAL\s*LIMITS\s*APPLY/i.test(text);
+
+          // ── Under 21 / Minor indicator ──
+          const isMinor = /UNDER\s*21|MINOR|PROVISIONAL|JUNIOR/i.test(text);
+          const isVertical = /VERTICAL/i.test(text); // Vertical format = under 21
+
+          // ── Motorcycle Endorsement ──
+          const motorcycleEndorsement = /MOTORCYCLE|M\/C|MC\s*END/i.test(text);
+
+          // ── Hazmat Endorsement ──
+          const hazmatEndorsement = /HAZMAT|HME|HAZARDOUS/i.test(text);
+
+          // ── School Bus Endorsement ──
+          const schoolBusEndorsement = /SCHOOL\s*BUS|S\s*END/i.test(text);
+
+          // ── DD (Duplicate Designator — number of times replaced) ──
+          const ddNumber = afterLabel([
+            /(?:DD|DUPLICATE|DUP)[:\s]*(\d{1,2})/,
+          ]);
+
+          // ── Inventory Control Number (ICN) — barcode backup ──
+          const icn = afterLabel([
+            /(?:ICN|INVENTORY|CONTROL\s*(?:#|NO))[:\s]*([A-Z0-9]{8,20})/,
+          ]);
+
+          // ── Customer ID Number (some states) ──
+          const customerIdNum = afterLabel([
+            /(?:CID|CUSTOMER\s*(?:#|ID|NO))[:\s]*([A-Z0-9]{5,15})/,
+          ]);
+
+          // ── Audit / Revision Number ──
+          const auditNumber = afterLabel([
+            /(?:AUDIT|REV(?:ISION)?|AUD)[:\s]*([A-Z0-9]{4,12})/,
+          ]);
+
+          // ── Country (passport / foreign ID) ──
+          const country = afterLabel([
+            /(?:COUNTRY|ISSUING\s*(?:COUNTRY|AUTHORITY))[:\s]+([A-Z\s]+)/,
+          ]) || (isPassport ? 'UNITED STATES OF AMERICA' : '');
+
+          // ── Passport Type (P = standard, D = diplomatic, S = service) ──
+          const passportType = afterLabel([
+            /(?:TYPE|PASSPORT\s*TYPE)[:\s]*([A-Z]{1,2})/,
+          ]);
+
+          // ── Authority / Issuing Agency ──
+          const issuingAuthority = afterLabel([
+            /(?:AUTHORITY|ISSUING\s*(?:AGENCY|AUTH)|ISSUED\s*BY)[:\s]+([A-Z\s]+)/,
+          ]);
+
+          // ── Visa Number (if visa page scanned) ──
+          const visaNumber = afterLabel([
+            /(?:VISA\s*(?:#|NO|NUM))[:\s]+([A-Z0-9]{6,15})/,
+          ]);
+
+          // ── Alien Registration Number (green card) ──
+          const alienNumber = afterLabel([
+            /(?:ALIEN\s*(?:#|NO|REG)|USCIS\s*(?:#|NO)|A#)[:\s]*([A-Z0-9]{7,13})/,
+          ]);
+
+          // ── Card Category (green card: IR1, CR1, etc.) ──
+          const cardCategory = afterLabel([
+            /(?:CATEGORY|CAT)[:\s]*([A-Z]{1,3}\d{0,2})/,
+          ]);
+
+          // ── Tribal ID fields ──
+          const tribalAffiliation = afterLabel([
+            /(?:TRIBE|TRIBAL|NATION|BAND)[:\s]+([A-Z\s]+)/,
+          ]);
+          const enrollmentNumber = afterLabel([
+            /(?:ENROLLMENT\s*(?:#|NO)|ROLL\s*(?:#|NO))[:\s]*([A-Z0-9]{3,15})/,
+          ]);
+
+          // ── Blood Type (some military / foreign IDs) ──
+          const bloodType = afterLabel([
+            /(?:BLOOD\s*(?:TYPE|GROUP)|BT)[:\s]*(A\+?|A-|B\+?|B-|AB\+?|AB-|O\+?|O-)/,
+          ]);
+
+          // ── Emergency Contact (some military IDs) ──
+          const emergencyContact = afterLabel([
+            /(?:EMERGENCY|EMERG|ICE|NEXT\s*OF\s*KIN|NOK)[:\s]+([A-Z][A-Z\s,]+)/,
+          ]);
+
+          // ── Military Branch / Rank / Pay Grade ──
+          const militaryBranch = afterLabel([
+            /(?:BRANCH|SERVICE)[:\s]*(ARMY|NAVY|AIR\s*FORCE|MARINES?|COAST\s*GUARD|SPACE\s*FORCE|NATIONAL\s*GUARD)/,
+          ]);
+          const militaryRank = afterLabel([
+            /(?:RANK|GRADE)[:\s]+([A-Z][A-Z0-9\s]+)/,
+          ]);
+          const payGrade = afterLabel([
+            /(?:PAY\s*GRADE|GRADE)[:\s]*(E-?\d|O-?\d|W-?\d|GS-?\d+)/,
+          ]);
+          const dodId = afterLabel([
+            /(?:DOD\s*(?:#|ID|NO)|EDIPI)[:\s]*(\d{8,12})/,
+          ]);
+          const branchOfService = afterLabel([
+            /(?:BRANCH\s*OF\s*SERVICE|COMPONENT)[:\s]+([A-Z\s]+)/,
+          ]) || militaryBranch;
+
+          // ── Dates (all found on document) ──
+          const allDates = (text.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/g) || []).slice(0, 6);
+
+          // ── Phone Number (some IDs — tribal, employee, etc.) ──
+          const phoneOnId = afterLabel([
+            /(?:PHONE|PH|TEL)[:\s]*(\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4})/,
+          ]);
+
+          // ── Employer (employee ID cards) ──
+          const employer = afterLabel([
+            /(?:EMPLOYER|COMPANY|ORGANIZATION|ORG)[:\s]+([A-Z][A-Z\s,\.]+)/,
+          ]);
+          const employeeId = afterLabel([
+            /(?:EMPLOYEE\s*(?:#|ID|NO)|EMP\s*(?:#|ID))[:\s]*([A-Z0-9]{3,15})/,
+          ]);
+          const department = afterLabel([
+            /(?:DEPT?|DEPARTMENT|DIVISION|DIV)[:\s]+([A-Z][A-Z\s]+)/,
+          ]);
+
           // ── Build result — prefer labeled extraction, fall back to MRZ, then heuristic ──
           ocrData = {
             result: {
@@ -334,8 +493,10 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
               first_name: finalFirst || mrzFirst || '',
               last_name: finalLast || mrzLast || '',
               middle_name: finalMiddle || '',
-              full_name: [finalLast || mrzLast, finalFirst || mrzFirst, finalMiddle].filter(Boolean).join(', '),
-              date_of_birth: dob || mrzDob || '',
+              suffix: suffix,
+              full_name: [finalLast || mrzLast, finalFirst || mrzFirst, finalMiddle, suffix].filter(Boolean).join(', '),
+              date_of_birth: dob || dobAlt || mrzDob || '',
+              age: age,
               issue_date: issueDate,
               expiry_date: expiryDate,
               address: address,
@@ -345,16 +506,56 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
               sex: sex,
               height: height,
               weight: weight,
+              build: build,
+              complexion: complexion,
               eye_color: eyeColor,
               hair_color: hairColor,
               race: race,
+              ssn_last4: ssnLast4,
               dl_class: dlClass,
+              is_cdl: isCDL,
               restrictions: restrictions,
               endorsements: endorsements,
+              motorcycle_endorsement: motorcycleEndorsement,
+              hazmat_endorsement: hazmatEndorsement,
+              school_bus_endorsement: schoolBusEndorsement,
               organ_donor: organDonor,
+              corrective_lenses: correctiveLenses,
+              concealed_carry: concealedCarry,
+              real_id_compliant: realIdCompliant && !realIdNotCompliant,
+              is_minor: isMinor || isVertical,
+              dd_number: ddNumber,
+              icn: icn,
+              customer_id: customerIdNum,
+              audit_number: auditNumber,
               veteran: veteran,
+              blood_type: bloodType,
+              // Passport
               nationality: nationality || mrzNationality || '',
+              country: country,
               place_of_birth: placeOfBirth,
+              passport_type: passportType,
+              issuing_authority: issuingAuthority,
+              visa_number: visaNumber,
+              // Immigration
+              alien_number: alienNumber,
+              card_category: cardCategory,
+              // Military
+              military_branch: branchOfService,
+              military_rank: militaryRank,
+              pay_grade: payGrade,
+              dod_id: dodId,
+              emergency_contact: emergencyContact,
+              // Tribal
+              tribal_affiliation: tribalAffiliation,
+              enrollment_number: enrollmentNumber,
+              // Employee
+              employer: employer,
+              employee_id: employeeId,
+              department: department,
+              phone: phoneOnId,
+              // Metadata
+              all_dates_found: allDates,
               raw_text: fullText,
             },
           };
