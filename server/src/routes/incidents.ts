@@ -579,6 +579,23 @@ router.put('/:id', async (req: Request, res: Response) => {
       force_type: v => v ?? null, force_justification: v => v ?? null,
       subject_injuries: v => v ?? null, officer_injuries: v => v ?? null,
       de_escalation_attempts: v => v ?? null,
+      // PSO Client Request fields
+      pso_service_type: v => v ?? null,
+      pso_attempt_number: v => v != null ? Number(v) || null : null,
+      pso_requestor_name: v => v ?? null,
+      pso_requestor_phone: v => v ?? null,
+      pso_requestor_email: v => v ?? null,
+      pso_billing_code: v => v ?? null,
+      pso_authorization: v => v ?? null,
+      // Process Service fields
+      process_service_type: v => v ?? null,
+      process_served_to: v => v ?? null,
+      process_served_address: v => v ?? null,
+      process_service_result: v => v ?? null,
+      process_served_at: v => v ?? null,
+      process_attempts: v => v != null ? Number(v) || null : null,
+      // Contract / Client
+      contract_id: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(iFieldMap)) {
