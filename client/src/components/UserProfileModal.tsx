@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { toDisplayLabel } from '../utils/formatters';
+import { toDisplayLabel, formatPhoneInput } from '../utils/formatters';
 import {
   X,
   User,
@@ -608,7 +608,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 <input
                   type="tel"
                   value={phone}
-                  onChange={e => setPhone(e.target.value)}
+                  onChange={e => setPhone(formatPhoneInput(e.target.value))}
                   className="input-dark"
                   placeholder="(555) 555-5555"
                 />

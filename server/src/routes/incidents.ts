@@ -7,6 +7,7 @@ import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
+import { geocodeAddress } from '../utils/geocode';
 
 const router = Router();
 
@@ -357,7 +358,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/incidents - Create incident
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -393,14 +394,24 @@ router.post('/', (req: Request, res: Response) => {
 
     const { statute_id, statute_citation, citation_fine } = req.body;
 
+    // Auto-geocode if address provided but no coordinates
+    let resolvedLat = latitude || null;
+    let resolvedLng = longitude || null;
+    if (location_address && (!resolvedLat || !resolvedLng)) {
+      try {
+        const coords = await geocodeAddress(location_address);
+        if (coords) { resolvedLat = coords.latitude; resolvedLng = coords.longitude; }
+      } catch { /* non-critical */ }
+    }
+
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier lookup ──
     let autoZoneBeat = zone_beat || null;
     let autoSectionId = section_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
-    if (latitude && longitude) {
+    if (resolvedLat && resolvedLng) {
       try {
-        const beat = identifyBeat(Number(latitude), Number(longitude));
+        const beat = identifyBeat(Number(resolvedLat), Number(resolvedLng));
         if (beat) {
           if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
 
@@ -450,8 +461,8 @@ router.post('/', (req: Request, res: Response) => {
         ?)
     `).run(
       incidentNumber, call_id || null, incident_type, priority || 'P3',
-      location_address || null, property_id || null, latitude || null,
-      longitude || null, narrative || null, req.user!.userId,
+      location_address || null, property_id || null, resolvedLat || null,
+      resolvedLng || null, narrative || null, req.user!.userId,
       occurred_date || null, occurred_time || null, end_date || null, end_time || null,
       weather_conditions || null, lighting_conditions || null,
       injuries ?? 'none', injury_description || null, damage_estimate || null, damage_description || null,
@@ -487,7 +498,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT /api/incidents/:id - Update incident
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -519,6 +530,20 @@ router.put('/:id', (req: Request, res: Response) => {
       weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
       disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
     } = req.body;
+
+    // Auto-geocode if address provided/changed but no coordinates
+    if (location_address && (!latitude && !longitude)) {
+      // Only geocode if address changed or incident has no coords
+      if (location_address !== incident.location_address || (!incident.latitude && !incident.longitude)) {
+        try {
+          const coords = await geocodeAddress(location_address);
+          if (coords) {
+            req.body.latitude = coords.latitude;
+            req.body.longitude = coords.longitude;
+          }
+        } catch { /* non-critical */ }
+      }
+    }
 
     // Build dynamic SET clause — only update fields explicitly provided
     const iFields: string[] = [];

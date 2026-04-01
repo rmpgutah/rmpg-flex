@@ -243,7 +243,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       incident_type, priority, caller_name, caller_phone, caller_relationship, caller_address,
       location_address, property_id, latitude, longitude, description, notes, source,
       cross_street, location_building, location_floor, location_room, zone_beat,
-      section_id, zone_id, beat_id,
+      section_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
       weapons_involved, injuries_reported, num_subjects, num_victims,
       subject_description, vehicle_description, direction_of_travel,
       scene_safety, weather_conditions, lighting_conditions,
@@ -388,7 +388,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let autoSectionId = section_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
-    let autoDispatchCode: string | null = null;
+    let autoDispatchCode: string | null = requestDispatchCode || null;
     let autoSectionName: string | null = null;
     let autoZoneName: string | null = null;
     let autoBeatName: string | null = null;
@@ -437,6 +437,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       } else {
         autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
       }
+    }
+
+    // Auto-generate dispatch code if not provided and section/zone/beat are available
+    if (!autoDispatchCode && (autoSectionId || autoZoneId)) {
+      autoDispatchCode = [autoSectionId, autoZoneId, autoBeatId].filter(Boolean).join('-') || null;
     }
 
     // Upgrade 10: Calculate priority score for queue sorting
@@ -951,6 +956,7 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
       process_attempts, process_served_at, process_service_result,
+      contract_id,
       client_id: updateClientId,
     } = req.body;
 
@@ -1114,6 +1120,10 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
         // Build dispatch_code from IDs even without a district record
         addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
       }
+    } else if ((finalSectionId || finalZoneId) && !call.dispatch_code) {
+      // Auto-generate dispatch code from available S/Z/B when not all three are present
+      const code = [finalSectionId, finalZoneId, finalBeatId].filter(Boolean).join('-');
+      if (code) addField('dispatch_code', code);
     }
 
     addField('responding_officer', responding_officer);
@@ -1168,6 +1178,7 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
     addField('process_attempts', process_attempts !== undefined ? (isNaN(Number(process_attempts)) ? null : Number(process_attempts)) : undefined);
     addField('process_served_at', process_served_at);
     addField('process_service_result', process_service_result);
+    addField('contract_id', contract_id);
     addField('client_id', resolvedUpdateClientId);
 
     // ── Admin/Manager timeline override: allow editing dispatch timestamps ──

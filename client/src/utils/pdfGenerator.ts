@@ -23,6 +23,13 @@ import {
   drawNibrsHeader,
 } from './pdfFormHelpers';
 
+// ── Status Display Helper — "archived" shows as "CLOSED" in printed documents ──
+export function displayStatus(status: string): string {
+  if (!status) return '';
+  if (status.toLowerCase() === 'archived') return 'CLOSED';
+  return status.toUpperCase();
+}
+
 // ── Branding Interface (matches Admin BrandingConfig) ────────
 
 export interface PdfBranding {
@@ -1245,7 +1252,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
     // Row 1: Author (2/4), Status (1/4), Date (1/4)
     const supW4 = ffw / 4;
     const sfy1 = addFieldPair(doc, 'Author', sup.author_name || '', lx, y, supW4 * 2);
-    const sfy2 = addFieldPair(doc, 'Status', (sup.status || '').toUpperCase(), lx + supW4 * 2, y, supW4);
+    const sfy2 = addFieldPair(doc, 'Status', displayStatus(sup.status || ''), lx + supW4 * 2, y, supW4);
     const sfy3 = addFieldPair(doc, 'Date', sup.created_at || '', lx + supW4 * 3, y, supW4);
     y = Math.max(sfy1, sfy2, sfy3);
     // Row 2: Subject (full width, if present)
@@ -1878,7 +1885,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     const fy1 = addFieldPair(doc, 'Incident Type', formatIncidentType(data.incident_type), lx, y, w7 * 3);
     const fy2 = addFieldPair(doc, 'Type Code', getTypeCode(data.incident_type), lx + w7 * 3, y, w7);
     const fy3 = addFieldPair(doc, 'Incident #', data.incident_number || '', lx + w7 * 4, y, w7 * 2);
-    const fy4 = addFieldPair(doc, 'Status', data.status?.toUpperCase() || '', lx + w7 * 6, y, w7);
+    const fy4 = addFieldPair(doc, 'Status', displayStatus(data.status || ''), lx + w7 * 6, y, w7);
     y = Math.max(fy1, fy2, fy3, fy4);
     // Row 2: Occurred Date, Time, End Date, Time, Priority, Disposition
     const w6 = ffw / 6;
@@ -2859,7 +2866,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     y = addThreeColumnFields(doc, [
       { label: 'Incident Number', value: data.incident_number },
       { label: 'Priority', value: data.priority },
-      { label: 'Status', value: data.status?.toUpperCase() || '' },
+      { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Disposition', value: data.disposition || '' },
       { label: 'Service Type', value: serviceTypeLabel },
       { label: 'Contract ID', value: data.contract_id || '' },

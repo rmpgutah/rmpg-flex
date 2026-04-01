@@ -34,6 +34,7 @@ import {
   addImageToPage,
   formSectionPageBreak,
   sanitizePdfText,
+  displayStatus,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import {
@@ -871,7 +872,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Call Number', value: data.call_number },
       { label: 'Incident Type', value: (data.incident_type || '').replace(/_/g, ' ').toUpperCase() },
       { label: 'Priority', value: data.priority },
-      { label: 'Status', value: (data.status || '').toUpperCase() },
+      { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: (data.source || '').replace(/_/g, ' ').toUpperCase() },
       { label: 'Dispatch Code', value: data.dispatch_code || '' },
       { label: 'Disposition', value: data.disposition || '' },
@@ -1770,7 +1771,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
-      (c.status || '').toUpperCase(),
+      displayStatus(c.status || ''),
       c.location || 'N/A',
       fmtDate(c.created_at),
     ]);
@@ -2069,7 +2070,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     const fifthW = ffw / 5;
     const r1a = addFieldPair(doc, 'Warrant Number', data.warrant_number || '', lx, y, fifthW * 2);
     const r1b = addFieldPair(doc, 'Type', (data.type || '').toUpperCase(), lx + fifthW * 2, y, fifthW);
-    const r1c = addFieldPair(doc, 'Status', (data.status || '').toUpperCase(), lx + fifthW * 3, y, fifthW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus(data.status || ''), lx + fifthW * 3, y, fifthW);
     const r1d = addFieldPair(doc, 'Offense Level', (data.offense_level || '').toUpperCase(), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
     // Row 2: Charge Description (full width)
@@ -2191,7 +2192,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     const r1a = addFieldPair(doc, 'Evidence Number', data.evidence_number || '', lx, y, fifthW * 2);
     const r1b = addFieldPair(doc, 'Type', (data.evidence_type || '').replace(/_/g, ' ').toUpperCase(), lx + fifthW * 2, y, fifthW);
     const r1c = addFieldPair(doc, 'Category', data.category || '', lx + fifthW * 3, y, fifthW);
-    const r1d = addFieldPair(doc, 'Status', (data.status || '').replace(/_/g, ' ').toUpperCase(), lx + fifthW * 4, y, fifthW);
+    const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
     // Row 2: Related Incident, Serial Number, Brand, Model (4 cols)
     const r2a = addFieldPair(doc, 'Related Incident', data.incident_number || '', lx, y, quarterW);
@@ -2342,7 +2343,7 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Row 3: Plate Number, Plate State, Status (3 cols)
     const r3a = addFieldPair(doc, 'Plate Number', data.plate_number || '', lx, y, thirdW);
     const r3b = addFieldPair(doc, 'Plate State', data.plate_state || '', lx + thirdW, y, thirdW);
-    const r3c = addFieldPair(doc, 'Status', (data.status || '').replace(/_/g, ' ').toUpperCase(), lx + thirdW * 2, y, thirdW);
+    const r3c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + thirdW * 2, y, thirdW);
     y = Math.max(r3a, r3b, r3c);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2922,7 +2923,7 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     // Row 1: Citation Number (half), Type (quarter), Status (quarter)
     const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, hfw);
     const r1b = addFieldPair(doc, 'Type', (data.type || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
-    const r1c = addFieldPair(doc, 'Status', (data.status || '').replace(/_/g, ' ').toUpperCase(), rx + quarterW, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), rx + quarterW, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
     const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);

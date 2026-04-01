@@ -32,6 +32,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { formatPhoneInput } from '../../utils/formatters';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import ScraperAdminPanel from './ScraperAdminPanel';
@@ -849,7 +850,7 @@ export default function LeadsTab() {
                   <input
                     type="tel"
                     value={createForm.contact_phone}
-                    onChange={e => setCreateForm(f => ({ ...f, contact_phone: e.target.value }))}
+                    onChange={e => setCreateForm(f => ({ ...f, contact_phone: formatPhoneInput(e.target.value) }))}
                     className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>

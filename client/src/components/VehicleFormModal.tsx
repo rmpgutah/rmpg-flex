@@ -4,6 +4,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 interface VehicleFormModalProps {
   isOpen: boolean;
@@ -412,7 +413,7 @@ export default function VehicleFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Phone</label>
-                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={handleChange} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
+                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
               </div>
             </div>
           </div>

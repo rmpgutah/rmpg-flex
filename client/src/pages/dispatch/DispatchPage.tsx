@@ -55,7 +55,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES } from '../../utils/caseNumbers';
-import { toDisplayLabel } from '../../utils/formatters';
+import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -1780,6 +1780,7 @@ export default function DispatchPage() {
       pso_service_type: selectedCall.pso_service_type || '',
       pso_billing_code: selectedCall.pso_billing_code || '',
       pso_authorization: selectedCall.pso_authorization || '',
+      contract_id: selectedCall.contract_id || '',
       // Process Service fields
       process_service_type: selectedCall.process_service_type || '',
       process_served_to: selectedCall.process_served_to || '',
@@ -1855,6 +1856,7 @@ export default function DispatchPage() {
         pso_service_type: editData.pso_service_type || null,
         pso_billing_code: editData.pso_billing_code || null,
         pso_authorization: editData.pso_authorization || null,
+        contract_id: editData.contract_id || null,
         // Process Service fields
         process_service_type: editData.process_service_type || null,
         process_served_to: editData.process_served_to || null,
@@ -3758,7 +3760,7 @@ export default function DispatchPage() {
                       {isEditing ? (
                         <div className="space-y-1 mt-0.5">
                           <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
-                          <input type="text" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', e.target.value)} />
+                          <input type="text" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
                           <input type="text" className="input-dark text-xs" placeholder="Caller address" value={editData.caller_address} onChange={(e) => updateEditField('caller_address', e.target.value)} />
                           <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
@@ -4457,7 +4459,7 @@ export default function DispatchPage() {
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
                           <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -4516,6 +4518,9 @@ export default function DispatchPage() {
                           <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
                           <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
@@ -4525,6 +4530,7 @@ export default function DispatchPage() {
                         {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
                         {selectedCall.pso_billing_code && <span className="text-rmpg-200"><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</span>}
                         {selectedCall.pso_authorization && <span className="text-rmpg-200"><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</span>}
+                        {selectedCall.contract_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Contract:</span> {selectedCall.contract_id}</span>}
                         {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
                           <span className="text-rmpg-500 italic">No PSO details entered yet</span>
                         )}

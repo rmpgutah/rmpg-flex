@@ -11,6 +11,7 @@ import {
   DIRECTION_OPTIONS,
 } from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
@@ -537,7 +538,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Phone</label>
-                  <input type="text" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', e.target.value)} />
+                  <input type="text" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Billing Code</label>
@@ -614,7 +615,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 className="input-dark"
                 placeholder="(801) 555-0000"
                 value={formData.caller_phone}
-                onChange={(e) => update('caller_phone', e.target.value)}
+                onChange={(e) => update('caller_phone', formatPhoneInput(e.target.value))}
               />
             </div>
             {mode === 'full' && (

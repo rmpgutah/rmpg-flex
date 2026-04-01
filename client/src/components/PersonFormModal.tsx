@@ -5,6 +5,7 @@ import { useFormDirty } from '../hooks/useFormDirty';
 import type { Person } from '../types';
 import { apiUploadFiles } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 interface PersonFormModalProps {
   isOpen: boolean;
@@ -780,11 +781,11 @@ export default function PersonFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-              <input name="phone" type="text" className="input-dark mt-1" value={form.phone} onChange={handleChange} />
+              <input name="phone" type="text" className="input-dark mt-1" value={form.phone} onChange={(e) => setForm(prev => ({ ...prev, phone: formatPhoneInput(e.target.value) }))} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone (Secondary)</label>
-              <input name="phone_secondary" type="text" className="input-dark mt-1" value={form.phone_secondary} onChange={handleChange} />
+              <input name="phone_secondary" type="text" className="input-dark mt-1" value={form.phone_secondary} onChange={(e) => setForm(prev => ({ ...prev, phone_secondary: formatPhoneInput(e.target.value) }))} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
@@ -801,7 +802,7 @@ export default function PersonFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Phone</label>
-                <input name="emergency_contact_phone" type="text" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={handleChange} />
+                <input name="emergency_contact_phone" type="text" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={(e) => setForm(prev => ({ ...prev, emergency_contact_phone: formatPhoneInput(e.target.value) }))} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Relationship</label>
