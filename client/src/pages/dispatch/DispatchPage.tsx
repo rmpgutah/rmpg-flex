@@ -97,6 +97,7 @@ import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
+  // Process Service
   process_service: 'Process Service (General)',
   subpoena_service: 'Subpoena Service',
   summons_service: 'Summons & Complaint',
@@ -104,56 +105,132 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
   restraining_order_service: 'Protective Order Service',
   writ_service: 'Writ Service',
   court_filing: 'Court Filing / Delivery',
+  court_order_service: 'Court Order Service',
+  notice_service: 'Notice / Demand Service',
+  posting_service: 'Posting Service (Nail & Mail)',
+  // Investigative
   skip_trace: 'Skip Trace & Locate',
   stake_out: 'Stake Out / Surveillance',
   rush_service: 'Rush / Same-Day Service',
+  asset_search: 'Asset Search',
+  background_check: 'Background Check / Due Diligence',
+  witness_interview: 'Witness Interview / Statement',
+  witness_locate: 'Witness Locate',
+  record_retrieval: 'Record Retrieval',
+  document_retrieval: 'Document Retrieval',
+  field_investigation: 'Field Investigation',
+  insurance_investigation: 'Insurance Investigation',
+  // Security Services
   patrol: 'Patrol',
   static_guard: 'Static Guard',
   escort: 'Escort',
   event_security: 'Event Security',
   surveillance: 'Surveillance',
   access_control: 'Access Control',
+  alarm_response: 'Alarm Response',
+  fire_watch: 'Fire Watch',
+  construction_security: 'Construction Site Security',
+  executive_protection: 'Executive Protection',
+  loss_prevention: 'Loss Prevention',
+  // Administrative
+  notary_service: 'Notary Service',
+  certified_copy: 'Certified Copy Service',
+  courier: 'Courier / Messenger',
+  document_preparation: 'Document Preparation',
+  affidavit_preparation: 'Affidavit Preparation',
   other: 'Other',
 };
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  // Civil Process
+  // Civil Process — General
   subpoena: 'Subpoena',
+  subpoena_duces_tecum: 'Subpoena Duces Tecum',
+  subpoena_deposition: 'Subpoena (Deposition)',
+  federal_subpoena: 'Federal Subpoena',
   summons: 'Summons & Complaint',
   complaint: 'Complaint',
   civil_summons: 'Civil Summons',
+  third_party_complaint: 'Third-Party Complaint',
+  cross_complaint: 'Cross-Complaint',
+  counterclaim: 'Counterclaim',
+  amended_complaint: 'Amended Complaint',
   small_claims: 'Small Claims',
+  // Writs & Garnishments
   garnishment: 'Garnishment',
   writ_of_execution: 'Writ of Execution',
   writ_of_restitution: 'Writ of Restitution',
   writ_of_garnishment: 'Writ of Garnishment',
   writ_of_attachment: 'Writ of Attachment',
+  writ_of_possession: 'Writ of Possession',
+  writ_of_assistance: 'Writ of Assistance',
+  writ_of_mandate: 'Writ of Mandate / Mandamus',
+  wage_garnishment: 'Wage Garnishment',
+  bank_levy: 'Bank Levy / Account Garnishment',
   // Family / Domestic
   restraining_order: 'Protective / Restraining Order',
+  temporary_protective_order: 'Temporary Protective Order',
+  cohabitant_abuse_order: 'Cohabitant Abuse Protective Order',
   divorce_papers: 'Divorce Papers',
+  divorce_petition: 'Divorce Petition',
+  divorce_summons: 'Divorce Summons',
   custody_order: 'Custody Order',
+  custody_modification: 'Custody Modification',
   child_support: 'Child Support Order',
+  child_support_modification: 'Child Support Modification',
+  paternity_action: 'Paternity Action',
+  adoption_papers: 'Adoption Papers',
+  guardianship: 'Guardianship Petition',
+  termination_of_parental_rights: 'Termination of Parental Rights',
   stalking_injunction: 'Stalking Injunction',
   // Real Property
   eviction: 'Eviction Notice',
   unlawful_detainer: 'Unlawful Detainer',
   notice_to_quit: 'Notice to Quit',
+  three_day_notice: '3-Day Notice to Pay or Quit',
+  five_day_notice: '5-Day Notice (Commercial)',
+  fifteen_day_notice: '15-Day Notice (Month-to-Month)',
   foreclosure: 'Foreclosure Notice',
-  // Court Orders
+  notice_of_default: 'Notice of Default',
+  lis_pendens: 'Lis Pendens',
+  quiet_title: 'Quiet Title Action',
+  // Court Orders & Motions
   court_order: 'Court Order',
   temporary_order: 'Temporary Order',
+  temporary_restraining_order: 'Temporary Restraining Order',
+  preliminary_injunction: 'Preliminary Injunction',
+  permanent_injunction: 'Permanent Injunction',
   motion: 'Motion / Petition',
+  motion_for_contempt: 'Motion for Contempt',
+  motion_to_compel: 'Motion to Compel',
+  motion_for_summary_judgment: 'Motion for Summary Judgment',
   notice_of_hearing: 'Notice of Hearing',
   order_to_show_cause: 'Order to Show Cause',
-  // Other
+  judgment: 'Judgment',
+  default_judgment: 'Default Judgment',
+  // Probate & Estate
+  probate_petition: 'Probate Petition',
+  letters_testamentary: 'Letters Testamentary',
+  creditor_claim: 'Creditor Claim (Probate)',
+  // Bankruptcy
+  bankruptcy_notice: 'Bankruptcy Notice',
+  adversary_proceeding: 'Adversary Proceeding',
+  // Administrative
   demand_letter: 'Demand Letter',
   cease_and_desist: 'Cease & Desist',
+  notice_of_deposition: 'Notice of Deposition',
+  interrogatories: 'Interrogatories',
+  request_for_production: 'Request for Production',
+  request_for_admission: 'Request for Admission',
+  // General
   civil: 'Civil Papers',
   writ: 'Writ',
   order: 'Court Order',
   notice: 'Notice',
   petition: 'Petition',
   levy: 'Levy',
+  affidavit: 'Affidavit',
+  declaration: 'Declaration',
+  stipulation: 'Stipulation',
   other: 'Other',
 };
 
@@ -4396,9 +4473,22 @@ export default function DispatchPage() {
                                 <option value="restraining_order_service">Protective Order Service</option>
                                 <option value="writ_service">Writ Service</option>
                                 <option value="court_filing">Court Filing / Delivery</option>
+                                <option value="court_order_service">Court Order Service</option>
+                                <option value="notice_service">Notice / Demand Service</option>
+                                <option value="posting_service">Posting Service (Nail &amp; Mail)</option>
+                                <option value="rush_service">Rush / Same-Day Service</option>
+                              </optgroup>
+                              <optgroup label="Investigative">
                                 <option value="skip_trace">Skip Trace &amp; Locate</option>
                                 <option value="stake_out">Stake Out / Surveillance</option>
-                                <option value="rush_service">Rush / Same-Day Service</option>
+                                <option value="asset_search">Asset Search</option>
+                                <option value="background_check">Background Check / Due Diligence</option>
+                                <option value="witness_interview">Witness Interview / Statement</option>
+                                <option value="witness_locate">Witness Locate</option>
+                                <option value="record_retrieval">Record Retrieval</option>
+                                <option value="document_retrieval">Document Retrieval</option>
+                                <option value="field_investigation">Field Investigation</option>
+                                <option value="insurance_investigation">Insurance Investigation</option>
                               </optgroup>
                               <optgroup label="Security Services">
                                 <option value="patrol">Patrol</option>
@@ -4407,8 +4497,18 @@ export default function DispatchPage() {
                                 <option value="event_security">Event Security</option>
                                 <option value="surveillance">Surveillance</option>
                                 <option value="access_control">Access Control</option>
+                                <option value="alarm_response">Alarm Response</option>
+                                <option value="fire_watch">Fire Watch</option>
+                                <option value="construction_security">Construction Site Security</option>
+                                <option value="executive_protection">Executive Protection</option>
+                                <option value="loss_prevention">Loss Prevention</option>
                               </optgroup>
-                              <optgroup label="Other">
+                              <optgroup label="Administrative">
+                                <option value="notary_service">Notary Service</option>
+                                <option value="certified_copy">Certified Copy Service</option>
+                                <option value="courier">Courier / Messenger</option>
+                                <option value="document_preparation">Document Preparation</option>
+                                <option value="affidavit_preparation">Affidavit Preparation</option>
                                 <option value="other">Other</option>
                               </optgroup>
                             </select>
@@ -4507,41 +4607,97 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-amber-400">Document Type</label>
                             <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
                               <option value="">— Select Document Type —</option>
-                              <optgroup label="Civil Process">
+                              <optgroup label="Civil Process — General">
                                 <option value="subpoena">Subpoena</option>
+                                <option value="subpoena_duces_tecum">Subpoena Duces Tecum</option>
+                                <option value="subpoena_deposition">Subpoena (Deposition)</option>
+                                <option value="federal_subpoena">Federal Subpoena</option>
                                 <option value="summons">Summons &amp; Complaint</option>
                                 <option value="complaint">Complaint</option>
+                                <option value="third_party_complaint">Third-Party Complaint</option>
+                                <option value="cross_complaint">Cross-Complaint</option>
+                                <option value="counterclaim">Counterclaim</option>
+                                <option value="amended_complaint">Amended Complaint</option>
                                 <option value="civil_summons">Civil Summons</option>
                                 <option value="small_claims">Small Claims</option>
+                              </optgroup>
+                              <optgroup label="Writs &amp; Garnishments">
                                 <option value="garnishment">Garnishment</option>
+                                <option value="wage_garnishment">Wage Garnishment</option>
+                                <option value="bank_levy">Bank Levy / Account Garnishment</option>
                                 <option value="writ_of_execution">Writ of Execution</option>
                                 <option value="writ_of_restitution">Writ of Restitution</option>
                                 <option value="writ_of_garnishment">Writ of Garnishment</option>
                                 <option value="writ_of_attachment">Writ of Attachment</option>
+                                <option value="writ_of_possession">Writ of Possession</option>
+                                <option value="writ_of_assistance">Writ of Assistance</option>
+                                <option value="writ_of_mandate">Writ of Mandate / Mandamus</option>
+                                <option value="levy">Levy</option>
                               </optgroup>
                               <optgroup label="Family / Domestic">
                                 <option value="restraining_order">Protective / Restraining Order</option>
+                                <option value="temporary_protective_order">Temporary Protective Order</option>
+                                <option value="cohabitant_abuse_order">Cohabitant Abuse Protective Order</option>
                                 <option value="divorce_papers">Divorce Papers</option>
+                                <option value="divorce_petition">Divorce Petition</option>
+                                <option value="divorce_summons">Divorce Summons</option>
                                 <option value="custody_order">Custody Order</option>
+                                <option value="custody_modification">Custody Modification</option>
                                 <option value="child_support">Child Support Order</option>
+                                <option value="child_support_modification">Child Support Modification</option>
+                                <option value="paternity_action">Paternity Action</option>
+                                <option value="adoption_papers">Adoption Papers</option>
+                                <option value="guardianship">Guardianship Petition</option>
+                                <option value="termination_of_parental_rights">Termination of Parental Rights</option>
                                 <option value="stalking_injunction">Stalking Injunction</option>
                               </optgroup>
                               <optgroup label="Real Property">
                                 <option value="eviction">Eviction Notice</option>
                                 <option value="unlawful_detainer">Unlawful Detainer</option>
                                 <option value="notice_to_quit">Notice to Quit</option>
+                                <option value="three_day_notice">3-Day Notice to Pay or Quit</option>
+                                <option value="five_day_notice">5-Day Notice (Commercial)</option>
+                                <option value="fifteen_day_notice">15-Day Notice (Month-to-Month)</option>
                                 <option value="foreclosure">Foreclosure Notice</option>
+                                <option value="notice_of_default">Notice of Default</option>
+                                <option value="lis_pendens">Lis Pendens</option>
+                                <option value="quiet_title">Quiet Title Action</option>
                               </optgroup>
-                              <optgroup label="Court Orders">
+                              <optgroup label="Court Orders &amp; Motions">
                                 <option value="court_order">Court Order</option>
                                 <option value="temporary_order">Temporary Order</option>
+                                <option value="temporary_restraining_order">Temporary Restraining Order</option>
+                                <option value="preliminary_injunction">Preliminary Injunction</option>
+                                <option value="permanent_injunction">Permanent Injunction</option>
                                 <option value="motion">Motion / Petition</option>
+                                <option value="motion_for_contempt">Motion for Contempt</option>
+                                <option value="motion_to_compel">Motion to Compel</option>
                                 <option value="notice_of_hearing">Notice of Hearing</option>
                                 <option value="order_to_show_cause">Order to Show Cause</option>
+                                <option value="judgment">Judgment</option>
+                                <option value="default_judgment">Default Judgment</option>
+                              </optgroup>
+                              <optgroup label="Probate &amp; Estate">
+                                <option value="probate_petition">Probate Petition</option>
+                                <option value="letters_testamentary">Letters Testamentary</option>
+                                <option value="creditor_claim">Creditor Claim (Probate)</option>
+                              </optgroup>
+                              <optgroup label="Bankruptcy">
+                                <option value="bankruptcy_notice">Bankruptcy Notice</option>
+                                <option value="adversary_proceeding">Adversary Proceeding</option>
+                              </optgroup>
+                              <optgroup label="Discovery">
+                                <option value="notice_of_deposition">Notice of Deposition</option>
+                                <option value="interrogatories">Interrogatories</option>
+                                <option value="request_for_production">Request for Production</option>
+                                <option value="request_for_admission">Request for Admission</option>
                               </optgroup>
                               <optgroup label="Other">
                                 <option value="demand_letter">Demand Letter</option>
                                 <option value="cease_and_desist">Cease &amp; Desist</option>
+                                <option value="affidavit">Affidavit</option>
+                                <option value="declaration">Declaration</option>
+                                <option value="stipulation">Stipulation</option>
                                 <option value="other">Other</option>
                               </optgroup>
                             </select>
@@ -4568,26 +4724,56 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-amber-400">Service Result</label>
                             <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
-                              <optgroup label="Successful">
+                              <optgroup label="Successful Service">
                                 <option value="served">Personal Service</option>
                                 <option value="substitute_service">Substitute Service</option>
                                 <option value="abode_service">Abode / Dwelling Service</option>
                                 <option value="posted">Posted (Nail &amp; Mail)</option>
-                                <option value="left_with">Left With (Co-Resident)</option>
+                                <option value="left_with">Left With (Co-Resident / Co-Worker)</option>
+                                <option value="left_at_door">Left at Door (Conspicuous Place)</option>
+                                <option value="served_agent">Served on Agent / Registered Agent</option>
+                                <option value="served_attorney">Served on Attorney of Record</option>
+                                <option value="served_corporate">Served on Corporate Officer</option>
+                                <option value="served_manager">Served on Manager / Supervisor</option>
+                                <option value="served_secretary_of_state">Served via Secretary of State</option>
+                                <option value="acknowledged">Acknowledged / Accepted Service</option>
+                                <option value="certified_mail">Certified Mail (Return Receipt)</option>
                               </optgroup>
-                              <optgroup label="Unsuccessful">
+                              <optgroup label="Unsuccessful — Attempt Made">
                                 <option value="no_answer">No Answer / Not Home</option>
-                                <option value="unable_to_locate">Unable to Locate</option>
+                                <option value="no_contact">No Contact Made</option>
                                 <option value="refused">Refused Service</option>
                                 <option value="evasion">Evasion / Avoiding Service</option>
-                                <option value="bad_address">Bad / Invalid Address</option>
-                                <option value="moved">Subject Moved</option>
-                                <option value="deceased">Subject Deceased</option>
+                                <option value="gate_locked">Gated / Locked — No Access</option>
+                                <option value="aggressive_animal">Aggressive Animal / Dog</option>
+                                <option value="unsafe_conditions">Unsafe Conditions</option>
+                                <option value="wrong_person">Wrong Person at Address</option>
+                                <option value="not_recognized">Subject Not Recognized at Location</option>
                               </optgroup>
-                              <optgroup label="Other">
+                              <optgroup label="Unsuccessful — Cannot Serve">
+                                <option value="unable_to_locate">Unable to Locate</option>
+                                <option value="bad_address">Bad / Invalid Address</option>
+                                <option value="address_vacant">Address Vacant / Abandoned</option>
+                                <option value="address_commercial">Address is Commercial (Need Residential)</option>
+                                <option value="moved">Subject Moved</option>
+                                <option value="moved_out_of_state">Subject Moved Out of State</option>
+                                <option value="deceased">Subject Deceased</option>
+                                <option value="incarcerated">Subject Incarcerated</option>
+                                <option value="military">Subject on Active Military Duty</option>
                                 <option value="non_est">Non Est Inventus (Not Found)</option>
+                                <option value="due_diligence_exhausted">Due Diligence Exhausted</option>
+                              </optgroup>
+                              <optgroup label="Administrative">
                                 <option value="unable_to_serve">Unable to Serve (General)</option>
                                 <option value="returned_to_attorney">Returned to Attorney</option>
+                                <option value="returned_to_court">Returned to Court</option>
+                                <option value="returned_to_client">Returned to Client</option>
+                                <option value="expired">Documents Expired</option>
+                                <option value="recalled">Service Recalled / Cancelled</option>
+                                <option value="duplicate">Duplicate / Already Served</option>
+                                <option value="insufficient_info">Insufficient Information</option>
+                                <option value="jurisdiction_issue">Jurisdiction Issue</option>
+                                <option value="referred_out">Referred to Another Server</option>
                                 <option value="other">Other</option>
                               </optgroup>
                             </select>
