@@ -470,7 +470,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   <WarrantBadge flags={person.flags} size="sm" />
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {person.date_of_birth && <span>DOB: {person.date_of_birth}</span>}
+                  {person.date_of_birth && <span>DOB: {person.date_of_birth}{(() => { const b = new Date(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
                   {person.gender && <span>{person.gender}</span>}
                   {person.race && <span>{person.race}</span>}
                   {person.phone && (
@@ -603,7 +603,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         )}
         {/* Compact person ID line */}
         <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-          {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}</span>}
+          {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}{(() => { const b = new Date(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
           {selectedPerson.gender && <span>{selectedPerson.gender}</span>}
           {selectedPerson.race && <span>{selectedPerson.race}</span>}
         </div>

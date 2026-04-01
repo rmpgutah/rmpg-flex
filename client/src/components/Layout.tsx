@@ -394,6 +394,7 @@ export default function Layout() {
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
+  const [callsByPriority, setCallsByPriority] = useState<{priority: string; count: number}[]>([]);
   const [activeBOLOs, setActiveBOLOs] = useState(0);
   const [emailUnreadCount, setEmailUnreadCount] = useState(0);
 
@@ -595,6 +596,7 @@ export default function Layout() {
     try {
       const stats = await apiFetch<any>('/dispatch/stats');
       setActiveCallCount(stats.activeCalls || 0);
+      if (Array.isArray(stats.callsByPriority)) setCallsByPriority(stats.callsByPriority);
     } catch { /* silent */ }
     try {
       const bolos = await apiFetch<any>('/comms/bolos/active');
@@ -1421,6 +1423,7 @@ export default function Layout() {
           isConnected={isConnected}
           user={user}
           activeCallCount={activeCallCount}
+          callsByPriority={callsByPriority}
           activeBOLOs={activeBOLOs}
           gpsTracking={gps.isTracking}
           gpsUnitCallSign={gps.unitCallSign}

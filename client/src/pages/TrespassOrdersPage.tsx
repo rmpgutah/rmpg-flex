@@ -75,7 +75,8 @@ export default function TrespassOrdersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterStatus, setFilterStatus] = useState('active');
+  const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -411,7 +412,24 @@ export default function TrespassOrdersPage() {
             style={isMobile ? { minHeight: 44 } : undefined} />
         </div>
         <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
-          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
+          <button
+            type="button"
+            className={`text-[9px] font-bold uppercase px-2 py-1 border transition-colors ${
+              showActiveOnly
+                ? 'bg-green-900/50 text-green-400 border-green-700/50'
+                : 'bg-rmpg-700/30 text-rmpg-400 border-rmpg-600/50'
+            }`}
+            onClick={() => {
+              const next = !showActiveOnly;
+              setShowActiveOnly(next);
+              setFilterStatus(next ? 'active' : '');
+              setPage(1);
+            }}
+            title={showActiveOnly ? 'Showing active only — click to show all' : 'Showing all — click to show active only'}
+          >
+            {showActiveOnly ? 'ACTIVE ONLY' : 'ALL ORDERS'}
+          </button>
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setShowActiveOnly(false); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Statuses</option>
             <option value="active">Active</option>
             <option value="served">Served</option>

@@ -617,6 +617,35 @@ export default function MenuBar({
       { type: 'action', label: 'Global Search', icon: Search, shortcut: 'Ctrl+K', action: onSearch },
       { type: 'action', label: 'NCIC Query Terminal', icon: Terminal, action: () => navigate('/ncic') },
       { type: 'separator' },
+      { type: 'action', label: 'Quick Timer', icon: Clock, action: () => {
+        const input = prompt('Timer duration in minutes:', '15');
+        if (!input) return;
+        const minutes = parseInt(input, 10);
+        if (isNaN(minutes) || minutes <= 0 || minutes > 999) return;
+        const endTime = Date.now() + minutes * 60 * 1000;
+        const timerInterval = setInterval(() => {
+          const remaining = endTime - Date.now();
+          if (remaining <= 0) {
+            clearInterval(timerInterval);
+            document.title = 'TIMER DONE - RMPG Flex';
+            try {
+              const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+              for (let i = 0; i < 3; i++) {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'sine'; osc.frequency.value = 800;
+                gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.3);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.3 + 0.25);
+                osc.start(ctx.currentTime + i * 0.3); osc.stop(ctx.currentTime + i * 0.3 + 0.25);
+              }
+            } catch {}
+            alert(`Timer: ${minutes} minutes elapsed!`);
+            document.title = 'RMPG Flex';
+          }
+        }, 1000);
+      }},
+      { type: 'separator' },
       {
         type: 'submenu',
         label: 'Dispatch & Field',

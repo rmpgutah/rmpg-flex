@@ -396,6 +396,13 @@ export default function FieldInterviewsPage() {
                 <div className="text-xs text-white font-medium flex items-center gap-1.5">
                   {fi.subject_last_name ? `${fi.subject_last_name}, ${fi.subject_first_name || ''}` : 'Unknown Subject'}
                   {fi.person_flags && <WarrantBadge flags={fi.person_flags} size="sm" />}
+                  {(() => {
+                    if (!fi.subject_last_name) return null;
+                    const key = `${fi.subject_last_name}|${fi.subject_first_name || ''}`.toLowerCase();
+                    const count = fis.filter(f => `${f.subject_last_name}|${f.subject_first_name || ''}`.toLowerCase() === key).length;
+                    if (count >= 2) return <span className="text-[8px] font-bold px-1 py-0 bg-orange-900/50 text-orange-400 border border-orange-700/50">REPEAT ({count})</span>;
+                    return null;
+                  })()}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
                   <MapPin className="w-3 h-3 flex-shrink-0" />

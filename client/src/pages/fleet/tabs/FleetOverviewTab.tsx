@@ -123,6 +123,31 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
         </div>
       </div>
 
+      {/* Mileage Since Last Service */}
+      {(() => {
+        const lastSvcMileage = maintenance.length > 0
+          ? maintenance.reduce((latest, m) => {
+              if (!m.mileage_at_service) return latest;
+              if (!latest || new Date(m.performed_at) > new Date(latest.performed_at)) return m;
+              return latest;
+            }, null as (typeof maintenance[0]) | null)?.mileage_at_service
+          : null;
+        if (lastSvcMileage != null && detail.current_mileage != null) {
+          const diff = detail.current_mileage - lastSvcMileage;
+          const color = diff > 5000 ? '#ef4444' : diff > 3000 ? '#f59e0b' : '#22c55e';
+          return (
+            <div className="panel-beveled p-2 bg-surface-sunken flex items-center gap-2">
+              <Gauge className="w-3.5 h-3.5" style={{ color }} />
+              <span className="text-[10px] text-rmpg-300">Miles since last service:</span>
+              <span className="font-mono font-bold text-sm" style={{ color }}>{diff.toLocaleString()}</span>
+              {diff > 5000 && <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold">SERVICE DUE</span>}
+              {diff > 3000 && diff <= 5000 && <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold">APPROACHING</span>}
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* Vehicle Info */}
       <div className="panel-beveled p-3 bg-surface-base">
         <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2.5 flex items-center gap-1.5">

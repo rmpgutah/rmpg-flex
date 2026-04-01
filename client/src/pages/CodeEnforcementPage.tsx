@@ -416,7 +416,19 @@ export default function CodeEnforcementPage() {
                 style={isMobile ? { minHeight: 56 } : undefined}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-mono font-bold text-white">{v.violation_number}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-mono font-bold text-white">{v.violation_number}</span>
+                    {(v as any).severity && (v as any).severity !== 'low' && (
+                      <span className={`text-[8px] font-bold px-1 py-0 border ${
+                        (v as any).severity === 'critical' ? 'bg-red-900/60 text-red-400 border-red-700/50' :
+                        (v as any).severity === 'high' || (v as any).severity === 'major' ? 'bg-orange-900/50 text-orange-400 border-orange-700/50' :
+                        (v as any).severity === 'moderate' || (v as any).severity === 'medium' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                        'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                      }`}>
+                        {((v as any).severity || '').toUpperCase()}
+                      </span>
+                    )}
+                  </div>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${VIOLATION_STATUS_COLORS[v.status] || ''}`}>
                     {v.status.replace(/_/g, ' ').toUpperCase()}
                   </span>
@@ -555,7 +567,7 @@ export default function CodeEnforcementPage() {
                   ['Location', selectedViolation.location],
                   ['Description', selectedViolation.description],
                   ['Code Section', selectedViolation.code_section || '—'],
-                  ['Severity', selectedViolation.severity],
+                  ['Severity', selectedViolation.severity ? selectedViolation.severity.charAt(0).toUpperCase() + selectedViolation.severity.slice(1) : '—'],
                   ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
                   ['S/Z/B', [(selectedViolation as any).section_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],

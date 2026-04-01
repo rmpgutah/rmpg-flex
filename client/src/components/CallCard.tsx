@@ -205,7 +205,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         ${isEmergency ? 'animate-emergency-pulse' : ''}
         ${isOverdue ? 'timer-overdue' : ''}
         ${call.status === 'on_hold' ? 'call-on-hold' : ''}
-        ${call.priority === 'P1' ? 'p1-pulse-border' : ''}
+        ${call.priority === 'P1' ? 'p1-pulse-border' : call.priority === 'P2' ? 'p2-pulse-border' : ''}
         ${call.status === 'archived' ? 'opacity-60' : ''}
       `}
       style={{

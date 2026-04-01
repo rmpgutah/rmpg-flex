@@ -724,7 +724,19 @@ export default function ArrestRecordsPage() {
             <div>
               <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
               {rec.booking_number && (
-                <span className="text-[9px] font-mono text-rmpg-400">Booking #{rec.booking_number}</span>
+                <button
+                  type="button"
+                  className="text-[9px] font-mono text-rmpg-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1 group"
+                  title="Click to copy booking number"
+                  onClick={() => {
+                    navigator.clipboard.writeText(rec.booking_number!).then(() => {
+                      // brief visual feedback via title attribute
+                    }).catch(() => {});
+                  }}
+                >
+                  Booking #{rec.booking_number}
+                  <span className="opacity-0 group-hover:opacity-70 text-[8px] text-brand-400 transition-opacity">COPY</span>
+                </button>
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">

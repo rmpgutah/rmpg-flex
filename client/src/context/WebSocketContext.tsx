@@ -135,6 +135,39 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
+          // Play alert tone for high-priority calls (P1/P2)
+          if (message.type === 'calls:created' || message.type === 'calls:updated') {
+            const payload = (message as any).data || (message as any).call || message;
+            const priority = payload?.priority;
+            if (priority === 'P1' || priority === 'P2') {
+              try {
+                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = priority === 'P1' ? 'square' : 'triangle';
+                osc.frequency.setValueAtTime(priority === 'P1' ? 880 : 660, ctx.currentTime);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.5);
+                if (priority === 'P1') {
+                  const osc2 = ctx.createOscillator();
+                  const gain2 = ctx.createGain();
+                  osc2.connect(gain2);
+                  gain2.connect(ctx.destination);
+                  osc2.type = 'square';
+                  osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
+                  gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.15);
+                  gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+                  osc2.start(ctx.currentTime + 0.15);
+                  osc2.stop(ctx.currentTime + 0.6);
+                }
+              } catch { /* Audio not available */ }
+            }
+          }
+
           // Broadcast to type-specific subscribers only — no global state update
           // This avoids re-rendering every component on every WS message
           const handlers = subscribersRef.current.get(message.type);

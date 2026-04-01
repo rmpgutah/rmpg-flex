@@ -859,6 +859,20 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     // Generate incident number
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
 
+    // Build narrative from CFS description + caller info + notes
+    const narrativeParts: string[] = [];
+    if (call.description) narrativeParts.push(call.description);
+    if (call.caller_name || call.caller_phone) {
+      const callerLine = ['Reporting Party:', call.caller_name, call.caller_phone ? `(${call.caller_phone})` : '', call.caller_relationship ? `[${call.caller_relationship}]` : ''].filter(Boolean).join(' ');
+      narrativeParts.push(callerLine);
+    }
+    // Include CFS notes field if present
+    if (call.notes) {
+      narrativeParts.push('--- CFS Notes ---');
+      narrativeParts.push(call.notes);
+    }
+    const fullNarrative = narrativeParts.join('\n') || null;
+
     // Transaction: create incident + audit log atomically
     const promoteTx = db.transaction(() => {
       const result = db.prepare(`
@@ -876,7 +890,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
         call.property_id || null,
         call.latitude ?? null,
         call.longitude ?? null,
-        call.description || null,
+        fullNarrative,
         req.user!.userId,
         call.zone_beat || null,
         call.section_id || null,

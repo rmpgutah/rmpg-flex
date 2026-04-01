@@ -959,11 +959,11 @@ export default function PersonnelPage() {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="flex items-center gap-1.5 justify-end">
-                    <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
+                    <span className={officer.status === 'on_duty' ? 'led-dot led-green' : officer.status === 'on_leave' ? 'led-dot led-amber' : 'led-dot led-off'} />
                     <span className={`text-[10px] font-bold uppercase ${
-                      officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-500'
+                      officer.status === 'on_duty' ? 'text-green-400' : officer.status === 'on_leave' ? 'text-amber-400' : 'text-rmpg-500'
                     }`}>
-                      {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
+                      {officer.status === 'on_duty' ? 'ON DUTY' : officer.status === 'on_leave' ? 'ON LEAVE' : 'OFF DUTY'}
                     </span>
                   </div>
                   {officer.shift_preference && (

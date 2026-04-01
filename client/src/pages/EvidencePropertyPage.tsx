@@ -579,7 +579,7 @@ export default function EvidencePropertyPage() {
                 aria-selected={selected?.id === item.id}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono font-bold text-white truncate">
+                  <span className="text-[11px] font-mono font-bold text-white truncate px-1.5 py-0.5" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.06) 2px, rgba(255,255,255,0.06) 4px)', letterSpacing: '0.08em' }}>
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>

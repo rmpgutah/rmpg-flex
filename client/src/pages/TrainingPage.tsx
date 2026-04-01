@@ -953,14 +953,16 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                       <span className="flex items-center gap-1">
                         <span className={
                           new Date(record.expiry_date) < new Date() ? 'text-red-400 font-bold' :
-                          new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' : ''
+                          new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' :
+                          new Date(record.expiry_date) <= new Date(Date.now() + 60 * 86400000) ? 'text-yellow-400' : ''
                         }>{formatDate(record.expiry_date)}</span>
-                        {new Date(record.expiry_date) < new Date() && (
-                          <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase">EXPIRED</span>
-                        )}
-                        {new Date(record.expiry_date) >= new Date() && new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) && (
-                          <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold uppercase">EXPIRING</span>
-                        )}
+                        {(() => {
+                          const days = Math.ceil((new Date(record.expiry_date).getTime() - Date.now()) / 86400000);
+                          if (days < 0) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase animate-pulse">EXPIRED {Math.abs(days)}d</span>;
+                          if (days <= 30) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase">{days}d LEFT</span>;
+                          if (days <= 60) return <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold uppercase">{days}d LEFT</span>;
+                          return <span className="text-[8px] px-1 py-0 text-green-400 font-mono">{days}d</span>;
+                        })()}
                       </span>
                     ) : '—'}
                   </td>

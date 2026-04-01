@@ -15,6 +15,7 @@ interface StatusBarProps {
   isConnected: boolean;
   user: { first_name: string; last_name: string; role: string; badge_number?: string } | null;
   activeCallCount: number;
+  callsByPriority?: { priority: string; count: number }[];
   activeBOLOs: number;
   gpsTracking?: boolean;
   gpsUnitCallSign?: string | null;
@@ -26,6 +27,7 @@ export default function StatusBar({
   isConnected,
   user,
   activeCallCount,
+  callsByPriority,
   activeBOLOs,
   gpsTracking,
   gpsUnitCallSign,
@@ -55,9 +57,15 @@ export default function StatusBar({
         <span style={{ letterSpacing: '0.02em' }}>RMPG-FLEX v{APP_VERSION}</span>
       </div>
 
-      {/* 28: Active Calls with tabular-nums and color highlight */}
+      {/* 28: Active Calls with tabular-nums and color highlight + priority breakdown */}
       <div className="status-bar-section">
-        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span></span>
+        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span>
+        {callsByPriority && callsByPriority.length > 0 && activeCallCount > 0 && (
+          <span style={{ color: '#5a6e80', marginLeft: 4 }}>
+            ({callsByPriority.filter(p => p.count > 0).map(p => `${p.count} ${p.priority}`).join(', ')})
+          </span>
+        )}
+        </span>
       </div>
 
       {/* 29: BOLOs with tabular-nums */}

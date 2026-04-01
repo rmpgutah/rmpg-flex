@@ -361,10 +361,21 @@ export default function DailyActivityReportsPage() {
               </div>
 
               {/* Shift Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-white">{selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Start</div><div className="text-xs text-white">{selected.shift_start || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">End</div><div className="text-xs text-white">{selected.shift_end || '—'}</div></div>
+                <div><div className="text-[9px] font-mono text-rmpg-500">Total Hours</div><div className="text-xs font-bold text-brand-400">{(() => {
+                  if (!selected.shift_start || !selected.shift_end) return '—';
+                  const [sh, sm] = selected.shift_start.split(':').map(Number);
+                  const [eh, em] = selected.shift_end.split(':').map(Number);
+                  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return '—';
+                  let diff = (eh * 60 + em) - (sh * 60 + sm);
+                  if (diff < 0) diff += 24 * 60; // overnight shift
+                  const hrs = Math.floor(diff / 60);
+                  const mins = diff % 60;
+                  return `${hrs}h ${mins > 0 ? `${mins}m` : ''}`;
+                })()}</div></div>
               </div>
 
               {/* Narrative Section */}
