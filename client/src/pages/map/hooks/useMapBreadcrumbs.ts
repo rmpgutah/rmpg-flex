@@ -6,10 +6,10 @@ import { escapeHtml } from '../../../utils/sanitize';
 const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
 
 // Fix 15: cap trail points per unit to prevent performance issues
-const MAX_TRAIL_POINTS_PER_UNIT = 500;
+const MAX_TRAIL_POINTS_PER_UNIT = 2000;
 
 // Fix 18: minimum distance between trail points (meters) for deduplication
-const MIN_TRAIL_POINT_DISTANCE_M = 1;
+const MIN_TRAIL_POINT_DISTANCE_M = 0.5;
 
 // Haversine distance in meters between two lat/lng points
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -21,15 +21,45 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Speed-to-color mapping for breadcrumb speed mode (m/s → mph thresholds)
-export const speedToColor = (mps: number | null): string => {
-  if (mps == null || !Number.isFinite(mps) || mps < 0.5) return '#6b7280';
-  const mph = mps * 2.237;
-  if (mph < 15) return '#22c55e';
-  if (mph < 35) return '#eab308';
-  if (mph < 55) return '#f97316';
-  return '#ef4444';
+// Enhanced speed ranges — 8 bands for law enforcement detail
+// Speed stored as m/s in DB; convert to mph for thresholds
+const MPS_TO_MPH = 2.23694;
+
+export const speedToColor = (speedMps: number | null): string => {
+  if (speedMps == null || !Number.isFinite(speedMps) || speedMps < 0.2) return '#6b7280';  // Stationary (gray)
+  const mph = speedMps * MPS_TO_MPH;
+  if (mph < 3)   return '#9ca3af';   // Walking (light gray)
+  if (mph < 10)  return '#06b6d4';   // Jogging/Slow drive (cyan)
+  if (mph < 25)  return '#22c55e';   // Residential (green)
+  if (mph < 35)  return '#84cc16';   // City street (lime)
+  if (mph < 45)  return '#eab308';   // Urban arterial (yellow)
+  if (mph < 55)  return '#f97316';   // Highway approach (orange)
+  if (mph < 75)  return '#ef4444';   // Highway/freeway (red)
+  return '#dc2626';                    // Pursuit/emergency (dark red)
 };
+
+// Speed-to-stroke-weight for dynamic trail thickness
+const speedToWeight = (speedMps: number | null): number => {
+  if (speedMps == null || !Number.isFinite(speedMps) || speedMps < 0.2) return 1; // Stationary
+  const mph = speedMps * MPS_TO_MPH;
+  if (mph < 3)  return 2;  // Walking/slow
+  if (mph < 35) return 3;  // Driving
+  if (mph < 75) return 4;  // Fast/highway
+  return 5;                  // Pursuit
+};
+
+// Speed legend data — exported for use in panels
+export const SPEED_LEGEND_BANDS = [
+  { color: '#6b7280', label: 'Stationary', range: '0 mph' },
+  { color: '#9ca3af', label: 'Walking', range: '<3 mph' },
+  { color: '#06b6d4', label: 'Slow Drive', range: '3-10 mph' },
+  { color: '#22c55e', label: 'Residential', range: '10-25 mph' },
+  { color: '#84cc16', label: 'City Street', range: '25-35 mph' },
+  { color: '#eab308', label: 'Arterial', range: '35-45 mph' },
+  { color: '#f97316', label: 'Highway', range: '45-55 mph' },
+  { color: '#ef4444', label: 'Freeway', range: '55-75 mph' },
+  { color: '#dc2626', label: 'Pursuit', range: '75+ mph' },
+];
 
 // Unit status to color for breadcrumb status mode
 const statusToColor = (status: string): string => {
@@ -57,6 +87,7 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
   const breadcrumbMarkersRef = useRef<google.maps.Circle[]>([]);
   const breadcrumbArrowsRef = useRef<google.maps.Marker[]>([]);
+  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
   const breadcrumbInfoRef = useRef<google.maps.InfoWindow | null>(null);
 
   // Trail playback state
@@ -79,6 +110,8 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
     breadcrumbMarkersRef.current = [];
     breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
     breadcrumbArrowsRef.current = [];
+    speedAlertMarkersRef.current.forEach((a) => a.setMap(null));
+    speedAlertMarkersRef.current = [];
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
@@ -123,6 +156,8 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((a) => a.setMap(null));
+      speedAlertMarkersRef.current = [];
 
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
@@ -172,7 +207,7 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
                 geodesic: true,
                 strokeColor: segColor,
                 strokeOpacity: opacity,
-                strokeWeight: 3,
+                strokeWeight: breadcrumbColorMode === 'speed' ? speedToWeight(p1.speed) : 3,
                 map,
               });
               breadcrumbLinesRef.current.push(seg);
@@ -182,7 +217,7 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
           }
 
           points.forEach((pt, ptIdx) => {
-            if (ptIdx % 8 !== 4 || pt.heading == null) return;
+            if (ptIdx % 5 !== 2 || pt.heading == null) return;
             const freshness = (ptIdx + 1) / points.length;
             const arrow = new google.maps.Marker({
               position: { lat: pt.lat, lng: pt.lng },
@@ -261,6 +296,39 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
 
             breadcrumbMarkersRef.current.push(dot);
           });
+
+          // Speed alert markers — exclamation at 80+ mph
+          points.forEach((pt) => {
+            if (pt.speed != null && Number.isFinite(pt.speed) && pt.speed * MPS_TO_MPH >= 80) {
+              try {
+                const alertMarker = new google.maps.Marker({
+                  position: { lat: pt.lat, lng: pt.lng },
+                  map,
+                  icon: {
+                    path: 'M -6,-6 L 6,-6 L 0,6 Z',
+                    scale: 1.8,
+                    fillColor: '#dc2626',
+                    fillOpacity: 0.95,
+                    strokeColor: '#fbbf24',
+                    strokeWeight: 2,
+                    strokeOpacity: 1,
+                    anchor: new google.maps.Point(0, 0),
+                  },
+                  label: {
+                    text: '!',
+                    color: '#ffffff',
+                    fontWeight: '900',
+                    fontSize: '11px',
+                  },
+                  title: `Speed Alert: ${(pt.speed * MPS_TO_MPH).toFixed(0)} mph`,
+                  zIndex: 5000,
+                });
+                speedAlertMarkersRef.current.push(alertMarker);
+              } catch (err) {
+                // ignore individual marker errors
+              }
+            }
+          });
         });
       } catch (err) {
         console.warn('[useMapBreadcrumbs] Trail fetch failed:', err);
@@ -283,6 +351,8 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((a) => a.setMap(null));
+      speedAlertMarkersRef.current = [];
     };
   }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded, mapInstanceRef]);
 

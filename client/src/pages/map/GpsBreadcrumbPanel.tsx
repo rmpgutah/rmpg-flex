@@ -13,6 +13,7 @@ import {
   MapPin,
   Gauge,
   Navigation2,
+  AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
@@ -68,14 +69,41 @@ interface Props {
 
 const TRAIL_COLOR = '#f59e0b'; // amber for history trail (distinct from live cyan trails)
 
-const speedToColor = (mps: number | null): string => {
-  if (mps == null || mps < 0.5) return '#6b7280';
-  const mph = mps * 2.237;
-  if (mph < 15) return '#22c55e';
-  if (mph < 35) return '#eab308';
-  if (mph < 55) return '#f97316';
-  return '#ef4444';
+const MPS_TO_MPH = 2.23694;
+
+const speedToColor = (speedMps: number | null): string => {
+  if (speedMps == null || speedMps < 0.2) return '#6b7280';
+  const mph = speedMps * MPS_TO_MPH;
+  if (mph < 3)   return '#9ca3af';
+  if (mph < 10)  return '#06b6d4';
+  if (mph < 25)  return '#22c55e';
+  if (mph < 35)  return '#84cc16';
+  if (mph < 45)  return '#eab308';
+  if (mph < 55)  return '#f97316';
+  if (mph < 75)  return '#ef4444';
+  return '#dc2626';
 };
+
+const speedToWeight = (speedMps: number | null): number => {
+  if (speedMps == null || speedMps < 0.2) return 1;
+  const mph = speedMps * MPS_TO_MPH;
+  if (mph < 3)  return 2;
+  if (mph < 35) return 3;
+  if (mph < 75) return 4;
+  return 5;
+};
+
+const SPEED_LEGEND_BANDS = [
+  { color: '#6b7280', label: 'Stationary', range: '0 mph' },
+  { color: '#9ca3af', label: 'Walking', range: '<3 mph' },
+  { color: '#06b6d4', label: 'Slow Drive', range: '3-10 mph' },
+  { color: '#22c55e', label: 'Residential', range: '10-25 mph' },
+  { color: '#84cc16', label: 'City Street', range: '25-35 mph' },
+  { color: '#eab308', label: 'Arterial', range: '35-45 mph' },
+  { color: '#f97316', label: 'Highway', range: '45-55 mph' },
+  { color: '#ef4444', label: 'Freeway', range: '55-75 mph' },
+  { color: '#dc2626', label: 'Pursuit', range: '75+ mph' },
+];
 
 const statusToColor = (status: string): string => {
   switch (status) {
@@ -145,6 +173,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const polyLinesRef = useRef<google.maps.Polyline[]>([]);
   const dotMarkersRef = useRef<google.maps.Circle[]>([]);
   const arrowMarkersRef = useRef<google.maps.Marker[]>([]);
+  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
@@ -167,6 +196,8 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     dotMarkersRef.current = [];
     arrowMarkersRef.current.forEach((a) => a.setMap(null));
     arrowMarkersRef.current = [];
+    speedAlertMarkersRef.current.forEach((a) => a.setMap(null));
+    speedAlertMarkersRef.current = [];
     if (playbackMarkerRef.current) {
       playbackMarkerRef.current.setMap(null);
       playbackMarkerRef.current = null;
@@ -240,15 +271,15 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
         geodesic: true,
         strokeColor: speedToColor(p1.speed),
         strokeOpacity: opacity,
-        strokeWeight: 4,
+        strokeWeight: speedToWeight(p1.speed),
         map,
       });
       polyLinesRef.current.push(seg);
     }
 
-    // Directional arrows every 8th point
+    // Directional arrows every 5th point
     pts.forEach((pt, ptIdx) => {
-      if (ptIdx % 8 !== 4 || pt.heading == null) return;
+      if (ptIdx % 5 !== 2 || pt.heading == null) return;
       const arrow = new google.maps.Marker({
         position: { lat: pt.lat, lng: pt.lng },
         map,
@@ -317,6 +348,39 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       });
 
       dotMarkersRef.current.push(dot);
+    });
+
+    // Speed alert markers — exclamation at 80+ mph
+    pts.forEach((pt) => {
+      if (pt.speed != null && pt.speed * MPS_TO_MPH >= 80) {
+        try {
+          const alertMarker = new google.maps.Marker({
+            position: { lat: pt.lat, lng: pt.lng },
+            map,
+            icon: {
+              path: 'M -6,-6 L 6,-6 L 0,6 Z',
+              scale: 1.8,
+              fillColor: '#dc2626',
+              fillOpacity: 0.95,
+              strokeColor: '#fbbf24',
+              strokeWeight: 2,
+              strokeOpacity: 1,
+              anchor: new google.maps.Point(0, 0),
+            },
+            label: {
+              text: '!',
+              color: '#ffffff',
+              fontWeight: '900',
+              fontSize: '11px',
+            },
+            title: `Speed Alert: ${(pt.speed * MPS_TO_MPH).toFixed(0)} mph`,
+            zIndex: 5000,
+          });
+          speedAlertMarkersRef.current.push(alertMarker);
+        } catch (err) {
+          // ignore individual marker errors
+        }
+      }
     });
 
     // Fit map to trail bounds
@@ -529,22 +593,31 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               )}
             </div>
 
-            {/* Speed legend */}
-            <div className="flex items-center gap-1.5 px-1">
-              <Gauge className="w-2.5 h-2.5 text-rmpg-400" />
-              {[
-                ['#6b7280', 'Stop'],
-                ['#22c55e', '<15'],
-                ['#eab308', '15-35'],
-                ['#f97316', '35-55'],
-                ['#ef4444', '55+'],
-              ].map(([color, label]) => (
-                <span key={label} className="flex items-center gap-0.5">
-                  <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-                  <span className="text-[7px] text-rmpg-400 font-mono">{label}</span>
-                </span>
-              ))}
-              <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
+            {/* Speed legend — 8 bands */}
+            <div className="panel-inset bg-surface-deep px-2 py-1.5 space-y-1">
+              <div className="flex items-center gap-1 mb-0.5">
+                <Gauge className="w-2.5 h-2.5 text-rmpg-400" />
+                <span className="text-[8px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Speed Legend</span>
+              </div>
+              <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
+                {SPEED_LEGEND_BANDS.map((band) => (
+                  <span key={band.label} className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: band.color }} />
+                    <span className="text-[7px] text-rmpg-300 font-mono truncate" title={`${band.label}: ${band.range}`}>{band.range}</span>
+                  </span>
+                ))}
+              </div>
+              {/* Gradient strip */}
+              <div className="mt-1">
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #6b7280, #9ca3af, #06b6d4, #22c55e, #84cc16, #eab308, #f97316, #ef4444, #dc2626)', boxShadow: '0 0 4px rgba(234,179,8,0.2)' }} />
+                <div className="flex justify-between mt-0.5">
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">0</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">10</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">25</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">45</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">75+</span>
+                </div>
+              </div>
             </div>
 
             {/* Start/end legend */}
@@ -559,16 +632,105 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               </span>
             </div>
 
-            {/* #46: Trail color gradient strip with taller bar and labels */}
-            <div className="px-1">
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #6b7280, #22c55e, #eab308, #f97316, #ef4444)', boxShadow: '0 0 4px rgba(234,179,8,0.2)' }} />
-              <div className="flex justify-between mt-0.5">
-                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">0</span>
-                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">15</span>
-                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">35</span>
-                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">55+</span>
-              </div>
-            </div>
+            {/* Speed statistics */}
+            {(() => {
+              const pts = trail.points;
+              const speeds = pts.filter(p => p.speed != null && p.speed >= 0).map(p => p.speed! * MPS_TO_MPH);
+              const avgSpeed = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+              const maxSpeedVal = speeds.length > 0 ? Math.max(...speeds) : 0;
+              const maxSpeedPt = pts.find(p => p.speed != null && p.speed * MPS_TO_MPH >= maxSpeedVal - 0.01);
+              const stationaryCount = pts.filter(p => p.speed == null || p.speed < 0.2).length;
+              const movingCount = pts.length - stationaryCount;
+              const intervalSec = 15;
+              const stationaryMins = Math.round((stationaryCount * intervalSec) / 60);
+              const movingMins = Math.round((movingCount * intervalSec) / 60);
+
+              // Total distance (haversine sum in miles)
+              let totalDistM = 0;
+              for (let i = 0; i < pts.length - 1; i++) {
+                const p1 = pts[i], p2 = pts[i + 1];
+                const R = 6371000;
+                const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+                const dLng = (p2.lng - p1.lng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+                totalDistM += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+              }
+              const totalMiles = totalDistM / 1609.34;
+
+              // Speed alert count
+              const alertCount = pts.filter(p => p.speed != null && p.speed * MPS_TO_MPH >= 80).length;
+
+              // Speed distribution (count per band)
+              const bandThresholds = [0, 3, 10, 25, 35, 45, 55, 75, Infinity];
+              const bandCounts = new Array(9).fill(0);
+              for (const pt of pts) {
+                const mph = pt.speed != null ? pt.speed * MPS_TO_MPH : -1;
+                if (mph < 0 || (pt.speed != null && pt.speed < 0.2)) { bandCounts[0]++; continue; }
+                for (let b = bandThresholds.length - 1; b >= 1; b--) {
+                  if (mph >= bandThresholds[b - 1]) { bandCounts[b]++; break; }
+                }
+              }
+              // For stationary, count those with speed < 0.2 m/s or null
+              const maxBandCount = Math.max(...bandCounts, 1);
+
+              return (
+                <div className="panel-inset bg-surface-deep px-2 py-1.5 space-y-1">
+                  <div className="text-[8px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Speed Statistics</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px] font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Avg Speed:</span>
+                      <span className="text-white font-bold">{avgSpeed.toFixed(1)} mph</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Max Speed:</span>
+                      <span className="font-bold" style={{ color: speedToColor(maxSpeedPt?.speed ?? null) }}>{maxSpeedVal.toFixed(0)} mph</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Stationary:</span>
+                      <span className="text-rmpg-300">{stationaryMins}m</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Moving:</span>
+                      <span className="text-rmpg-300">{movingMins}m</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Distance:</span>
+                      <span className="text-white font-bold">{totalMiles.toFixed(2)} mi</span>
+                    </div>
+                    {maxSpeedPt && (
+                      <div className="flex justify-between">
+                        <span className="text-rmpg-500">Max at:</span>
+                        <span className="text-rmpg-300 text-[8px]">{new Date(maxSpeedPt.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                      </div>
+                    )}
+                  </div>
+                  {alertCount > 0 && (
+                    <div className="flex items-center gap-1 mt-1 px-1 py-0.5 bg-red-900/30 border border-red-800/40 rounded-sm">
+                      <AlertTriangle className="w-3 h-3 text-red-400" />
+                      <span className="text-[9px] font-mono font-bold text-red-400">{alertCount} Speed Alert{alertCount !== 1 ? 's' : ''} (80+ mph)</span>
+                    </div>
+                  )}
+                  {/* Speed distribution mini bar chart */}
+                  <div className="mt-1 space-y-0.5">
+                    <div className="text-[7px] font-mono text-rmpg-500 uppercase">Distribution</div>
+                    <div className="flex items-end gap-px h-4">
+                      {SPEED_LEGEND_BANDS.map((band, i) => (
+                        <div key={band.label} className="flex-1 flex flex-col items-center" title={`${band.label}: ${bandCounts[i]} pts`}>
+                          <div
+                            className="w-full rounded-t-sm"
+                            style={{
+                              background: band.color,
+                              height: `${Math.max((bandCounts[i] / maxBandCount) * 16, 1)}px`,
+                              opacity: bandCounts[i] > 0 ? 1 : 0.2,
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Playback controls */}
             <div className="panel-inset bg-surface-deep px-2 py-2 space-y-1.5">
