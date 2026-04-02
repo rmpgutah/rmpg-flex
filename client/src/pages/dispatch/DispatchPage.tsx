@@ -6037,7 +6037,7 @@ export default function DispatchPage() {
                 const unit = units.find(u => u.call_sign === action.callSign);
                 if (unit && unit.current_call_id) {
                   const call = calls.find(c => c.id === String(unit.current_call_id));
-                  const loc = call?.location || call?.location_address || 'unknown location';
+                  const loc = call?.location || 'unknown location';
                   announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ')}.`);
                 } else if (unit) {
                   announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')}. No active call assigned.`);
