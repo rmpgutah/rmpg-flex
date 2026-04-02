@@ -31,6 +31,13 @@ export type CommandAction =
   | { type: 'le_notify'; callNumber: string; agency?: string }
   | { type: 'select_call'; callId: string; callNumber: string }
   | { type: 'set_mileage'; callSign: string; mileageType: 'start' | 'end'; value: number }
+  | { type: 'voice_status'; callSign?: string }
+  | { type: 'voice_check'; callNumber: string }
+  | { type: 'voice_eta'; callSign: string }
+  | { type: 'voice_weather' }
+  | { type: 'voice_time' }
+  | { type: 'voice_ack' }
+  | { type: 'voice_allclear'; callNumber?: string }
   | { type: 'show_help' }
   | { type: 'none' };
 
@@ -81,6 +88,13 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
   QT:   { usage: 'QT <name or address>',      desc: 'Query trespass orders' },
   PI:   { usage: 'PI <call#>',               desc: 'Promote call to incident report' },
   LE:   { usage: 'LE <call#> [agency]',      desc: 'Notify external agency' },
+  STATUS: { usage: 'STATUS [unit]',          desc: 'Voice announce unit status' },
+  CHECK: { usage: 'CHECK <call#>',          desc: 'Voice read-back call details' },
+  ETA:  { usage: 'ETA <unit>',              desc: 'Voice announce unit ETA' },
+  WEATHER: { usage: 'WEATHER',              desc: 'Voice announce weather' },
+  TIME: { usage: 'TIME',                    desc: 'Voice announce current time' },
+  ACK:  { usage: 'ACK or 10-4',            desc: 'Play acknowledgment tone' },
+  'ALL-CLEAR': { usage: 'ALL-CLEAR [call#]', desc: 'Announce all-clear on call' },
   HELP: { usage: 'HELP',                       desc: 'Show command reference' },
 };
 
@@ -652,6 +666,108 @@ export async function executeCommand(
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
       }
+    }
+
+    // ── Voice: Status ──
+    case 'STATUS': {
+      if (args.length === 0) {
+        const active = ctx.units.filter(u => u.status !== 'off_duty');
+        return {
+          success: true,
+          message: `Voice announcing ${active.length} active units status`,
+          action: { type: 'voice_status' },
+        };
+      }
+      const unit = fuzzyFindUnit(args[0], ctx.units);
+      if (!unit) {
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice announcing status: ${unit.call_sign} — ${unit.status.toUpperCase()}`,
+        action: { type: 'voice_status', callSign: unit.call_sign },
+      };
+    }
+
+    // ── Voice: Check (read-back call details) ──
+    case 'CHECK': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: CHECK <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice read-back for ${call.call_number}`,
+        action: { type: 'voice_check', callNumber: call.call_number },
+      };
+    }
+
+    // ── Voice: ETA ──
+    case 'ETA': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: ETA <unit>', action: { type: 'none' } };
+      }
+      const unit = fuzzyFindUnit(args[0], ctx.units);
+      if (!unit) {
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice announcing ETA for ${unit.call_sign}`,
+        action: { type: 'voice_eta', callSign: unit.call_sign },
+      };
+    }
+
+    // ── Voice: Weather ──
+    case 'WEATHER': {
+      return {
+        success: true,
+        message: 'Voice announcing current weather',
+        action: { type: 'voice_weather' },
+      };
+    }
+
+    // ── Voice: Time ──
+    case 'TIME': {
+      return {
+        success: true,
+        message: 'Voice announcing current time',
+        action: { type: 'voice_time' },
+      };
+    }
+
+    // ── Voice: Acknowledgment ──
+    case 'ACK':
+    case '10-4': {
+      return {
+        success: true,
+        message: '10-4',
+        action: { type: 'voice_ack' },
+      };
+    }
+
+    // ── Voice: All-Clear ──
+    case 'ALL-CLEAR':
+    case 'ALLCLEAR': {
+      if (args.length > 0) {
+        const call = fuzzyFindCall(args[0], ctx.calls);
+        if (!call) {
+          return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+        }
+        return {
+          success: true,
+          message: `All clear — ${call.call_number}`,
+          action: { type: 'voice_allclear', callNumber: call.call_number },
+        };
+      }
+      return {
+        success: true,
+        message: 'All clear announced',
+        action: { type: 'voice_allclear' },
+      };
     }
 
     // ── Help ──

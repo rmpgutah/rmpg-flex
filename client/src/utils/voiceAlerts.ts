@@ -909,6 +909,215 @@ export async function announceAllUnits(message: string): Promise<void> {
   enqueuePhrases([{ text: naturalPhrase('ATTENTION ALL UNITS') }, { text: `${message}.` }]);
 }
 
+// ─── Enhanced Dispatch Voice Alerts ─────────────────────────
+
+/**
+ * Announce periodic status check for units on scene:
+ * "Status check. Unit S19 has been on scene at 3392 Mockingbird Way for 22 minutes."
+ * Called from DispatchPage timer logic — no internal setInterval.
+ */
+export async function announceStatusCheck(callSign: string, location: string, minutes: number): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `statuscheck:${callSign}:${Math.floor(minutes / 5)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(200);
+
+  enqueuePhrases([
+    { text: `Status check. Unit ${callSign} has been on scene${location ? ` at ${location}` : ''} for ${minutes} minutes.` },
+  ]);
+}
+
+/**
+ * Announce unit proximity alert:
+ * "Advisory. Unit 5820 is within 500 meters of Unit S19's active call at Mockingbird Way."
+ */
+export async function announceProximityAlert(unit1: string, unit2: string, location: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `proximity:${unit1}:${unit2}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('caution');
+  await delay(200);
+
+  enqueuePhrases([
+    { text: `Advisory. Unit ${unit1} is within 500 meters of Unit ${unit2}'s active call${location ? ` at ${location}` : ''}.` },
+  ]);
+}
+
+/**
+ * Announce shift change reminder:
+ * "Attention. Shift change in 30 minutes. Active calls: 2. Units on scene: 1."
+ */
+export async function announceShiftReminder(minutesLeft: number, activeCalls: number, unitsOnScene: number): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `shiftreminder:${minutesLeft}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('caution');
+  await delay(TONE_GAP_MS);
+
+  enqueuePhrases([
+    { text: `Attention. Shift change in ${minutesLeft} minutes. Active calls: ${activeCalls}. Units on scene: ${unitsOnScene}.` },
+  ]);
+}
+
+/**
+ * Announce call priority escalation:
+ * "Priority escalation. Call 26-CFS00110 upgraded from P3 to P1. Weapons now involved."
+ */
+export async function announceEscalation(callNumber: string, oldPriority: string, newPriority: string, reason?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `escalation:${callNumber}:${newPriority}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  // Use alarm for P1 escalations, warning for others
+  if (newPriority === 'P1') await playToneAsync('alarm');
+  else await playToneAsync('warning');
+  await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Priority escalation. Call ${callNumber} upgraded from ${oldPriority} to ${newPriority}.` },
+  ];
+  if (reason) {
+    phrases.push({ text: `${reason}.` });
+  }
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce enhanced backup request with unit and location:
+ * "Backup requested. Unit S19 requesting backup at 3392 Mockingbird Way. All available units respond."
+ */
+export async function announceBackupRequestEnhanced(unit: string, location: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `backupreq:${unit}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('warning');
+  await delay(200);
+  await playToneAsync('warning');
+  await delay(TONE_GAP_MS);
+
+  enqueuePhrases([
+    { text: `Backup requested. Unit ${unit} requesting backup${location ? ` at ${location}` : ''}.` },
+    { text: 'All available units respond.' },
+  ]);
+}
+
+/**
+ * Announce call update (notes, priority change, etc.):
+ * "Update on call 26-CFS00110. New note added by Dispatch."
+ */
+export async function announceCallUpdate(callNumber: string, updateType: string, author?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `callupdate:${callNumber}:${updateType}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  enqueuePhrases([
+    { text: `Update on call ${callNumber}. ${updateType}${author ? ` by ${author}` : ''}.` },
+  ]);
+}
+
+/**
+ * Announce unit assignment to a call:
+ * "Unit S19 assigned to call 26-CFS00110."
+ */
+export async function announceUnitAssignment(unitCallSign: string, callNumber: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `unitassign:${unitCallSign}:${callNumber}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(200);
+
+  enqueuePhrases([
+    { text: `Unit ${unitCallSign} assigned to call ${callNumber}.` },
+  ]);
+}
+
+/**
+ * Announce call archived with summary:
+ * "Call 26-CFS00110 archived. Disposition: Personal Service. Response time: 18 minutes."
+ */
+export async function announceCallArchived(callNumber: string, disposition?: string, responseTimeMin?: number): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `archived:${callNumber}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Call ${callNumber} archived.` },
+  ];
+  if (disposition) {
+    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ')}.` });
+  }
+  if (responseTimeMin != null && responseTimeMin > 0) {
+    phrases.push({ text: `Response time: ${responseTimeMin} minutes.` });
+  }
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce current time:
+ * "The current time is 14 thirty hours."
+ */
+export async function announceTime(): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const timeStr = m === 0 ? `${h} hundred hours` : `${h} ${m < 10 ? 'oh ' + m : m} hours`;
+
+  await playToneAsync('info');
+  await delay(200);
+  enqueuePhrases([{ text: `The current time is ${timeStr}.` }]);
+}
+
+/**
+ * Announce all-clear on a call:
+ * "All clear. Call 26-CFS00110. Scene is secure."
+ */
+export async function announceAllClear(callNumber: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `allclear:${callNumber}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(200);
+  enqueuePhrases([{ text: `All clear. Call ${callNumber}. Scene is secure.` }]);
+}
+
+/**
+ * Announce acknowledgment tone (10-4):
+ * Just plays the info tone with a short "Copy" phrase.
+ */
+export async function announceAcknowledgment(): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  await playToneAsync('info');
+  await delay(100);
+  await playToneAsync('info');
+}
+
 // ─── Demo / Test ─────────────────────────────────────────────
 
 /**

@@ -77,7 +77,7 @@ import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
-import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
+import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -792,9 +792,21 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_updated' && data.call) {
         const mapped = mapDbCall(data.call);
+        // Detect priority escalation before updating state
+        const prevCall = calls.find((c: any) => c.id === mapped.id);
+        if (prevCall && prevCall.priority !== mapped.priority) {
+          const priorities = ['P1', 'P2', 'P3', 'P4'];
+          if (priorities.indexOf(mapped.priority) < priorities.indexOf(prevCall.priority)) {
+            announceEscalation(mapped.call_number, prevCall.priority, mapped.priority);
+          }
+        }
         setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
         // Update selected call if it's the one being viewed
         setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        // Voice alert: announce update if notes were added
+        if (data.update_type === 'note_added') {
+          announceCallUpdate(mapped.call_number, 'New note added', data.author);
+        }
       } else if (data.action === 'call_status_changed' && data.call) {
         const mapped = mapDbCall(data.call);
         setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
@@ -803,7 +815,28 @@ export default function DispatchPage() {
         if (mapped.status === 'dispatched') {
           announceDispatchEvent(mapped);
         }
+        // Voice alert: announce archival with summary
+        if (mapped.status === 'archived') {
+          const responseMin = mapped.created_at && mapped.onscene_at
+            ? Math.floor((new Date(mapped.onscene_at).getTime() - new Date(mapped.created_at).getTime()) / 60000)
+            : undefined;
+          announceCallArchived(mapped.call_number, mapped.disposition, responseMin);
+        }
+        // Voice alert: announce status changes (on scene, cleared, etc.)
+        if (['onscene', 'enroute', 'cleared'].includes(mapped.status) && mapped.assigned_units?.length > 0) {
+          announceStatusChange({
+            call_sign: mapped.assigned_units[0],
+            call_number: mapped.call_number,
+            location: mapped.location,
+            disposition: mapped.disposition,
+            assigned_units: mapped.assigned_units,
+          }, mapped.status);
+        }
       } else if (data.action === 'units_dispatched' || data.action === 'unit_assigned' || data.action === 'unit_unassigned') {
+        // Voice alert: announce unit assignment
+        if (data.action === 'unit_assigned' && data.unit_call_sign && data.call_number) {
+          announceUnitAssignment(data.unit_call_sign, data.call_number);
+        }
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
       } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
@@ -3765,6 +3798,14 @@ export default function DispatchPage() {
                           {selectedCall.client_name}
                         </p>
                       )}
+                      {/* Weather at call location — officer safety indicator */}
+                      {!isEditing && selectedCall.weather_conditions && (
+                        <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
+                          <Thermometer style={{ width: 10, height: 10 }} />
+                          <span className="text-rmpg-300">{selectedCall.weather_conditions}</span>
+                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {selectedCall.lighting_conditions}</span>}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="field-label">Description:</label>
@@ -4657,16 +4698,55 @@ export default function DispatchPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.pso_requestor_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</span>}
-                        {selectedCall.pso_requestor_phone && <span className="text-rmpg-200"><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</span>}
-                        {selectedCall.pso_requestor_email && <span className="text-rmpg-200"><span className="text-rmpg-400">Email:</span> {selectedCall.pso_requestor_email}</span>}
-                        {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
-                        {selectedCall.pso_billing_code && <span className="text-rmpg-200"><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</span>}
-                        {selectedCall.pso_authorization && <span className="text-rmpg-200"><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</span>}
-                        {selectedCall.contract_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Contract:</span> {selectedCall.contract_id}</span>}
+                      <div className="space-y-2 mt-1">
+                        {/* Prominent client/requestor badges */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedCall.pso_requestor_name && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-sm" style={{ background: '#d4a01718', border: '1px solid #d4a01740', color: '#fbbf24' }}>
+                              <Building2 style={{ width: 10, height: 10 }} /> {selectedCall.pso_requestor_name}
+                            </span>
+                          )}
+                          {selectedCall.pso_billing_code && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#22c55e15', border: '1px solid #22c55e35', color: '#86efac' }}>
+                              {selectedCall.pso_billing_code}
+                            </span>
+                          )}
+                          {selectedCall.pso_authorization && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#3b82f615', border: '1px solid #3b82f635', color: '#93c5fd' }}>
+                              AUTH: {selectedCall.pso_authorization}
+                            </span>
+                          )}
+                          {selectedCall.contract_id && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#8b5cf615', border: '1px solid #8b5cf635', color: '#c4b5fd' }}>
+                              Contract: {selectedCall.contract_id}
+                            </span>
+                          )}
+                        </div>
+                        {/* Additional details */}
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                          {selectedCall.pso_requestor_phone && <span className="text-rmpg-200"><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</span>}
+                          {selectedCall.pso_requestor_email && <span className="text-rmpg-200"><span className="text-rmpg-400">Email:</span> {selectedCall.pso_requestor_email}</span>}
+                          {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
+                        </div>
+                        {/* 72-hour deadline countdown for active PSO calls */}
+                        {selectedCall.incident_type === 'pso_client_request' && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
+                          const deadline = new Date(new Date(selectedCall.created_at).getTime() + 72 * 3600000);
+                          const remaining = deadline.getTime() - Date.now();
+                          if (remaining <= 0) return (
+                            <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>
+                              72HR DEADLINE PASSED
+                            </div>
+                          );
+                          const hrs = Math.floor(remaining / 3600000);
+                          const mins = Math.floor((remaining % 3600000) / 60000);
+                          return (
+                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? '#f87171' : hrs < 24 ? '#fbbf24' : '#4ade80' }}>
+                              {hrs}h {mins}m until 72hr deadline
+                            </div>
+                          );
+                        })()}
                         {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
-                          <span className="text-rmpg-500 italic">No PSO details entered yet</span>
+                          <span className="text-rmpg-500 italic text-xs">No PSO details entered yet</span>
                         )}
                       </div>
                     )}
@@ -5805,6 +5885,60 @@ export default function DispatchPage() {
               case 'le_notify':
                 fetchData();
                 break;
+              case 'voice_status': {
+                // Voice announce unit status — find unit data and speak it
+                if (action.callSign) {
+                  const unit = units.find(u => u.call_sign === action.callSign);
+                  if (unit) {
+                    announceStatusChange(unit.call_sign, unit.status);
+                  }
+                } else {
+                  const active = units.filter(u => u.status !== 'off_duty');
+                  const msg = `${active.length} units active. ${active.filter(u => u.status === 'available').length} available.`;
+                  announceCallUpdate('', msg);
+                }
+                break;
+              }
+              case 'voice_check': {
+                // Voice read-back call details
+                const call = calls.find(c => c.call_number === action.callNumber);
+                if (call) {
+                  announceDispatchEvent(call);
+                }
+                break;
+              }
+              case 'voice_eta': {
+                // Voice announce ETA — announce unit status as proxy (GPS ETA would need server)
+                const unit = units.find(u => u.call_sign === action.callSign);
+                if (unit) {
+                  const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ');
+                  announceCallUpdate('', `Unit ${unit.call_sign} is currently ${statusLabel}`);
+                }
+                break;
+              }
+              case 'voice_weather':
+                // Voice weather — use selected call location weather if available
+                if (selectedCall?.weather_conditions) {
+                  announceCallUpdate('', `Weather conditions: ${selectedCall.weather_conditions}`);
+                } else {
+                  announceCallUpdate('', 'No weather data available for current location');
+                }
+                break;
+              case 'voice_time':
+                announceTime();
+                break;
+              case 'voice_ack':
+                announceAcknowledgment();
+                break;
+              case 'voice_allclear': {
+                const callNum = action.callNumber || selectedCall?.call_number;
+                if (callNum) {
+                  announceAllClear(callNum);
+                } else {
+                  announceAllClear('current call');
+                }
+                break;
+              }
             }
           }}
         />

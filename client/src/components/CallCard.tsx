@@ -279,6 +279,23 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             }
             return null;
           })()}
+          {/* 72-hour deadline for active PSO calls (from creation time) */}
+          {call.incident_type === 'pso_client_request' && !['cleared', 'closed', 'archived', 'cancelled'].includes(call.status) && call.created_at && (() => {
+            const deadline = new Date(new Date(call.created_at).getTime() + 72 * 3600000);
+            const remaining = deadline.getTime() - Date.now();
+            if (remaining <= 0) return (
+              <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
+                72HR PASSED
+              </span>
+            );
+            const hrs = Math.floor(remaining / 3600000);
+            if (hrs < 24) return (
+              <span className={`text-[8px] font-bold font-mono px-1 py-0 ${hrs < 12 ? 'text-red-400 bg-red-900/40 border border-red-600/50' : 'text-amber-400 bg-amber-900/40 border border-amber-600/50'}`}>
+                {hrs}h left
+              </span>
+            );
+            return null;
+          })()}
           {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
             <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
               {call.dispatch_code}
@@ -384,6 +401,13 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {/* Enhancement 28: Show property name below address */}
           {call.property_name && (
             <div className="text-[9px] text-rmpg-400 truncate">{call.property_name}</div>
+          )}
+          {/* Client/requestor company name */}
+          {(call.client_name || (call as any).pso_requestor_name) && (
+            <div className="text-[9px] text-brand-400 truncate flex items-center gap-0.5">
+              <Globe className="w-2.5 h-2.5 flex-shrink-0" />
+              {call.client_name || (call as any).pso_requestor_name}
+            </div>
           )}
         </div>
       </div>
