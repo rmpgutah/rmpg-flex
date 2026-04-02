@@ -4212,7 +4212,7 @@ a:focus-visible {
 }
 
 /* --- 13. FORM INPUT GLOBAL CONSISTENCY ---
-   Force all text inputs/textareas/selects to match the CAD input style. */
+   Force ALL form controls to Spillman CAD input style. */
 input[type="text"],
 input[type="number"],
 input[type="email"],
@@ -4227,9 +4227,124 @@ textarea,
 select {
   border-radius: 2px !important;
   font-size: 12px;
+  background: var(--surface-sunken) !important;
+  color: #e5e7eb !important;
+  border: 1px solid var(--border-strong) !important;
+  border-top-color: #0d1520 !important;
+  border-left-color: #0d1520 !important;
+  border-bottom-color: #2a3e58 !important;
+  border-right-color: #2a3e58 !important;
+  caret-color: #3b8ad4;
+  padding: 5px 10px;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--brand-blue) !important;
+  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.45), 0 0 0 3px rgba(26, 90, 158, 0.15) !important;
+  outline: none !important;
+}
+input::placeholder, textarea::placeholder {
+  color: #4b5563 !important;
+}
+/* Checkbox + radio — smaller, tinted */
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--brand-blue);
+  border-radius: 2px !important;
 }
 
-/* --- 14. BADGE / TAG GLOBAL STYLE --- */
+/* --- 14. UNIVERSAL ELEMENT TREATMENT ---
+   Force ALL divs/sections/articles to use navy not gray. */
+div, section, article, aside, nav, header, footer, main, form {
+  border-radius: inherit;
+}
+/* Kill ALL pure-gray borders */
+[class*="border-gray-"] {
+  border-color: var(--border-default) !important;
+}
+[class*="border-slate-"] {
+  border-color: var(--border-default) !important;
+}
+[class*="border-zinc-"] {
+  border-color: var(--border-default) !important;
+}
+[class*="border-neutral-"] {
+  border-color: var(--border-default) !important;
+}
+/* Kill gray text — use theme text colors */
+.text-gray-300 { color: #b0bcc8 !important; }
+.text-gray-400 { color: #8a9aaa !important; }
+.text-gray-500 { color: #6b7280 !important; }
+.text-gray-600 { color: #4b5563 !important; }
+.text-gray-200 { color: #d0d8e0 !important; }
+.text-slate-300 { color: #b0bcc8 !important; }
+.text-slate-400 { color: #8a9aaa !important; }
+.text-slate-500 { color: #6b7280 !important; }
+/* Kill gray backgrounds everywhere */
+.bg-gray-900 { background-color: #0d1520 !important; }
+.bg-gray-800 { background-color: #141e2b !important; }
+.bg-gray-700 { background-color: #1a2636 !important; }
+.bg-gray-600 { background-color: #1e3048 !important; }
+.bg-gray-500 { background-color: #2a3e58 !important; }
+.bg-gray-400 { background-color: #3a5070 !important; }
+.bg-gray-100 { background-color: #1a2636 !important; }
+.bg-gray-50 { background-color: #141e2b !important; }
+.bg-slate-900 { background-color: #0d1520 !important; }
+.bg-slate-800 { background-color: #141e2b !important; }
+.bg-slate-700 { background-color: #1a2636 !important; }
+.bg-zinc-900 { background-color: #0d1520 !important; }
+.bg-zinc-800 { background-color: #141e2b !important; }
+.bg-neutral-900 { background-color: #0d1520 !important; }
+.bg-neutral-800 { background-color: #141e2b !important; }
+/* White background → navy */
+.bg-white { background-color: #1a2636 !important; }
+
+/* --- 15. BUTTON GLOBAL TREATMENT ---
+   ALL buttons use the Spillman beveled toolbar style. */
+button:not(.leaflet-control-zoom-in):not(.leaflet-control-zoom-out):not([class*="gm-"]) {
+  border-radius: 2px !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.1s ease;
+}
+
+/* --- 16. HEADING / LABEL TREATMENT ---
+   Section labels are gold uppercase by default. */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: 0.03em;
+}
+
+/* --- 17. ALL MODALS — Spillman window chrome --- */
+[role="dialog"],
+[aria-modal="true"] {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+[role="dialog"] > div:first-child,
+[aria-modal="true"] > div:first-child {
+  border-radius: 2px !important;
+  border: 1px solid var(--border-strong) !important;
+  border-top-color: #3a5070 !important;
+  border-left-color: #3a5070 !important;
+  border-bottom-color: #0d1520 !important;
+  border-right-color: #0d1520 !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset !important;
+}
+
+/* --- 18. LINK STYLING --- */
+a:not([class]) {
+  color: #3b8ad4;
+  text-decoration: none;
+}
+a:not([class]):hover {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
+/* --- 19. HR / DIVIDER TREATMENT --- */
+hr, [class*="divide-"] > * + * {
+  border-color: var(--border-subtle) !important;
+}
+
+/* --- 20. BADGE / TAG GLOBAL STYLE --- */
 .inline-flex[class*="text-\[8px\]"],
 .inline-flex[class*="text-\[9px\]"] {
   border-radius: 1px !important;
