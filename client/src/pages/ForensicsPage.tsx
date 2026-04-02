@@ -641,7 +641,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
   }
 
   const Icon = NODE_ICONS[node.type] || Package;
-  const color = NODE_COLORS[node.type] || '#6b7280';
+  const color = NODE_COLORS[node.type] || '#666666';
 
   // Group edges by connected node type
   const grouped: Record<string, Array<{ edge: GraphEdge; otherNode: GraphNode }>> = {};
@@ -733,7 +733,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
 
         {Object.entries(grouped).map(([type, items]) => {
           const GroupIcon = NODE_ICONS[type] || Package;
-          const groupColor = NODE_COLORS[type] || '#6b7280';
+          const groupColor = NODE_COLORS[type] || '#666666';
           const isCollapsed = collapsed[type];
 
           return (

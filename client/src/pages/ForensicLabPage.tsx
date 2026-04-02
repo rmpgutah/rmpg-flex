@@ -53,7 +53,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
   analysis_complete: { label: 'Analysis Complete', color: '#34d399', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: '#a3e635', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
   report_final: { label: 'Report Final', color: '#22c55e', bgColor: 'bg-green-900/20', nextAction: 'Final report is available' },
-  closed: { label: 'Closed', color: '#6b7280', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
+  closed: { label: 'Closed', color: '#666666', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
   cancelled: { label: 'Cancelled', color: '#ef4444', bgColor: 'bg-red-900/20', nextAction: 'Case was cancelled' },
 };
 
@@ -1034,7 +1034,7 @@ export default function ForensicLabPage() {
                 const custodyLog = meta.custody_log || [];
                 const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
                 const actionColors: Record<string, string> = {
-                  received: '#aaaaaa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: '#6b7280',
+                  received: '#aaaaaa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: '#666666',
                 };
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">

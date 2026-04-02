@@ -61,7 +61,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   negotiation: '#f97316',
   won: '#22c55e',
   lost: '#ef4444',
-  dismissed: '#6b7280',
+  dismissed: '#666666',
 };
 
 const SOURCE_LABELS: Record<string, string> = {

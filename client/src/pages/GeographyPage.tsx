@@ -487,7 +487,7 @@ function TreeNode({ level, color, code, name, subtitle, count, countLabel, isOpe
       ) : (
         <span className="w-4 h-4 mr-1" />
       )}
-      <span className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: color || '#6b7280' }} />
+      <span className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: color || '#666666' }} />
       <span className="text-[11px] font-mono text-blue-400 mr-2 min-w-[50px]">{code}</span>
       <span className="text-[11px] text-white font-medium mr-1">{name}</span>
       {subtitle && <span className="text-[10px] text-rmpg-400 mr-2">— {subtitle}</span>}
@@ -564,7 +564,7 @@ function ZoneList({ items, onEdit, onDelete }: { items: Zone[]; onEdit: (z: Zone
       </div>
       {items.map(z => (
         <div key={z.id} className="grid grid-cols-[40px_80px_1fr_100px_100px_80px_80px_80px_60px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
-          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: z.color || '#6b7280' }} />
+          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: z.color || '#666666' }} />
           <span className="font-mono text-blue-400">{z.zone_code}</span>
           <span className="text-white font-medium">{z.zone_name}</span>
           <span className="text-rmpg-400 truncate">{z.section_name || '—'}</span>
@@ -592,7 +592,7 @@ function BeatList({ items, onEdit, onDelete }: { items: Beat[]; onEdit: (b: Beat
       </div>
       {items.map(b => (
         <div key={b.id} className="grid grid-cols-[40px_100px_1fr_100px_100px_80px_80px_60px_60px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
-          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: b.color || '#6b7280' }} />
+          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: b.color || '#666666' }} />
           <span className="font-mono text-blue-400">{b.beat_code}</span>
           <div>
             <span className="text-white font-medium">{b.beat_name}</span>
@@ -951,8 +951,8 @@ function EditModal({ type, item, onSave, onClose, areas, sections, zones }: {
               </div>
               <FormField label="Color">
                 <div className="flex items-center gap-2">
-                  <input type="color" value={form.color || '#6b7280'} onChange={e => set('color', e.target.value)} className="w-8 h-8 border-0 bg-transparent cursor-pointer" />
-                  <input value={form.color || '#6b7280'} onChange={e => set('color', e.target.value)} className="form-input flex-1" />
+                  <input type="color" value={form.color || '#666666'} onChange={e => set('color', e.target.value)} className="w-8 h-8 border-0 bg-transparent cursor-pointer" />
+                  <input value={form.color || '#666666'} onChange={e => set('color', e.target.value)} className="form-input flex-1" />
                 </div>
               </FormField>
               <div className="grid grid-cols-2 gap-3">

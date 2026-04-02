@@ -139,7 +139,7 @@ export default function AlertSystemPanel({
         ) : (
           <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
             {activeAlerts.map((alert) => {
-              const color = ALERT_TYPE_COLORS[alert.type] || '#6b7280';
+              const color = ALERT_TYPE_COLORS[alert.type] || '#666666';
               const label = ALERT_TYPE_LABELS[alert.type] || alert.type;
 
               return (
@@ -244,7 +244,7 @@ export default function AlertSystemPanel({
               </div>
             ) : (
               alertHistory.map((alert) => {
-                const color = ALERT_TYPE_COLORS[alert.type] || '#6b7280';
+                const color = ALERT_TYPE_COLORS[alert.type] || '#666666';
                 const label = ALERT_TYPE_LABELS[alert.type] || alert.type;
 
                 return (

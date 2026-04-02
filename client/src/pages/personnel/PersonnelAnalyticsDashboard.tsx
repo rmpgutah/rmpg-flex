@@ -28,7 +28,7 @@ const ChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background: '#050505', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: '#e5e7eb', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
+      <div style={{ color: '#e0e0e0', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
         {payload[0].name}: {payload[0].value}
       </div>
     </div>
@@ -67,7 +67,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
   const trainingBarData = useMemo(() => [
     { name: 'Completed', value: completedTraining, fill: '#22c55e' },
     { name: 'Overdue', value: overdueTraining, fill: '#ef4444' },
-    { name: 'Pending', value: Math.max(0, pendingTraining), fill: '#6b7280' },
+    { name: 'Pending', value: Math.max(0, pendingTraining), fill: '#666666' },
   ], [completedTraining, overdueTraining, pendingTraining]);
 
   // Hours by day for AreaChart (last 7 days)
@@ -180,7 +180,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={roleData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} strokeWidth={0} paddingAngle={2}>
-                    {roleData.map((d, i) => <Cell key={i} fill={ROLE_HEX[d.name] || '#6b7280'} />)}
+                    {roleData.map((d, i) => <Cell key={i} fill={ROLE_HEX[d.name] || '#666666'} />)}
                   </Pie>
                   <Tooltip content={<ChartTooltip />} />
                 </PieChart>
@@ -189,7 +189,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
             <div className="flex-1 space-y-1.5">
               {roleData.map(d => (
                 <div key={d.name} className="flex items-center gap-2 text-xs">
-                  <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || '#6b7280' }} />
+                  <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || '#666666' }} />
                   <span className="text-rmpg-200 capitalize flex-1">{d.name.replace('_', ' ')}</span>
                   <span className="font-mono text-white">{d.value}</span>
                 </div>
@@ -210,8 +210,8 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
           <div className="h-[120px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={trainingBarData} layout="vertical" margin={{ left: 60, right: 10, top: 0, bottom: 0 }}>
-                <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fill: '#d1d5db', fontSize: 10 }} axisLine={false} tickLine={false} width={55} />
+                <XAxis type="number" tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fill: '#cccccc', fontSize: 10 }} axisLine={false} tickLine={false} width={55} />
                 <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                 <Bar dataKey="value" radius={[0, 2, 2, 0]}>
                   {trainingBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
@@ -244,8 +244,8 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
                     <stop offset="95%" stopColor="#888888" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
+                <XAxis dataKey="date" tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip content={<ChartTooltip />} />
                 <Area type="monotone" dataKey="hours" name="Hours" stroke="#888888" fill="url(#hoursGrad)" strokeWidth={2} />
               </AreaChart>

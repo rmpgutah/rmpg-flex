@@ -1657,7 +1657,7 @@ export default function IncidentsPage() {
                 <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#6b7280' }}>
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#666666' }}>
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-white font-medium truncate">{offense.description}</span>
@@ -1757,7 +1757,7 @@ export default function IncidentsPage() {
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
                   <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
-                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#6b7280', background: (typeColors[link.linked_type] || '#6b7280') + '20', border: `1px solid ${typeColors[link.linked_type] || '#6b7280'}40` }}>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#666666', background: (typeColors[link.linked_type] || '#666666') + '20', border: `1px solid ${typeColors[link.linked_type] || '#666666'}40` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
                     {link.detail ? (

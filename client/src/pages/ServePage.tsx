@@ -42,7 +42,7 @@ const MARKER_COLORS: Record<string, string> = {
   in_progress: '#eab308',
   served: '#22c55e',
   failed: '#ef4444',
-  skipped: '#6b7280',
+  skipped: '#666666',
   archived: '#555555',
 };
 

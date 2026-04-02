@@ -29,7 +29,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   P1: '#ef4444',
   P2: '#f59e0b',
   P3: '#888888',
-  P4: '#6b7280',
+  P4: '#666666',
 };
 
 function timeAgo(dateStr: string): string {
@@ -236,7 +236,7 @@ export default function CallHistoryPanel({
               >
                 {stats.recent.map((call) => {
                   const pColor =
-                    PRIORITY_COLORS[call.priority?.toUpperCase()] || '#6b7280';
+                    PRIORITY_COLORS[call.priority?.toUpperCase()] || '#666666';
 
                   return (
                     <div

@@ -902,7 +902,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       <tr key={v.id} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
                         <td className="py-1 pr-1">
                           <div className="flex items-center gap-1">
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || '#6b7280' }} />
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || '#666666' }} />
                             <span className="font-mono font-bold text-white">{v.vehicle_number}</span>
                           </div>
                         </td>

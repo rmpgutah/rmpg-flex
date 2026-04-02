@@ -62,7 +62,7 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 }
 
 export function buildIncidentMarkerContent(priority: string, incidentType: string, callNumber?: string, createdAt?: string | null): HTMLElement {
-  const color = PRIORITY_COLORS[priority] || '#6b7280';
+  const color = PRIORITY_COLORS[priority] || '#666666';
   const { category } = getIncidentCategory(incidentType);
 
   // Priority-based glow
@@ -202,7 +202,7 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
 // ── Historical Call Marker (semi-transparent, smaller, with clock badge) ──
 
 export function buildHistoricalCallMarkerContent(priority: string, incidentType: string, callNumber?: string): HTMLElement {
-  const color = PRIORITY_COLORS[priority] || '#6b7280';
+  const color = PRIORITY_COLORS[priority] || '#666666';
   const { category } = getIncidentCategory(incidentType);
 
   const wrapper = document.createElement('div');
@@ -252,13 +252,13 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
 
 export function buildIncidentReportMarkerContent(status: string): HTMLElement {
   const statusColors: Record<string, string> = {
-    draft: '#6b7280',
+    draft: '#666666',
     submitted: '#888888',
     under_review: '#f59e0b',
     approved: '#22c55e',
     returned: '#ef4444',
   };
-  const color = statusColors[status] || '#6b7280';
+  const color = statusColors[status] || '#666666';
 
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));transition:transform 0.2s ease;';

@@ -390,7 +390,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#6b7280' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
         </div>
       )}
 

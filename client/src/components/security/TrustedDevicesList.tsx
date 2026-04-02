@@ -67,7 +67,7 @@ export default function TrustedDevicesList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#6b7280' }} />
+        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
       </div>
     );
   }
@@ -76,7 +76,7 @@ export default function TrustedDevicesList() {
     return (
       <div className="text-center py-6">
         <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
-        <p className="text-[10px]" style={{ color: '#6b7280' }}>No trusted devices</p>
+        <p className="text-[10px]" style={{ color: '#666666' }}>No trusted devices</p>
         <p className="text-[9px] mt-1" style={{ color: '#555555' }}>
           Trust a device during login to skip 2FA for 30 days
         </p>
@@ -99,11 +99,11 @@ export default function TrustedDevicesList() {
 
           {/* Device info */}
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-semibold truncate" style={{ color: '#e5e7eb' }}>
+            <div className="text-[11px] font-semibold truncate" style={{ color: '#e0e0e0' }}>
               {device.device_name}
             </div>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-[9px] font-mono" style={{ color: '#6b7280' }}>
+              <span className="text-[9px] font-mono" style={{ color: '#666666' }}>
                 {device.ip_address}
               </span>
               <span className="text-[9px]" style={{ color: '#555555' }}>

@@ -16,7 +16,7 @@ export const UNIT_STATUS_HEX: Record<UnitStatus, string> = {
   enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
-  off_duty: '#6b7280',
+  off_duty: '#666666',
   out_of_service: '#991b1b',
 };
 
@@ -56,7 +56,7 @@ export const PRIORITY_HEX: Record<string, string> = {
   P1: '#dc2626',
   P2: '#f59e0b',
   P3: '#888888',
-  P4: '#6b7280',
+  P4: '#666666',
 };
 
 export const PRIORITY_CLASSES: Record<CallPriority, string> = {

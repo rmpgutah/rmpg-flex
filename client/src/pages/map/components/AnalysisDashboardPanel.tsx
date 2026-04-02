@@ -67,7 +67,7 @@ function shiftColor(shift: string): string {
   if (s.includes('day')) return '#d4a017';
   if (s.includes('swing')) return '#888888';
   if (s.includes('night') || s.includes('grave')) return '#a855f7';
-  return '#6b7280';
+  return '#666666';
 }
 
 function shiftBg(shift: string): string {

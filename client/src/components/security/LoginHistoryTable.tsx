@@ -66,7 +66,7 @@ export default function LoginHistoryTable() {
   if (loading && entries.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#6b7280' }} />
+        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
       </div>
     );
   }
@@ -75,7 +75,7 @@ export default function LoginHistoryTable() {
     return (
       <div className="text-center py-6">
         <History className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
-        <p className="text-[10px]" style={{ color: '#6b7280' }}>No login history</p>
+        <p className="text-[10px]" style={{ color: '#666666' }}>No login history</p>
       </div>
     );
   }
@@ -128,7 +128,7 @@ export default function LoginHistoryTable() {
           className="flex items-center justify-between px-3 py-1.5"
           style={{ borderTop: '1px solid #1e3048', background: '#050505' }}
         >
-          <span className="text-[10px] font-mono" style={{ color: '#6b7280' }}>
+          <span className="text-[10px] font-mono" style={{ color: '#666666' }}>
             Page {page} of {totalPages} ({total} entries)
           </span>
           <div className="flex gap-1">

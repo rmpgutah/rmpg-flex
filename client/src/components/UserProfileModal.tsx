@@ -1380,7 +1380,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div className="flex items-center gap-2 text-[11px]">
                           <span className="led-dot led-green" />
                           <span style={{ color: '#22c55e' }}>2FA is enabled</span>
-                          <span className="text-[9px] ml-auto font-mono" style={{ color: '#6b7280' }}>
+                          <span className="text-[9px] ml-auto font-mono" style={{ color: '#666666' }}>
                             {tfaStatus.backupCodesRemaining} backup codes left
                           </span>
                         </div>

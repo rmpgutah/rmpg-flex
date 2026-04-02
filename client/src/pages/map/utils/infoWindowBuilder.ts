@@ -22,8 +22,8 @@ const C_BASE = '#0a0a0a';
 const C_SUNKEN = '#050505';
 const C_RAISED = '#141414';
 const C_BORDER = '#222222';
-const C_TEXT = '#e5e7eb';
-const C_TEXT_DIM = '#9ca3af';
+const C_TEXT = '#e0e0e0';
+const C_TEXT_DIM = '#999999';
 const C_TEXT_MUTED = '#666666';
 const C_BLUE = '#aaaaaa';
 const C_BRAND = '#888888';
@@ -403,7 +403,7 @@ export function buildPropertyInfoWindow(
   const RELATIONSHIP_COLORS: Record<string, string> = {
     employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
     manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
-    banned: '#ef4444', frequent_visitor: '#9ca3af', associated: '#6b7280',
+    banned: '#ef4444', frequent_visitor: '#999999', associated: '#666666',
   };
 
   const recentCalls = details.recentCalls || [];
@@ -487,7 +487,7 @@ export function buildPropertyInfoWindow(
       <div style="${details.client_contact ? `margin-top:6px;padding-top:4px;border-top:1px solid ${C_BORDER};` : ''}">
         ${sectionHeader(`Linked Persons (${linkedPersons.length})`, '#e879f9')}
         ${linkedPersons.slice(0, 8).map(p => {
-          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || '#6b7280';
+          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || '#666666';
           const name = `${p.first_name} ${p.last_name}`;
           const rel = (p.relationship || '').replace(/_/g, ' ');
           let flagsArr: string[] = [];

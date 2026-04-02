@@ -74,9 +74,9 @@ function formatTimestamp(iso: string | null): string {
 function getStatusColor(status: string): string {
   switch (status) {
     case 'cleared': return '#22c55e';
-    case 'closed': return '#6b7280';
+    case 'closed': return '#666666';
     case 'archived': return '#555555';
-    default: return '#6b7280';
+    default: return '#666666';
   }
 }
 

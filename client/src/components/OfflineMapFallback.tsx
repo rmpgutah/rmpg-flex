@@ -87,7 +87,7 @@ const STATUS_COLORS: Record<string, string> = {
   enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
-  off_duty: '#6b7280',
+  off_duty: '#666666',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -103,7 +103,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   P1: '#ef4444',
   P2: '#f59e0b',
   P3: '#888888',
-  P4: '#6b7280',
+  P4: '#666666',
 };
 
 export default function OfflineMapFallback({
@@ -350,7 +350,7 @@ export default function OfflineMapFallback({
     // Update or create unit markers
     for (const unit of unitPositions) {
       const latlng: L.LatLngExpression = [unit.lat, unit.lng];
-      const color = STATUS_COLORS[unit.status || ''] || '#6b7280';
+      const color = STATUS_COLORS[unit.status || ''] || '#666666';
       const label = STATUS_LABELS[unit.status || ''] || '???';
       const existing = unitMarkersRef.current.get(unit.call_sign);
 
@@ -434,7 +434,7 @@ export default function OfflineMapFallback({
     for (const call of activeCalls) {
       if (call.latitude == null || call.longitude == null) continue;
       const latlng: L.LatLngExpression = [call.latitude, call.longitude];
-      const color = PRIORITY_COLORS[call.priority] || '#6b7280';
+      const color = PRIORITY_COLORS[call.priority] || '#666666';
 
       if (!callMarkersRef.current.has(call.id)) {
         const icon = L.divIcon({
@@ -632,13 +632,13 @@ export default function OfflineMapFallback({
                 <span
                   style={{
                     width: 6, height: 6, borderRadius: '50%',
-                    background: STATUS_COLORS[status] || '#6b7280',
+                    background: STATUS_COLORS[status] || '#666666',
                     display: 'inline-block',
                   }}
                 />
                 <span style={{
                   fontSize: 7, fontFamily: "'JetBrains Mono', monospace",
-                  fontWeight: 700, color: STATUS_COLORS[status] || '#6b7280',
+                  fontWeight: 700, color: STATUS_COLORS[status] || '#666666',
                 }}>
                   {count} {STATUS_LABELS[status] || status.toUpperCase()}
                 </span>

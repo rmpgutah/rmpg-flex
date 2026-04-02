@@ -175,7 +175,7 @@ interface PlaybackTrail { unit_id: number; call_sign: string; officer_name: stri
 
 // Speed-to-color mapping for breadcrumb speed mode (m/s → mph thresholds)
 const speedToColor = (mps: number | null): string => {
-  if (mps == null || mps < 0.5) return '#6b7280';    // Stationary — gray
+  if (mps == null || mps < 0.5) return '#666666';    // Stationary — gray
   const mph = mps * 2.237;
   if (mph < 15) return '#22c55e';   // Slow — green
   if (mph < 35) return '#eab308';   // City — yellow
@@ -191,7 +191,7 @@ const statusToColor = (status: string): string => {
     case 'onscene':    return '#ef4444';  // red
     case 'available':  return '#22c55e';  // green
     case 'busy':       return '#8b5cf6';  // purple
-    case 'off_duty':   return '#6b7280';  // gray
+    case 'off_duty':   return '#666666';  // gray
     default:           return '#666666';
   }
 };
@@ -1218,10 +1218,10 @@ export default function MapPage() {
                 const RELATIONSHIP_COLORS: Record<string, string> = {
                   employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
                   manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
-                  banned: '#ef4444', frequent_visitor: '#9ca3af', associated: '#6b7280',
+                  banned: '#ef4444', frequent_visitor: '#999999', associated: '#666666',
                 };
                 const personRows = linkedPersons.slice(0, 8).map((p: any) => {
-                  const relColor = RELATIONSHIP_COLORS[p.relationship] || '#6b7280';
+                  const relColor = RELATIONSHIP_COLORS[p.relationship] || '#666666';
                   const name = escapeHtml(`${p.first_name} ${p.last_name}`);
                   const rel = escapeHtml((p.relationship || '').replace(/_/g, ' '));
                   const flagsArr = (() => { try { return JSON.parse(p.flags || '[]'); } catch { return []; } })();
@@ -4888,7 +4888,7 @@ export default function MapPage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#6b7280' : '#9ca3af' }}>{activeRoute.distance}</span>
+              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
             </div>
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>

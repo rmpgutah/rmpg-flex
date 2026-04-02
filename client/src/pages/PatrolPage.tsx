@@ -157,7 +157,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         title: cp.name,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
-          fillColor: cp.is_active ? '#22c55e' : '#6b7280',
+          fillColor: cp.is_active ? '#22c55e' : '#666666',
           fillOpacity: 0.9,
           strokeColor: '#fff',
           strokeWeight: 2,

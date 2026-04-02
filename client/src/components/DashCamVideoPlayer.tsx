@@ -201,7 +201,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   };
 
   // Speed → color + subtle background for evidence strip
-  const spdClr = displaySpeed == null ? '#6b7280' : displaySpeed > 80 ? '#f87171' : displaySpeed > 60 ? '#fbbf24' : '#4ade80';
+  const spdClr = displaySpeed == null ? '#666666' : displaySpeed > 80 ? '#f87171' : displaySpeed > 60 ? '#fbbf24' : '#4ade80';
   const speedBg = (mph: number | null | undefined): string => {
     if (mph == null) return '';
     if (mph > 80) return 'bg-red-500/10';

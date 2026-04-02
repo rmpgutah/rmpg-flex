@@ -29,7 +29,7 @@ export default function ClosestUnitPanel({
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchedUnits, setDispatchedUnits] = useState<Set<string>>(new Set());
 
-  const pColor = PRIORITY_HEX[call.priority] || '#6b7280';
+  const pColor = PRIORITY_HEX[call.priority] || '#666666';
 
   const handleDispatch = async (unitId: string) => {
     setDispatchingUnitId(unitId);
@@ -114,10 +114,10 @@ export default function ClosestUnitPanel({
             {call.call_number}
           </span>
         </div>
-        <div className="text-[9px] font-semibold" style={{ color: '#e5e7eb' }}>
+        <div className="text-[9px] font-semibold" style={{ color: '#e0e0e0' }}>
           {formatIncidentType(call.incident_type)}
         </div>
-        <div className="text-[8px] mt-0.5" style={{ color: '#9ca3af' }}>
+        <div className="text-[8px] mt-0.5" style={{ color: '#999999' }}>
           {call.location_address}
         </div>
       </div>
@@ -137,7 +137,7 @@ export default function ClosestUnitPanel({
         ) : (
           results.map((result, idx) => {
             const { unit, distanceMiles, estimatedMinutes } = result;
-            const statusColor = UNIT_STATUS_HEX[unit.status] || '#6b7280';
+            const statusColor = UNIT_STATUS_HEX[unit.status] || '#666666';
             const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status;
             const isDispatching = dispatchingUnitId === unit.id;
             const isDispatched = dispatchedUnits.has(unit.id);
@@ -195,7 +195,7 @@ export default function ClosestUnitPanel({
                     </div>
                     <div
                       className="text-[9px] truncate"
-                      style={{ color: '#9ca3af' }}
+                      style={{ color: '#999999' }}
                     >
                       {unit.officer_name}
                     </div>
@@ -208,7 +208,7 @@ export default function ClosestUnitPanel({
                         ? '<0.1 mi'
                         : `${distanceMiles.toFixed(1)} mi`}
                     </div>
-                    <div className="text-[8px] font-semibold font-mono tabular-nums" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#9ca3af' }}>
+                    <div className="text-[8px] font-semibold font-mono tabular-nums" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#999999' }}>
                       ~{estimatedMinutes < 1
                         ? '<1 min'
                         : `${Math.round(estimatedMinutes)} min`}

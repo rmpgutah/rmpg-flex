@@ -47,7 +47,7 @@ export const SHIFT_TYPES: Record<ShiftType, { label: string; defaultStart: strin
   day:    { label: 'Day Shift',   defaultStart: '06:00', defaultEnd: '14:00', color: '#f59e0b' },
   swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: '#888888' },
   night:  { label: 'Night Shift', defaultStart: '22:00', defaultEnd: '06:00', color: '#a855f7' },
-  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: '#6b7280' },
+  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: '#666666' },
 };
 
 const LS_KEY = 'rmpg_shift_plans';

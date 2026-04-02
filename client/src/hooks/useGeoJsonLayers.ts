@@ -54,7 +54,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'county.geojson',
     visible: true,
     selectable: true,
-    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#888888', strokeOpacity: 0.5, strokeWeight: 1.5 },
+    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],
@@ -135,7 +135,7 @@ export const SECTION_COLORS: Record<string, string> = {
   WB1: '#8b5cf6', WB2: '#10b981',
   UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
 };
-const SECTION_COLOR_FALLBACKS = ['#666666', '#78716c', '#a3a3a3', '#71717a', '#737373', '#6b7280'];
+const SECTION_COLOR_FALLBACKS = ['#666666', '#78716c', '#a3a3a3', '#71717a', '#737373', '#666666'];
 
 export function getSectionColor(sectionId: string): string {
   if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];

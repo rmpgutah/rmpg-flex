@@ -2577,7 +2577,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #4b5563', color: '#d1d5db', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #4b5563', color: '#cccccc', touchAction: 'manipulation' }}
                     >
                       Close
                     </button>
@@ -2616,7 +2616,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#999999', touchAction: 'manipulation' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
@@ -2625,7 +2625,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#999999', touchAction: 'manipulation' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -2667,12 +2667,12 @@ export default function DispatchPage() {
                   </div>
                   <div className="space-y-1.5 text-xs">
                     {([
-                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#9ca3af' },
+                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#999999' },
                       { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
                       { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
                       { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
                       { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
+                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
                     ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
                       <div key={ts.field} className="flex justify-between items-center group">
                         <span className="text-rmpg-400 flex items-center gap-1.5">
@@ -2915,7 +2915,7 @@ export default function DispatchPage() {
                             style={{
                               background: sendingToServe ? '#444444' : '#7c3aed20',
                               border: '1px solid #7c3aed50',
-                              color: sendingToServe ? '#9ca3af' : '#a78bfa',
+                              color: sendingToServe ? '#999999' : '#a78bfa',
                             }}
                             disabled={sendingToServe}
                             onClick={async () => {
@@ -3910,17 +3910,17 @@ export default function DispatchPage() {
                       onClick={() => setDetailTab(tab)}
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
-                        color: isActive ? '#999999' : '#6b7280',
+                        color: isActive ? '#999999' : '#666666',
                         background: isActive ? 'rgba(26,90,158,0.1)' : 'transparent',
                         borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                       }}
-                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#9ca3af'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
-                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#6b7280'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
+                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
+                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#666666'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
                       <span className="flex items-center gap-1.5">
                         {icons[tab]}
                         {labels[tab]}
-                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#1e304830', color: isActive ? '#999999' : '#6b7280' }}>{count}</span> : ''}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#1e304830', color: isActive ? '#999999' : '#666666' }}>{count}</span> : ''}
                       </span>
                     </button>
                   );
@@ -4125,13 +4125,13 @@ export default function DispatchPage() {
                       </div>
                       <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #1e3048' }}>
                         {([
-                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#6b7280', showElapsed: true },
+                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#666666', showElapsed: true },
                           { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
                           { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
                           { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
                           { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
-                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#6b7280' },
+                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
+                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#666666' },
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
@@ -5328,7 +5328,7 @@ export default function DispatchPage() {
                           (entry.action || '').includes('enroute') ? '#888888' :
                           (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? '#a855f7' :
                           (entry.action || '').includes('clear') ? '#22c55e' :
-                          (entry.action || '').includes('note') ? '#6b7280' :
+                          (entry.action || '').includes('note') ? '#666666' :
                           '#888888';
                         return (
                         <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#1a263620] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #1e3048' }}>
@@ -5624,7 +5624,7 @@ export default function DispatchPage() {
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
             <span className="toolbar-separator" />
-            <span className="text-[9px] font-mono tabular-nums" style={{ color: '#6b7280' }}>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: '#666666' }}>
               {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
             </span>
             <span className="toolbar-separator" />
@@ -6329,14 +6329,14 @@ export default function DispatchPage() {
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
             <span style={{ color: '#fcd34d' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
           </span>
-          <span style={{ color: '#6b7280' }}>|</span>
-          <span style={{ color: '#9ca3af' }}>
+          <span style={{ color: '#666666' }}>|</span>
+          <span style={{ color: '#999999' }}>
             PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? '#fbbf24' : '#4ade80' }}>{calls.filter(c => c.status === 'pending').length}</span>
           </span>
-          <span style={{ color: '#9ca3af' }}>
+          <span style={{ color: '#999999' }}>
             ACTIVE: <span style={{ color: '#aaaaaa' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
           </span>
-          <span style={{ color: '#9ca3af' }}>
+          <span style={{ color: '#999999' }}>
             HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? '#f97316' : '#555555' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
           </span>
           {(() => {
@@ -6361,10 +6361,10 @@ export default function DispatchPage() {
           <span style={{ color: '#aaaaaa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
           <span style={{ color: '#a78bfa' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
           <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
-          <span style={{ color: '#6b7280' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
-          <span style={{ color: '#6b7280' }}>|</span>
-          <span style={{ color: '#9ca3af' }}>
-            TOTAL: <span style={{ color: '#d1d5db' }}>{units.length}</span>
+          <span style={{ color: '#666666' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
+          <span style={{ color: '#666666' }}>|</span>
+          <span style={{ color: '#999999' }}>
+            TOTAL: <span style={{ color: '#cccccc' }}>{units.length}</span>
           </span>
         </div>
 
@@ -6378,7 +6378,7 @@ export default function DispatchPage() {
           <span style={{ color: '#555555' }}>F8:CMD</span>
           <span style={{ color: '#555555' }}>F12:NCIC</span>
           <span style={{ color: '#444444' }}>|</span>
-          <span style={{ color: '#9ca3af' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
+          <span style={{ color: '#999999' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
         </div>
       </div>
     </div>

@@ -25,7 +25,7 @@ const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e',
   maintenance: '#f59e0b',
   out_of_service: '#ef4444',
-  retired: '#6b7280',
+  retired: '#666666',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
@@ -50,7 +50,7 @@ function parseEquipment(eq: unknown): string[] {
 const TYPE_BORDER_COLOR: Record<string, string> = {
   oil_change: '#888888', tire_rotation: '#22c55e',
   brake_service: '#ef4444', inspection: '#22c55e',
-  repair: '#f59e0b', other: '#6b7280',
+  repair: '#f59e0b', other: '#666666',
 };
 
 interface Props {
@@ -446,7 +446,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                     <div className={`absolute left-1.5 top-2 w-3 h-3 rounded-full border-2 border-surface-base ${typeColors[m.type] || 'bg-rmpg-500'}`} />
                     <div
                       className="flex-1 p-2 bg-surface-sunken border border-rmpg-700"
-                      style={{ borderLeft: `3px solid ${TYPE_BORDER_COLOR[m.type] || '#6b7280'}` }}
+                      style={{ borderLeft: `3px solid ${TYPE_BORDER_COLOR[m.type] || '#666666'}` }}
                     >
                       <div className="flex items-center gap-2 justify-between">
                         <div className="flex items-center gap-2">

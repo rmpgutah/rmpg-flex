@@ -38,7 +38,7 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 function getReasonColor(reason: string): string {
-  return REASON_COLORS[reason?.toLowerCase()] || '#6b7280';
+  return REASON_COLORS[reason?.toLowerCase()] || '#666666';
 }
 
 // ─── Create diamond-shaped marker ───────────────────────────

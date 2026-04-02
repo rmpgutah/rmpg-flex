@@ -179,7 +179,7 @@ export default function MapOverlays({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-            <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#6b7280' : '#9ca3af' }}>{activeRoute.distance}</span>
+            <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
           </div>
           {routeLoading && (
             <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>

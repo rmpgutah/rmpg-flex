@@ -29,7 +29,7 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   return (
     <div style={{ background: '#050505', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
       <div style={{ color: '#aaaaaa', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
-      <div style={{ color: '#e5e7eb', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
+      <div style={{ color: '#e0e0e0', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
 };
@@ -378,7 +378,7 @@ export default function CrimeAnalysisPage() {
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;
                     const barColor = overTarget ? '#ef4444' : metric.priority === 'critical' ? '#f59e0b' : '#10b981';
-                    const labelColor = metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#888888' : '#9ca3af';
+                    const labelColor = metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#888888' : '#999999';
                     return (
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">

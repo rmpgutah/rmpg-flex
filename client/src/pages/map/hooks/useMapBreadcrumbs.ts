@@ -26,9 +26,9 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 const MPS_TO_MPH = 2.23694;
 
 export const speedToColor = (speedMps: number | null): string => {
-  if (speedMps == null || !Number.isFinite(speedMps) || speedMps < 0.2) return '#6b7280';  // Stationary (gray)
+  if (speedMps == null || !Number.isFinite(speedMps) || speedMps < 0.2) return '#666666';  // Stationary (gray)
   const mph = speedMps * MPS_TO_MPH;
-  if (mph < 3)   return '#9ca3af';   // Walking (light gray)
+  if (mph < 3)   return '#999999';   // Walking (light gray)
   if (mph < 10)  return '#22c55e';   // Jogging/Slow drive (cyan)
   if (mph < 25)  return '#22c55e';   // Residential (green)
   if (mph < 35)  return '#84cc16';   // City street (lime)
@@ -50,8 +50,8 @@ const speedToWeight = (speedMps: number | null): number => {
 
 // Speed legend data — exported for use in panels
 export const SPEED_LEGEND_BANDS = [
-  { color: '#6b7280', label: 'Stationary', range: '0 mph' },
-  { color: '#9ca3af', label: 'Walking', range: '<3 mph' },
+  { color: '#666666', label: 'Stationary', range: '0 mph' },
+  { color: '#999999', label: 'Walking', range: '<3 mph' },
   { color: '#22c55e', label: 'Slow Drive', range: '3-10 mph' },
   { color: '#22c55e', label: 'Residential', range: '10-25 mph' },
   { color: '#84cc16', label: 'City Street', range: '25-35 mph' },
@@ -69,7 +69,7 @@ const statusToColor = (status: string): string => {
     case 'onscene':    return '#ef4444';
     case 'available':  return '#22c55e';
     case 'busy':       return '#8b5cf6';
-    case 'off_duty':   return '#6b7280';
+    case 'off_duty':   return '#666666';
     default:           return '#666666';
   }
 };

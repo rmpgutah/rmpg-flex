@@ -75,7 +75,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
               <div
                 key={req.label}
                 className="flex items-center gap-1 text-[9px]"
-                style={{ color: met ? '#22c55e' : '#6b7280' }}
+                style={{ color: met ? '#22c55e' : '#666666' }}
               >
                 {met ? (
                   <Check className="w-2.5 h-2.5" />

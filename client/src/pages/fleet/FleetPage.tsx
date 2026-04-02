@@ -38,7 +38,7 @@ type ModalMode = 'none' | 'new_vehicle' | 'edit_vehicle' | 'log_maintenance' | '
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: '#6b7280',
+  out_of_service: '#ef4444', retired: '#666666',
 };
 
 const STATUS_LABEL: Record<FleetVehicleStatus, string> = {

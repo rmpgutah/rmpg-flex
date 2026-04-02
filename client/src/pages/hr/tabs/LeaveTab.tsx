@@ -84,7 +84,7 @@ function BalanceCard({
 // ─── Status Badge ───────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const color = LEAVE_STATUS_COLORS[status] || '#6b7280';
+  const color = LEAVE_STATUS_COLORS[status] || '#666666';
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-medium uppercase tracking-wide"
@@ -98,7 +98,7 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Leave Type Pill ────────────────────────────────────────
 
 function TypePill({ type }: { type: string }) {
-  const color = LEAVE_TYPE_COLORS[type] || '#6b7280';
+  const color = LEAVE_TYPE_COLORS[type] || '#666666';
   return (
     <span
       className="inline-flex items-center gap-1.5 text-xs"

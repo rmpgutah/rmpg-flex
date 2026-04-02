@@ -75,10 +75,10 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
             className="flex items-center gap-2 px-2 py-1"
             style={{ background: '#0a0a0a' }}
           >
-            <span className="text-[9px] w-4 text-right" style={{ color: '#6b7280' }}>
+            <span className="text-[9px] w-4 text-right" style={{ color: '#666666' }}>
               {i + 1}.
             </span>
-            <span className="text-body-sm tracking-wider" style={{ color: '#e5e7eb' }}>
+            <span className="text-body-sm tracking-wider" style={{ color: '#e0e0e0' }}>
               {code}
             </span>
           </div>

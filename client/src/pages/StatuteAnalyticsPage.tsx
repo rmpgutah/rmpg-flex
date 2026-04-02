@@ -301,7 +301,7 @@ export default function StatuteAnalyticsPage() {
                 {byLevel.map((l, i) => {
                   const total = byLevel.reduce((s, e) => s + e.count, 0);
                   const pct = total > 0 ? Math.round((l.count / total) * 100) : 0;
-                  const color = levelColors[l.offense_level] || '#6b7280';
+                  const color = levelColors[l.offense_level] || '#666666';
                   return (
                     <div key={i}>
                       <div className="flex items-center justify-between mb-0.5">
