@@ -49,7 +49,7 @@ import {
   GraduationCap,
   Microscope,
 } from 'lucide-react';
-import { Navigation2 } from 'lucide-react';
+import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, OfflineUnauthorizedError } from '../hooks/useApi';
@@ -926,6 +926,27 @@ export default function Layout() {
 
               {/* Notifications */}
               <NotificationCenter />
+
+              {/* Theme Toggle */}
+              <button type="button"
+                onClick={() => {
+                  const html = document.documentElement;
+                  const isLight = html.classList.contains('theme-light');
+                  html.classList.remove('theme-dark', 'theme-light');
+                  html.classList.add(isLight ? 'theme-dark' : 'theme-light');
+                  // Persist via API
+                  try { apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }); } catch {}
+                }}
+                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97]"
+                title="Toggle Light/Dark Theme"
+                aria-label="Toggle theme"
+                style={{ padding: '2px 6px' }}
+              >
+                {document.documentElement.classList.contains('theme-light')
+                  ? <Moon style={{ width: 10, height: 10 }} />
+                  : <Sun style={{ width: 10, height: 10 }} />
+                }
+              </button>
 
               {/* Search */}
               <button type="button"

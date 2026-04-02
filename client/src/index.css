@@ -9,26 +9,74 @@
    ============================================================ */
 
 /* --- Theme Custom Properties ─────────────────────────────── */
-:root {
-  --surface-base: #141e2b;
-  --surface-raised: #1a2636;
-  --surface-sunken: #0d1520;
-  --surface-overlay: #0a1018;
-  --surface-deep: #060c14;
-  --border-default: #1e3048;
-  --border-subtle: #182840;
-  --border-strong: #2a3e58;
+/* DARK THEME — Classic Spillman Flex Black */
+:root, html.theme-dark {
+  --surface-base: #0a0a0a;
+  --surface-raised: #141414;
+  --surface-sunken: #050505;
+  --surface-overlay: #030303;
+  --surface-deep: #000000;
+  --border-default: #1e1e1e;
+  --border-subtle: #161616;
+  --border-strong: #2a2a2a;
   --text-primary: #e5e7eb;
   --text-secondary: #9ca3af;
   --text-muted: #6b7280;
   --brand-blue: #1a5a9e;
   --brand-gold: #d4a017;
-  --toolbar-gradient-start: #1a5a9e;
-  --toolbar-gradient-end: #2570b5;
-  --grid-header-bg: #0f1a28;
-  --grid-row-alt: #121c2a;
+  --toolbar-gradient-start: #1a1a1a;
+  --toolbar-gradient-end: #222222;
+  --grid-header-bg: #0d0d0d;
+  --grid-row-alt: #0f0f0f;
   --field-label-color: #d4a017;
-  --border-panel: #1e3048;
+  --border-panel: #1e1e1e;
+  --panel-chrome-top: #2a2a2a;
+  --panel-chrome-mid: #1a1a1a;
+  --panel-chrome-bot: #0a0a0a;
+  --panel-chrome-highlight: #333333;
+  --bevel-light: #333333;
+  --bevel-dark: #000000;
+  --input-bg: #050505;
+  --input-border-top: #000000;
+  --input-border-bot: #2a2a2a;
+  --scrollbar-thumb: #2a2a2a;
+  --scrollbar-track: #050505;
+  color-scheme: dark;
+}
+
+/* LIGHT THEME — Spillman Flex Gray */
+html.theme-light {
+  --surface-base: #f0f0f0;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e4e4e4;
+  --surface-overlay: #d8d8d8;
+  --surface-deep: #cccccc;
+  --border-default: #c0c0c0;
+  --border-subtle: #d0d0d0;
+  --border-strong: #a0a0a0;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #7a7a7a;
+  --brand-blue: #1a5a9e;
+  --brand-gold: #8a6a10;
+  --toolbar-gradient-start: #e8e8e8;
+  --toolbar-gradient-end: #d8d8d8;
+  --grid-header-bg: #e0e0e0;
+  --grid-row-alt: #f5f5f5;
+  --field-label-color: #1a5a9e;
+  --border-panel: #c0c0c0;
+  --panel-chrome-top: #f0f0f0;
+  --panel-chrome-mid: #e0e0e0;
+  --panel-chrome-bot: #d0d0d0;
+  --panel-chrome-highlight: #ffffff;
+  --bevel-light: #ffffff;
+  --bevel-dark: #b0b0b0;
+  --input-bg: #ffffff;
+  --input-border-top: #b0b0b0;
+  --input-border-bot: #d8d8d8;
+  --scrollbar-thumb: #b0b0b0;
+  --scrollbar-track: #e4e4e4;
+  color-scheme: light;
 }
 
 /* --- Global Base Overrides --- */
@@ -798,19 +846,19 @@ body.fx-noise::after {
 
   /* --- Beveled Panel Borders (3D Raised / Inset) --- */
   .panel-beveled {
-    border: 1px solid #2a3e58;
-    border-top-color: #3a5070;
-    border-left-color: #3a5070;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    border: 1px solid var(--border-strong);
+    border-top-color: var(--bevel-light);
+    border-left-color: var(--bevel-light);
+    border-bottom-color: var(--bevel-dark);
+    border-right-color: var(--bevel-dark);
   }
 
   .panel-inset {
-    border: 1px solid #0d1520;
-    border-top-color: #0a1018;
-    border-left-color: #0a1018;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    border: 1px solid var(--bevel-dark);
+    border-top-color: var(--bevel-dark);
+    border-left-color: var(--bevel-dark);
+    border-bottom-color: var(--bevel-light);
+    border-right-color: var(--bevel-light);
   }
 
   /* --- Panel Title Bar (Desktop Window Chrome) --- */
@@ -819,14 +867,14 @@ body.fx-noise::after {
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    background: linear-gradient(180deg, #253a52 0%, #1e3048 30%, #182840 70%, #141e2b 100%);
-    border-bottom: 1px solid #0d1520;
-    border-top: 1px solid #3a5070;
+    background: linear-gradient(180deg, var(--panel-chrome-highlight) 0%, var(--panel-chrome-top) 30%, var(--panel-chrome-mid) 70%, var(--panel-chrome-bot) 100%);
+    border-bottom: 1px solid var(--bevel-dark);
+    border-top: 1px solid var(--bevel-light);
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #d4a017;
+    color: var(--field-label-color);
     user-select: none;
     flex-wrap: nowrap;
     min-height: 26px;
@@ -846,7 +894,7 @@ body.fx-noise::after {
   .panel-title-bar .title-icon {
     width: 12px;
     height: 12px;
-    color: #d4a017;
+    color: var(--field-label-color);
     filter: drop-shadow(0 0 3px rgba(212, 160, 23, 0.3));
   }
 
@@ -3096,38 +3144,161 @@ html.font-medium { font-size: 16px; }
 html.font-large { font-size: 19px; }
 
 /* ============================================================
-   Feature 32: Light Theme Support
+   LIGHT THEME — Comprehensive Overrides
+   Converts all dark-hardcoded colors to light equivalents.
    ============================================================ */
-html.theme-light {
-  --surface-base: #f0f2f5;
-  --surface-raised: #ffffff;
-  --surface-sunken: #e4e7eb;
-  --surface-overlay: rgba(255, 255, 255, 0.95);
-  --surface-deep: #d1d5db;
-  --border-default: #c0c4cc;
-  --border-subtle: #d1d5db;
-  --border-strong: #9ca3af;
-  --text-primary: #111827;
-  --text-secondary: #374151;
-  --text-muted: #6b7280;
-}
-
 html.theme-light body {
-  background: #f0f2f5 !important;
-  color: #111827 !important;
+  background: var(--surface-base) !important;
+  color: var(--text-primary) !important;
+  background-image: none !important;
 }
+html.theme-light #root { background-image: none !important; }
+html.theme-light #root::after { display: none !important; } /* no CRT scanlines */
 
+/* Surface classes */
 html.theme-light .bg-surface-base { background: var(--surface-base) !important; }
 html.theme-light .bg-surface-raised { background: var(--surface-raised) !important; }
 html.theme-light .bg-surface-sunken { background: var(--surface-sunken) !important; }
+
+/* Text overrides — dark text on light background */
 html.theme-light .text-white { color: var(--text-primary) !important; }
+html.theme-light .text-rmpg-100 { color: #1a1a1a !important; }
+html.theme-light .text-rmpg-200 { color: #2a2a2a !important; }
 html.theme-light .text-rmpg-300 { color: var(--text-secondary) !important; }
 html.theme-light .text-rmpg-400 { color: var(--text-secondary) !important; }
 html.theme-light .text-rmpg-500 { color: var(--text-muted) !important; }
+html.theme-light .text-rmpg-600 { color: #8a8a8a !important; }
+
+/* Border overrides */
+html.theme-light .border-rmpg-600 { border-color: var(--border-default) !important; }
 html.theme-light .border-rmpg-700 { border-color: var(--border-default) !important; }
 html.theme-light .border-rmpg-800 { border-color: var(--border-subtle) !important; }
-html.theme-light .panel-beveled { background: var(--surface-raised) !important; border-color: var(--border-default) !important; }
-html.theme-light .panel-surface { background: var(--surface-raised) !important; }
+html.theme-light [class*="border-\[#1e3048\]"] { border-color: var(--border-default) !important; }
+html.theme-light [class*="border-\[#2a3e58\]"] { border-color: var(--border-strong) !important; }
+
+/* Panel chrome */
+html.theme-light .panel-beveled {
+  background: var(--surface-raised) !important;
+  border-color: var(--border-default) !important;
+  border-top-color: var(--bevel-light) !important;
+  border-left-color: var(--bevel-light) !important;
+  border-bottom-color: var(--bevel-dark) !important;
+  border-right-color: var(--bevel-dark) !important;
+}
+html.theme-light .panel-inset {
+  background: var(--surface-sunken) !important;
+  border-top-color: var(--bevel-dark) !important;
+  border-left-color: var(--bevel-dark) !important;
+  border-bottom-color: var(--bevel-light) !important;
+  border-right-color: var(--bevel-light) !important;
+}
+html.theme-light .panel-title-bar {
+  background: linear-gradient(180deg, var(--panel-chrome-top), var(--panel-chrome-mid), var(--panel-chrome-bot)) !important;
+  border-top-color: var(--panel-chrome-highlight) !important;
+  border-bottom-color: var(--bevel-dark) !important;
+  color: var(--field-label-color) !important;
+}
+html.theme-light .panel-title-bar .title-icon {
+  color: var(--field-label-color) !important;
+}
+
+/* Hardcoded navy/dark backgrounds → light equivalents */
+html.theme-light [style*="background: #141e2b"],
+html.theme-light [style*="background:#141e2b"],
+html.theme-light [style*="background: rgb(20, 30, 43)"] {
+  background: var(--surface-base) !important;
+}
+html.theme-light [style*="background: #1a2636"],
+html.theme-light [style*="background:#1a2636"] {
+  background: var(--surface-raised) !important;
+}
+html.theme-light [style*="background: #0d1520"],
+html.theme-light [style*="background:#0d1520"] {
+  background: var(--surface-sunken) !important;
+}
+
+/* Inline bg overrides for common hardcoded dark backgrounds */
+html.theme-light .bg-\[\#141e2b\] { background: var(--surface-base) !important; }
+html.theme-light .bg-\[\#1a2636\] { background: var(--surface-raised) !important; }
+html.theme-light .bg-\[\#0d1520\] { background: var(--surface-sunken) !important; }
+html.theme-light .bg-\[\#0a1018\] { background: var(--surface-deep) !important; }
+html.theme-light .bg-\[\#0a0a0a\] { background: var(--surface-base) !important; }
+
+/* Inputs */
+html.theme-light input, html.theme-light textarea, html.theme-light select {
+  background: var(--input-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-strong) !important;
+  border-top-color: var(--input-border-top) !important;
+  border-left-color: var(--input-border-top) !important;
+  border-bottom-color: var(--input-border-bot) !important;
+  border-right-color: var(--input-border-bot) !important;
+}
+html.theme-light input::placeholder, html.theme-light textarea::placeholder {
+  color: #999999 !important;
+}
+html.theme-light .input-dark {
+  background: var(--input-bg) !important;
+  color: var(--text-primary) !important;
+  border-top-color: var(--input-border-top) !important;
+  border-left-color: var(--input-border-top) !important;
+  border-bottom-color: var(--input-border-bot) !important;
+  border-right-color: var(--input-border-bot) !important;
+}
+
+/* Toolbar buttons */
+html.theme-light .toolbar-btn {
+  background: linear-gradient(180deg, #f0f0f0 0%, #e0e0e0 100%) !important;
+  border-color: #c0c0c0 !important;
+  border-bottom-color: #a0a0a0 !important;
+  border-right-color: #a0a0a0 !important;
+  color: #333333 !important;
+}
+html.theme-light .toolbar-btn:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 100%) !important;
+  color: #111111 !important;
+}
+html.theme-light .toolbar-btn-primary {
+  background: linear-gradient(180deg, #2570b5 0%, #1a5a9e 100%) !important;
+  border-color: #3b8ad4 !important;
+  color: #ffffff !important;
+}
+
+/* Tab bar */
+html.theme-light .tab-bar {
+  background: var(--surface-base) !important;
+  border-bottom-color: var(--border-default) !important;
+}
+html.theme-light .tab-bar-item { color: #666666 !important; }
+html.theme-light .tab-bar-item.active {
+  color: var(--field-label-color) !important;
+  background: var(--surface-raised) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* Status bar */
+html.theme-light .status-bar {
+  background: var(--surface-sunken) !important;
+  border-top-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+html.theme-light .status-bar-section { border-right-color: var(--border-default) !important; }
+
+/* Scrollbars */
+html.theme-light ::-webkit-scrollbar-track { background: var(--scrollbar-track) !important; }
+html.theme-light ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb) !important; }
+
+/* Context menus / dropdowns */
+html.theme-light .context-menu-item { color: #333333 !important; }
+html.theme-light .context-menu-item:hover { background: #e0e8f0 !important; color: #111111 !important; }
+
+/* Collapsible sections */
+html.theme-light [style*="background: linear-gradient(180deg, #1e3048"] {
+  background: linear-gradient(180deg, var(--panel-chrome-top), var(--panel-chrome-bot)) !important;
+}
+
+/* Selection */
+html.theme-light ::selection { background: rgba(26, 90, 158, 0.25) !important; color: #111111 !important; }
 
 /* ============================================================
    Feature 39: Enhanced Print Stylesheet for Detail Views
