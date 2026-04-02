@@ -3143,9 +3143,7 @@ export default function DispatchPage() {
   // DESKTOP LAYOUT — Existing 40%/60% split with panels
   // ================================================================
   return (
-    <div className="flex flex-col h-full relative">
-      {/* Dispatch main content area (flex-row) */}
-      <div className="flex flex-1 min-h-0 relative">
+    <div className="flex h-full relative">
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
@@ -6315,13 +6313,10 @@ export default function DispatchPage() {
         </div>
       )}
 
-      </div>{/* END flex-row main content area */}
-
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* DISPATCH STATUS BAR — Spillman Flex-style persistent footer */}
-      {/* Always visible at bottom of screen with real-time metrics   */}
+      {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none"
+      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[90]"
         style={{ background: '#0d1520', borderColor: '#1a2636', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
