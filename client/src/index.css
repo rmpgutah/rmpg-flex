@@ -3300,6 +3300,38 @@ html.theme-light [style*="background: linear-gradient(180deg, #1e3048"] {
 /* Selection */
 html.theme-light ::selection { background: rgba(26, 90, 158, 0.25) !important; color: #111111 !important; }
 
+/* ── NUCLEAR LIGHT THEME — Invert everything dark ─────────────
+   Inline styles with hardcoded hex values can't be overridden by
+   CSS classes. The ONLY reliable way to make them light is to
+   invert the entire rendering pipeline and then re-invert images,
+   maps, and colored indicators so they display correctly.
+   ──────────────────────────────────────────────────────────── */
+html.theme-light #root {
+  filter: invert(0.9) hue-rotate(180deg);
+}
+/* Re-invert things that should keep their original colors */
+html.theme-light #root img,
+html.theme-light #root video,
+html.theme-light #root canvas,
+html.theme-light #root svg.lucide,
+html.theme-light #root [class*="led-"],
+html.theme-light #root [class*="gm-"],
+html.theme-light #root .gm-style,
+html.theme-light #root [class*="leaflet"],
+html.theme-light #root .recharts-wrapper,
+html.theme-light #root .recharts-surface {
+  filter: invert(1) hue-rotate(180deg);
+}
+/* Google Maps needs special treatment */
+html.theme-light .gm-style > div > div > div > div > div > div > div {
+  filter: invert(1) hue-rotate(180deg);
+}
+/* Keep brand logo correct */
+html.theme-light #root [alt="RMPG Flex"],
+html.theme-light #root [src*="rmpg"] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 /* ============================================================
    Feature 39: Enhanced Print Stylesheet for Detail Views
    ============================================================ */
@@ -4038,12 +4070,12 @@ textarea {
   }
 }
 
-/* Prevent white flash on page load in dark mode */
+/* Prevent flash on page load */
 html, body {
-  background-color: #141e2b;
+  background-color: #0a0a0a;
 }
-@media (prefers-color-scheme: dark) {
-  html { background-color: #141e2b; }
+html.theme-light, html.theme-light body {
+  background-color: #f0f0f0 !important;
 }
 
 /* ============================================================
