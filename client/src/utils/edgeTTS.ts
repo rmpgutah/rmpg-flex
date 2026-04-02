@@ -93,7 +93,49 @@ function speakFallback(text: string): Promise<void> {
   });
 }
 
-// ─── Edge-TTS Fetch + Bandpass Playback ─────────────────────
+// ─── Radio Squelch Beep Generator ───────────────────────────
+// Authentic police radio open/close beep — short dual-tone burst
+
+function playSquelchBeep(ctx: AudioContext, startTime: number, type: 'open' | 'close'): void {
+  // Open squelch: rising tone (900→1400Hz over 80ms)
+  // Close squelch: falling tone (1400→900Hz over 80ms)
+  const duration = 0.08;
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc1.type = 'sine';
+  osc2.type = 'sine';
+
+  if (type === 'open') {
+    osc1.frequency.setValueAtTime(900, startTime);
+    osc1.frequency.linearRampToValueAtTime(1400, startTime + duration);
+    osc2.frequency.setValueAtTime(1800, startTime);
+    osc2.frequency.linearRampToValueAtTime(2200, startTime + duration);
+  } else {
+    osc1.frequency.setValueAtTime(1400, startTime);
+    osc1.frequency.linearRampToValueAtTime(900, startTime + duration);
+    osc2.frequency.setValueAtTime(2200, startTime);
+    osc2.frequency.linearRampToValueAtTime(1800, startTime + duration);
+  }
+
+  // Quick envelope: fade in 5ms, hold, fade out 10ms
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(0.12, startTime + 0.005);
+  gain.gain.setValueAtTime(0.12, startTime + duration - 0.01);
+  gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+  osc1.connect(gain);
+  osc2.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc1.start(startTime);
+  osc1.stop(startTime + duration + 0.01);
+  osc2.start(startTime);
+  osc2.stop(startTime + duration + 0.01);
+}
+
+// ─── Edge-TTS Fetch + Radio Processing ──────────────────────
 
 async function fetchAndPlay(text: string): Promise<void> {
   const token = localStorage.getItem('rmpg_token');
@@ -118,15 +160,107 @@ async function fetchAndPlay(text: string): Promise<void> {
     source.buffer = audioBuffer;
     currentSource = source;
 
-    // Clean, natural voice — no radio effects, no filters
-    // Just play the Edge TTS neural voice directly
-    source.connect(ctx.destination);
+    const now = ctx.currentTime;
+    const voiceDelay = 0.15; // Start voice 150ms after open squelch
+    const voiceDuration = audioBuffer.duration;
+
+    // ── 1. OPEN SQUELCH BEEP ──────────────────────────────
+    playSquelchBeep(ctx, now, 'open');
+
+    // ── 2. RADIO FREQUENCY PROCESSING ─────────────────────
+    // Bandpass filter: 300Hz–3400Hz (standard radio bandwidth)
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 300;
+    highpass.Q.value = 0.7;
+
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = 3400;
+    lowpass.Q.value = 0.7;
+
+    // Presence/clarity boost at 1.5kHz (radio intelligibility)
+    const presence = ctx.createBiquadFilter();
+    presence.type = 'peaking';
+    presence.frequency.value = 1500;
+    presence.Q.value = 1.0;
+    presence.gain.value = 3;
+
+    // Slight compression feel via gain staging
+    const voiceGain = ctx.createGain();
+    voiceGain.gain.value = 0.85;
+
+    // ── 3. RADIO STATIC / BACKGROUND NOISE ────────────────
+    // Pink noise — continuous hiss during transmission
+    const noiseLen = voiceDuration + voiceDelay + 0.4;
+    const noiseBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * noiseLen), ctx.sampleRate);
+    const noiseData = noiseBuf.getChannelData(0);
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < noiseData.length; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.96900 * b2 + white * 0.1538520;
+      b3 = 0.86650 * b3 + white * 0.3104856;
+      b4 = 0.55000 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.0168980;
+      noiseData[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+      b6 = white * 0.115926;
+    }
+
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = noiseBuf;
+
+    // Bandpass the noise too (radio-band static only)
+    const noiseHP = ctx.createBiquadFilter();
+    noiseHP.type = 'highpass';
+    noiseHP.frequency.value = 400;
+
+    const noiseLP = ctx.createBiquadFilter();
+    noiseLP.type = 'lowpass';
+    noiseLP.frequency.value = 3000;
+
+    // Noise volume — audible but not overpowering
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0, now);
+    // Fade in with squelch open
+    noiseGain.gain.linearRampToValueAtTime(0.018, now + 0.05);
+    // Hold during voice
+    noiseGain.gain.setValueAtTime(0.018, now + voiceDelay + voiceDuration);
+    // Fade out after voice ends
+    noiseGain.gain.linearRampToValueAtTime(0, now + voiceDelay + voiceDuration + 0.3);
+
+    // Noise chain: source → HP → LP → gain → output
+    noiseSource.connect(noiseHP);
+    noiseHP.connect(noiseLP);
+    noiseLP.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noiseSource.start(now);
+    noiseSource.stop(now + noiseLen);
+
+    // ── 4. VOICE CHAIN ────────────────────────────────────
+    // source → highpass → lowpass → presence → voiceGain → output
+    source.connect(highpass);
+    highpass.connect(lowpass);
+    lowpass.connect(presence);
+    presence.connect(voiceGain);
+    voiceGain.connect(ctx.destination);
+
+    // ── 5. CLOSE SQUELCH BEEP (after voice ends) ──────────
+    const closeTime = now + voiceDelay + voiceDuration + 0.1;
+    playSquelchBeep(ctx, closeTime, 'close');
 
     source.onended = () => {
       currentSource = null;
-      resolve();
+      // Let the close squelch + noise fade finish before resolving
+      setTimeout(() => {
+        try { noiseSource.stop(); } catch { /* already stopped */ }
+        resolve();
+      }, 400);
     };
-    source.start();
+
+    // Start voice after squelch open completes
+    source.start(now + voiceDelay);
   });
 }
 
