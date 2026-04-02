@@ -52,12 +52,13 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'county',
     label: 'Counties',
     file: 'county.geojson',
-    visible: false,
+    visible: true,
     selectable: true,
-    style: { fillColor: '#3b82f6', fillOpacity: 0.06, strokeColor: '#3b82f6', strokeOpacity: 0.4, strokeWeight: 1.5 },
+    style: { fillColor: '#1a2636', fillOpacity: 0.15, strokeColor: '#3b82f6', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],
+    minZoom: 8,
   },
   {
     id: 'municipality',
@@ -501,6 +502,36 @@ export function useGeoJsonLayers({
           zIndex: 1,
         });
         // Store label markers for cleanup
+        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
+        labelMarkersRef.current[cfg.id].push(marker);
+      });
+    }
+
+    // ── County label overlays — show county names at polygon centroids ──
+    if (cfg.id === 'county') {
+      dataLayer.forEach((feature) => {
+        const name = feature.getProperty('NAME') as string;
+        if (!name) return;
+        const geom = feature.getGeometry();
+        if (!geom) return;
+        let latSum = 0, lngSum = 0, pointCount = 0;
+        geom.forEachLatLng((latLng) => { latSum += latLng.lat(); lngSum += latLng.lng(); pointCount++; });
+        if (pointCount === 0) return;
+        const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
+        const marker = new google.maps.Marker({
+          position: centroid,
+          map,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+          label: {
+            text: name.toUpperCase() + ' CO.',
+            color: '#3b82f680',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            fontFamily: 'JetBrains Mono, Courier New, monospace',
+          },
+          clickable: false,
+          zIndex: 0,
+        });
         if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
         labelMarkersRef.current[cfg.id].push(marker);
       });
