@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-client",
-  "version": "5.5.0",
+  "version": "5.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

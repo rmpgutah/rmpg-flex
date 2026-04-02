@@ -3805,3 +3805,268 @@ html, body {
 @media (prefers-color-scheme: dark) {
   html { background-color: #141e2b; }
 }
+
+/* ============================================================
+   SPILLMAN FLEX VISUAL ENHANCEMENTS
+   Authentic Motorola CAD/RMS console aesthetic refinements
+   ============================================================ */
+
+/* --- CRT Scanline Overlay (subtle, desktop only) --- */
+@media (min-width: 768px) {
+  #root::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99999;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 4px
+    );
+    mix-blend-mode: multiply;
+  }
+}
+
+/* --- Enhanced Grid / Table Styling (CAD data grid) --- */
+@layer components {
+  .cad-grid {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .cad-grid thead th {
+    background: var(--grid-header-bg);
+    color: var(--brand-gold);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 4px 8px;
+    border-bottom: 2px solid var(--border-strong);
+    text-align: left;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .cad-grid tbody tr {
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background 0.1s;
+  }
+  .cad-grid tbody tr:nth-child(even) {
+    background: var(--grid-row-alt);
+  }
+  .cad-grid tbody tr:hover {
+    background: rgba(26, 90, 158, 0.12);
+  }
+  .cad-grid tbody tr.selected {
+    background: rgba(26, 90, 158, 0.2);
+    box-shadow: inset 3px 0 0 var(--brand-blue);
+  }
+  .cad-grid tbody td {
+    padding: 3px 8px;
+    color: var(--text-primary);
+    vertical-align: middle;
+  }
+
+  /* --- Spillman Section Headers (gold accent bar) --- */
+  .section-header-spillman {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: linear-gradient(90deg, rgba(212, 160, 23, 0.08) 0%, transparent 60%);
+    border-left: 3px solid var(--brand-gold);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--brand-gold);
+    user-select: none;
+  }
+  .section-header-spillman .section-count {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* --- LED Status Indicators (enhanced) --- */
+  .led-indicator {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .led-green {
+    background: #22c55e;
+    box-shadow: 0 0 4px #22c55e80, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-red {
+    background: #ef4444;
+    box-shadow: 0 0 4px #ef444480, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-amber {
+    background: #f59e0b;
+    box-shadow: 0 0 4px #f59e0b80, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-blue {
+    background: #3b82f6;
+    box-shadow: 0 0 4px #3b82f680, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-blink {
+    animation: led-blink 1s ease-in-out infinite;
+  }
+  @keyframes led-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* --- Spillman Data Cards (record items) --- */
+  .spillman-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    border-top-color: var(--border-strong);
+    border-left-color: var(--border-strong);
+    border-bottom-color: #0d1520;
+    border-right-color: #0d1520;
+    padding: 8px 10px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .spillman-card:hover {
+    background: #1e2e40;
+    border-color: var(--border-strong);
+  }
+  .spillman-card.selected {
+    background: rgba(26, 90, 158, 0.15);
+    border-left: 3px solid var(--brand-blue);
+    box-shadow: inset 0 0 0 1px rgba(26, 90, 158, 0.2);
+  }
+
+  /* --- Spillman Badge Styles (status/priority/role) --- */
+  .badge-spillman {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .badge-p1 { color: #fca5a5; background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.4); }
+  .badge-p2 { color: #fcd34d; background: rgba(217,119,6,0.2); border-color: rgba(217,119,6,0.4); }
+  .badge-p3 { color: #93c5fd; background: rgba(37,99,235,0.15); border-color: rgba(37,99,235,0.3); }
+  .badge-p4 { color: #9ca3af; background: rgba(107,114,128,0.15); border-color: rgba(107,114,128,0.3); }
+  .badge-active { color: #86efac; background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.3); }
+  .badge-pending { color: #fbbf24; background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); }
+  .badge-cleared { color: #6b7280; background: rgba(107,114,128,0.1); border-color: rgba(107,114,128,0.2); }
+
+  /* --- Monospace Data Readout (CAD terminal style) --- */
+  .cad-readout {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+
+  /* --- Spillman Form Fields --- */
+  .spillman-field-label {
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--brand-gold);
+    margin-bottom: 3px;
+  }
+
+  /* --- Inset Data Panel (for record detail sections) --- */
+  .data-panel-inset {
+    background: var(--surface-sunken);
+    border: 1px solid #0a1018;
+    border-top-color: #060c14;
+    border-left-color: #060c14;
+    border-bottom-color: var(--border-default);
+    border-right-color: var(--border-default);
+    padding: 8px 10px;
+  }
+
+  /* --- Divider with Label (horizontal rule with text) --- */
+  .divider-labeled {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+  }
+  .divider-labeled::before,
+  .divider-labeled::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-subtle);
+  }
+
+  /* --- Spillman Console Glow Effects --- */
+  .glow-blue {
+    text-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+  }
+  .glow-green {
+    text-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+  }
+  .glow-red {
+    text-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+  }
+  .glow-gold {
+    text-shadow: 0 0 8px rgba(212, 160, 23, 0.4);
+  }
+
+  /* --- Enhanced Scrollbar (dark chrome) --- */
+  .spillman-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .spillman-scroll::-webkit-scrollbar-track {
+    background: var(--surface-sunken);
+  }
+  .spillman-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 0;
+  }
+  .spillman-scroll::-webkit-scrollbar-thumb:hover {
+    background: #3a5070;
+  }
+
+  /* --- Quick Action Chip (inline action buttons) --- */
+  .action-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    font-size: 9px;
+    font-weight: 600;
+    color: #b0bcc8;
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .action-chip:hover {
+    background: var(--surface-raised);
+    color: #ffffff;
+    border-color: var(--border-strong);
+  }
+}
