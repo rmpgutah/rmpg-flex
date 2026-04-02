@@ -1720,4 +1720,394 @@ router.post('/swap-numbers', authenticateToken, requireRole('admin'), (req: Requ
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ════════════════════════════════════════════════════════════
+// INCIDENT OFFENSES — Spillman Flex offense tracking
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/offenses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const offenses = db.prepare(`
+      SELECT io.*,
+        s.statute_number, s.title as statute_title, s.category as statute_category,
+        sp.first_name as suspect_first, sp.last_name as suspect_last,
+        vp.first_name as victim_first, vp.last_name as victim_last
+      FROM incident_offenses io
+      LEFT JOIN utah_statutes s ON s.id = io.statute_id
+      LEFT JOIN persons sp ON sp.id = io.suspect_person_id
+      LEFT JOIN persons vp ON vp.id = io.victim_person_id
+      WHERE io.incident_id = ?
+      ORDER BY io.created_at
+    `).all(req.params.id);
+    res.json(offenses);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load offenses' });
+  }
+});
+
+router.post('/:id(\\d+)/offenses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    const { offense_code, statute_id, description, offense_date, offense_level, ucr_code, nibrs_code,
+      attempted_completed, suspect_person_id, victim_person_id, location_type, weapon_force,
+      criminal_activity, bias_motivation, counts, notes } = req.body;
+    if (!offense_code || !description) { res.status(400).json({ error: 'offense_code and description required' }); return; }
+    const result = db.prepare(`
+      INSERT INTO incident_offenses (incident_id, offense_code, statute_id, description, offense_date, offense_level, ucr_code, nibrs_code,
+        attempted_completed, suspect_person_id, victim_person_id, location_type, weapon_force, criminal_activity, bias_motivation, counts, notes, added_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, offense_code, statute_id || null, description, offense_date, offense_level || 'misdemeanor',
+      ucr_code, nibrs_code, attempted_completed || 'completed', suspect_person_id || null, victim_person_id || null,
+      location_type, weapon_force, criminal_activity, bias_motivation, counts || 1, notes, userId);
+    auditLog(req, 'CREATE', 'incident_offenses', result.lastInsertRowid as number, null, req.body);
+    const offense = db.prepare('SELECT * FROM incident_offenses WHERE id = ?').get(result.lastInsertRowid);
+    res.json(offense);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.status(500).json({ error: 'Offense tracking not yet initialized. Restart server.' }); return; }
+    res.status(500).json({ error: 'Failed to add offense' });
+  }
+});
+
+router.put('/:id(\\d+)/offenses/:offenseId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fields = ['offense_code', 'statute_id', 'description', 'offense_date', 'offense_level', 'ucr_code', 'nibrs_code',
+      'attempted_completed', 'suspect_person_id', 'victim_person_id', 'location_type', 'weapon_force',
+      'criminal_activity', 'bias_motivation', 'disposition', 'disposition_date', 'counts', 'notes'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    values.push(req.params.offenseId, req.params.id);
+    db.prepare(`UPDATE incident_offenses SET ${updates.join(', ')} WHERE id = ? AND incident_id = ?`).run(...values);
+    const updated = db.prepare('SELECT * FROM incident_offenses WHERE id = ?').get(req.params.offenseId);
+    res.json(updated);
+  } catch { res.status(500).json({ error: 'Failed to update offense' }); }
+});
+
+router.delete('/:id(\\d+)/offenses/:offenseId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM incident_offenses WHERE id = ? AND incident_id = ?').run(req.params.offenseId, req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete offense' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// INCIDENT OFFICERS — Multi-officer tracking with roles
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officers = db.prepare(`
+      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+      FROM incident_officers io
+      JOIN users u ON u.id = io.officer_id
+      WHERE io.incident_id = ?
+      ORDER BY CASE io.role WHEN 'primary' THEN 0 WHEN 'supervisor' THEN 1 WHEN 'responding' THEN 2 WHEN 'backup' THEN 3 ELSE 4 END
+    `).all(req.params.id);
+    res.json(officers);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load officers' });
+  }
+});
+
+router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    const { officer_id, role, arrived_at, departed_at, action_taken, notes } = req.body;
+    if (!officer_id) { res.status(400).json({ error: 'officer_id required' }); return; }
+    const result = db.prepare(`
+      INSERT INTO incident_officers (incident_id, officer_id, role, arrived_at, departed_at, action_taken, notes, added_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, officer_id, role || 'responding', arrived_at, departed_at, action_taken, notes, userId);
+    const officer = db.prepare(`
+      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+      FROM incident_officers io JOIN users u ON u.id = io.officer_id
+      WHERE io.id = ?
+    `).get(result.lastInsertRowid);
+    auditLog(req, 'CREATE', 'incident_officers', result.lastInsertRowid as number, null, req.body);
+    res.json(officer);
+  } catch (err: any) {
+    if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Officer already added to this incident' }); return; }
+    if (err?.message?.includes('no such table')) { res.status(500).json({ error: 'Officer tracking not yet initialized' }); return; }
+    res.status(500).json({ error: 'Failed to add officer' });
+  }
+});
+
+router.delete('/:id(\\d+)/officers/:linkId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM incident_officers WHERE id = ? AND incident_id = ?').run(req.params.linkId, req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to remove officer' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// INCIDENT LINKS — Cross-reference to other records
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const links = db.prepare(`SELECT * FROM incident_links WHERE incident_id = ? ORDER BY created_at`).all(req.params.id);
+
+    // Enrich each link with basic info from linked record
+    const enriched = (links as any[]).map((link: any) => {
+      let detail: any = null;
+      try {
+        if (link.linked_type === 'incident') {
+          detail = db.prepare('SELECT incident_number, incident_type, status FROM incidents WHERE id = ?').get(link.linked_id);
+        } else if (link.linked_type === 'call') {
+          detail = db.prepare('SELECT call_number, incident_type, status FROM calls_for_service WHERE id = ?').get(link.linked_id);
+        } else if (link.linked_type === 'case') {
+          detail = db.prepare('SELECT case_number, case_type, status FROM cases WHERE id = ?').get(link.linked_id);
+        } else if (link.linked_type === 'warrant') {
+          detail = db.prepare('SELECT warrant_number, type, status FROM warrants WHERE id = ?').get(link.linked_id);
+        } else if (link.linked_type === 'citation') {
+          detail = db.prepare('SELECT citation_number, violation_description, status FROM citations WHERE id = ?').get(link.linked_id);
+        }
+      } catch { /* table may not exist */ }
+      return { ...link, detail };
+    });
+
+    res.json(enriched);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load links' });
+  }
+});
+
+router.post('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    const { linked_type, linked_id, link_reason } = req.body;
+    if (!linked_type || !linked_id) { res.status(400).json({ error: 'linked_type and linked_id required' }); return; }
+    const result = db.prepare(`
+      INSERT INTO incident_links (incident_id, linked_type, linked_id, link_reason, added_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(req.params.id, linked_type, linked_id, link_reason, userId);
+    auditLog(req, 'CREATE', 'incident_links', result.lastInsertRowid as number, null, req.body);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) {
+    if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Link already exists' }); return; }
+    res.status(500).json({ error: 'Failed to create link' });
+  }
+});
+
+router.delete('/:id(\\d+)/links/:linkId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM incident_links WHERE id = ? AND incident_id = ?').run(req.params.linkId, req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete link' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// INCIDENT FULL — Aggregated view (Spillman-style)
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const incident = db.prepare(`
+      SELECT i.*, u.first_name as officer_first, u.last_name as officer_last, u.badge_number as officer_badge
+      FROM incidents i LEFT JOIN users u ON u.id = i.officer_id
+      WHERE i.id = ?
+    `).get(req.params.id) as any;
+    if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
+
+    // Load all related data
+    let persons: any[] = [];
+    let vehicles: any[] = [];
+    let offenses: any[] = [];
+    let officers: any[] = [];
+    let links: any[] = [];
+    let evidence: any[] = [];
+    let supplements: any[] = [];
+
+    try {
+      persons = db.prepare(`
+        SELECT ip.*, p.first_name, p.last_name, p.date_of_birth, p.gender, p.race, p.phone, p.address,
+          p.drivers_license_number, p.flags
+        FROM incident_persons ip JOIN persons p ON p.id = ip.person_id
+        WHERE ip.incident_id = ? ORDER BY CASE ip.role WHEN 'suspect' THEN 0 WHEN 'victim' THEN 1 WHEN 'witness' THEN 2 ELSE 3 END
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    try {
+      vehicles = db.prepare(`
+        SELECT iv.*, v.plate_number, v.plate_state, v.vin, v.make, v.model, v.year, v.color, v.owner_name
+        FROM incident_vehicles iv JOIN vehicles_records v ON v.id = iv.vehicle_id
+        WHERE iv.incident_id = ? ORDER BY iv.role
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    try {
+      offenses = db.prepare(`
+        SELECT io.*, s.statute_number, s.title as statute_title,
+          sp.first_name as suspect_first, sp.last_name as suspect_last,
+          vp.first_name as victim_first, vp.last_name as victim_last
+        FROM incident_offenses io
+        LEFT JOIN utah_statutes s ON s.id = io.statute_id
+        LEFT JOIN persons sp ON sp.id = io.suspect_person_id
+        LEFT JOIN persons vp ON vp.id = io.victim_person_id
+        WHERE io.incident_id = ? ORDER BY io.created_at
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    try {
+      officers = db.prepare(`
+        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+        FROM incident_officers io JOIN users u ON u.id = io.officer_id
+        WHERE io.incident_id = ?
+        ORDER BY CASE io.role WHEN 'primary' THEN 0 WHEN 'supervisor' THEN 1 ELSE 2 END
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    try {
+      links = db.prepare(`SELECT * FROM incident_links WHERE incident_id = ? ORDER BY created_at`).all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    try {
+      evidence = db.prepare(`
+        SELECT * FROM evidence WHERE incident_id = ? ORDER BY created_at
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    try {
+      supplements = db.prepare(`
+        SELECT s.*, u.first_name as author_first, u.last_name as author_last
+        FROM incident_supplements s LEFT JOIN users u ON u.id = s.created_by
+        WHERE s.incident_id = ? ORDER BY s.created_at
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    res.json({
+      ...incident,
+      persons,
+      vehicles,
+      offenses,
+      officers,
+      links,
+      evidence,
+      supplements,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load full incident' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// MASTER NAME INDEX (MNI) — Cross-record person search
+// ════════════════════════════════════════════════════════════
+
+router.get('/mni/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const q = (req.query.q as string || '').trim();
+    if (q.length < 2) { res.status(400).json({ error: 'Search query must be at least 2 characters' }); return; }
+    const limit = Math.min(50, parseInt(req.query.limit as string, 10) || 25);
+    const like = `%${q}%`;
+
+    // Search persons table
+    const persons = db.prepare(`
+      SELECT p.id, p.first_name, p.last_name, p.date_of_birth, p.gender, p.race,
+        p.drivers_license_number, p.phone, p.address, p.flags,
+        (SELECT COUNT(*) FROM incident_persons WHERE person_id = p.id) as incident_count,
+        (SELECT COUNT(*) FROM call_persons WHERE person_id = p.id) as call_count,
+        (SELECT GROUP_CONCAT(DISTINCT ip.role) FROM incident_persons ip WHERE ip.person_id = p.id) as known_roles
+      FROM persons p
+      WHERE p.first_name || ' ' || p.last_name LIKE ?
+        OR p.last_name LIKE ?
+        OR p.drivers_license_number LIKE ?
+        OR p.phone LIKE ?
+        OR p.ssn LIKE ?
+      ORDER BY p.last_name, p.first_name
+      LIMIT ?
+    `).all(like, like, like, like, like, limit);
+
+    res.json({ results: persons, total: persons.length });
+  } catch (err: any) {
+    res.status(500).json({ error: 'MNI search failed' });
+  }
+});
+
+// MNI person detail — all records linked to a person
+router.get('/mni/person/:personId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const personId = req.params.personId;
+
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId);
+    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+    let incidents: any[] = [];
+    let calls: any[] = [];
+    let warrants: any[] = [];
+    let citations: any[] = [];
+    let arrests: any[] = [];
+    let trespass: any[] = [];
+
+    try {
+      incidents = db.prepare(`
+        SELECT i.id, i.incident_number, i.incident_type, i.status, i.priority, i.location_address, i.created_at, ip.role
+        FROM incident_persons ip JOIN incidents i ON i.id = ip.incident_id
+        WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50
+      `).all(personId);
+    } catch { /* ignore */ }
+
+    try {
+      calls = db.prepare(`
+        SELECT c.id, c.call_number, c.incident_type, c.status, c.priority, c.location_address, c.created_at, cp.role
+        FROM call_persons cp JOIN calls_for_service c ON c.id = cp.call_id
+        WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50
+      `).all(personId);
+    } catch { /* ignore */ }
+
+    try {
+      warrants = db.prepare(`
+        SELECT * FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC LIMIT 20
+      `).all(personId);
+    } catch { /* ignore */ }
+
+    try {
+      citations = db.prepare(`
+        SELECT * FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 20
+      `).all(personId);
+    } catch { /* ignore */ }
+
+    try {
+      arrests = db.prepare(`
+        SELECT * FROM arrest_records WHERE person_id = ? ORDER BY arrest_date DESC LIMIT 20
+      `).all(personId);
+    } catch { /* ignore */ }
+
+    try {
+      trespass = db.prepare(`
+        SELECT * FROM trespass_orders WHERE subject_person_id = ? ORDER BY created_at DESC LIMIT 20
+      `).all(personId);
+    } catch { /* ignore */ }
+
+    res.json({
+      person,
+      incidents,
+      calls,
+      warrants,
+      citations,
+      arrests,
+      trespass,
+      total_records: incidents.length + calls.length + warrants.length + citations.length + arrests.length + trespass.length,
+    });
+  } catch { res.status(500).json({ error: 'Failed to load person records' }); }
+});
+
 export default router;

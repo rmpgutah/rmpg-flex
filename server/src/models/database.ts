@@ -761,6 +761,66 @@ function createTables(): void {
       UNIQUE(incident_id, vehicle_id)
     );
 
+    CREATE TABLE IF NOT EXISTS incident_offenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id INTEGER NOT NULL,
+      offense_code TEXT NOT NULL,
+      statute_id INTEGER,
+      description TEXT NOT NULL,
+      offense_date TEXT,
+      offense_level TEXT DEFAULT 'misdemeanor' CHECK(offense_level IN ('infraction','misdemeanor','felony','other')),
+      ucr_code TEXT,
+      nibrs_code TEXT,
+      attempted_completed TEXT DEFAULT 'completed' CHECK(attempted_completed IN ('attempted','completed')),
+      suspect_person_id INTEGER,
+      victim_person_id INTEGER,
+      location_type TEXT,
+      weapon_force TEXT,
+      criminal_activity TEXT,
+      bias_motivation TEXT,
+      disposition TEXT,
+      disposition_date TEXT,
+      counts INTEGER DEFAULT 1,
+      notes TEXT,
+      added_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+      FOREIGN KEY (statute_id) REFERENCES utah_statutes(id),
+      FOREIGN KEY (suspect_person_id) REFERENCES persons(id),
+      FOREIGN KEY (victim_person_id) REFERENCES persons(id),
+      FOREIGN KEY (added_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS incident_officers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id INTEGER NOT NULL,
+      officer_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'responding' CHECK(role IN ('primary','responding','backup','supervisor','investigator','evidence_tech','other')),
+      arrived_at TEXT,
+      departed_at TEXT,
+      action_taken TEXT,
+      notes TEXT,
+      added_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (added_by) REFERENCES users(id),
+      UNIQUE(incident_id, officer_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS incident_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id INTEGER NOT NULL,
+      linked_type TEXT NOT NULL CHECK(linked_type IN ('incident','call','case','warrant','citation','arrest')),
+      linked_id INTEGER NOT NULL,
+      link_reason TEXT,
+      added_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+      FOREIGN KEY (added_by) REFERENCES users(id),
+      UNIQUE(incident_id, linked_type, linked_id)
+    );
+
     -- Training Records
     CREATE TABLE IF NOT EXISTS training_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

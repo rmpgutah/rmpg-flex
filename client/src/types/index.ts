@@ -3011,6 +3011,93 @@ export interface PremiseAlert {
   active: number;
 }
 
+// --- Incident Offenses (Spillman Flex-style) ---
+
+export interface IncidentOffense {
+  id: number;
+  incident_id: number;
+  offense_code: string;
+  statute_id?: number;
+  description: string;
+  offense_date?: string;
+  offense_level: 'infraction' | 'misdemeanor' | 'felony' | 'other';
+  ucr_code?: string;
+  nibrs_code?: string;
+  attempted_completed: 'attempted' | 'completed';
+  suspect_person_id?: number;
+  victim_person_id?: number;
+  suspect_first?: string;
+  suspect_last?: string;
+  victim_first?: string;
+  victim_last?: string;
+  location_type?: string;
+  weapon_force?: string;
+  criminal_activity?: string;
+  bias_motivation?: string;
+  disposition?: string;
+  disposition_date?: string;
+  counts: number;
+  notes?: string;
+  statute_number?: string;
+  statute_title?: string;
+}
+
+export type OfficerIncidentRole = 'primary' | 'responding' | 'backup' | 'supervisor' | 'investigator' | 'evidence_tech' | 'other';
+
+export interface IncidentOfficer {
+  id: number;
+  incident_id: number;
+  officer_id: number;
+  role: OfficerIncidentRole;
+  arrived_at?: string;
+  departed_at?: string;
+  action_taken?: string;
+  notes?: string;
+  first_name?: string;
+  last_name?: string;
+  badge_number?: string;
+  call_sign?: string;
+  rank?: string;
+}
+
+export type IncidentLinkType = 'incident' | 'call' | 'case' | 'warrant' | 'citation' | 'arrest';
+
+export interface IncidentLink {
+  id: number;
+  incident_id: number;
+  linked_type: IncidentLinkType;
+  linked_id: number;
+  link_reason?: string;
+  detail?: Record<string, any>;
+}
+
+export interface MniPersonResult {
+  id: number;
+  first_name: string;
+  last_name: string;
+  date_of_birth?: string;
+  gender?: string;
+  race?: string;
+  drivers_license_number?: string;
+  phone?: string;
+  address?: string;
+  flags?: string;
+  incident_count: number;
+  call_count: number;
+  known_roles?: string;
+}
+
+export interface MniPersonDetail {
+  person: Record<string, any>;
+  incidents: { id: number; incident_number: string; incident_type: string; status: string; priority: string; location_address: string; created_at: string; role: string }[];
+  calls: { id: number; call_number: string; incident_type: string; status: string; priority: string; location_address: string; created_at: string; role: string }[];
+  warrants: Record<string, any>[];
+  citations: Record<string, any>[];
+  arrests: Record<string, any>[];
+  trespass: Record<string, any>[];
+  total_records: number;
+}
+
 export interface GeographyTree {
   areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
   unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
