@@ -3143,7 +3143,9 @@ export default function DispatchPage() {
   // DESKTOP LAYOUT — Existing 40%/60% split with panels
   // ================================================================
   return (
-    <div className="flex h-full relative">
+    <div className="flex flex-col h-full relative">
+      {/* Dispatch main content area (flex-row) */}
+      <div className="flex flex-1 min-h-0 relative">
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
@@ -6312,6 +6314,8 @@ export default function DispatchPage() {
           </div>
         </div>
       )}
+
+      </div>{/* END flex-row main content area */}
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* DISPATCH STATUS BAR — Spillman Flex-style persistent footer */}
