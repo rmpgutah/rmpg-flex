@@ -89,13 +89,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
     }
   }, [prefs.compact_mode]);
 
-  // Apply theme_preference class (dark/light)
-  useEffect(() => {
-    const theme = (prefs as any).theme_preference || 'dark';
-    document.documentElement.classList.remove('theme-dark', 'theme-light');
-    document.documentElement.classList.add(`theme-${theme}`);
-  }, [(prefs as any).theme_preference]);
-
   return (
     <UserPreferencesContext.Provider value={{ prefs, reload: fetchPrefs, isLoading, error }}>
       {children}
