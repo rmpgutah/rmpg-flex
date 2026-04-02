@@ -408,6 +408,22 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
 
+// Force clear all caches and reload — called by web app update banner
+ipcMain.handle('app:force-refresh', async () => {
+  if (mainWindow) {
+    await mainWindow.webContents.session.clearCache();
+    await mainWindow.webContents.session.clearStorageData({
+      storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+    });
+    await mainWindow.webContents.executeJavaScript(`
+      if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
+      if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
+    `).catch(() => {});
+    mainWindow.webContents.reload();
+  }
+  return { success: true };
+});
+
 // ─── IP Geolocation Fallback ─────────────────────────────────
 // Desktop machines often lack GPS hardware. When Chromium's
 // navigator.geolocation fails, the renderer can call this to get
@@ -606,7 +622,26 @@ function createMenu() {
           click: async () => {
             if (mainWindow) {
               await mainWindow.webContents.session.clearCache();
-              await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
+              await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
+              mainWindow.webContents.reload();
+            }
+          },
+        },
+        {
+          label: 'Full Reset & Reload',
+          accelerator: 'CmdOrCtrl+Shift+F5',
+          click: async () => {
+            if (mainWindow) {
+              // Nuclear option: clear everything except cookies (preserves login)
+              await mainWindow.webContents.session.clearCache();
+              await mainWindow.webContents.session.clearStorageData({
+                storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+              });
+              // Also clear via JS in the page
+              await mainWindow.webContents.executeJavaScript(`
+                if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
+                if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
+              `).catch(() => {});
               mainWindow.webContents.reload();
             }
           },
