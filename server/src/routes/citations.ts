@@ -752,4 +752,157 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
   } catch (error: any) { console.error('Citation completeness error:', error); res.status(500).json({ error: 'Failed to get completeness', code: 'CITATION_COMPLETENESS_ERROR' }); }
 });
 
+// ════════════════════════════════════════════════════════════
+// CITATION VIOLATIONS — Multiple violations per citation
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const violations = db.prepare(`
+      SELECT cv.*, s.statute_number, s.title as statute_title, s.category as statute_category
+      FROM citation_violations cv
+      LEFT JOIN utah_statutes s ON s.id = cv.statute_id
+      WHERE cv.citation_id = ?
+      ORDER BY cv.violation_number
+    `).all(req.params.id);
+    res.json(violations);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load violations' });
+  }
+});
+
+router.post('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { statute_id, statute_citation, violation_description, offense_level, fine_amount, speed_recorded, speed_limit, notes } = req.body;
+    if (!violation_description) { res.status(400).json({ error: 'violation_description required' }); return; }
+    // Auto-increment violation_number
+    const maxNum = db.prepare('SELECT MAX(violation_number) as mx FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    const nextNum = (maxNum?.mx || 0) + 1;
+    const result = db.prepare(`
+      INSERT INTO citation_violations (citation_id, violation_number, statute_id, statute_citation, violation_description, offense_level, fine_amount, speed_recorded, speed_limit, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, nextNum, statute_id || null, statute_citation, violation_description, offense_level || 'infraction', fine_amount || 0, speed_recorded, speed_limit, notes);
+    // Update total fine on parent citation
+    const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    const violation = db.prepare('SELECT * FROM citation_violations WHERE id = ?').get(result.lastInsertRowid);
+    res.json(violation);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.status(500).json({ error: 'Violations table not initialized' }); return; }
+    res.status(500).json({ error: 'Failed to add violation' });
+  }
+});
+
+router.put('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fields = ['statute_id', 'statute_citation', 'violation_description', 'offense_level', 'fine_amount', 'speed_recorded', 'speed_limit', 'plea', 'verdict', 'disposition', 'disposition_date', 'notes'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    values.push(req.params.violationId, req.params.id);
+    db.prepare(`UPDATE citation_violations SET ${updates.join(', ')} WHERE id = ? AND citation_id = ?`).run(...values);
+    // Recalculate total fine
+    const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    const updated = db.prepare('SELECT * FROM citation_violations WHERE id = ?').get(req.params.violationId);
+    res.json(updated);
+  } catch { res.status(500).json({ error: 'Failed to update violation' }); }
+});
+
+router.delete('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM citation_violations WHERE id = ? AND citation_id = ?').run(req.params.violationId, req.params.id);
+    // Recalculate total fine
+    const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete violation' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// BATCH OPERATIONS — Void/status change multiple citations
+// ════════════════════════════════════════════════════════════
+
+router.post('/batch/void', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { citation_ids, reason } = req.body;
+    if (!Array.isArray(citation_ids) || citation_ids.length === 0) { res.status(400).json({ error: 'citation_ids array required' }); return; }
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    const now = new Date().toISOString();
+    const stmt = db.prepare('UPDATE citations SET status = ?, voided_reason = ?, voided_by = ?, voided_at = ?, updated_at = ? WHERE id = ?');
+    let count = 0;
+    for (const id of citation_ids.slice(0, 100)) {
+      stmt.run('voided', reason || 'Batch voided', userId, now, now, id);
+      count++;
+    }
+    res.json({ success: true, voided: count });
+  } catch { res.status(500).json({ error: 'Batch void failed' }); }
+});
+
+router.post('/batch/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { citation_ids, status } = req.body;
+    const validStatuses = ['issued', 'paid', 'payment_plan', 'contested', 'dismissed', 'warrant_issued'];
+    if (!Array.isArray(citation_ids) || !validStatuses.includes(status)) {
+      res.status(400).json({ error: 'Valid citation_ids array and status required' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const stmt = db.prepare('UPDATE citations SET status = ?, updated_at = ? WHERE id = ?');
+    let count = 0;
+    for (const id of citation_ids.slice(0, 100)) {
+      stmt.run(status, now, id);
+      count++;
+    }
+    res.json({ success: true, updated: count });
+  } catch { res.status(500).json({ error: 'Batch status change failed' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// CITATION FULL — Aggregated view with violations + payments
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
+    if (!citation) { res.status(404).json({ error: 'Citation not found' }); return; }
+
+    let violations: any[] = [];
+    let payments: any[] = [];
+    try {
+      violations = db.prepare(`
+        SELECT cv.*, s.statute_number, s.title as statute_title
+        FROM citation_violations cv LEFT JOIN utah_statutes s ON s.id = cv.statute_id
+        WHERE cv.citation_id = ? ORDER BY cv.violation_number
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+    try {
+      payments = db.prepare('SELECT * FROM citation_payments WHERE citation_id = ? ORDER BY payment_date DESC').all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    const totalFines = violations.reduce((sum: number, v: any) => sum + (v.fine_amount || 0), 0) || citation.fine_amount || 0;
+    const totalPaid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+    res.json({
+      ...citation,
+      violations,
+      payments,
+      total_fines: totalFines,
+      total_paid: totalPaid,
+      balance_due: Math.max(0, totalFines - totalPaid),
+    });
+  } catch { res.status(500).json({ error: 'Failed to load citation details' }); }
+});
+
 export default router;
