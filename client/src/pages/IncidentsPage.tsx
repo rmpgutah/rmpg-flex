@@ -27,6 +27,7 @@ import {
   Heart,
   Flame,
   Eye,
+  Link,
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';
@@ -224,6 +225,14 @@ export default function IncidentsPage() {
   const [showSupplementModal, setShowSupplementModal] = useState(false);
   const [supplementSubmitting, setSupplementSubmitting] = useState(false);
 
+  // ---------- Spillman Flex: offenses, officers, cross-references ----------
+  const [detailOffenses, setDetailOffenses] = useState<any[]>([]);
+  const [detailOfficers, setDetailOfficers] = useState<any[]>([]);
+  const [detailLinks, setDetailLinks] = useState<any[]>([]);
+  const [showAddOffenseModal, setShowAddOffenseModal] = useState(false);
+  const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
+  const [showAddLinkModal, setShowAddLinkModal] = useState(false);
+
   // ---------- chain of custody expansion ----------
   const [expandedCustody, setExpandedCustody] = useState<Set<string>>(new Set());
 
@@ -362,19 +371,33 @@ export default function IncidentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidents]);
 
-  // Fetch full incident detail (linked persons, vehicles, evidence) when selected
+  // Fetch full incident detail (linked persons, vehicles, evidence, offenses, officers, links) when selected
   const fetchIncidentDetail = useCallback(async (incidentId: string) => {
     try {
       const detail = await apiFetch<any>(`/incidents/${incidentId}`);
       setDetailPersons(detail.linked_persons || []);
       setDetailVehicles(detail.linked_vehicles || []);
       setDetailEvidence(detail.evidence || []);
-      // Update call_type / call_created_at from detail if available
       setSelectedIncident((prev) => prev ? { ...prev, call_type: detail.call_type, call_created_at: detail.call_created_at } as any : prev);
     } catch {
       setDetailPersons([]);
       setDetailVehicles([]);
       setDetailEvidence([]);
+    }
+    // Fetch Spillman Flex extended data (offenses, officers, cross-references)
+    try {
+      const [offenses, officers, links] = await Promise.all([
+        apiFetch<any[]>(`/incidents/${incidentId}/offenses`).catch(() => []),
+        apiFetch<any[]>(`/incidents/${incidentId}/officers`).catch(() => []),
+        apiFetch<any[]>(`/incidents/${incidentId}/links`).catch(() => []),
+      ]);
+      setDetailOffenses(offenses || []);
+      setDetailOfficers(officers || []);
+      setDetailLinks(links || []);
+    } catch {
+      setDetailOffenses([]);
+      setDetailOfficers([]);
+      setDetailLinks([]);
     }
   }, []);
 
@@ -403,6 +426,9 @@ export default function IncidentsPage() {
       setDetailVehicles([]);
       setDetailEvidence([]);
       setDetailSupplements([]);
+      setDetailOffenses([]);
+      setDetailOfficers([]);
+      setDetailLinks([]);
     }
   }, [selectedIncident?.id, fetchIncidentDetail, fetchSupplements]);
 
@@ -1611,6 +1637,155 @@ export default function IncidentsPage() {
           )}
         </CollapsibleSection>
 
+        {/* ═══ Offenses (Spillman Flex) ═══ */}
+        <CollapsibleSection
+          title="Offenses / Charges"
+          icon={AlertTriangle}
+          count={detailOffenses.length}
+          defaultOpen
+          actions={
+            (isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
+              <button type="button" onClick={() => setShowAddOffenseModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
+                <Plus className="w-3 h-3" /> Add Offense
+              </button>
+            ) : undefined
+          }
+        >
+          {detailOffenses.length > 0 ? (
+            <div className="space-y-1.5">
+              {detailOffenses.map((offense: any) => (
+                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#141e2b', border: '1px solid #1e3048' }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#6b7280' }}>
+                        {offense.offense_code}
+                      </span>
+                      <span className="text-xs text-white font-medium truncate">{offense.description}</span>
+                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                        {(offense.offense_level || 'other').toUpperCase()}
+                      </span>
+                      {offense.attempted_completed === 'attempted' && <span className="text-[8px] text-purple-400 bg-purple-900/30 px-1 py-0.5 rounded-sm border border-purple-700/30">ATTEMPTED</span>}
+                      {offense.counts > 1 && <span className="text-[8px] text-blue-400">×{offense.counts}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
+                      {offense.statute_number && <span className="font-mono">§{offense.statute_number}</span>}
+                      {offense.ucr_code && <span>UCR: {offense.ucr_code}</span>}
+                      {offense.suspect_first && <span className="text-red-300">Suspect: {offense.suspect_first} {offense.suspect_last}</span>}
+                      {offense.victim_first && <span className="text-blue-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
+                      {offense.disposition && <span className="text-green-400">Disp: {offense.disposition}</span>}
+                    </div>
+                  </div>
+                  {(isAdmin || isGodMode) && (
+                    <button type="button" onClick={async () => {
+                      if (!confirm('Remove this offense?')) return;
+                      await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
+                      fetchIncidentDetail(selectedIncident.id);
+                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-rmpg-500">No offenses recorded</p>
+          )}
+        </CollapsibleSection>
+
+        {/* ═══ Responding Officers (Spillman Flex) ═══ */}
+        <CollapsibleSection
+          title="Responding Officers"
+          icon={Shield}
+          count={detailOfficers.length}
+          defaultOpen
+          actions={
+            (isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
+              <button type="button" onClick={() => setShowAddOfficerModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
+                <Plus className="w-3 h-3" /> Add Officer
+              </button>
+            ) : undefined
+          }
+        >
+          {detailOfficers.length > 0 ? (
+            <div className="space-y-1">
+              {detailOfficers.map((officer: any) => (
+                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#141e2b', border: '1px solid #1e3048' }}>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase ${
+                    officer.role === 'primary' ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50' :
+                    officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
+                    officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
+                    'bg-gray-800 text-gray-400 border border-gray-700'
+                  }`}>{officer.role}</span>
+                  <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
+                  {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
+                  {officer.call_sign && <span className="text-[10px] text-cyan-400">{officer.call_sign}</span>}
+                  {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
+                  {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {new Date(officer.arrived_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
+                  {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {new Date(officer.departed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
+                  {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
+                  {(isAdmin || isGodMode) && (
+                    <button type="button" onClick={async () => {
+                      if (!confirm('Remove this officer?')) return;
+                      await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
+                      fetchIncidentDetail(selectedIncident.id);
+                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-rmpg-500">No responding officers recorded</p>
+          )}
+        </CollapsibleSection>
+
+        {/* ═══ Cross-References (Spillman Flex) ═══ */}
+        <CollapsibleSection
+          title="Cross-References"
+          icon={Link}
+          count={detailLinks.length}
+          defaultOpen={false}
+          actions={
+            (isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) ? (
+              <button type="button" onClick={() => setShowAddLinkModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
+                <Plus className="w-3 h-3" /> Link Record
+              </button>
+            ) : undefined
+          }
+        >
+          {detailLinks.length > 0 ? (
+            <div className="space-y-1">
+              {detailLinks.map((link: any) => {
+                const typeColors: Record<string, string> = { incident: '#3b82f6', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
+                const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
+                return (
+                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#141e2b', border: '1px solid #1e3048' }}>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#6b7280', background: (typeColors[link.linked_type] || '#6b7280') + '20', border: `1px solid ${typeColors[link.linked_type] || '#6b7280'}40` }}>
+                      {typeLabels[link.linked_type] || link.linked_type}
+                    </span>
+                    {link.detail ? (
+                      <span className="text-xs text-white font-mono">
+                        {link.detail.incident_number || link.detail.call_number || link.detail.case_number || link.detail.warrant_number || link.detail.citation_number || `#${link.linked_id}`}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-rmpg-400">#{link.linked_id}</span>
+                    )}
+                    {link.detail?.incident_type && <span className="text-[10px] text-rmpg-400">{link.detail.incident_type}</span>}
+                    {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{link.detail.status}</span>}
+                    {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
+                    {(isAdmin || isGodMode) && (
+                      <button type="button" onClick={async () => {
+                        if (!confirm('Remove this link?')) return;
+                        await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
+                        fetchIncidentDetail(selectedIncident.id);
+                      }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-rmpg-500">No cross-references linked</p>
+          )}
+        </CollapsibleSection>
+
         {/* Evidence */}
         <CollapsibleSection
           title="Evidence"
@@ -2146,6 +2321,169 @@ export default function IncidentsPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ═══ Add Offense Modal ═══ */}
+      {showAddOffenseModal && selectedIncident && (
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddOffenseModal(false)}>
+          <form
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[500px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const data: Record<string, any> = {};
+              fd.forEach((v, k) => { if (v) data[k] = v; });
+              try {
+                await apiFetch(`/incidents/${selectedIncident.id}/offenses`, { method: 'POST', body: JSON.stringify(data) });
+                setShowAddOffenseModal(false);
+                fetchIncidentDetail(selectedIncident.id);
+              } catch { /* error */ }
+            }}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Offense / Charge</h3>
+              <button type="button" onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Offense Code *</label><input name="offense_code" required className="input-dark w-full text-xs" placeholder="e.g., 76-5-102" /></div>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Offense Level</label>
+                  <select name="offense_level" className="input-dark w-full text-xs"><option value="misdemeanor">Misdemeanor</option><option value="felony">Felony</option><option value="infraction">Infraction</option><option value="other">Other</option></select>
+                </div>
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Description *</label><input name="description" required className="input-dark w-full text-xs" placeholder="e.g., Assault — Class A Misdemeanor" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">UCR Code</label><input name="ucr_code" className="input-dark w-full text-xs" placeholder="e.g., 13A" /></div>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">NIBRS Code</label><input name="nibrs_code" className="input-dark w-full text-xs" placeholder="e.g., 13A" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Attempted/Completed</label>
+                  <select name="attempted_completed" className="input-dark w-full text-xs"><option value="completed">Completed</option><option value="attempted">Attempted</option></select>
+                </div>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Counts</label><input name="counts" type="number" min="1" defaultValue="1" className="input-dark w-full text-xs" /></div>
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Weapon / Force Used</label><input name="weapon_force" className="input-dark w-full text-xs" placeholder="e.g., Handgun, Knife, Personal weapons" /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button type="button" onClick={() => setShowAddOffenseModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Plus className="w-3 h-3" /> Add Offense</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ═══ Add Officer Modal ═══ */}
+      {showAddOfficerModal && selectedIncident && (
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddOfficerModal(false)}>
+          <form
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[450px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const data: Record<string, any> = {};
+              fd.forEach((v, k) => { if (v) data[k] = v; });
+              try {
+                await apiFetch(`/incidents/${selectedIncident.id}/officers`, { method: 'POST', body: JSON.stringify(data) });
+                setShowAddOfficerModal(false);
+                fetchIncidentDetail(selectedIncident.id);
+              } catch { /* error */ }
+            }}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
+              <button type="button" onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
+                <select name="officer_id" required className="input-dark w-full text-xs">
+                  <option value="">Select officer...</option>
+                  {incidents.length > 0 && (() => {
+                    // Use personnel from any loaded data
+                    return null;
+                  })()}
+                </select>
+                <p className="text-[9px] text-rmpg-500 mt-0.5">Enter officer user ID if dropdown is empty</p>
+                <input name="officer_id" type="number" className="input-dark w-full text-xs mt-1" placeholder="Officer User ID" />
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Role</label>
+                <select name="role" className="input-dark w-full text-xs">
+                  <option value="responding">Responding</option>
+                  <option value="primary">Primary</option>
+                  <option value="backup">Backup</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="investigator">Investigator</option>
+                  <option value="evidence_tech">Evidence Tech</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Arrived At</label><input name="arrived_at" type="datetime-local" className="input-dark w-full text-xs" /></div>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Departed At</label><input name="departed_at" type="datetime-local" className="input-dark w-full text-xs" /></div>
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Action Taken</label><input name="action_taken" className="input-dark w-full text-xs" placeholder="e.g., Perimeter security, witness interview" /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button type="button" onClick={() => setShowAddOfficerModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Plus className="w-3 h-3" /> Add Officer</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ═══ Add Cross-Reference Link Modal ═══ */}
+      {showAddLinkModal && selectedIncident && (
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddLinkModal(false)}>
+          <form
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const data: Record<string, any> = {};
+              fd.forEach((v, k) => { if (v) data[k] = v; });
+              try {
+                await apiFetch(`/incidents/${selectedIncident.id}/links`, { method: 'POST', body: JSON.stringify(data) });
+                setShowAddLinkModal(false);
+                fetchIncidentDetail(selectedIncident.id);
+              } catch { /* error */ }
+            }}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
+              <button type="button" onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record Type *</label>
+                <select name="linked_type" required className="input-dark w-full text-xs">
+                  <option value="">Select type...</option>
+                  <option value="incident">Incident Report</option>
+                  <option value="call">Call for Service</option>
+                  <option value="case">Case</option>
+                  <option value="warrant">Warrant</option>
+                  <option value="citation">Citation</option>
+                  <option value="arrest">Arrest Record</option>
+                </select>
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record ID *</label>
+                <input name="linked_id" type="number" required className="input-dark w-full text-xs" placeholder="Enter the record ID number" />
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link Reason</label>
+                <input name="link_reason" className="input-dark w-full text-xs" placeholder="e.g., Related incident, follow-up, same suspect" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button type="button" onClick={() => setShowAddLinkModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Link className="w-3 h-3" /> Link Record</button>
+            </div>
+          </form>
         </div>
       )}
     </div>
