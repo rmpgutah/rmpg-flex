@@ -2874,6 +2874,74 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
+  // ── CITATIONS — Spillman Flex enhancements ─────────────────
+  addCol('citations', 'section_id', 'TEXT');
+  addCol('citations', 'zone_id', 'TEXT');
+  addCol('citations', 'beat_id', 'TEXT');
+  addCol('citations', 'zone_beat', 'TEXT');
+  addCol('citations', 'latitude', 'REAL');
+  addCol('citations', 'longitude', 'REAL');
+  addCol('citations', 'vehicle_vin', 'TEXT');
+  addCol('citations', 'vehicle_year', 'TEXT');
+  addCol('citations', 'vehicle_make', 'TEXT');
+  addCol('citations', 'vehicle_model', 'TEXT');
+  addCol('citations', 'vehicle_color', 'TEXT');
+  addCol('citations', 'vehicle_id', 'INTEGER');
+  addCol('citations', 'speed_recorded', 'INTEGER');
+  addCol('citations', 'speed_limit', 'INTEGER');
+  addCol('citations', 'radar_type', 'TEXT');
+  addCol('citations', 'bac_level', 'REAL');
+  addCol('citations', 'bond_amount', 'REAL');
+  addCol('citations', 'bond_type', 'TEXT');
+  addCol('citations', 'is_warning', 'INTEGER DEFAULT 0');
+  addCol('citations', 'is_equipment_violation', 'INTEGER DEFAULT 0');
+  addCol('citations', 'weather_conditions', 'TEXT');
+  addCol('citations', 'road_conditions', 'TEXT');
+  addCol('citations', 'accident_related', 'INTEGER DEFAULT 0');
+  addCol('citations', 'dui_related', 'INTEGER DEFAULT 0');
+  addCol('citations', 'school_zone', 'INTEGER DEFAULT 0');
+  addCol('citations', 'construction_zone', 'INTEGER DEFAULT 0');
+  addCol('citations', 'commercial_vehicle', 'INTEGER DEFAULT 0');
+  addCol('citations', 'hazmat', 'INTEGER DEFAULT 0');
+  addCol('citations', 'voided_reason', 'TEXT');
+  addCol('citations', 'voided_by', 'INTEGER');
+  addCol('citations', 'voided_at', 'TEXT');
+  addCol('citations', 'court_time', 'TEXT');
+  addCol('citations', 'court_room', 'TEXT');
+  addCol('citations', 'appearance_required', 'INTEGER DEFAULT 0');
+  addCol('citations', 'plea', 'TEXT');
+  addCol('citations', 'verdict', 'TEXT');
+  addCol('citations', 'sentence', 'TEXT');
+  addCol('citations', 'disposition_date', 'TEXT');
+  addCol('citations', 'case_id', 'INTEGER');
+
+  // Citation violations — multiple violations per citation
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS citation_violations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        citation_id INTEGER NOT NULL,
+        violation_number INTEGER NOT NULL DEFAULT 1,
+        statute_id INTEGER,
+        statute_citation TEXT,
+        violation_description TEXT NOT NULL,
+        offense_level TEXT DEFAULT 'infraction',
+        fine_amount REAL DEFAULT 0,
+        speed_recorded INTEGER,
+        speed_limit INTEGER,
+        plea TEXT,
+        verdict TEXT,
+        disposition TEXT,
+        disposition_date TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (citation_id) REFERENCES citations(id) ON DELETE CASCADE,
+        FOREIGN KEY (statute_id) REFERENCES utah_statutes(id)
+      )
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_citation_violations_citation ON citation_violations(citation_id)');
+  } catch { /* already exists */ }
+
   // ── Additional operational flags for calls and incidents ──
   const flagTables = ['calls_for_service', 'incidents'] as const;
   for (const tbl of flagTables) {

@@ -82,6 +82,35 @@ interface Citation {
   zone_id: string | null;
   beat_id: string | null;
   zone_beat: string | null;
+  // Spillman Flex extended fields
+  latitude: number | null;
+  longitude: number | null;
+  vehicle_vin: string | null;
+  vehicle_year: string | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_color: string | null;
+  speed_recorded: number | null;
+  speed_limit: number | null;
+  radar_type: string | null;
+  bac_level: number | null;
+  bond_amount: number | null;
+  bond_type: string | null;
+  is_warning: number;
+  is_equipment_violation: number;
+  school_zone: number;
+  construction_zone: number;
+  accident_related: number;
+  dui_related: number;
+  commercial_vehicle: number;
+  voided_reason: string | null;
+  court_time: string | null;
+  court_room: string | null;
+  appearance_required: number;
+  plea: string | null;
+  verdict: string | null;
+  sentence: string | null;
+  disposition_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -124,6 +153,27 @@ interface CitationForm {
   zone_id: string;
   beat_id: string;
   zone_beat: string;
+  // Spillman Flex traffic fields
+  vehicle_vin: string;
+  vehicle_year: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_color: string;
+  speed_recorded: string;
+  speed_limit: string;
+  radar_type: string;
+  bac_level: string;
+  bond_amount: string;
+  bond_type: string;
+  is_warning: boolean;
+  school_zone: boolean;
+  construction_zone: boolean;
+  accident_related: boolean;
+  dui_related: boolean;
+  commercial_vehicle: boolean;
+  court_time: string;
+  court_room: string;
+  appearance_required: boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────
@@ -197,6 +247,26 @@ const EMPTY_FORM: CitationForm = {
   zone_id: '',
   beat_id: '',
   zone_beat: '',
+  vehicle_vin: '',
+  vehicle_year: '',
+  vehicle_make: '',
+  vehicle_model: '',
+  vehicle_color: '',
+  speed_recorded: '',
+  speed_limit: '',
+  radar_type: '',
+  bac_level: '',
+  bond_amount: '',
+  bond_type: '',
+  is_warning: false,
+  school_zone: false,
+  construction_zone: false,
+  accident_related: false,
+  dui_related: false,
+  commercial_vehicle: false,
+  court_time: '',
+  court_room: '',
+  appearance_required: false,
 };
 
 // formatDate imported from ../utils/dateUtils
@@ -529,6 +599,26 @@ export default function CitationsPage() {
       zone_id: c.zone_id || '',
       beat_id: c.beat_id || '',
       zone_beat: c.zone_beat || '',
+      vehicle_vin: (c as any).vehicle_vin || '',
+      vehicle_year: (c as any).vehicle_year || '',
+      vehicle_make: (c as any).vehicle_make || '',
+      vehicle_model: (c as any).vehicle_model || '',
+      vehicle_color: (c as any).vehicle_color || '',
+      speed_recorded: (c as any).speed_recorded != null ? String((c as any).speed_recorded) : '',
+      speed_limit: (c as any).speed_limit != null ? String((c as any).speed_limit) : '',
+      radar_type: (c as any).radar_type || '',
+      bac_level: (c as any).bac_level != null ? String((c as any).bac_level) : '',
+      bond_amount: (c as any).bond_amount != null ? String((c as any).bond_amount) : '',
+      bond_type: (c as any).bond_type || '',
+      is_warning: !!(c as any).is_warning,
+      school_zone: !!(c as any).school_zone,
+      construction_zone: !!(c as any).construction_zone,
+      accident_related: !!(c as any).accident_related,
+      dui_related: !!(c as any).dui_related,
+      commercial_vehicle: !!(c as any).commercial_vehicle,
+      court_time: (c as any).court_time || '',
+      court_room: (c as any).court_room || '',
+      appearance_required: !!(c as any).appearance_required,
     });
     setPersonSearch(c.person_name || '');
     setSaveError('');
@@ -974,6 +1064,77 @@ export default function CitationsPage() {
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.vehicle_description && <div><span className="text-rmpg-400">Description:</span> <span className="text-rmpg-200">{c.vehicle_description}</span></div>}
                 {c.vehicle_plate && <div><span className="text-rmpg-400">Plate:</span> <span className="text-rmpg-200 font-mono">{c.vehicle_plate}</span> <span className="text-rmpg-500">({c.vehicle_state || 'UT'})</span></div>}
+                {(c as any).vehicle_vin && <div><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono">{(c as any).vehicle_vin}</span></div>}
+                {((c as any).vehicle_year || (c as any).vehicle_make) && (
+                  <div>
+                    <span className="text-rmpg-400">Vehicle:</span>{' '}
+                    <span className="text-rmpg-200">{[(c as any).vehicle_year, (c as any).vehicle_make, (c as any).vehicle_model].filter(Boolean).join(' ')}</span>
+                    {(c as any).vehicle_color && <span className="text-rmpg-400 ml-2">({(c as any).vehicle_color})</span>}
+                  </div>
+                )}
+                {(c as any).commercial_vehicle ? <span className="text-[8px] font-bold text-amber-400 bg-amber-900/30 px-1.5 py-0.5 border border-amber-700/30">COMMERCIAL VEHICLE</span> : null}
+              </div>
+            </section>
+          )}
+
+          {/* Traffic / Speed Details */}
+          {(c.type === 'traffic' || (c as any).speed_recorded || (c as any).bac_level || (c as any).dui_related) && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+                ⚡ Traffic Details
+              </h3>
+              <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
+                {(c as any).speed_recorded && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-rmpg-400">Speed:</span>
+                    <span className="text-red-400 font-bold font-mono text-sm">{(c as any).speed_recorded} MPH</span>
+                    {(c as any).speed_limit && <span className="text-rmpg-400">in a <span className="text-white font-bold">{(c as any).speed_limit} MPH</span> zone</span>}
+                    {(c as any).speed_recorded && (c as any).speed_limit && (
+                      <span className="text-[9px] font-bold text-red-400">({(c as any).speed_recorded - (c as any).speed_limit} over)</span>
+                    )}
+                  </div>
+                )}
+                {(c as any).radar_type && <div><span className="text-rmpg-400">Radar/LIDAR:</span> <span className="text-rmpg-200">{(c as any).radar_type}</span></div>}
+                {(c as any).bac_level != null && (c as any).bac_level > 0 && (
+                  <div><span className="text-rmpg-400">BAC Level:</span> <span className={`font-bold font-mono ${(c as any).bac_level >= 0.08 ? 'text-red-400' : 'text-amber-400'}`}>{(c as any).bac_level.toFixed(3)}%</span></div>
+                )}
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {(c as any).school_zone ? <span className="text-[8px] font-bold text-amber-400 bg-amber-900/30 px-1.5 py-0.5 border border-amber-700/30">SCHOOL ZONE</span> : null}
+                  {(c as any).construction_zone ? <span className="text-[8px] font-bold text-orange-400 bg-orange-900/30 px-1.5 py-0.5 border border-orange-700/30">CONSTRUCTION ZONE</span> : null}
+                  {(c as any).accident_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">ACCIDENT RELATED</span> : null}
+                  {(c as any).dui_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">DUI RELATED</span> : null}
+                  {(c as any).is_warning ? <span className="text-[8px] font-bold text-blue-400 bg-blue-900/30 px-1.5 py-0.5 border border-blue-700/30">WARNING ONLY</span> : null}
+                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-gray-900/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Bond / Bail */}
+          {((c as any).bond_amount > 0 || (c as any).appearance_required) && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+                🔒 Bond / Bail
+              </h3>
+              <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
+                {(c as any).bond_amount > 0 && <div><span className="text-rmpg-400">Bond Amount:</span> <span className="text-green-400 font-bold font-mono">${Number((c as any).bond_amount).toLocaleString()}</span></div>}
+                {(c as any).bond_type && <div><span className="text-rmpg-400">Bond Type:</span> <span className="text-rmpg-200 capitalize">{(c as any).bond_type}</span></div>}
+                {(c as any).appearance_required ? <span className="text-[9px] font-bold text-red-400 bg-red-900/20 px-2 py-1 border border-red-700/30">COURT APPEARANCE REQUIRED</span> : null}
+              </div>
+            </section>
+          )}
+
+          {/* Case Disposition */}
+          {((c as any).plea || (c as any).verdict || (c as any).sentence) && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+                ⚖ Case Disposition
+              </h3>
+              <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
+                {(c as any).plea && <div><span className="text-rmpg-400">Plea:</span> <span className="text-rmpg-200 capitalize">{(c as any).plea}</span></div>}
+                {(c as any).verdict && <div><span className="text-rmpg-400">Verdict:</span> <span className={`font-bold capitalize ${(c as any).verdict === 'guilty' ? 'text-red-400' : (c as any).verdict === 'not_guilty' ? 'text-green-400' : 'text-rmpg-200'}`}>{(c as any).verdict.replace(/_/g, ' ')}</span></div>}
+                {(c as any).sentence && <div><span className="text-rmpg-400">Sentence:</span> <span className="text-rmpg-200">{(c as any).sentence}</span></div>}
+                {(c as any).disposition_date && <div><span className="text-rmpg-400">Disposition Date:</span> <span className="text-rmpg-200">{formatDate((c as any).disposition_date)}</span></div>}
               </div>
             </section>
           )}
@@ -1024,7 +1185,10 @@ export default function CitationsPage() {
                   );
                 })()}
                 {c.court_name && <div><span className="text-rmpg-400">Court:</span> <span className="text-rmpg-200">{c.court_name}</span></div>}
+                {(c as any).court_time && <div><span className="text-rmpg-400">Time:</span> <span className="text-rmpg-200">{(c as any).court_time}</span></div>}
+                {(c as any).court_room && <div><span className="text-rmpg-400">Courtroom:</span> <span className="text-rmpg-200">{(c as any).court_room}</span></div>}
                 {c.court_address && <div><span className="text-rmpg-400">Address:</span> <span className="text-rmpg-200">{c.court_address}</span></div>}
+                {(c as any).appearance_required ? <span className="text-[9px] font-bold text-red-400 mt-1 inline-block">⚠ APPEARANCE REQUIRED</span> : null}
               </div>
             </section>
           )}
