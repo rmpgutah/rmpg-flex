@@ -2544,6 +2544,246 @@ function migrateSchema(): void {
     console.log('[migrate] dispatch_districts seed skipped:', (err as Error).message);
   }
 
+  // ── DISPATCH GEOGRAPHY — Normalized Section / Zone / Beat / Area tables ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_areas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        area_code TEXT NOT NULL UNIQUE,
+        area_name TEXT NOT NULL,
+        color TEXT DEFAULT '#6366f1',
+        description TEXT,
+        commander TEXT,
+        notes TEXT,
+        sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_sections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_code TEXT NOT NULL UNIQUE,
+        section_name TEXT NOT NULL,
+        area_id INTEGER REFERENCES dispatch_areas(id) ON DELETE SET NULL,
+        color TEXT DEFAULT '#3b82f6',
+        description TEXT,
+        supervisor TEXT,
+        radio_channel TEXT,
+        notes TEXT,
+        sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_zones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        zone_code TEXT NOT NULL UNIQUE,
+        zone_name TEXT NOT NULL,
+        section_id INTEGER REFERENCES dispatch_sections(id) ON DELETE SET NULL,
+        color TEXT,
+        description TEXT,
+        primary_unit TEXT,
+        backup_unit TEXT,
+        radio_channel TEXT,
+        hazard_notes TEXT,
+        notes TEXT,
+        population_estimate INTEGER,
+        sq_miles REAL,
+        sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_beats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        beat_code TEXT NOT NULL UNIQUE,
+        beat_name TEXT NOT NULL,
+        beat_descriptor TEXT,
+        zone_id INTEGER REFERENCES dispatch_zones(id) ON DELETE SET NULL,
+        dispatch_code TEXT,
+        color TEXT,
+        assigned_unit TEXT,
+        backup_unit TEXT,
+        hazard_notes TEXT,
+        premise_alerts TEXT DEFAULT '[]',
+        patrol_frequency TEXT DEFAULT 'normal',
+        priority_modifier INTEGER DEFAULT 0,
+        population_estimate INTEGER,
+        sq_miles REAL,
+        notes TEXT,
+        sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL,
+        category TEXT DEFAULT 'general',
+        priority TEXT DEFAULT 'P3',
+        color TEXT DEFAULT '#6b7280',
+        requires_backup INTEGER DEFAULT 0,
+        officer_safety INTEGER DEFAULT 0,
+        ems_needed INTEGER DEFAULT 0,
+        fire_needed INTEGER DEFAULT 0,
+        notes TEXT,
+        sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS premise_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        alert_type TEXT NOT NULL DEFAULT 'caution',
+        alert_level TEXT DEFAULT 'info',
+        title TEXT NOT NULL,
+        description TEXT,
+        flags TEXT DEFAULT '[]',
+        expires_at TEXT,
+        created_by INTEGER,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_address ON premise_alerts(address)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_coords ON premise_alerts(latitude, longitude)`);
+  } catch (err) {
+    console.log('[migrate] Dispatch geography tables:', (err as Error).message);
+  }
+
+  // Seed normalized geography tables from existing dispatch_districts if empty
+  try {
+    const sectionCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_sections').get() as any;
+    if (sectionCount?.cnt === 0) {
+      const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all() as any[];
+      if (districts.length > 0) {
+        const seenSections = new Set<string>();
+        const insertSection = db.prepare('INSERT OR IGNORE INTO dispatch_sections (section_code, section_name) VALUES (?, ?)');
+        for (const d of districts) {
+          if (!seenSections.has(d.section_id)) {
+            insertSection.run(d.section_id, d.section_name);
+            seenSections.add(d.section_id);
+          }
+        }
+        const seenZones = new Set<string>();
+        const insertZone = db.prepare('INSERT OR IGNORE INTO dispatch_zones (zone_code, zone_name, section_id) VALUES (?, ?, (SELECT id FROM dispatch_sections WHERE section_code = ?))');
+        for (const d of districts) {
+          if (!seenZones.has(d.zone_id)) {
+            insertZone.run(d.zone_id, d.zone_name, d.section_id);
+            seenZones.add(d.zone_id);
+          }
+        }
+        const insertBeat = db.prepare('INSERT OR IGNORE INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code) VALUES (?, ?, ?, (SELECT id FROM dispatch_zones WHERE zone_code = ?), ?)');
+        for (const d of districts) {
+          const beatCode = d.zone_id + '-' + d.beat_id;
+          insertBeat.run(beatCode, d.beat_name, d.beat_descriptor, d.zone_id, d.dispatch_code);
+        }
+        console.log('[migrate] Seeded normalized geography: ' + seenSections.size + ' sections, ' + seenZones.size + ' zones, ' + districts.length + ' beats');
+      }
+    }
+  } catch (err) {
+    console.log('[migrate] Geography seed:', (err as Error).message);
+  }
+
+  // Seed default dispatch codes if empty
+  try {
+    const codeCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_codes').get() as any;
+    if (codeCount?.cnt === 0) {
+      const defaultCodes: [string, string, string, string, string, number, number, number, number][] = [
+        ['10-0', 'Officer Down', 'emergency', 'P1', '#ef4444', 1, 1, 1, 0],
+        ['10-00', 'Officer Needs Emergency Assistance', 'emergency', 'P1', '#ef4444', 1, 1, 0, 0],
+        ['10-10', 'Fight In Progress', 'violent', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['10-14', 'Prowler Report', 'property', 'P2', '#f59e0b', 0, 0, 0, 0],
+        ['10-15', 'Domestic Disturbance', 'violent', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['10-16', 'Domestic Violence', 'violent', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['10-18', 'Urgent — Complete Assignment Quickly', 'emergency', 'P1', '#f97316', 1, 1, 0, 0],
+        ['10-31', 'Burglary In Progress', 'property', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['10-32', 'Person With Weapon', 'violent', 'P2', '#f59e0b', 1, 1, 0, 0],
+        ['10-33', 'Emergency Traffic — Clear Channel', 'emergency', 'P1', '#ef4444', 0, 0, 0, 0],
+        ['10-34', 'Riot', 'violent', 'P1', '#ef4444', 1, 1, 1, 0],
+        ['10-52', 'Ambulance Needed', 'medical', 'P2', '#f59e0b', 0, 0, 1, 0],
+        ['10-70', 'Fire Alarm', 'fire', 'P2', '#f59e0b', 0, 0, 0, 1],
+        ['10-71', 'Shooting', 'violent', 'P1', '#ef4444', 1, 1, 1, 0],
+        ['10-72', 'Knife Attack / Stabbing', 'violent', 'P1', '#ef4444', 1, 1, 1, 0],
+        ['10-80', 'Pursuit In Progress', 'pursuit', 'P1', '#ef4444', 1, 1, 0, 0],
+        ['10-6', 'Busy — Stand By', 'status', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-7', 'Out of Service', 'status', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-8', 'In Service', 'status', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-9', 'Repeat Last Transmission', 'comm', 'P4', '#6b7280', 0, 0, 0, 0],
+        ['10-11', 'Animal Problem', 'community', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-17', 'Meet Complainant', 'community', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-20', 'Location / What Is Your Location', 'status', 'P4', '#6b7280', 0, 0, 0, 0],
+        ['10-21', 'Call by Phone', 'comm', 'P4', '#6b7280', 0, 0, 0, 0],
+        ['10-22', 'Disregard Last Message', 'comm', 'P4', '#6b7280', 0, 0, 0, 0],
+        ['10-23', 'Arrived at Scene', 'status', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-24', 'Assignment Completed', 'status', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-26', 'Detaining Subject', 'enforcement', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-27', 'Driver License Check', 'enforcement', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-28', 'Vehicle Registration Check', 'enforcement', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-29', 'Warrant Check', 'enforcement', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-35', 'Major Crime Alert', 'violent', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['10-37', 'Suspicious Vehicle', 'property', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-38', 'Traffic Stop', 'traffic', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-40', 'Silent Run — No Lights/Siren', 'enforcement', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-41', 'Beginning Tour of Duty', 'status', 'P4', '#6b7280', 0, 0, 0, 0],
+        ['10-42', 'Ending Tour of Duty', 'status', 'P4', '#6b7280', 0, 0, 0, 0],
+        ['10-50', 'Accident — Injury', 'traffic', 'P2', '#f59e0b', 0, 0, 1, 0],
+        ['10-51', 'Accident — Non-Injury', 'traffic', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['10-55', 'Intoxicated Driver', 'traffic', 'P2', '#f59e0b', 0, 0, 0, 0],
+        ['10-57', 'Hit and Run', 'traffic', 'P2', '#f59e0b', 0, 0, 0, 0],
+        ['10-78', 'Need Assistance', 'emergency', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['10-79', 'Notify Coroner', 'medical', 'P2', '#f59e0b', 0, 0, 1, 0],
+        ['10-89', 'Bomb Threat', 'emergency', 'P1', '#ef4444', 1, 1, 1, 1],
+        ['10-90', 'Bank Alarm', 'property', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['10-95', 'Subject In Custody', 'enforcement', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['10-96', 'Mental Subject', 'medical', 'P2', '#f59e0b', 0, 0, 1, 0],
+        ['10-98', 'Prison / Jail Break', 'emergency', 'P1', '#ef4444', 1, 1, 0, 0],
+        ['10-99', 'Wanted / Stolen Indicated', 'enforcement', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['CODE-1', 'Respond Without Lights/Siren', 'response', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['CODE-2', 'Respond Urgent — No Lights/Siren', 'response', 'P2', '#f59e0b', 0, 0, 0, 0],
+        ['CODE-3', 'Respond Emergency — Lights and Siren', 'response', 'P1', '#ef4444', 0, 0, 0, 0],
+        ['CODE-4', 'Scene Is Secure — No Further Assistance', 'response', 'P4', '#22c55e', 0, 0, 0, 0],
+        ['187', 'Homicide', 'violent', 'P1', '#ef4444', 1, 1, 1, 0],
+        ['211', 'Robbery', 'violent', 'P1', '#ef4444', 1, 1, 0, 0],
+        ['240', 'Assault', 'violent', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['245', 'Assault with Deadly Weapon', 'violent', 'P1', '#ef4444', 1, 1, 1, 0],
+        ['415', 'Disturbance / Noise Complaint', 'community', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['459', 'Burglary', 'property', 'P2', '#f59e0b', 1, 0, 0, 0],
+        ['484', 'Petty Theft', 'property', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['487', 'Grand Theft', 'property', 'P2', '#f59e0b', 0, 0, 0, 0],
+        ['502', 'Drunk Driver', 'traffic', 'P2', '#f59e0b', 0, 0, 0, 0],
+        ['594', 'Malicious Mischief / Vandalism', 'property', 'P3', '#6b7280', 0, 0, 0, 0],
+        ['901', 'Ambulance Call', 'medical', 'P2', '#f59e0b', 0, 0, 1, 0],
+        ['904', 'Fire', 'fire', 'P2', '#f59e0b', 0, 0, 0, 1],
+        ['925', 'Suspicious Person', 'community', 'P3', '#3b82f6', 0, 0, 0, 0],
+        ['998', 'Officer Involved Shooting', 'emergency', 'P1', '#ef4444', 1, 1, 1, 0],
+        ['999', 'Officer Needs Help — Emergency', 'emergency', 'P1', '#ef4444', 1, 1, 1, 0],
+      ];
+      const insertCode = db.prepare('INSERT OR IGNORE INTO dispatch_codes (code, description, category, priority, color, requires_backup, officer_safety, ems_needed, fire_needed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      for (const c of defaultCodes) {
+        insertCode.run(...c);
+      }
+      console.log('[migrate] Seeded ' + defaultCodes.length + ' dispatch codes (10-codes + signal codes)');
+    }
+  } catch (err) {
+    console.log('[migrate] Dispatch codes seed:', (err as Error).message);
+  }
+
   // ── FLEET — fuel log enrichment for Simply Fleet imports ──
   addCol('fleet_fuel_logs', 'distance', 'REAL');
   addCol('fleet_fuel_logs', 'efficiency', 'REAL');

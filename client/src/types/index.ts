@@ -2901,3 +2901,117 @@ export interface ServeSkipAddress {
   type: string;
   last_seen: string | null;
 }
+
+// --- Dispatch Geography ---
+
+export interface DispatchArea {
+  id: number;
+  area_code: string;
+  area_name: string;
+  color: string;
+  description?: string;
+  commander?: string;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  section_count?: number;
+}
+
+export interface DispatchSection {
+  id: number;
+  section_code: string;
+  section_name: string;
+  area_id?: number;
+  area_code?: string;
+  area_name?: string;
+  color: string;
+  description?: string;
+  supervisor?: string;
+  radio_channel?: string;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  zone_count?: number;
+}
+
+export interface DispatchZone {
+  id: number;
+  zone_code: string;
+  zone_name: string;
+  section_id?: number;
+  section_code?: string;
+  section_name?: string;
+  color?: string;
+  description?: string;
+  primary_unit?: string;
+  backup_unit?: string;
+  radio_channel?: string;
+  hazard_notes?: string;
+  notes?: string;
+  population_estimate?: number;
+  sq_miles?: number;
+  sort_order: number;
+  active: number;
+  beat_count?: number;
+  active_calls?: number;
+}
+
+export interface DispatchBeat {
+  id: number;
+  beat_code: string;
+  beat_name: string;
+  beat_descriptor?: string;
+  zone_id?: number;
+  zone_code?: string;
+  zone_name?: string;
+  section_code?: string;
+  section_name?: string;
+  dispatch_code?: string;
+  color?: string;
+  assigned_unit?: string;
+  backup_unit?: string;
+  hazard_notes?: string;
+  patrol_frequency?: string;
+  priority_modifier?: number;
+  population_estimate?: number;
+  sq_miles?: number;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  active_calls?: number;
+}
+
+export interface DispatchCodeEntry {
+  id: number;
+  code: string;
+  description: string;
+  category: string;
+  priority: string;
+  color: string;
+  requires_backup: number;
+  officer_safety: number;
+  ems_needed: number;
+  fire_needed: number;
+  notes?: string;
+  active: number;
+}
+
+export interface PremiseAlert {
+  id: number;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  alert_type: string;
+  alert_level: string;
+  title: string;
+  description?: string;
+  flags: string;
+  expires_at?: string;
+  created_by?: number;
+  active: number;
+}
+
+export interface GeographyTree {
+  areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
+  unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
+}

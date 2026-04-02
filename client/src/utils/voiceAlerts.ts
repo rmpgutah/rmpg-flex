@@ -1118,6 +1118,193 @@ export async function announceAcknowledgment(): Promise<void> {
   await playToneAsync('info');
 }
 
+// ─── Process Service & Operational Voice Alerts ────────────────
+
+/**
+ * Announce a return visit scheduling:
+ * "Return visit scheduled. Call 26-CFS00110 queued for second attempt. Next window: 6PM to 9PM."
+ */
+export async function announceReturnVisit(callNumber: string, attemptNumber: number, nextWindow?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `returnvisit:${callNumber}:${attemptNumber}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(200);
+
+  const ordinal = attemptNumber === 2 ? 'second' : attemptNumber === 3 ? 'third' : `${attemptNumber}th`;
+  const phrases: VoicePhrase[] = [
+    { text: `Return visit scheduled. Call ${callNumber} queued for ${ordinal} attempt.` },
+  ];
+  if (nextWindow) {
+    phrases.push({ text: `Next window: ${nextWindow}.` });
+  }
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce serve completion summary:
+ * "Service complete. Personal service on Alexis Sanchez at 3392 Mockingbird Way. Documents: Summons and Complaint. Attempt 1 of 3."
+ */
+export async function announceServeComplete(name: string, address: string, docType: string, attempt: number, result: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `servecomplete:${name}:${attempt}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(200);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Service complete. ${result.replace(/_/g, ' ')} on ${name}${address ? ` at ${address}` : ''}.` },
+  ];
+  if (docType) {
+    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ')}.` });
+  }
+  phrases.push({ text: `Attempt ${attempt}.` });
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce multiple calls stacked at the same location:
+ * "Advisory. 3 calls stacked at 15 South West Temple. Units S19, 5820 assigned."
+ */
+export async function announceCallStack(count: number, address: string, units: string[]): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `callstack:${address}:${count}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('caution');
+  await delay(200);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Advisory. ${count} calls stacked at ${address}.` },
+  ];
+  if (units.length > 0) {
+    phrases.push({ text: `Units ${units.slice(0, 4).join(', ')} assigned.` });
+  }
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce GPS speed advisory when unit exceeds threshold:
+ * "Speed advisory. Unit S19 traveling at 78 miles per hour on Interstate 15."
+ */
+export async function announceSpeedAdvisory(callSign: string, speed: number, road?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `speed:${callSign}:${Math.floor(speed / 10)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('caution');
+  await delay(200);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Speed advisory. Unit ${callSign} traveling at ${Math.round(speed)} miles per hour${road ? ` on ${road}` : ''}.` },
+  ];
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce court deadline reminder:
+ * "Reminder. Serve deadline for case 2:25-CV-01053 expires in 4 hours. Property: Alexis Sanchez."
+ */
+export async function announceCourtDeadline(caseNumber: string, hoursRemaining: number, property?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `deadline:${caseNumber}:${Math.floor(hoursRemaining)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('warning');
+  await delay(TONE_GAP_MS);
+
+  const timeStr = hoursRemaining < 1
+    ? `${Math.round(hoursRemaining * 60)} minutes`
+    : `${Math.round(hoursRemaining)} hours`;
+
+  const phrases: VoicePhrase[] = [
+    { text: `Reminder. Serve deadline for case ${caseNumber} expires in ${timeStr}.` },
+  ];
+  if (property) {
+    phrases.push({ text: `Property: ${property}.` });
+  }
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce end-of-shift summary:
+ * "Shift summary. 8 calls handled. 6 serves completed. 2 pending. Average response: 14 minutes. Total miles: 42.3."
+ */
+export async function announceShiftSummary(stats: { calls: number; serves: number; pending: number; avgResponse: number; totalMiles: number }): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `shiftsummary:${Date.now()}`;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Shift summary. ${stats.calls} calls handled. ${stats.serves} serves completed. ${stats.pending} pending.` },
+    { text: `Average response: ${stats.avgResponse} minutes. Total miles: ${stats.totalMiles.toFixed(1)}.` },
+  ];
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce a directed note with @mention:
+ * "Attention Unit S19. Note from Dispatch on call 26-CFS00110: Please check rear entrance."
+ */
+export async function announceDirectedNote(targetUnit: string, callNumber: string, noteText: string, author?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `directednote:${targetUnit}:${callNumber}:${noteText.slice(0, 30)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(200);
+
+  const truncated = noteText.length > 80 ? noteText.slice(0, 80) + '...' : noteText;
+  const phrases: VoicePhrase[] = [
+    { text: `Attention ${targetUnit === '@all' ? 'all units' : `Unit ${targetUnit.replace('@', '')}`}. Note${author ? ` from ${author}` : ''} on call ${callNumber}: ${truncated}.` },
+  ];
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce audible feedback for local dispatcher actions.
+ * Uses a brief chirp tone and short confirmation phrase.
+ * These fire only for the local user's own actions (not from WebSocket).
+ */
+export async function announceLocalAction(actionType: 'call_created' | 'unit_dispatched' | 'call_closed' | 'note_added', detail: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  // No dedup for local actions — they are always intentional
+  if (actionType === 'call_created') {
+    await playToneAsync('info');
+    await delay(150);
+  } else if (actionType === 'unit_dispatched') {
+    await playToneAsync('info');
+    await delay(150);
+  } else if (actionType === 'call_closed') {
+    // No tone for close — descending implied by speech
+  } else if (actionType === 'note_added') {
+    // Brief click implied by tone
+    await playToneAsync('info');
+    await delay(100);
+  }
+
+  enqueuePhrases([{ text: detail }]);
+}
+
 // ─── Demo / Test ─────────────────────────────────────────────
 
 /**

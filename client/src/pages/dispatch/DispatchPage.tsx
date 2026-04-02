@@ -77,7 +77,7 @@ import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
-import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange } from '../../utils/voiceAlerts';
+import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -268,6 +268,7 @@ export default function DispatchPage() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   // Quick Dispatch templates
@@ -805,7 +806,14 @@ export default function DispatchPage() {
         setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
         // Voice alert: announce update if notes were added
         if (data.update_type === 'note_added') {
-          announceCallUpdate(mapped.call_number, 'New note added', data.author);
+          // Check for @mentions in the note text
+          const noteText = data.note_text || '';
+          const mentionMatch = noteText.match(/@(\w+)/);
+          if (mentionMatch) {
+            announceDirectedNote(mentionMatch[0], mapped.call_number, noteText, data.author);
+          } else {
+            announceCallUpdate(mapped.call_number, 'New note added', data.author);
+          }
         }
       } else if (data.action === 'call_status_changed' && data.call) {
         const mapped = mapDbCall(data.call);
@@ -836,6 +844,11 @@ export default function DispatchPage() {
         // Voice alert: announce unit assignment
         if (data.action === 'unit_assigned' && data.unit_call_sign && data.call_number) {
           announceUnitAssignment(data.unit_call_sign, data.call_number);
+        }
+        // Voice alert: announce multi-unit dispatch (2+ units assigned at once)
+        if (data.action === 'units_dispatched' && data.unit_call_signs?.length >= 2 && data.call_number) {
+          const unitList = data.unit_call_signs.join(' and ');
+          announceCallUpdate(data.call_number, `Multiple units dispatched: ${unitList}`);
         }
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
@@ -878,6 +891,10 @@ export default function DispatchPage() {
       if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
         setServeLink(data);
       }
+      // Voice alert: announce return visit scheduled
+      if (data?.call_number && data?.attempt_number && data.attempt_number > 1) {
+        announceReturnVisit(data.call_number, data.attempt_number, data.next_window);
+      }
     });
     const unsubServeAttempt = subscribe('serve:attempt', (msg: any) => {
       const data = msg.data || msg;
@@ -887,6 +904,16 @@ export default function DispatchPage() {
         apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
           if (res) setServeLink(res);
         }).catch(() => {});
+      }
+      // Voice alert: announce serve completion
+      if (data?.result && data?.served_to && data?.call_number) {
+        announceServeComplete(
+          data.served_to,
+          data.address || '',
+          data.document_type || '',
+          data.attempt_number || 1,
+          data.result,
+        );
       }
     });
 
@@ -900,6 +927,26 @@ export default function DispatchPage() {
 
     return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
+
+  // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
+  useEffect(() => {
+    if (!selectedCall?.onscene_at || ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) {
+      setOnSceneElapsed('');
+      return;
+    }
+    const update = () => {
+      const diff = Date.now() - new Date(selectedCall.onscene_at!).getTime();
+      if (diff < 0) { setOnSceneElapsed(''); return; }
+      const totalSec = Math.floor(diff / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      setOnSceneElapsed(h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`);
+    };
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, [selectedCall?.id, selectedCall?.onscene_at, selectedCall?.status]);
 
   // When switching to the archived tab, fetch archived calls if not loaded
   useEffect(() => {
@@ -1308,6 +1355,8 @@ export default function DispatchPage() {
       setShowNewCallModal(false);
       setTemplateInitialData(undefined);
       addToast(`Call ${newCall.call_number} created`, 'success');
+      // Audible feedback for local action
+      announceLocalAction('call_created', `Call ${newCall.call_number} created.`);
     } catch (err: any) {
       console.error('Failed to create call:', err);
       addToast(err?.message || 'Failed to create call', 'error');
@@ -1327,6 +1376,10 @@ export default function DispatchPage() {
       const updatedCall = mapDbCall(result);
       setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // Audible feedback for local status change
+      if (newStatus === 'cleared' || newStatus === 'closed') {
+        announceLocalAction('call_closed', `Call ${updatedCall.call_number} ${newStatus}.`);
+      }
       // Refresh units since clearing/closing/cancelling a call frees assigned units
       if (newStatus === 'cleared' || newStatus === 'closed' || newStatus === 'cancelled') {
         const unitsRes = await apiFetch<any[]>('/dispatch/units');
@@ -1535,6 +1588,8 @@ export default function DispatchPage() {
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setNewNote('');
+      // Audible feedback for local note action
+      announceLocalAction('note_added', `Note added to ${selectedCall.call_number}.`);
     } catch (err) {
       console.error('Failed to add note:', err);
       addToast('Failed to save note', 'error');
@@ -1696,6 +1751,11 @@ export default function DispatchPage() {
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setShowAttachUnitDropdown(false);
+      // Audible feedback for local unit dispatch
+      const assignedUnit = units.find(u => String(u.id) === String(unitId));
+      if (assignedUnit) {
+        announceLocalAction('unit_dispatched', `Unit ${assignedUnit.call_sign} dispatched to ${selectedCall.call_number}.`);
+      }
       // Refresh units to reflect the status change
       const unitsRes = await apiFetch<any[]>('/dispatch/units');
       setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
@@ -3378,10 +3438,18 @@ export default function DispatchPage() {
                       />
                     ) : selectedCall.incident_number ? (
                       <span
-                        className={`text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap ${isAdminOrManager ? 'cursor-pointer hover:brightness-125' : ''}`}
-                        onClick={() => isAdminOrManager && setEditingTimestamp('incident_number')}
-                        title={isAdminOrManager ? 'Click to edit incident link' : undefined}
+                        className={`text-[10px] font-bold font-mono text-cyan-300 bg-cyan-900/30 border border-cyan-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-cyan-200 transition-colors`}
+                        onClick={(e) => {
+                          if (isAdminOrManager && e.shiftKey) {
+                            setEditingTimestamp('incident_number');
+                          } else {
+                            // Navigate to incident
+                            window.open(`/incidents?search=${encodeURIComponent(selectedCall.incident_number!)}`, '_blank');
+                          }
+                        }}
+                        title={isAdminOrManager ? 'Click to view incident (Shift+click to edit)' : 'Click to view incident'}
                       >
+                        <Link style={{ width: 8, height: 8, display: 'inline', verticalAlign: 'middle', marginRight: 2 }} />
                         INC {selectedCall.incident_number}
                       </span>
                     ) : null
@@ -3391,6 +3459,12 @@ export default function DispatchPage() {
                   {callWarnings.length > 0 && (
                     <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse whitespace-nowrap">
                       <AlertTriangle style={{ width: 9, height: 9 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
+                    </span>
+                  )}
+                  {/* On-scene live timer */}
+                  {onSceneElapsed && (
+                    <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-purple-300 bg-purple-900/20 border border-purple-700/30 whitespace-nowrap tabular-nums" title="Time on scene">
+                      <Clock style={{ width: 9, height: 9 }} /> On scene: {onSceneElapsed}
                     </span>
                   )}
                 </div>
@@ -4178,7 +4252,7 @@ export default function DispatchPage() {
                         {selectedCall.starting_mileage && <span className="text-rmpg-200 tabular-nums"><span className="text-rmpg-400">Start:</span> {Number(selectedCall.starting_mileage).toLocaleString()} mi</span>}
                         {selectedCall.ending_mileage && <span className="text-rmpg-200 tabular-nums"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
                         {selectedCall.starting_mileage && selectedCall.ending_mileage && (
-                          <span className="text-blue-400 font-semibold tabular-nums">
+                          <span className="text-[10px] font-mono text-green-400 font-semibold tabular-nums">
                             Total: {((Number(selectedCall.ending_mileage) || 0) - (Number(selectedCall.starting_mileage) || 0)).toFixed(1)} mi
                           </span>
                         )}
@@ -5937,6 +6011,114 @@ export default function DispatchPage() {
                 } else {
                   announceAllClear('current call');
                 }
+                break;
+              }
+              case 'voice_summary': {
+                // Shift summary — compute stats from current calls and units
+                const activeCalls = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
+                const completed = calls.filter(c => ['cleared', 'closed'].includes(c.status));
+                const pending = calls.filter(c => c.status === 'pending');
+                const psoServes = completed.filter(c => c.incident_type === 'pso_client_request');
+                const totalMi = activeCalls.reduce((sum, c) => {
+                  if (c.starting_mileage && c.ending_mileage) return sum + (Number(c.ending_mileage) - Number(c.starting_mileage));
+                  return sum;
+                }, 0);
+                announceShiftSummary({
+                  calls: activeCalls.length + completed.length,
+                  serves: psoServes.length,
+                  pending: pending.length,
+                  avgResponse: 0,
+                  totalMiles: totalMi,
+                });
+                break;
+              }
+              case 'voice_locate': {
+                // Announce unit last known location (from current call or status)
+                const unit = units.find(u => u.call_sign === action.callSign);
+                if (unit && unit.current_call_id) {
+                  const call = calls.find(c => c.id === String(unit.current_call_id));
+                  const loc = call?.location || call?.location_address || 'unknown location';
+                  announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ')}.`);
+                } else if (unit) {
+                  announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')}. No active call assigned.`);
+                }
+                break;
+              }
+              case 'voice_serve': {
+                // Announce serve details for a call
+                const call = calls.find(c => c.call_number === action.callNumber);
+                if (call) {
+                  const docType = (call as any).process_service_type || (call as any).pso_service_type || 'unknown';
+                  const servedTo = (call as any).process_served_to || (call as any).caller_name || 'unknown';
+                  const attempt = (call as any).pso_attempt_number || (call as any).process_attempts || 1;
+                  const result = (call as any).process_service_result || 'pending';
+                  announceServeComplete(servedTo, call.location || '', docType, attempt, result);
+                }
+                break;
+              }
+              case 'voice_deadline': {
+                // Announce 72hr deadline status for a PSO call
+                const call = calls.find(c => c.call_number === action.callNumber);
+                if (call) {
+                  const terminalTime = (call as any).closed_at || (call as any).cleared_at;
+                  if (terminalTime) {
+                    const elapsed = Date.now() - new Date(terminalTime).getTime();
+                    const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
+                    const caseNum = call.case_number || call.call_number;
+                    announceCourtDeadline(caseNum, hoursLeft, (call as any).process_served_to || (call as any).caller_name);
+                  } else {
+                    announceCallUpdate('', `Call ${call.call_number} has not been cleared or closed yet. No deadline active.`);
+                  }
+                }
+                break;
+              }
+              case 'voice_stack': {
+                // Announce stacked calls at the selected call's location
+                if (selectedCall?.location) {
+                  const locKey = selectedCall.location.toLowerCase().trim();
+                  const stacked = calls.filter(c => c.location && c.location.toLowerCase().trim() === locKey && !['archived', 'cancelled'].includes(c.status));
+                  if (stacked.length > 1) {
+                    const unitSet = new Set<string>();
+                    stacked.forEach(c => (c.assigned_units || []).forEach(u => unitSet.add(u)));
+                    const unitNames = units.filter(u => unitSet.has(String(u.id))).map(u => u.call_sign);
+                    announceCallStack(stacked.length, selectedCall.location, unitNames);
+                  } else {
+                    announceCallUpdate('', `No stacked calls at ${selectedCall.location}.`);
+                  }
+                } else {
+                  announceCallUpdate('', 'No call selected. Select a call to check for stacked calls.');
+                }
+                break;
+              }
+              case 'voice_units': {
+                // Announce all unit statuses
+                const active = units.filter(u => u.status !== 'off_duty');
+                const avail = active.filter(u => u.status === 'available').length;
+                const enr = active.filter(u => u.status === 'enroute').length;
+                const ons = active.filter(u => u.status === 'onscene').length;
+                const busy = active.filter(u => u.status === 'busy').length;
+                announceCallUpdate('', `${active.length} units active. ${avail} available, ${enr} en route, ${ons} on scene, ${busy} busy.`);
+                break;
+              }
+              case 'voice_pending': {
+                // Announce pending calls
+                const pending = calls.filter(c => c.status === 'pending');
+                if (pending.length === 0) {
+                  announceCallUpdate('', 'No pending calls.');
+                } else {
+                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ') || 'unknown'}`).join('. ');
+                  announceCallUpdate('', `${pending.length} pending calls. ${details}.`);
+                }
+                break;
+              }
+              case 'voice_priority': {
+                // Announce priority breakdown
+                const active = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
+                const p1 = active.filter(c => c.priority === 'P1').length;
+                const p2 = active.filter(c => c.priority === 'P2').length;
+                const p3 = active.filter(c => c.priority === 'P3').length;
+                const p4 = active.filter(c => c.priority === 'P4').length;
+                announceCallUpdate('', `Priority breakdown. ${p1} priority 1. ${p2} priority 2. ${p3} priority 3. ${p4} priority 4.`);
                 break;
               }
             }
