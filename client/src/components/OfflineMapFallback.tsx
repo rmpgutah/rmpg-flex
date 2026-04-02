@@ -566,7 +566,7 @@ export default function OfflineMapFallback({
             disabled={retrying}
             className="ml-2 flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
             style={{
-              background: retrying ? '#1e3048' : '#1a5a9e',
+              background: retrying ? '#1e3048' : '#888888',
               color: retrying ? '#5a6e80' : '#fff',
               borderRadius: 2,
             }}

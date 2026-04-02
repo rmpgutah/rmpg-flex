@@ -542,9 +542,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <div
               className="w-12 h-12 flex items-center justify-center text-base font-bold"
               style={{
-                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                background: 'linear-gradient(135deg, #333333, #888888)',
                 color: '#fff',
-                border: '2px solid #3b8ad4',
+                border: '2px solid #aaaaaa',
                 borderRadius: 2,
               }}
             >
@@ -576,8 +576,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
                   color: activeTab === tab.id ? '#ffffff' : '#5a6e80',
-                  borderBottom: activeTab === tab.id ? '2px solid #1a5a9e' : '2px solid transparent',
-                  background: activeTab === tab.id ? 'rgba(26, 90, 158, 0.08)' : 'transparent',
+                  borderBottom: activeTab === tab.id ? '2px solid #888888' : '2px solid transparent',
+                  background: activeTab === tab.id ? 'rgba(136, 136, 136, 0.08)' : 'transparent',
                 }}
               >
                 <Icon style={{ width: 11, height: 11 }} />
@@ -670,7 +670,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div
                         className="w-20 h-20 flex items-center justify-center text-xl font-bold"
                         style={{
-                          background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                          background: 'linear-gradient(135deg, #333333, #888888)',
                           color: '#fff',
                           border: '2px solid #2a4a6e',
                           borderRadius: 2,
@@ -686,8 +686,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div
                       className="relative border-2 border-dashed px-4 py-3 text-center transition-colors cursor-pointer"
                       style={{
-                        borderColor: imageDragOver ? '#1a5a9e' : '#1e3348',
-                        background: imageDragOver ? 'rgba(26, 90, 158, 0.12)' : '#0a1018',
+                        borderColor: imageDragOver ? '#888888' : '#1e3348',
+                        background: imageDragOver ? 'rgba(136, 136, 136, 0.12)' : '#0a1018',
                         borderRadius: 2,
                       }}
                       onDragOver={e => { e.preventDefault(); setImageDragOver(true); }}

@@ -283,7 +283,7 @@ export default function SignaturePad({
     <div className="space-y-1">
       <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
       {/* 48: Signature pad container with top accent */}
-      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #1a5a9e' }}>
+      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #888888' }}>
         {/* 49: Mode toggle tabs with improved active state contrast */}
         <div className="flex gap-1 mb-2">
           <button

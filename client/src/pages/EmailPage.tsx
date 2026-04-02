@@ -681,13 +681,13 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   const style = doc.createElement('style');
   style.textContent = `
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #1a1a1a; margin: 40px; line-height: 1.6; }
-    .header { border-bottom: 2px solid #1a5a9e; padding-bottom: 12px; margin-bottom: 16px; }
+    .header { border-bottom: 2px solid #888888; padding-bottom: 12px; margin-bottom: 16px; }
     .header h1 { font-size: 16pt; margin: 0 0 8px; color: #1a1a1a; }
     .meta { font-size: 10pt; color: #555; margin: 2px 0; }
     .meta strong { color: #333; min-width: 40px; display: inline-block; }
     .body-content { margin-top: 16px; }
     .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9pt; color: #999; }
-    @media print { body { margin: 20px; } a { color: #1a5a9e; text-decoration: none; } }
+    @media print { body { margin: 20px; } a { color: #888888; text-decoration: none; } }
   `;
   doc.head.appendChild(style);
   doc.title = message.subject;
@@ -724,7 +724,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#1a5a9e;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');

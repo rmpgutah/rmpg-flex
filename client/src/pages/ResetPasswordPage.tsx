@@ -90,12 +90,12 @@ export default function ResetPasswordPage() {
       <div className="w-full max-w-sm">
         <div
           className="panel-beveled bg-surface-base relative overflow-hidden"
-          style={{ boxShadow: '0 4px 40px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.1)' }}
+          style={{ boxShadow: '0 4px 40px rgba(136, 136, 136, 0.08), 0 0 0 1px rgba(136, 136, 136, 0.1)' }}
           role="form"
           aria-label="Password reset form"
         >
           {/* Accent line */}
-          <div style={{ height: '2px', background: 'linear-gradient(90deg, transparent, #1a5a9e, transparent)' }} />
+          <div style={{ height: '2px', background: 'linear-gradient(90deg, transparent, #888888, transparent)' }} />
 
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
@@ -130,8 +130,8 @@ export default function ResetPasswordPage() {
                   href="/forgot-password"
                   className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
-                    background: 'linear-gradient(180deg, #1a5a9e 0%, #144a84 100%)',
-                    border: '1px solid rgba(26, 90, 158, 0.5)',
+                    background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                    border: '1px solid rgba(136, 136, 136, 0.5)',
                     borderRadius: '2px',
                   }}
                 >
@@ -144,7 +144,7 @@ export default function ResetPasswordPage() {
             {!validating && tokenValid && !success && (
               <>
                 <div className="text-center mb-5">
-                  <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(26, 90, 158, 0.15)', border: '1px solid rgba(26, 90, 158, 0.3)' }}>
+                  <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(136, 136, 136, 0.15)', border: '1px solid rgba(136, 136, 136, 0.3)' }}>
                     <Lock className="w-5 h-5" style={{ color: '#4a9aee' }} />
                   </div>
                   <h2 className="text-sm font-bold text-white mb-1">Set New Password</h2>
@@ -234,8 +234,8 @@ export default function ResetPasswordPage() {
                     disabled={submitting || !allMet}
                     className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                     style={{
-                      background: 'linear-gradient(180deg, #1a5a9e 0%, #144a84 100%)',
-                      border: '1px solid rgba(26, 90, 158, 0.5)',
+                      background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                      border: '1px solid rgba(136, 136, 136, 0.5)',
                       borderRadius: '2px',
                     }}
                     aria-busy={submitting}
@@ -270,8 +270,8 @@ export default function ResetPasswordPage() {
                   href="/login"
                   className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
-                    background: 'linear-gradient(180deg, #1a5a9e 0%, #144a84 100%)',
-                    border: '1px solid rgba(26, 90, 158, 0.5)',
+                    background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                    border: '1px solid rgba(136, 136, 136, 0.5)',
                     borderRadius: '2px',
                   }}
                 >

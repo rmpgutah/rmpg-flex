@@ -187,7 +187,7 @@ export default function MobileBottomSheet({
       <div
         className="absolute top-0 left-1/4 right-1/4 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, transparent, #1a5a9e, transparent)',
+          background: 'linear-gradient(90deg, transparent, #888888, transparent)',
         }}
       />
     </div>

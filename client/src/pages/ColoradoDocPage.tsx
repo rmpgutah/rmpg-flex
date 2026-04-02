@@ -225,7 +225,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('name')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'name'
-                    ? 'bg-[#1a5a9e]/30 text-blue-300 border border-[#1a5a9e]/50'
+                    ? 'bg-[#888888]/30 text-blue-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -236,7 +236,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('doc')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'doc'
-                    ? 'bg-[#1a5a9e]/30 text-blue-300 border border-[#1a5a9e]/50'
+                    ? 'bg-[#888888]/30 text-blue-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -251,7 +251,7 @@ export default function ColoradoDocPage() {
                   placeholder="Last Name *"
                   value={lastName}
                   onChange={e => setLastName(e.target.value)}
-                  className="flex-1 bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#1a5a9e] focus:outline-none"
+                  className="flex-1 bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
                   autoFocus
                 />
                 <input
@@ -259,7 +259,7 @@ export default function ColoradoDocPage() {
                   placeholder="First Name"
                   value={firstName}
                   onChange={e => setFirstName(e.target.value)}
-                  className="flex-1 bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#1a5a9e] focus:outline-none"
+                  className="flex-1 bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
                 />
               </div>
             ) : (
@@ -268,7 +268,7 @@ export default function ColoradoDocPage() {
                 placeholder="DOC Number (e.g. 123456)"
                 value={docNumber}
                 onChange={e => setDocNumber(e.target.value)}
-                className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#1a5a9e] focus:outline-none font-mono"
+                className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none font-mono"
                 autoFocus
               />
             )}
@@ -277,7 +277,7 @@ export default function ColoradoDocPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5a9e]/20 border border-[#1a5a9e]/40 text-blue-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#1a5a9e]/30 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888]/20 border border-[#888888]/40 text-blue-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#888888]/30 transition-colors disabled:opacity-40"
               >
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
                 Search
@@ -324,7 +324,7 @@ export default function ColoradoDocPage() {
                       onClick={() => setSelected(r)}
                       className={`cursor-pointer border-b border-[#1e3048]/50 transition-colors ${
                         selected?.doc_number === r.doc_number
-                          ? 'bg-[#1a5a9e]/15 text-white'
+                          ? 'bg-[#888888]/15 text-white'
                           : 'hover:bg-[#1a2636] text-rmpg-300'
                       }`}
                     >

@@ -627,7 +627,7 @@ export default function ServePage() {
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            className="px-2 py-1 text-xs bg-[#141e2b] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+            className="px-2 py-1 text-xs bg-[#141e2b] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
           />
           {/* Route stats inline (Step 3.5) */}
           {savedRoute && savedRoute.optimized_order_json && (() => {
@@ -722,9 +722,9 @@ export default function ServePage() {
                   role="button"
                   aria-pressed={statusFilter === f.value}
                   onClick={() => setStatusFilter(f.value)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 ${
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#888888]/50 ${
                     statusFilter === f.value
-                      ? 'text-white bg-[#1a5a9e] border-[#1a5a9e] shadow-[0_0_6px_rgba(26,90,158,0.3)]'
+                      ? 'text-white bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(26,90,158,0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -767,7 +767,7 @@ export default function ServePage() {
             <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-dark">
               {loading && jobs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-xs text-rmpg-400">
-                  <Loader2 size={16} className="animate-spin mr-2 text-[#1a5a9e]" />
+                  <Loader2 size={16} className="animate-spin mr-2 text-[#888888]" />
                   <span className="text-rmpg-400">Loading jobs...</span>
                 </div>
               ) : filteredJobs.length === 0 ? (
@@ -880,7 +880,7 @@ export default function ServePage() {
                               ? 'bg-green-900/10 border-green-800/30 opacity-60'
                               : isFailed
                                 ? 'bg-red-900/10 border-red-800/30 opacity-60'
-                                : 'bg-[#141e2b] border-[#1e3048] hover:border-[#1a5a9e]/30'
+                                : 'bg-[#141e2b] border-[#1e3048] hover:border-[#888888]/30'
                           }`}
                         >
                           {/* Stop number */}
@@ -989,7 +989,7 @@ export default function ServePage() {
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
               <button type="button"
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 rounded-[2px] shadow-lg shadow-[#1a5a9e]/20 border border-[#1a5a9e] transition-all duration-150 hover:shadow-[0_0_16px_rgba(26,90,158,0.3)] focus:outline-none focus:ring-2 focus:ring-[#1a5a9e]/50"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(26,90,158,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
               >
                 <Navigation size={16} />
                 Navigate to Next
@@ -1035,7 +1035,7 @@ export default function ServePage() {
 
             {/* Mileage / efficiency */}
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-[2px] transition-colors hover:border-[#1a5a9e]/30">
+              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-[2px] transition-colors hover:border-[#888888]/30">
                 <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
                 <div className="text-lg font-bold text-white font-mono tabular-nums">
                   {routeData?.totalDistance
@@ -1051,7 +1051,7 @@ export default function ServePage() {
                   </div>
                 )}
               </div>
-              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-[2px] transition-colors hover:border-[#1a5a9e]/30">
+              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-[2px] transition-colors hover:border-[#888888]/30">
                 <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
                 <div className="text-lg font-bold text-white font-mono tabular-nums">
                   {routeData && stats?.planned_mileage && stats.planned_mileage > 0
@@ -1074,7 +1074,7 @@ export default function ServePage() {
                 <select
                   value={costJobId || ''}
                   onChange={e => { const v = parseInt(e.target.value, 10); if (v) handleLoadCostEstimate(v); }}
-                  className="flex-1 px-2 py-1 text-xs bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                  className="flex-1 px-2 py-1 text-xs bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 >
                   <option value="">Select a job...</option>
                   {jobs.map(j => (
@@ -1235,7 +1235,7 @@ export default function ServePage() {
               required
               value={formData.recipient_name}
               onChange={e => handleFormChange('recipient_name', e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               placeholder="Full name"
             />
           </div>
@@ -1248,7 +1248,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.recipient_address}
                 onChange={e => handleFormChange('recipient_address', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 placeholder="Street address"
               />
             </div>
@@ -1258,7 +1258,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.recipient_city}
                 onChange={e => handleFormChange('recipient_city', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -1268,7 +1268,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_state}
                   onChange={e => handleFormChange('recipient_state', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                   maxLength={2}
                 />
               </div>
@@ -1278,7 +1278,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_zip}
                   onChange={e => handleFormChange('recipient_zip', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                   maxLength={10}
                 />
               </div>
@@ -1292,7 +1292,7 @@ export default function ServePage() {
               <select
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               >
                 {DOCUMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -1302,7 +1302,7 @@ export default function ServePage() {
               <select
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               >
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
@@ -1319,7 +1319,7 @@ export default function ServePage() {
               <select
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               >
                 <option value="morning">Morning</option>
                 <option value="afternoon">Afternoon</option>
@@ -1333,7 +1333,7 @@ export default function ServePage() {
                 type="date"
                 value={formData.deadline}
                 onChange={e => handleFormChange('deadline', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
           </div>
@@ -1346,7 +1346,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.case_number}
                 onChange={e => handleFormChange('case_number', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
             <div>
@@ -1355,7 +1355,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.court_name}
                 onChange={e => handleFormChange('court_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
             <div>
@@ -1364,7 +1364,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.jurisdiction}
                 onChange={e => handleFormChange('jurisdiction', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
           </div>
@@ -1377,7 +1377,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
             <div>
@@ -1386,7 +1386,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.attorney_name}
                 onChange={e => handleFormChange('attorney_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
           </div>
@@ -1401,7 +1401,7 @@ export default function ServePage() {
                 max={10}
                 value={formData.max_attempts}
                 onChange={e => handleFormChange('max_attempts', parseInt(e.target.value, 10) || 3)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
             </div>
           </div>
@@ -1413,7 +1413,7 @@ export default function ServePage() {
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
               placeholder="Special instructions for service..."
             />
           </div>
@@ -1423,7 +1423,7 @@ export default function ServePage() {
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
               placeholder="Internal notes..."
             />
           </div>

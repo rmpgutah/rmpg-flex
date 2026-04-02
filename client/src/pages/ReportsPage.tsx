@@ -89,7 +89,7 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['#1a5a9e', '#d4a017', '#4a90c4', '#a855f7', '#22c55e', '#06b6d4', '#5a6e80', '#ec4899', '#8b5cf6'];
+const PIE_COLORS = ['#888888', '#d4a017', '#4a90c4', '#a855f7', '#22c55e', '#06b6d4', '#5a6e80', '#ec4899', '#8b5cf6'];
 
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
@@ -472,7 +472,7 @@ function WeeklyDigestCard() {
               { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },
               { label: 'Citations', value: digest.summary?.totalCitations || 0, color: '#f59e0b' },
               { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: '#ef4444' },
-              { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: '#1a5a9e' },
+              { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: '#888888' },
             ].map(s => (
               <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
                 <div className="text-lg font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
@@ -489,7 +489,7 @@ function WeeklyDigestCard() {
                   <XAxis dataKey="day" tick={{ fill: '#8a9aaa', fontSize: 9 }} tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })} />
                   <YAxis tick={{ fill: '#8a9aaa', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Bar dataKey="count" fill="#1a5a9e" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="count" fill="#888888" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -920,7 +920,7 @@ export default function ReportsPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-100">Reports & Analytics</h1>
@@ -1177,7 +1177,7 @@ export default function ReportsPage() {
                   <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#1a5a9e" strokeWidth={2} dot={{ fill: '#1a5a9e', r: 3 }} />
+                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#888888" strokeWidth={2} dot={{ fill: '#888888', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -1205,7 +1205,7 @@ export default function ReportsPage() {
                   <YAxis type="category" dataKey="name" tick={{ fill: '#8a9aaa', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Bar dataKey="calls" name="Calls" fill="#1a5a9e" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>

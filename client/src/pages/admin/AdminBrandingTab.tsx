@@ -42,7 +42,7 @@ interface BrandingConfig {
 const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#1a5a9e',
+  primary_color: '#888888',
   accent_color: '#d4a017',
   header_bg_color: '#000000',
   report_footer_text: 'This document is the property of RMPG Security Services. Unauthorized distribution is prohibited.',

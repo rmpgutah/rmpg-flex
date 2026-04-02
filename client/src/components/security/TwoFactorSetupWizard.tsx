@@ -99,7 +99,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             className="flex-1 h-1 transition-colors duration-300"
             style={{
               background: ['intro', 'scan', 'verify', 'backup'].indexOf(step) >= i
-                ? '#1a5a9e'
+                ? '#888888'
                 : '#1e3048',
             }}
           />
@@ -111,7 +111,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="p-2 panel-inset" style={{ background: 'rgba(26,90,158,0.1)' }}>
-              <Shield className="w-5 h-5" style={{ color: '#1a5a9e' }} />
+              <Shield className="w-5 h-5" style={{ color: '#888888' }} />
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e5e7eb' }}>

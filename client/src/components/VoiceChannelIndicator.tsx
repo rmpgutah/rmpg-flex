@@ -36,7 +36,7 @@ export default function VoiceChannelIndicator() {
       <div className="fixed right-4 z-[9999]" style={{ bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}>
         <button
           onClick={activateManualListen}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#1a5a9e] hover:text-white transition-colors text-xs font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
           title="Voice channel — press V"
         >
           <MicIcon />
@@ -62,7 +62,7 @@ export default function VoiceChannelIndicator() {
       {isIdle && hasOverlay && (
         <button
           onClick={activateManualListen}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#1a5a9e] hover:text-white transition-colors text-xs font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
           title="Voice channel — press V"
         >
           <MicIcon />

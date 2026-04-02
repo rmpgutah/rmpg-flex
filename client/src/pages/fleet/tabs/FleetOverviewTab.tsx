@@ -433,7 +433,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           </div>
         ) : (
           <div className="relative">
-            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, #1a5a9e 0%, #2a3e58 30%, #2a3e58 70%, transparent 100%)' }} />
+            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, #888888 0%, #2a3e58 30%, #2a3e58 70%, transparent 100%)' }} />
             <div className="space-y-2">
               {maintenance.map((m) => {
                 const typeColors: Record<string, string> = {

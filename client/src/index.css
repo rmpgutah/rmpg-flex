@@ -21,7 +21,7 @@
   --text-primary: #e5e7eb;
   --text-secondary: #9ca3af;
   --text-muted: #6b7280;
-  --brand-blue: #1a5a9e;
+  --brand-blue: #888888;
   --brand-gold: #d4a017;
   --toolbar-gradient-start: #1a1a1a;
   --toolbar-gradient-end: #242424;
@@ -215,7 +215,7 @@ body.fx-vignette::before {
 
 /* --- Phosphor Bloom (subtle glow on bright text) --- */
 body.fx-bloom {
-  --bloom-color: rgba(26, 90, 158, 0.08);
+  --bloom-color: rgba(136, 136, 136, 0.08);
 }
 body.fx-bloom * {
   text-shadow: 0 0 4px var(--bloom-color), 0 0 12px var(--bloom-color);
@@ -277,7 +277,7 @@ body.fx-noise::after {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .panel-hover-glow:hover {
-  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* Sidebar active indicator animation */
@@ -304,8 +304,8 @@ body.fx-noise::after {
 
 /* Login input focus glow */
 .login-input-glow:focus {
-  border-color: #1a5a9e !important;
-  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.15);
+  border-color: #888888 !important;
+  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.3), 0 0 12px rgba(136, 136, 136, 0.15);
 }
 
 /* --- LED Indicator Animations (Spillman Flex) --- */
@@ -428,7 +428,7 @@ body.fx-noise::after {
   }
 
   .table-dark tbody tr:hover {
-    background: rgba(26, 90, 158, 0.15);
+    background: rgba(136, 136, 136, 0.15);
   }
 
   .table-dark tbody tr:nth-child(even) {
@@ -650,12 +650,12 @@ body.fx-noise::after {
     border-left-color: #050505;
     border-bottom-color: #2e2e2e;
     border-right-color: #2e2e2e;
-    caret-color: #3b8ad4;
+    caret-color: #aaaaaa;
     transition: border-color 0.1s;
   }
   .input-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.45), 0 0 0 3px rgba(26, 90, 158, 0.15);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.45), 0 0 0 3px rgba(136, 136, 136, 0.15);
     outline: none;
   }
 
@@ -677,7 +677,7 @@ body.fx-noise::after {
   }
   .select-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.35);
   }
   .select-dark option {
     background: var(--surface-base);
@@ -692,22 +692,22 @@ body.fx-noise::after {
     border-left-color: #050505;
     border-bottom-color: #2e2e2e;
     border-right-color: #2e2e2e;
-    caret-color: #3b8ad4;
+    caret-color: #aaaaaa;
     transition: border-color 0.1s;
   }
   .textarea-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.35);
   }
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
   .btn-primary {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #164d87;
-    border: 1px solid #1a5a9e;
+    background: #444444;
+    border: 1px solid #888888;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #1a5a9e;
+    background: #888888;
   }
 
   .btn-secondary {
@@ -875,7 +875,7 @@ body.fx-noise::after {
 
   .tab-bar-item:hover {
     color: #d0d8e0;
-    background: rgba(26, 90, 158, 0.1);
+    background: rgba(136, 136, 136, 0.1);
   }
 
   .tab-bar-item.active {
@@ -929,9 +929,9 @@ body.fx-noise::after {
 
   .toolbar-btn-primary {
     background: var(--brand-blue);
-    border-color: #3b8ad4;
-    border-bottom-color: #0e3359;
-    border-right-color: #0e3359;
+    border-color: #aaaaaa;
+    border-bottom-color: #1a1a1a;
+    border-right-color: #1a1a1a;
     color: #ffffff;
   }
 
@@ -1002,7 +1002,7 @@ body.fx-noise::after {
     white-space: nowrap;
   }
   .menu-bar-btn:hover {
-    background: rgba(26, 90, 158, 0.15);
+    background: rgba(136, 136, 136, 0.15);
     color: #d0d8e0;
   }
   /* 53: Active menu button with bottom highlight bar */
@@ -1488,8 +1488,8 @@ body.fx-noise::after {
 .mobile-card.priority-P3 { border-left-color: #eab308; }
 .mobile-card.priority-P4 { border-left-color: #6b7280; }
 .mobile-card.selected {
-  background: rgba(26, 90, 158, 0.15);
-  border-color: #1a5a9e;
+  background: rgba(136, 136, 136, 0.15);
+  border-color: #888888;
 }
 
 /* --- Mobile Card List (scrollable container) --- */
@@ -1601,15 +1601,15 @@ body.fx-noise::after {
   align-items: center;
   justify-content: center;
   background: var(--surface-raised);
-  border: 2px solid #3b8ad4;
-  box-shadow: 0 6px 20px rgba(26, 90, 158, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
+  border: 2px solid #aaaaaa;
+  box-shadow: 0 6px 20px rgba(136, 136, 136, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
   color: #fff;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .mobile-fab:active {
   transform: scale(0.92);
-  box-shadow: 0 2px 8px rgba(26, 90, 158, 0.3);
+  box-shadow: 0 2px 8px rgba(136, 136, 136, 0.3);
 }
 
 /* --- Mobile Pill Tabs (horizontal scrollable filter tabs) --- */
@@ -1646,8 +1646,8 @@ body.fx-noise::after {
   transform: scale(0.96);
 }
 .mobile-pill-tab.active {
-  background: rgba(26, 90, 158, 0.2);
-  border-color: #1a5a9e;
+  background: rgba(136, 136, 136, 0.2);
+  border-color: #888888;
   color: #fff;
 }
 
@@ -2171,7 +2171,7 @@ body.fx-noise::after {
     --text-primary: #111111 !important;
     --text-secondary: #333333 !important;
     --text-muted: #666666 !important;
-    --brand-blue: #124070 !important;
+    --brand-blue: #333333 !important;
     --brand-gold: #8a6b0a !important;
   }
 
@@ -2286,7 +2286,7 @@ body.fx-noise::after {
   }
 
   /* Remove brand accent lines (decorative) */
-  [style*="background: linear-gradient(90deg, #0e3359"] {
+  [style*="background: linear-gradient(90deg, #1a1a1a"] {
     display: none !important;
   }
 
@@ -2922,7 +2922,7 @@ body.fx-noise::after {
 }
 
 .unit-rec-item:hover {
-  background: rgba(26, 90, 158, 0.1);
+  background: rgba(136, 136, 136, 0.1);
 }
 
 .unit-rec-top-pick {
@@ -3418,7 +3418,7 @@ button:disabled,
 /* Desktop-only hover effects — prevent sticky hover on touch devices */
 @media (hover: hover) and (pointer: fine) {
   .panel-hover-glow:hover {
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 }
 @media (hover: none) {
@@ -3555,11 +3555,11 @@ form.overflow-y-auto,
   width: auto;
   height: auto;
   padding: 8px 16px;
-  background: #1a5a9e;
+  background: #888888;
   color: #ffffff;
   font-size: 14px;
   font-weight: 700;
-  border: 2px solid #3b8ad4;
+  border: 2px solid #aaaaaa;
   z-index: 99999;
   text-decoration: none;
 }
@@ -3916,10 +3916,10 @@ html, body {
     background: var(--grid-row-alt);
   }
   .cad-grid tbody tr:hover {
-    background: rgba(26, 90, 158, 0.12);
+    background: rgba(136, 136, 136, 0.12);
   }
   .cad-grid tbody tr.selected {
-    background: rgba(26, 90, 158, 0.2);
+    background: rgba(136, 136, 136, 0.2);
     box-shadow: inset 3px 0 0 var(--brand-blue);
   }
   .cad-grid tbody td {
@@ -4000,9 +4000,9 @@ html, body {
     border-color: var(--border-strong);
   }
   .spillman-card.selected {
-    background: rgba(26, 90, 158, 0.15);
+    background: rgba(136, 136, 136, 0.15);
     border-left: 3px solid var(--brand-blue);
-    box-shadow: inset 0 0 0 1px rgba(26, 90, 158, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(136, 136, 136, 0.2);
   }
 
   /* --- Spillman Badge Styles (status/priority/role) --- */
@@ -4224,12 +4224,12 @@ select {
    Consistent focus styling across all interactive elements. */
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(26, 90, 158, 0.2);
+  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(136, 136, 136, 0.2);
 }
 button:focus-visible,
 a:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(26, 90, 158, 0.2);
+  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(136, 136, 136, 0.2);
 }
 
 /* --- 9. TOOLTIP CONSISTENCY --- */
@@ -4244,7 +4244,7 @@ a:focus-visible {
 
 /* --- 11. TEXT SELECTION — Brand blue highlight --- */
 ::selection {
-  background: rgba(26, 90, 158, 0.35);
+  background: rgba(136, 136, 136, 0.35);
   color: #ffffff;
 }
 
@@ -4278,12 +4278,12 @@ select {
   border-left-color: #050505 !important;
   border-bottom-color: #2e2e2e !important;
   border-right-color: #2e2e2e !important;
-  caret-color: #3b8ad4;
+  caret-color: #aaaaaa;
   padding: 5px 10px;
 }
 input:focus, textarea:focus, select:focus {
   border-color: var(--brand-blue) !important;
-  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.45), 0 0 0 3px rgba(26, 90, 158, 0.15) !important;
+  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.45), 0 0 0 3px rgba(136, 136, 136, 0.15) !important;
   outline: none !important;
 }
 input::placeholder, textarea::placeholder {
@@ -4375,7 +4375,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* --- 18. LINK STYLING --- */
 a:not([class]) {
-  color: #3b8ad4;
+  color: #aaaaaa;
   text-decoration: none;
 }
 a:not([class]):hover {

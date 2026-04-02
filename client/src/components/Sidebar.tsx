@@ -187,9 +187,9 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                   style={{
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
-                    background: active ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
+                    background: active ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
                     color: active ? '#ffffff' : '#8a9aaa',
-                    borderLeft: active ? '3px solid #1a5a9e' : '3px solid transparent',
+                    borderLeft: active ? '3px solid #888888' : '3px solid transparent',
                   }}
                   title={collapsed ? item.label : undefined}
                 >
@@ -198,7 +198,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       width: 16,
                       height: 16,
                       flexShrink: 0,
-                      color: active ? '#3b8ad4' : '#5a6e80',
+                      color: active ? '#aaaaaa' : '#5a6e80',
                       transition: 'color 0.1s',
                     }}
                   />

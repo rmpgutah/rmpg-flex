@@ -102,19 +102,19 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
             fontWeight: 700,
             fontFamily: 'monospace',
             background: '#0d1520',
-            border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048'}`,
+            border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#1e3048'}`,
             borderRadius: 2,
             color: '#fff',
             outline: 'none',
-            caretColor: '#1a5a9e',
+            caretColor: '#888888',
             transition: 'border-color 0.15s',
           }}
           onFocus={(e) => {
-            e.target.style.borderColor = '#1a5a9e';
+            e.target.style.borderColor = '#888888';
             e.target.select();
           }}
           onBlur={(e) => {
-            e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048';
+            e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#1e3048';
           }}
         />
       ))}

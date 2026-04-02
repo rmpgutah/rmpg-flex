@@ -215,7 +215,7 @@ export default function MobileCardList<T>({
               style={{
                 width: 20,
                 height: 20,
-                color: pullReady || refreshing ? '#1a5a9e' : '#5a6e80',
+                color: pullReady || refreshing ? '#888888' : '#5a6e80',
                 transform: pullReady ? 'rotate(180deg)' : `rotate(${pullDistance * 3}deg)`,
                 transition: 'transform 0.2s ease',
                 animation: refreshing ? 'spin 1s linear infinite' : undefined,

@@ -50,7 +50,7 @@ export default function FloatingSaveBar({
         bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))',
         background: 'linear-gradient(180deg, #1e3048 0%, #141e2b 100%)',
         border: '1px solid #3a5070',
-        borderTop: '2px solid #1a5a9e',
+        borderTop: '2px solid #888888',
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(26,90,158,0.2)',
       }}
     >

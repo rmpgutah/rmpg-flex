@@ -201,7 +201,7 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       <line
         x1={`${progressX}%`} y1="0"
         x2={`${progressX}%`} y2={h}
-        stroke="#3b8ad4" strokeWidth="2"
+        stroke="#aaaaaa" strokeWidth="2"
         vectorEffect="non-scaling-stroke"
       />
     </svg>
@@ -839,7 +839,7 @@ export default function DashCamDetailPage() {
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
             className="w-16 h-1 accent-brand-500 cursor-pointer"
-            style={{ accentColor: '#3b8ad4' }}
+            style={{ accentColor: '#aaaaaa' }}
           />
 
           {/* Separator */}

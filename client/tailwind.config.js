@@ -64,16 +64,16 @@ export default {
         //   Logo light grey (text):              #d0d0d0
 
         brand: {
-          50:  '#f0f5fa',    // Lightest tint
-          100: '#d6e4f0',
-          200: '#a8c8e8',
-          300: '#6ba3d4',
-          400: '#3b8ad4',    // Lighter accent
-          500: '#1a5a9e',    // Primary — Motorola blue
-          600: '#164d87',    // Slightly deeper
-          700: '#124070',    // Deep blue
-          800: '#0e3359',    // Very deep
-          900: '#0a2642',    // Darkest blue
+          50:  '#f5f5f5',
+          100: '#e0e0e0',
+          200: '#c0c0c0',
+          300: '#aaaaaa',
+          400: '#999999',    // Lighter accent
+          500: '#888888',    // Primary — neutral gray
+          600: '#666666',
+          700: '#444444',
+          800: '#333333',
+          900: '#222222',
         },
 
         // Warm gold accent — eagle beak / mountain highlights

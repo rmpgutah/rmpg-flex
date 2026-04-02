@@ -474,7 +474,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                         key={product.id}
                         className="flex items-center gap-2 px-2 py-1.5 rounded-sm transition-colors hover:bg-rmpg-800/30"
                         style={{
-                          background: enabled ? 'rgba(26, 90, 158, 0.06)' : undefined,
+                          background: enabled ? 'rgba(136, 136, 136, 0.06)' : undefined,
                         }}
                       >
                         <button type="button"

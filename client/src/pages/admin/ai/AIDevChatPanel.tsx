@@ -118,7 +118,7 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       detail: 'Accessing design system knowledge base...\n' +
         'Theme: Spillman Flex / Motorola Solutions CAD aesthetic\n' +
         '  ├─ Surfaces: #141e2b (base), #1a2636 (raised), #0d1520 (sunken)\n' +
-        '  ├─ Brand: blue #1a5a9e, gold #d4a017\n' +
+        '  ├─ Brand: blue #888888, gold #d4a017\n' +
         '  ├─ Border-radius: 2px (flat retro console)\n' +
         '  ├─ Font: system sans-serif, monospace for data\n' +
         '  └─ Layout: toolbar + dropdown menus (no sidebar)',
@@ -485,7 +485,7 @@ export default function AIDevChatPanel() {
         <div className="p-3 border-b border-[#1a3550]">
           <button
             onClick={createNewSession}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#1a5a9e] hover:bg-[#1a6abe] text-white text-xs font-medium rounded transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1a6abe] text-white text-xs font-medium rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
@@ -575,14 +575,14 @@ export default function AIDevChatPanel() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
-                <div className="w-7 h-7 rounded bg-[#1a5a9e] flex items-center justify-center flex-shrink-0">
+                <div className="w-7 h-7 rounded bg-[#888888] flex items-center justify-center flex-shrink-0">
                   <Bot className="w-4 h-4 text-white" />
                 </div>
               )}
               <div
                 className={`max-w-[80%] ${
                   msg.role === 'user'
-                    ? 'bg-[#1a5a9e] text-white rounded-sm px-3 py-2'
+                    ? 'bg-[#888888] text-white rounded-sm px-3 py-2'
                     : 'bg-[#1a2636] text-gray-200 rounded-sm px-3 py-2 border border-[#1a3550]'
                 }`}
               >

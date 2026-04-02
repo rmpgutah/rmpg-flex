@@ -50,7 +50,7 @@ const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-const ISSUE_BAR_COLORS = ['#1a5a9e', '#2068b0', '#2b78c2', '#3888d4', '#d4a017'];
+const ISSUE_BAR_COLORS = ['#888888', '#2068b0', '#2b78c2', '#3888d4', '#d4a017'];
 
 const STATUS_DOT_COLORS: Record<string, string> = {
   in_service: '#22c55e',
@@ -360,7 +360,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             onClick={() => handlePeriodChange(opt.value)}
             className={`px-2.5 py-1 text-[9px] font-mono font-bold tracking-wider rounded-[2px] border transition-colors duration-150
               ${period === opt.value
-                ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white'
+                ? 'bg-[#888888] border-[#888888] text-white'
                 : 'bg-[#0d1520] border-[#1e3048] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
               }`}
           >
@@ -446,7 +446,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }}
                   tickFormatter={(v) => `$${v}`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [`$${Number(value).toFixed(0)}`, 'Cost']} />
-                <Bar dataKey="total_cost" fill="#1a5a9e" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="total_cost" fill="#888888" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -633,8 +633,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <AreaChart data={daily_usage}>
                 <defs>
                   <linearGradient id="utilGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.05} />
+                    <stop offset="5%" stopColor="#888888" stopOpacity={0.6} />
+                    <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
@@ -665,7 +665,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <Area
                   type="monotone"
                   dataKey="active_vehicles"
-                  stroke="#1a5a9e"
+                  stroke="#888888"
                   strokeWidth={2}
                   fill="url(#utilGradient)"
                 />
@@ -799,8 +799,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <AreaChart data={costTrendChartData}>
               <defs>
                 <linearGradient id="maintGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.6} />
-                  <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.05} />
+                  <stop offset="5%" stopColor="#888888" stopOpacity={0.6} />
+                  <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
                 </linearGradient>
                 <linearGradient id="fuelGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6} />
@@ -818,7 +818,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return [`$${Number(value).toFixed(0)}`, label];
                 }}
               />
-              <Area type="monotone" dataKey="maintenance_cost" stackId="1" stroke="#1a5a9e" strokeWidth={2} fill="url(#maintGradient)" />
+              <Area type="monotone" dataKey="maintenance_cost" stackId="1" stroke="#888888" strokeWidth={2} fill="url(#maintGradient)" />
               <Area type="monotone" dataKey="fuel_cost" stackId="1" stroke="#22c55e" strokeWidth={2} fill="url(#fuelGradient)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -827,7 +827,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         )}
         <div className="flex items-center gap-4 mt-2">
           <div className="flex items-center gap-1.5 text-[8px]">
-            <div className="w-3 h-1.5 bg-[#1a5a9e] rounded-[1px]" />
+            <div className="w-3 h-1.5 bg-[#888888] rounded-[1px]" />
             <span className="text-rmpg-400">Maintenance</span>
           </div>
           <div className="flex items-center gap-1.5 text-[8px]">
@@ -862,7 +862,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         className="h-full rounded-[1px] transition-all duration-150"
                         style={{
                           width: `${pct}%`,
-                          backgroundColor: ISSUE_BAR_COLORS[idx] || '#1a5a9e',
+                          backgroundColor: ISSUE_BAR_COLORS[idx] || '#888888',
                         }}
                       />
                     </div>
@@ -959,7 +959,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       onClick={() => toggleVehicleSelection(v.id)}
                       className={`px-2 py-1 text-[9px] font-mono rounded-[2px] border transition-colors duration-150
                         ${isSelected
-                          ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white'
+                          ? 'bg-[#888888] border-[#888888] text-white'
                           : 'bg-[#0d1520] border-[#1e3048] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
                         }`}
                     >
@@ -972,7 +972,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <button
                   onClick={handleCompare}
                   disabled={selectedIds.length < 2 || selectedIds.length > 5 || compareLoading}
-                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#1a5a9e] text-white border border-[#1a5a9e] hover:bg-[#2068b0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#888888] text-white border border-[#888888] hover:bg-[#2068b0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
                 >
                   {compareLoading ? 'Loading...' : 'Compare'}
                 </button>

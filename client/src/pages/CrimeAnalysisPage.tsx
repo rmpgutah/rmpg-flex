@@ -112,7 +112,7 @@ export default function CrimeAnalysisPage() {
   const BlueGradient = (
     <defs>
       <linearGradient id="blueBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#1a5a9e" />
+        <stop offset="0%" stopColor="#888888" />
         <stop offset="100%" stopColor="#3b82f6" />
       </linearGradient>
     </defs>
@@ -131,7 +131,7 @@ export default function CrimeAnalysisPage() {
     <defs>
       <linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
-        <stop offset="100%" stopColor="#1a5a9e" stopOpacity={0.05} />
+        <stop offset="100%" stopColor="#888888" stopOpacity={0.05} />
       </linearGradient>
     </defs>
   );
@@ -271,7 +271,7 @@ export default function CrimeAnalysisPage() {
                         <linearGradient id="todGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.5} />
                           <stop offset="50%" stopColor="#2563eb" stopOpacity={0.3} />
-                          <stop offset="100%" stopColor="#1a5a9e" stopOpacity={0.05} />
+                          <stop offset="100%" stopColor="#888888" stopOpacity={0.05} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid {...GRID_PROPS} />
@@ -419,7 +419,7 @@ export default function CrimeAnalysisPage() {
                     <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={30} />
                     <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} incidents`} />} />
                     <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2}
-                      fill="url(#areaBlue)" dot={{ r: 3, fill: '#1a5a9e', stroke: '#3b82f6', strokeWidth: 1 }}
+                      fill="url(#areaBlue)" dot={{ r: 3, fill: '#888888', stroke: '#3b82f6', strokeWidth: 1 }}
                       activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 1 }} />
                   </AreaChart>
                 </ResponsiveContainer>

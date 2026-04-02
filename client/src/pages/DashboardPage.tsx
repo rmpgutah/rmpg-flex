@@ -569,7 +569,7 @@ export default function DashboardPage() {
       <div className="panel-beveled bg-surface-base overflow-hidden shadow-lg shadow-black/20">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1 min-w-0">
@@ -660,7 +660,7 @@ export default function DashboardPage() {
         {[
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#1a5a9e' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
           { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#4b5563' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
@@ -708,8 +708,8 @@ export default function DashboardPage() {
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
                     width: `${Math.round(shiftInfo.progress * 100)}%`,
-                    background: `linear-gradient(90deg, #0e3359, #1a5a9e ${Math.round(shiftInfo.progress * 100)}%)`,
-                    boxShadow: '0 0 6px rgba(26, 90, 158, 0.4)',
+                    background: `linear-gradient(90deg, #1a1a1a, #888888 ${Math.round(shiftInfo.progress * 100)}%)`,
+                    boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
                   }}
                 />
               </div>
@@ -934,8 +934,8 @@ export default function DashboardPage() {
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.02} />
+                  <stop offset="5%" stopColor="#888888" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
@@ -963,16 +963,16 @@ export default function DashboardPage() {
                   padding: '8px 12px',
                 }}
                 labelStyle={{ color: '#8a9aaa', fontSize: '10px', marginBottom: '4px' }}
-                cursor={{ stroke: '#1a5a9e', strokeWidth: 1, strokeDasharray: '4 4' }}
+                cursor={{ stroke: '#888888', strokeWidth: 1, strokeDasharray: '4 4' }}
               />
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke="#1a5a9e"
+                stroke="#888888"
                 strokeWidth={2}
                 fill="url(#callsGradient)"
-                dot={{ fill: '#1a5a9e', r: 2, strokeWidth: 0 }}
-                activeDot={{ fill: '#3b8ad4', r: 5, strokeWidth: 2, stroke: '#ffffff' }}
+                dot={{ fill: '#888888', r: 2, strokeWidth: 0 }}
+                activeDot={{ fill: '#aaaaaa', r: 5, strokeWidth: 2, stroke: '#ffffff' }}
                 animationDuration={800}
                 animationEasing="ease-out"
               />
@@ -991,7 +991,7 @@ export default function DashboardPage() {
               const pieData = [
                 { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: '#dc2626' },
                 { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#1a5a9e' },
+                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#888888' },
                 { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#4b5563' },
               ].filter(d => d.value > 0);
 
@@ -1039,7 +1039,7 @@ export default function DashboardPage() {
               {[
                 { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
                 { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
-                { key: 'P3', label: 'Routine', color: '#1a5a9e', count: stats.calls_by_priority.P3 },
+                { key: 'P3', label: 'Routine', color: '#888888', count: stats.calls_by_priority.P3 },
                 { key: 'P4', label: 'Scheduled', color: '#4b5563', count: stats.calls_by_priority.P4 },
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors">
@@ -1078,7 +1078,7 @@ export default function DashboardPage() {
           { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#3b82f6', path: '/dispatch' },
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
           { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: '#22c55e', path: '/personnel' },
-          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#1a5a9e', path: '/reports' },
+          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#888888', path: '/reports' },
           { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: '#f59e0b', path: '/warrants' },
           { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? '#ef4444' : '#22c55e', path: '/communications' },
         ].map(({ icon: Icon, label, value, color, path }) => (
@@ -1150,14 +1150,14 @@ export default function DashboardPage() {
                 data={[
                   { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
                   { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#1a5a9e' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
                   { name: 'P4', value: stats.calls_by_priority.P4, fill: '#4b5563' },
                 ].filter(d => d.value > 0)}
                 cx="50%" cy="50%" innerRadius={20} outerRadius={32}
                 paddingAngle={2} dataKey="value" stroke="none"
               >
                 {[
-                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#1a5a9e' }, { fill: '#4b5563' },
+                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#4b5563' },
                 ].map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
             </PieChart>
@@ -1676,7 +1676,7 @@ export default function DashboardPage() {
                       `${value} actions`,
                       `${ROLE_LABELS[props.payload.role] || props.payload.role} — Badge #${props.payload.badge || '—'}`,
                     ]}
-                    cursor={{ fill: 'rgba(26, 90, 158, 0.08)' }}
+                    cursor={{ fill: 'rgba(136, 136, 136, 0.08)' }}
                   />
                   <Bar dataKey="actions" radius={[0, 3, 3, 0]}>
                     {chartRows.map((entry) => (

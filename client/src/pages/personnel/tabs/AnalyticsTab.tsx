@@ -22,7 +22,7 @@ interface Props {
 
 const AXIS_TICK = { fill: '#5a6e80', fontSize: 9 };
 const GRID_STROKE = '#162236';
-const BRAND_500 = '#1a5a9e';
+const BRAND_500 = '#888888';
 const OVERTIME_COLOR = '#f59e0b';
 
 export default function AnalyticsTab({ analytics, loading }: Props) {

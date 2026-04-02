@@ -42,7 +42,7 @@ export default function UploadProgressBar({
     ? '#d4a017'    // gold for completion
     : phase === 'error'
       ? '#dc2626'
-      : '#1a5a9e'; // brand blue
+      : '#888888'; // brand blue
 
   return (
     <div className="w-full space-y-1 px-1">

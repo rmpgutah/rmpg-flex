@@ -429,7 +429,7 @@ export default function DlSearchPage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={ocrLoading}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
                   >
                     {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                     {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}

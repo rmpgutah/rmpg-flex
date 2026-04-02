@@ -237,8 +237,8 @@ export default function ClosestUnitPanel({
                       aria-label={`Dispatch unit ${unit.call_sign}`}
                       className="flex items-center gap-1 px-2 py-1 transition-all duration-150 active:scale-[0.97] hover:brightness-125"
                       style={{
-                        background: isDispatching ? '#1a5a9e20' : '#1a5a9e30',
-                        border: '1px solid #1a5a9e80',
+                        background: isDispatching ? '#88888820' : '#88888830',
+                        border: '1px solid #88888880',
                         color: '#60a5fa',
                         fontSize: 8,
                         fontWeight: 900,

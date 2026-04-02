@@ -380,11 +380,11 @@ export default function LoginPage() {
             />
           </div>
           <div className="flex items-center justify-center gap-2 mt-1">
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #124070)' }} />
-            <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(26, 90, 158, 0.65)' }}>
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #333333)' }} />
+            <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(136, 136, 136, 0.65)' }}>
               Secure Authentication
             </p>
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, #124070, transparent)' }} />
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, #333333, transparent)' }} />
           </div>
         </div>
 
@@ -392,7 +392,7 @@ export default function LoginPage() {
         <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base" role="form" aria-label="Authentication form">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
+            <ShieldCheck className="w-3 h-3" style={{ color: '#888888' }} />
             <span>
               {loginStep === 'setup_2fa' || loginStep === 'confirm_setup_2fa'
                 ? '2FA SETUP'
@@ -596,8 +596,8 @@ export default function LoginPage() {
                     type="checkbox"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
-                    className="w-4 h-4 rounded-sm accent-[#1a5a9e] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
-                    style={{ accentColor: '#1a5a9e' }}
+                    className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                    style={{ accentColor: '#888888' }}
                     aria-label="Trust this device for 30 days"
                   />
                   <span className="text-[10px] group-hover:text-rmpg-200 transition-colors" style={{ color: '#8a9aaa' }}>
@@ -638,7 +638,7 @@ export default function LoginPage() {
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                       className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
                       style={{ color: '#5a6e80' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
                       aria-label="Use a backup recovery code"
                     >
@@ -749,7 +749,7 @@ export default function LoginPage() {
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#5a6e80' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
                   >
                     Use Authenticator
@@ -762,7 +762,7 @@ export default function LoginPage() {
             {loginStep === 'setup_2fa' && (
               <div className="space-y-4">
                 <div className="text-center">
-                  <ShieldCheck className="w-10 h-10 mx-auto mb-2" style={{ color: '#1a5a9e' }} />
+                  <ShieldCheck className="w-10 h-10 mx-auto mb-2" style={{ color: '#888888' }} />
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
                     Two-Factor Authentication Required
                   </p>
@@ -820,7 +820,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowManualKey(!showManualKey)}
                     className="text-[9px] uppercase tracking-wide"
-                    style={{ color: '#1a5a9e' }}
+                    style={{ color: '#888888' }}
                   >
                     {showManualKey ? 'Hide' : 'Show'} manual entry key
                   </button>
@@ -892,7 +892,7 @@ export default function LoginPage() {
             {loginStep === 'password_change' && (
               <form onSubmit={handlePasswordChange} className="space-y-3">
                 <div className="text-center mb-2">
-                  <Lock className="w-8 h-8 mx-auto mb-2" style={{ color: '#1a5a9e' }} />
+                  <Lock className="w-8 h-8 mx-auto mb-2" style={{ color: '#888888' }} />
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
                     Password Change Required
                   </p>
@@ -982,7 +982,7 @@ export default function LoginPage() {
             {/* System Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
-                <Server className="w-2.5 h-2.5" style={{ color: '#1a5a9e' }} />
+                <Server className="w-2.5 h-2.5" style={{ color: '#888888' }} />
                 <span>SYSTEM</span>
               </div>
               <div className="px-3 py-2">
@@ -1004,7 +1004,7 @@ export default function LoginPage() {
             {/* Device Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
-                <Monitor className="w-2.5 h-2.5" style={{ color: '#1a5a9e' }} />
+                <Monitor className="w-2.5 h-2.5" style={{ color: '#888888' }} />
                 <span>DEVICE</span>
               </div>
               <div className="px-3 py-2">
@@ -1034,10 +1034,10 @@ export default function LoginPage() {
             style={{
               background: '#060c14',
               border: '1px solid #1e3048',
-              borderTop: '2px solid #124070',
+              borderTop: '2px solid #333333',
             }}
           >
-            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: '#124070' }}>
+            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: '#333333' }}>
               Internal Use Only
             </p>
             <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: '#5a6e80' }}>

@@ -123,7 +123,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
             <button type="button"
               onClick={handleSyncNow}
               disabled={syncing || items.length === 0}
-              className="px-2 py-0.5 text-[10px] font-medium bg-[#0d2847] text-[#4a9eed] border border-[#1a5a9e] rounded-sm hover:bg-[#133660] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-2 py-0.5 text-[10px] font-medium bg-[#0d2847] text-[#4a9eed] border border-[#888888] rounded-sm hover:bg-[#133660] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {syncing ? 'SYNCING...' : 'SYNC NOW'}
             </button>

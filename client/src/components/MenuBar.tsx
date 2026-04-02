@@ -852,7 +852,7 @@ export default function MenuBar({
       return (
         <button type="button"
           key={`toggle-${index}`}
-          className={`menu-item transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#1a5a9e] focus-visible:outline-none ${isDisabled ? 'menu-item-disabled' : ''}`}
+          className={`menu-item transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none ${isDisabled ? 'menu-item-disabled' : ''}`}
           onClick={() => !isDisabled && handleAction(item.action)}
           disabled={isDisabled}
           role="menuitemcheckbox"
@@ -871,7 +871,7 @@ export default function MenuBar({
     return (
       <button type="button"
         key={`action-${index}`}
-        className={`menu-item transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#1a5a9e] focus-visible:outline-none ${isDisabled ? 'menu-item-disabled' : ''}`}
+        className={`menu-item transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none ${isDisabled ? 'menu-item-disabled' : ''}`}
         onClick={() => !isDisabled && handleAction(item.action)}
         disabled={isDisabled}
         role="menuitem"
@@ -889,7 +889,7 @@ export default function MenuBar({
         {menus.map((menu) => (
           <div key={menu.label} className="relative" role="none">
             <button type="button"
-              className={`menu-bar-btn transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none ${openMenu === menu.label ? 'menu-bar-btn-active' : ''}`}
+              className={`menu-bar-btn transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none ${openMenu === menu.label ? 'menu-bar-btn-active' : ''}`}
               onClick={() => handleMenuClick(menu.label)}
               onMouseEnter={() => handleMenuHover(menu.label)}
               role="menuitem"
@@ -917,13 +917,13 @@ export default function MenuBar({
             onClick={(e) => e.stopPropagation()}
           >
             {/* 23: 10-codes header with top accent and version tag */}
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #1a5a9e' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #888888' }}>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
                 <span className="text-[8px] font-mono text-rmpg-500 bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
               </h2>
-              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
+              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
             </div>
             <div className="flex-1 overflow-auto p-4 scrollbar-dark">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1164,14 +1164,14 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* 24: Law reference header with top accent */}
-        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #1a5a9e' }}>
+        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #888888' }}>
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <Scale className="w-4 h-4 text-brand-400" />
             Law Reference — Criminal & Vehicle Code
           </h2>
           <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
             <span>{total} statutes</span>
-            <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none" aria-label="Close law reference">ESC</button>
+            <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close law reference">ESC</button>
           </div>
         </div>
 
@@ -1181,7 +1181,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
             <button type="button"
               key={st}
               onClick={() => setActiveState(st)}
-              className={`flex-shrink-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#1a5a9e] focus-visible:outline-none ${
+              className={`flex-shrink-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none ${
                 activeState === st
                   ? 'text-brand-300 border-b-2 border-brand-500 bg-brand-900/20'
                   : 'text-rmpg-500 hover:text-rmpg-200 hover:bg-rmpg-700/30'
@@ -1199,7 +1199,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
               <button type="button"
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
-                className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none ${
+                className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none ${
                   activeCategory === cat
                     ? 'bg-brand-900/30 text-brand-300 border border-brand-700/50'
                     : 'text-rmpg-500 hover:text-rmpg-200 border border-transparent'
@@ -1216,7 +1216,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by citation or keyword..."
-              className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e]"
+              className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888]"
             />
           </div>
         </div>
@@ -1234,7 +1234,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
               <div key={s.id} className="border-b border-rmpg-700/30">
                 <button type="button"
                   onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
-                  className="w-full text-left px-3 py-2 hover:bg-rmpg-700/20 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
+                  className="w-full text-left px-3 py-2 hover:bg-rmpg-700/20 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-1 py-0 text-[8px] font-bold uppercase bg-rmpg-700/60 text-rmpg-300 border border-rmpg-600 leading-tight">

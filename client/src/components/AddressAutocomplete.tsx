@@ -112,7 +112,7 @@ function injectAutocompleteStyles() {
       display: none !important;
     }
     .pac-matched {
-      color: #1a5a9e !important;
+      color: #888888 !important;
       font-weight: 900 !important;
     }
     .pac-item span:last-child {
@@ -264,7 +264,7 @@ export default function AddressAutocomplete({
       {placesLoaded && (
         <MapPin
           className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors"
-          style={{ width: 12, height: 12, color: value ? '#1a5a9e' : '#505050' }}
+          style={{ width: 12, height: 12, color: value ? '#888888' : '#505050' }}
           aria-hidden="true"
         />
       )}

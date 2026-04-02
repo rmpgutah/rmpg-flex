@@ -394,7 +394,7 @@ export default function SexOffenderRegistryPage() {
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/50"
                   style={{
                     background: isSelected ? 'rgba(26,90,158,0.15)' : undefined,
-                    borderLeft: isSelected ? '3px solid #1a5a9e' : '3px solid transparent',
+                    borderLeft: isSelected ? '3px solid #888888' : '3px solid transparent',
                   }}
                 >
                   {/* Mugshot Thumbnail */}
@@ -1097,7 +1097,7 @@ function RecordFormModal({
               type="submit"
               disabled={saving || !form.first_name || !form.last_name}
               className="px-4 py-1.5 text-xs font-bold rounded-sm flex items-center gap-1.5 disabled:opacity-50"
-              style={{ background: '#1a5a9e', color: '#fff', border: '1px solid #2a7acf' }}
+              style={{ background: '#888888', color: '#fff', border: '1px solid #2a7acf' }}
             >
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
               {record ? 'Update' : 'Create'} Entry
@@ -1198,7 +1198,7 @@ function ImportModal({
               onClick={() => parsed && onImport(parsed)}
               disabled={!parsed}
               className="px-3 py-1.5 text-[11px] font-bold rounded-sm disabled:opacity-40"
-              style={{ background: '#1a5a9e', color: '#fff', border: '1px solid #2a7acf' }}
+              style={{ background: '#888888', color: '#fff', border: '1px solid #2a7acf' }}
             >
               Import {parsed ? parsed.length : 0} Records
             </button>

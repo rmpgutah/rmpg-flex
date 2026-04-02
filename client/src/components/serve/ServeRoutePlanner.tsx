@@ -615,7 +615,7 @@ export default function ServeRoutePlanner({
                 <select
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
-                  className="px-2 py-0.5 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                  className="px-2 py-0.5 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                   aria-label="Select officer for route"
                 >
                   {officers.map(o => (
@@ -628,13 +628,13 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 rounded-[2px] border border-[#1a5a9e] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
             >
               Apply Route
             </button>
             <button type="button"
               onClick={onClose}
-              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#1a2636] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#1a2636] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               aria-label="Close route planner"
             >
               <X size={16} />
@@ -651,14 +651,14 @@ export default function ServeRoutePlanner({
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={selectAll}
-                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
+                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
                 >
                   Select All
                 </button>
                 <span className="text-rmpg-600">|</span>
                 <button type="button"
                   onClick={deselectAll}
-                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
+                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
                 >
                   Deselect All
                 </button>
@@ -734,14 +734,14 @@ export default function ServeRoutePlanner({
                       <button type="button"
                         onClick={() => moveStop(idx, -1)}
                         disabled={idx === 0}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
                       >
                         <ChevronUp size={12} />
                       </button>
                       <button type="button"
                         onClick={() => moveStop(idx, 1)}
                         disabled={idx === stops.length - 1}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
                       >
                         <ChevronDown size={12} />
                       </button>

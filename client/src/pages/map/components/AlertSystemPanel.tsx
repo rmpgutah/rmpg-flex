@@ -181,9 +181,9 @@ export default function AlertSystemPanel({
                           onClick={() => onAcknowledge(alert.id)}
                           className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
                           style={{
-                            backgroundColor: '#1a5a9e33',
+                            backgroundColor: '#88888833',
                             color: '#60a5fa',
-                            border: '1px solid #1a5a9e55',
+                            border: '1px solid #88888855',
                           }}
                           title="Acknowledge"
                           aria-label={`Acknowledge ${label} alert`}

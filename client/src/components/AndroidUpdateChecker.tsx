@@ -156,7 +156,7 @@ export default function AndroidUpdateChecker() {
         style={{
           background: 'linear-gradient(180deg, #1a2636 0%, #0d1520 100%)',
           border: '1px solid #1e3048',
-          borderTop: '3px solid #1a5a9e',
+          borderTop: '3px solid #888888',
           boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
         }}
       >
@@ -215,7 +215,7 @@ export default function AndroidUpdateChecker() {
             style={{
               background: downloading
                 ? 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)'
-                : 'linear-gradient(180deg, #1a5a9e 0%, #124070 100%)',
+                : 'linear-gradient(180deg, #888888 0%, #333333 100%)',
               color: downloading ? '#8a9aaa' : '#fff',
               border: '1px solid',
               borderColor: downloading ? '#2a3e58' : '#d41515',

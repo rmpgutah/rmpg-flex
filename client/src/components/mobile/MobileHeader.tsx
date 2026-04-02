@@ -63,7 +63,7 @@ export default function MobileHeader({
       <div
         className="absolute top-0 left-0 right-0 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)',
+          background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)',
           zIndex: 1,
         }}
       />
@@ -133,9 +133,9 @@ export default function MobileHeader({
             <div
               className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[10px] font-bold"
               style={{
-                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                background: 'linear-gradient(135deg, #333333, #888888)',
                 color: '#fff',
-                border: '2px solid #3b8ad4',
+                border: '2px solid #aaaaaa',
               }}
             >
               {initials}

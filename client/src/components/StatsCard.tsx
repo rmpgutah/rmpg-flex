@@ -57,7 +57,7 @@ export default function StatsCard({
 }: StatsCardProps) {
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
 
-  const accentHex: Record<string, string> = { blue: '#1a5a9e', red: '#dc2626', green: '#22c55e', amber: '#f59e0b', purple: '#a855f7' };
+  const accentHex: Record<string, string> = { blue: '#888888', red: '#dc2626', green: '#22c55e', amber: '#f59e0b', purple: '#a855f7' };
   const glowHex = accentHex[accent] || accentHex.blue;
 
   return (

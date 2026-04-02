@@ -103,14 +103,14 @@ export default function ForcePasswordChangeModal() {
         style={{
           background: '#141e2b',
           border: '1px solid #1e3048',
-          borderTop: '3px solid #1a5a9e',
+          borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <Shield style={{ width: 20, height: 20, color: '#1a5a9e' }} />
+            <Shield style={{ width: 20, height: 20, color: '#888888' }} />
             <div className="text-lg font-bold text-white">Password Change Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">

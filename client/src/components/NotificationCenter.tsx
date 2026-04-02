@@ -332,7 +332,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               minWidth: '16px',
               height: '16px',
               padding: '0 4px',
-              background: '#1a5a9e',
+              background: '#888888',
               color: '#ffffff',
               fontSize: '9px',
               fontWeight: 700,
@@ -360,7 +360,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             display: 'flex',
             flexDirection: 'column',
             boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',
-            borderTop: '2px solid #1a5a9e',
+            borderTop: '2px solid #888888',
           }}
         >
           {/* Title Bar */}
@@ -464,7 +464,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   style={{
                     padding: '6px 8px',
                     background: notification.is_read ? '#141e2b' : '#1a2636',
-                    borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #1a5a9e',
+                    borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #888888',
                   }}
                   title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}
                 >

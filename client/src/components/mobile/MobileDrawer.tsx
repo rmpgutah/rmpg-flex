@@ -290,7 +290,7 @@ export default function MobileDrawer({
         {/* Blue accent */}
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: 'linear-gradient(90deg, #1a5a9e, #0e3359)' }}
+          style={{ background: 'linear-gradient(90deg, #888888, #1a1a1a)' }}
         />
 
         {/* ── User Header ── */}
@@ -313,9 +313,9 @@ export default function MobileDrawer({
             <div
               className="w-11 h-11 flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                background: 'linear-gradient(135deg, #333333, #888888)',
                 color: '#fff',
-                border: '2px solid #3b8ad4',
+                border: '2px solid #aaaaaa',
               }}
             >
               {initials}
@@ -386,11 +386,11 @@ export default function MobileDrawer({
                       style={{
                         minHeight: 48,
                         background: isActive
-                          ? 'rgba(26, 90, 158, 0.15)'
+                          ? 'rgba(136, 136, 136, 0.15)'
                           : 'transparent',
                         color: isActive ? '#fff' : '#b0bcc8',
                         borderLeft: isActive
-                          ? '3px solid #1a5a9e'
+                          ? '3px solid #888888'
                           : '3px solid transparent',
                       }}
                     >

@@ -2344,7 +2344,7 @@ export default function DispatchPage() {
       <div className="flex items-center justify-center h-full" style={{ background: 'var(--surface-base)' }}>
         <div className="flex flex-col items-center gap-4">
           <div className="relative w-10 h-10 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-[#1a5a9e] animate-spin" />
+            <Loader2 className="w-8 h-8 text-[#888888] animate-spin" />
             <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(26,90,158,0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
@@ -2515,7 +2515,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
@@ -2524,7 +2524,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
@@ -2533,7 +2533,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
@@ -2585,7 +2585,7 @@ export default function DispatchPage() {
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -2597,7 +2597,7 @@ export default function DispatchPage() {
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
@@ -2781,7 +2781,7 @@ export default function DispatchPage() {
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
                       className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : '#1a5a9e', border: '1px solid #2a6ab0' }}
+                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : '#888888', border: '1px solid #2a6ab0' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
                     </button>
@@ -2955,7 +2955,7 @@ export default function DispatchPage() {
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
                                 {visit.time_window && (
-                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#1a5a9e20', border: '1px solid #1a5a9e40', color: '#6ba3d4' }}>
+                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#88888820', border: '1px solid #88888840', color: '#6ba3d4' }}>
                                     {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
                                     {visit.is_weekend ? ' (wknd)' : ''}
                                   </span>
@@ -3443,7 +3443,7 @@ export default function DispatchPage() {
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
-              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #1a5a9e' }}>
+              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #888888' }}>
                 {/* Row 1: Call identification */}
                 <div className="panel-title-bar flex items-center gap-2" style={{ borderBottom: 'none' }}>
                   {selectedCall.priority === 'P1' && (
@@ -3912,7 +3912,7 @@ export default function DispatchPage() {
                       style={{
                         color: isActive ? '#4a9ede' : '#6b7280',
                         background: isActive ? 'rgba(26,90,158,0.1)' : 'transparent',
-                        borderBottom: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
+                        borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                       }}
                       onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#9ca3af'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
                       onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#6b7280'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
@@ -3920,7 +3920,7 @@ export default function DispatchPage() {
                       <span className="flex items-center gap-1.5">
                         {icons[tab]}
                         {labels[tab]}
-                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#1a5a9e25' : '#1e304830', color: isActive ? '#4a9ede' : '#6b7280' }}>{count}</span> : ''}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#1e304830', color: isActive ? '#4a9ede' : '#6b7280' }}>{count}</span> : ''}
                       </span>
                     </button>
                   );
@@ -5329,7 +5329,7 @@ export default function DispatchPage() {
                           (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? '#a855f7' :
                           (entry.action || '').includes('clear') ? '#22c55e' :
                           (entry.action || '').includes('note') ? '#6b7280' :
-                          '#1a5a9e';
+                          '#888888';
                         return (
                         <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#1a263620] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #1e3048' }}>
                           {/* Step connector dot */}
@@ -5395,7 +5395,7 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #88888840' }}>
                         <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
@@ -5424,9 +5424,9 @@ export default function DispatchPage() {
                   <div className="flex-shrink-0">
                     {/* Formatting toolbar */}
                     <div className="flex items-center gap-1 mb-1.5">
-                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#1a5a9e50]" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#1a5a9e50]" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#1a5a9e50]" onClick={() => wrapNoteSelection('__')}>U</button>
+                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
+                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
+                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
                       <span className="text-[8px] text-[#4b5563] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">

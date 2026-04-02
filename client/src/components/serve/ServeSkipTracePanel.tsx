@@ -179,7 +179,7 @@ export default function ServeSkipTracePanel({
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#1a2636] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+            className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#1a2636] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
             aria-label="Close skip trace panel"
           >
             <X size={16} />
@@ -196,7 +196,7 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchName}
                 onChange={e => setSearchName(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 placeholder="Recipient name"
               />
             </div>
@@ -206,14 +206,14 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchAddress}
                 onChange={e => setSearchAddress(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 placeholder="Last known address"
               />
             </div>
             <button type="button"
               onClick={runLookup}
               disabled={loading || !searchName.trim()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#888888] hover:bg-[#888888]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
             >
               {loading ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -240,7 +240,7 @@ export default function ServeSkipTracePanel({
             <div className="space-y-4">
               {/* Result Count Badge */}
               <div className="flex items-center gap-2">
-                <span className="text-[11px] px-2 py-0.5 rounded-[2px] bg-[#1a5a9e]/20 text-blue-400 border border-[#1a5a9e]/40 font-mono">
+                <span className="text-[11px] px-2 py-0.5 rounded-[2px] bg-[#888888]/20 text-blue-400 border border-[#888888]/40 font-mono">
                   {result.resultCount} person(s) found
                 </span>
               </div>
@@ -320,7 +320,7 @@ export default function ServeSkipTracePanel({
                             </div>
                             <button type="button"
                               onClick={() => onAddToRoute(addr)}
-                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-[#1a5a9e]/20 hover:bg-[#1a5a9e]/40 text-blue-400 border border-[#1a5a9e]/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-[#888888]/20 hover:bg-[#888888]/40 text-blue-400 border border-[#888888]/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
                               title="Add to Route"
                             >
                               <Plus size={10} />

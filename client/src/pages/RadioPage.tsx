@@ -385,7 +385,7 @@ export default function RadioPage() {
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
               style={{
                 color: !showHistory ? '#fff' : '#5a6e80',
-                borderBottom: !showHistory ? '2px solid #1a5a9e' : '2px solid transparent',
+                borderBottom: !showHistory ? '2px solid #888888' : '2px solid transparent',
               }}
             >
               <Radio style={{ width: 10, height: 10 }} /> LIVE
@@ -499,7 +499,7 @@ export default function RadioPage() {
                       </span>
                       <span
                         className="text-[7px] font-black uppercase px-1 py-px"
-                        style={{ background: '#1a5a9e', color: '#fff' }}
+                        style={{ background: '#888888', color: '#fff' }}
                       >
                         {(entry.channel || '').toUpperCase()}
                       </span>
@@ -759,7 +759,7 @@ export default function RadioPage() {
             {/* Header */}
             <div className="text-center mb-6">
               <div className="flex items-center justify-center gap-2 mb-2">
-                <Radio style={{ width: 24, height: 24, color: '#1a5a9e' }} />
+                <Radio style={{ width: 24, height: 24, color: '#888888' }} />
                 <span className="text-lg font-bold font-mono tracking-wider text-white">
                   RADIO
                 </span>
@@ -783,8 +783,8 @@ export default function RadioPage() {
                   onClick={() => handleGroupChange(g.label)}
                   className="px-3 py-1 text-[10px] font-mono font-bold uppercase tracking-wider transition-all border"
                   style={{
-                    background: channelGroup === g.label ? 'rgba(26, 90, 158, 0.25)' : 'transparent',
-                    borderColor: channelGroup === g.label ? '#1a5a9e' : '#2a3e58',
+                    background: channelGroup === g.label ? 'rgba(136, 136, 136, 0.25)' : 'transparent',
+                    borderColor: channelGroup === g.label ? '#888888' : '#2a3e58',
                     color: channelGroup === g.label ? '#fff' : '#5a6e80',
                   }}
                 >
@@ -808,7 +808,7 @@ export default function RadioPage() {
                   }}
                   onMouseEnter={(e) => {
                     if (isConnected) {
-                      e.currentTarget.style.borderColor = '#1a5a9e';
+                      e.currentTarget.style.borderColor = '#888888';
                       e.currentTarget.style.background = 'linear-gradient(180deg, #1e3050 0%, #1a2840 100%)';
                     }
                   }}
@@ -856,9 +856,9 @@ export default function RadioPage() {
                     className={`flex items-center gap-1.5 ${isMobile ? 'px-3.5 py-1.5 text-[11px]' : 'px-2.5 py-1 text-[10px]'} font-mono font-bold tracking-wider whitespace-nowrap transition-all border`}
                     style={{
                       background: isActive
-                        ? 'rgba(26, 90, 158, 0.25)'
+                        ? 'rgba(136, 136, 136, 0.25)'
                         : 'transparent',
-                      borderColor: isActive ? '#1a5a9e' : 'transparent',
+                      borderColor: isActive ? '#888888' : 'transparent',
                       color: isActive ? '#fff' : '#5a6e80',
                       minHeight: isMobile ? 36 : undefined,
                     }}
@@ -1097,8 +1097,8 @@ export default function RadioPage() {
                   onClick={() => setShowMobileSidebar(true)}
                   className="absolute bottom-4 right-4 flex items-center gap-1 px-3 py-2 text-[10px] font-mono font-bold z-30"
                   style={{
-                    background: 'rgba(26, 90, 158, 0.3)',
-                    border: '1px solid #1a5a9e',
+                    background: 'rgba(136, 136, 136, 0.3)',
+                    border: '1px solid #888888',
                     color: '#4a9ede',
                   }}
                 >

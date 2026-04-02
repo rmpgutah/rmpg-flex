@@ -408,14 +408,14 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
     .field-box .label { font-size: 8px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
     .field-box .value { font-size: 12px; color: #222; margin-top: 2px; }
     .invoice-title { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
-    .invoice-title h2 { font-size: 24px; color: #1a5a9e; font-weight: 900; }
-    .invoice-number { background: #1a5a9e; color: #fff; padding: 6px 16px; font-size: 13px; font-weight: bold; border: 2px solid #fff; outline: 2px solid #1a5a9e; }
+    .invoice-title h2 { font-size: 24px; color: #888888; font-weight: 900; }
+    .invoice-number { background: #888888; color: #fff; padding: 6px 16px; font-size: 13px; font-weight: bold; border: 2px solid #fff; outline: 2px solid #888888; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
     th { background: #1e3048; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
     .totals { margin-left: auto; width: 280px; margin-top: 12px; }
     .totals tr td { padding: 3px 8px; font-size: 12px; }
     .totals .total-row { border-top: 2px solid #333; font-size: 14px; font-weight: bold; }
-    .totals .balance-row { border: 2px solid #1a5a9e; font-size: 16px; font-weight: bold; color: #1a5a9e; }
+    .totals .balance-row { border: 2px solid #888888; font-size: 16px; font-weight: bold; color: #888888; }
     .notes { margin-top: 16px; padding: 12px; background: #f9f9f9; border: 1px solid #ccc; }
     .notes h3 { font-size: 9px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
     .notes p { font-size: 11px; }

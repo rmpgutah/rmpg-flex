@@ -128,9 +128,9 @@ export default function SplitPanel({
               onClick={() => setMobileTab('left')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
-                background: mobileTab === 'left' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
+                background: mobileTab === 'left' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
                 color: mobileTab === 'left' ? '#fff' : '#7a8a9a',
-                borderBottom: mobileTab === 'left' ? '2px solid #1a5a9e' : '2px solid transparent',
+                borderBottom: mobileTab === 'left' ? '2px solid #888888' : '2px solid transparent',
               }}
             >
               {leftLabel}
@@ -139,9 +139,9 @@ export default function SplitPanel({
               onClick={() => setMobileTab('right')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
-                background: mobileTab === 'right' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
+                background: mobileTab === 'right' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
                 color: mobileTab === 'right' ? '#fff' : '#7a8a9a',
-                borderBottom: mobileTab === 'right' ? '2px solid #1a5a9e' : '2px solid transparent',
+                borderBottom: mobileTab === 'right' ? '2px solid #888888' : '2px solid transparent',
               }}
             >
               {rightLabel}
@@ -191,7 +191,7 @@ export default function SplitPanel({
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
-            background: isDragging ? '#1a5a9e' : 'linear-gradient(90deg, #162236, #2a3e58, #162236)',
+            background: isDragging ? '#888888' : 'linear-gradient(90deg, #162236, #2a3e58, #162236)',
             borderTop: '1px solid #3a5070',
             borderBottom: '1px solid #141e2b',
             transition: isDragging ? 'none' : 'background 0.15s ease',

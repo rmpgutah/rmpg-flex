@@ -569,8 +569,8 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
               const sy = (seedNode as any).y;
               const r = 250 / globalScale;
               const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-              grad.addColorStop(0, 'rgba(26, 90, 158, 0.07)');
-              grad.addColorStop(0.5, 'rgba(26, 90, 158, 0.025)');
+              grad.addColorStop(0, 'rgba(136, 136, 136, 0.07)');
+              grad.addColorStop(0.5, 'rgba(136, 136, 136, 0.025)');
               grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
               ctx.fillStyle = grad;
               ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
