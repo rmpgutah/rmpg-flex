@@ -1761,6 +1761,7 @@ export default function DispatchPage() {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priority }),
       });
       if (result) {
@@ -5727,13 +5728,14 @@ export default function DispatchPage() {
             </button>
             {contextMenu.call.status !== 'archived' && contextMenu.call.status !== 'cancelled' && (
               <button type="button" className="context-menu-item" onClick={() => {
-                // Duplicate call as new
+                // Duplicate call as new — safe access for optional fields
+                const c = contextMenu.call;
                 setTemplateInitialData({
-                  incident_type: contextMenu.call.incident_type,
-                  priority: contextMenu.call.priority,
-                  location: contextMenu.call.location,
-                  description: contextMenu.call.description,
-                  source: contextMenu.call.source,
+                  incident_type: c.incident_type || 'other',
+                  priority: c.priority || 'P3',
+                  location: c.location || '',
+                  description: c.description || '',
+                  source: c.source || 'dispatch',
                 });
                 setShowNewCallModal(true);
                 setContextMenu(null);
