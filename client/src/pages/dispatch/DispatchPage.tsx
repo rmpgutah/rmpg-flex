@@ -36,6 +36,7 @@ import {
   Building2,
   Terminal,
   Briefcase,
+  Copy,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -1175,12 +1176,76 @@ export default function DispatchPage() {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared]);
 
-  // Keyboard shortcuts for dispatch power users
+  // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+
+      // ── F-KEY HOTKEYS (always active, even in inputs) ─────
+      // These mirror Spillman Flex keyboard shortcuts
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setShowNewCallModal(true);
+        return;
+      }
+      if (e.key === 'F3' && selectedCall && selectedCall.status === 'pending') {
+        e.preventDefault();
+        handleStatusChange(selectedCall.id, 'dispatched');
+        return;
+      }
+      if (e.key === 'F4' && selectedCall) {
+        e.preventDefault();
+        // Toggle edit mode on selected call
+        setIsEditing(prev => !prev);
+        return;
+      }
+      if (e.key === 'F5') {
+        e.preventDefault();
+        if (selectedCall && selectedCall.status === 'dispatched') {
+          handleStatusChange(selectedCall.id, 'enroute');
+        } else {
+          fetchData(); // Refresh if no enroute action available
+        }
+        return;
+      }
+      if (e.key === 'F6' && selectedCall && selectedCall.status === 'enroute') {
+        e.preventDefault();
+        handleStatusChange(selectedCall.id, 'onscene');
+        return;
+      }
+      if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleClearWithDisposition(selectedCall.id);
+        return;
+      }
+      if (e.key === 'F8') {
+        e.preventDefault();
+        // Focus CAD command line
+        const cadInput = document.querySelector('[data-cad-input]') as HTMLInputElement;
+        if (cadInput) cadInput.focus();
+        return;
+      }
+      if (e.key === 'F9' && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleHoldCall(selectedCall.id);
+        return;
+      }
+      if (e.key === 'F10') {
+        e.preventDefault();
+        setShowQuickPsoModal(true);
+        return;
+      }
+      if (e.key === 'F12') {
+        e.preventDefault();
+        // Toggle NCIC panel
+        setShowNcicPanel(prev => !prev);
+        return;
+      }
+
+      // Don't process letter keys when typing in inputs
+      if (isInput) return;
 
       // N - New call
       if (e.key === 'n' || e.key === 'N') {
@@ -1203,7 +1268,7 @@ export default function DispatchPage() {
         return;
       }
 
-      // 1-4: Filter tabs
+      // 1-6: Filter tabs
       if (e.key === '1') { setFilterTab('all'); return; }
       if (e.key === '2') { setFilterTab('pending'); return; }
       if (e.key === '3') { setFilterTab('active'); return; }
@@ -1252,6 +1317,13 @@ export default function DispatchPage() {
       if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDisposition(selectedCall.id);
+        return;
+      }
+
+      // H - Hold call
+      if ((e.key === 'h' || e.key === 'H') && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleHoldCall(selectedCall.id);
         return;
       }
 
@@ -1681,6 +1753,25 @@ export default function DispatchPage() {
     } catch (err) {
       console.error('Failed to notify LE:', err);
       addToast('Failed to notify LE', 'error');
+    }
+  };
+
+  // ── Priority Change ────────────────────────────────────────
+  const handlePriorityChange = async (callId: string, priority: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ priority }),
+      });
+      if (result) {
+        const updated = mapDbCall(result);
+        setCalls(prev => prev.map(c => c.id === callId ? updated : c));
+        setSelectedCall(prev => prev?.id === callId ? updated : prev);
+        addToast(`Priority changed to ${priority}`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to change priority:', err);
+      addToast('Failed to change priority', 'error');
     }
   };
 
@@ -5613,9 +5704,44 @@ export default function DispatchPage() {
               </>
             )}
             <div className="border-t border-rmpg-600 my-1" />
+            {/* Priority change shortcuts */}
+            <div className="flex items-center gap-0.5 px-2 py-1">
+              <span className="text-[9px] text-rmpg-500 mr-1.5">PRI:</span>
+              {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
+                <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
+                  style={{ background: pri === 'P1' ? '#dc2626' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#2563eb' : '#4b5563', color: '#fff' }}>
+                  {pri}
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-rmpg-600 my-1" />
+            <button type="button" className="context-menu-item" onClick={() => { setSelectedCall(contextMenu.call); setIsEditing(true); setContextMenu(null); }}>
+              <Pencil style={{ width: 12, height: 12 }} /> Edit Call
+            </button>
             <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
               Copy Call Number
             </button>
+            <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(`${contextMenu.call.call_number} | ${contextMenu.call.incident_type} | ${contextMenu.call.location} | ${contextMenu.call.priority} | ${contextMenu.call.status}`); setContextMenu(null); addToast('Call summary copied', 'success'); }}>
+              Copy Summary
+            </button>
+            {contextMenu.call.status !== 'archived' && contextMenu.call.status !== 'cancelled' && (
+              <button type="button" className="context-menu-item" onClick={() => {
+                // Duplicate call as new
+                setTemplateInitialData({
+                  incident_type: contextMenu.call.incident_type,
+                  priority: contextMenu.call.priority,
+                  location: contextMenu.call.location,
+                  description: contextMenu.call.description,
+                  source: contextMenu.call.source,
+                });
+                setShowNewCallModal(true);
+                setContextMenu(null);
+              }}>
+                <Copy style={{ width: 12, height: 12 }} /> Duplicate as New
+              </button>
+            )}
+            <div className="border-t border-rmpg-600 my-1" />
             <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
               <Trash2 style={{ width: 12, height: 12 }} /> Delete
             </button>
@@ -6184,6 +6310,76 @@ export default function DispatchPage() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* DISPATCH STATUS BAR — Spillman Flex-style persistent footer */}
+      {/* Always visible at bottom of screen with real-time metrics   */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none"
+        style={{ background: '#0d1520', borderColor: '#1a2636', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
+        {/* Left: Call metrics */}
+        <div className="flex items-center gap-3 text-[9px] tabular-nums">
+          <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ef4444', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px #ef4444' : 'none' }} />
+            <span style={{ color: '#fca5a5' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span style={{ color: '#fcd34d' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+          </span>
+          <span style={{ color: '#6b7280' }}>|</span>
+          <span style={{ color: '#9ca3af' }}>
+            PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? '#fbbf24' : '#4ade80' }}>{calls.filter(c => c.status === 'pending').length}</span>
+          </span>
+          <span style={{ color: '#9ca3af' }}>
+            ACTIVE: <span style={{ color: '#60a5fa' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
+          </span>
+          <span style={{ color: '#9ca3af' }}>
+            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? '#f97316' : '#4b5563' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
+          </span>
+          {(() => {
+            const stacked = new Map<string, number>();
+            calls.filter(c => !['cleared','closed','archived','cancelled'].includes(c.status) && c.location).forEach(c => {
+              const key = c.location.toLowerCase().trim();
+              stacked.set(key, (stacked.get(key) || 0) + 1);
+            });
+            const stackedCount = Array.from(stacked.values()).filter(v => v > 1).length;
+            return stackedCount > 0 ? (
+              <span style={{ color: '#f97316' }}>STACKED: {stackedCount}</span>
+            ) : null;
+          })()}
+        </div>
+
+        {/* Center: Unit metrics */}
+        <div className="flex items-center gap-3 text-[9px] tabular-nums">
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
+            <span style={{ color: '#86efac' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
+          </span>
+          <span style={{ color: '#60a5fa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
+          <span style={{ color: '#a78bfa' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
+          <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
+          <span style={{ color: '#6b7280' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
+          <span style={{ color: '#6b7280' }}>|</span>
+          <span style={{ color: '#9ca3af' }}>
+            TOTAL: <span style={{ color: '#d1d5db' }}>{units.length}</span>
+          </span>
+        </div>
+
+        {/* Right: F-key hints + clock */}
+        <div className="flex items-center gap-2 text-[8px] tabular-nums">
+          <span style={{ color: '#4b5563' }}>F2:New</span>
+          <span style={{ color: '#4b5563' }}>F3:Disp</span>
+          <span style={{ color: '#4b5563' }}>F5:EnR</span>
+          <span style={{ color: '#4b5563' }}>F6:OnS</span>
+          <span style={{ color: '#4b5563' }}>F7:Clr</span>
+          <span style={{ color: '#4b5563' }}>F8:CMD</span>
+          <span style={{ color: '#4b5563' }}>F12:NCIC</span>
+          <span style={{ color: '#374151' }}>|</span>
+          <span style={{ color: '#9ca3af' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
+        </div>
+      </div>
     </div>
   );
 }
