@@ -4070,3 +4070,162 @@ html, body {
     border-color: var(--border-strong);
   }
 }
+
+/* ============================================================
+   SPILLMAN FLEX ENFORCEMENT — Global Overrides
+   Forces ALL elements to match authentic CAD console aesthetic.
+   These rules override Tailwind utilities and inline styles.
+   ============================================================ */
+
+/* --- 1. SHARP CORNERS EVERYWHERE ---
+   Spillman Flex uses 2px max radius. No rounded-lg/xl/2xl anywhere. */
+.rounded-lg { border-radius: 2px !important; }
+.rounded-xl { border-radius: 2px !important; }
+.rounded-2xl { border-radius: 2px !important; }
+.rounded-3xl { border-radius: 2px !important; }
+.rounded-t-lg { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-lg { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+.rounded-l-lg { border-top-left-radius: 2px !important; border-bottom-left-radius: 2px !important; }
+.rounded-r-lg { border-top-right-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+.rounded-t-xl { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-xl { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+.rounded-t-2xl { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-2xl { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+/* Force rounded-md to 2px too (slightly smaller but still too round for CAD) */
+.rounded-md { border-radius: 2px !important; }
+.rounded-t-md { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-md { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+
+/* --- 2. SUBTLE SHADOWS ONLY ---
+   Replace web-app drop shadows with CAD console depth via borders. */
+.shadow-lg {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}
+.shadow-xl {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}
+.shadow-2xl {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
+}
+
+/* --- 3. NAVY NOT BLACK ---
+   Force pure black backgrounds to navy steel-blue. */
+.bg-black { background-color: #0d1520 !important; }
+.bg-\[\#000\] { background-color: #0d1520 !important; }
+.bg-\[\#000000\] { background-color: #0d1520 !important; }
+.bg-\[\#0a0a0a\] { background-color: #0d1520 !important; }
+.bg-\[\#0a0a12\] { background-color: #0d1520 !important; }
+.bg-\[\#111\] { background-color: #0d1520 !important; }
+.bg-\[\#111111\] { background-color: #0d1520 !important; }
+
+/* --- 4. MODAL / DIALOG CONSISTENCY ---
+   All overlays use the Spillman beveled panel style. */
+[role="dialog"] > div,
+[aria-modal="true"] > div {
+  border-radius: 2px !important;
+}
+
+/* --- 5. ALL SCROLLBARS — Dark Chrome ---
+   Consistent dark scrollbars across the entire app. */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-sunken);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a5070;
+}
+::-webkit-scrollbar-corner {
+  background: var(--surface-sunken);
+}
+
+/* --- 6. TABLE / GRID CONSISTENCY ---
+   All tables get the CAD grid aesthetic. */
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+th {
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* --- 7. SELECT DROPDOWN ARROWS ---
+   Custom dropdown arrow matching the navy theme. */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+}
+
+/* --- 8. FOCUS RINGS — Blue Motorola accent ---
+   Consistent focus styling across all interactive elements. */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(26, 90, 158, 0.2);
+}
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(26, 90, 158, 0.2);
+}
+
+/* --- 9. TOOLTIP CONSISTENCY --- */
+[title]:not([title=""]) {
+  cursor: help;
+}
+
+/* --- 10. BACKDROP BLUR — Consistent overlay treatment --- */
+.backdrop-blur-sm { backdrop-filter: blur(4px) !important; -webkit-backdrop-filter: blur(4px) !important; }
+.backdrop-blur-md { backdrop-filter: blur(6px) !important; -webkit-backdrop-filter: blur(6px) !important; }
+.backdrop-blur-lg { backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important; }
+
+/* --- 11. TEXT SELECTION — Brand blue highlight --- */
+::selection {
+  background: rgba(26, 90, 158, 0.35);
+  color: #ffffff;
+}
+
+/* --- 12. MONOSPACE DATA FIELDS ---
+   All numeric/code displays use monospace. */
+.tabular-nums,
+[class*="font-mono"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 13. FORM INPUT GLOBAL CONSISTENCY ---
+   Force all text inputs/textareas/selects to match the CAD input style. */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+input[type="password"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+textarea,
+select {
+  border-radius: 2px !important;
+  font-size: 12px;
+}
+
+/* --- 14. BADGE / TAG GLOBAL STYLE --- */
+.inline-flex[class*="text-\[8px\]"],
+.inline-flex[class*="text-\[9px\]"] {
+  border-radius: 1px !important;
+}
+
+/* --- 15. CARD HOVER STATES ---
+   Consistent hover glow on interactive cards. */
+[class*="hover\\:bg-"] {
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
