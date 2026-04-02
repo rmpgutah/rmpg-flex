@@ -48,7 +48,65 @@
     overflow-x: hidden;
     /* iOS Safari: respect notch/home indicator safe areas */
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Spillman Flex: subtle noise texture on body */
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(26, 90, 158, 0.03) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(212, 160, 23, 0.02) 0%, transparent 40%);
   }
+}
+
+/* ── SPILLMAN FLEX VISUAL DESIGN LAYER ──────────────────────
+   Hardware-grade CAD console visual treatments applied globally.
+   These create the industrial/tactical feel of real dispatch software.
+   ────────────────────────────────────────────────────────────── */
+
+/* Subtle vignette on the app shell — darker edges like a CRT monitor */
+@media (min-width: 768px) {
+  #root {
+    background-image:
+      radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.15) 100%);
+  }
+}
+
+/* ALL page containers get a subtle top-line accent */
+[role="main"],
+.p-4:first-child {
+  position: relative;
+}
+
+/* Universal panel chrome — any bordered container gets 3D depth */
+.panel-beveled,
+[class*="border"][class*="bg-surface"],
+[class*="border-rmpg"][class*="rounded"] {
+  border-top-color: #2a3e58;
+  border-left-color: #2a3e58;
+  border-bottom-color: #0a1018;
+  border-right-color: #0a1018;
+}
+
+/* Data readout containers — sunken inset for all stat displays */
+[class*="font-mono"][class*="tabular-nums"],
+[class*="font-mono"][class*="text-2xl"],
+[class*="font-mono"][class*="text-xl"],
+[class*="font-mono"][class*="text-lg"] {
+  text-shadow: 0 0 8px currentColor;
+  filter: brightness(1.1);
+}
+
+/* Gold section labels — any uppercase tracking-wider label */
+[class*="uppercase"][class*="tracking-wider"],
+[class*="uppercase"][class*="tracking-widest"] {
+  text-rendering: geometricPrecision;
+}
+
+/* Status LED dot enhancements — hardware LED look */
+[class*="led-dot"],
+[class*="led-green"],
+[class*="led-red"],
+[class*="led-amber"],
+[class*="led-blue"] {
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  box-sizing: content-box;
 }
 
 /* --- PWA standalone mode: prevent iOS status bar overlap --- */
