@@ -2275,6 +2275,55 @@ export default function DispatchPage() {
                 )}
               </div>
 
+              {/* Call Duration + Response Time — mobile */}
+              <div className="flex items-center gap-3 text-[10px] font-mono tabular-nums">
+                <div className="flex items-center gap-1">
+                  <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                  <span className="text-rmpg-400">Duration:</span>
+                  <span className="text-rmpg-200 font-bold">
+                    {(() => {
+                      const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
+                      const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                      if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
+                      const mins = Math.floor(elapsed / 60000);
+                      return `${mins}m`;
+                    })()}
+                  </span>
+                </div>
+                {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                  const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                  if (diff <= 0 || !isFinite(diff)) return null;
+                  const mins = Math.floor(diff / 60000);
+                  const secs = Math.floor((diff % 60000) / 1000);
+                  return (
+                    <div className="flex items-center gap-1">
+                      <span className="text-rmpg-400">Response:</span>
+                      <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Safety Flag Badges — mobile */}
+              {(() => {
+                const flags: Array<{ label: string; color: string }> = [];
+                if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: '#fca5a5' });
+                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: '#fde047' });
+                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c4b5fd' });
+                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: '#ef4444' });
+                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: '#fb923c' });
+                if (flags.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {flags.map(f => (
+                      <span key={f.label} className="text-[9px] font-bold font-mono px-1.5 py-0.5" style={{ color: f.color, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                        {f.label}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Mobile Status Action Buttons — large touch targets for gloved use */}
               <div className="flex flex-wrap gap-2" style={{ willChange: 'transform' }}>
                 {selectedCall.status === 'pending' && (
@@ -3574,6 +3623,67 @@ export default function DispatchPage() {
                     <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgba(239,68,68,0.4))' }} /> CAUTION / WARNINGS
                   </label>
                   <WarningTags warnings={callWarnings} />
+                </div>
+              )}
+
+              {/* Call Duration + Response Time + Safety Summary — always visible above tabs */}
+              {!isEditing && (
+                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
+                  {/* Call duration — running timer */}
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                    <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                    <span className="text-rmpg-400">Duration:</span>
+                    <span className="text-rmpg-200 font-bold">
+                      {(() => {
+                        const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
+                        const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                        if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
+                        const totalSec = Math.floor(elapsed / 1000);
+                        const hrs = Math.floor(totalSec / 3600);
+                        const mins = Math.floor((totalSec % 3600) / 60);
+                        const secs = totalSec % 60;
+                        if (hrs > 0) return `${hrs}h ${mins}m`;
+                        return `${mins}m ${secs}s`;
+                      })()}
+                    </span>
+                  </div>
+                  {/* Response time — dispatched to on scene */}
+                  {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                    const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                    if (diff <= 0 || !isFinite(diff)) return null;
+                    const mins = Math.floor(diff / 60000);
+                    const secs = Math.floor((diff % 60000) / 1000);
+                    return (
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                        <Navigation style={{ width: 10, height: 10 }} className="text-cyan-500" />
+                        <span className="text-rmpg-400">Response:</span>
+                        <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                      </div>
+                    );
+                  })()}
+                  {/* Safety flag summary — compact inline */}
+                  {(() => {
+                    const flags: string[] = [];
+                    if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push('ARMED');
+                    if ((selectedCall as any).domestic_violence) flags.push('DV');
+                    if ((selectedCall as any).mental_health_crisis) flags.push('MH');
+                    if ((selectedCall as any).officer_safety_caution) flags.push('SAFETY');
+                    if ((selectedCall as any).felony_in_progress) flags.push('FELONY');
+                    if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push('PURSUIT');
+                    if ((selectedCall as any).ems_requested) flags.push('EMS');
+                    if ((selectedCall as any).injuries_reported) flags.push('INJ');
+                    if (flags.length === 0) return null;
+                    return (
+                      <div className="flex items-center gap-1 ml-auto">
+                        <AlertTriangle style={{ width: 10, height: 10 }} className="text-red-400" />
+                        {flags.map(f => (
+                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c4b5fd' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#60a5fa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

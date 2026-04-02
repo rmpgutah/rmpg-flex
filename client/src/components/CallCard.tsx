@@ -331,6 +331,29 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         )}
       </div>
 
+      {/* Safety Flag Indicators — compact inline badges */}
+      {(() => {
+        const flagBadges: Array<{ label: string; color: string; bg: string; border: string }> = [];
+        if (call.weapons_involved && call.weapons_involved !== 'None') flagBadges.push({ label: 'ARMED', color: '#fca5a5', bg: 'rgba(220,38,38,0.2)', border: 'rgba(220,38,38,0.4)' });
+        if ((call as any).domestic_violence) flagBadges.push({ label: 'DV', color: '#fde047', bg: 'rgba(234,179,8,0.15)', border: 'rgba(234,179,8,0.35)' });
+        if ((call as any).mental_health_crisis) flagBadges.push({ label: 'MH', color: '#c4b5fd', bg: 'rgba(139,92,246,0.15)', border: 'rgba(139,92,246,0.35)' });
+        if ((call as any).vehicle_pursuit || (call as any).foot_pursuit) flagBadges.push({ label: 'PURSUIT', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)' });
+        if ((call as any).officer_safety_caution) flagBadges.push({ label: 'SAFETY', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.35)' });
+        if ((call as any).felony_in_progress) flagBadges.push({ label: 'FELONY', color: '#ef4444', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.5)' });
+        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#60a5fa', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.35)' });
+        if ((call as any).injuries_reported) flagBadges.push({ label: 'INJ', color: '#fb923c', bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.35)' });
+        if (flagBadges.length === 0) return null;
+        return (
+          <div className="flex flex-wrap gap-0.5 mb-1">
+            {flagBadges.map(f => (
+              <span key={f.label} className="text-[7px] font-bold font-mono px-1 py-0 leading-tight" style={{ color: f.color, background: f.bg, border: `1px solid ${f.border}` }}>
+                {f.label}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Feature 15: Source icon + Feature 5: Stack count + Feature 3: Duration */}
       <div className="flex items-center gap-1.5 text-[9px] text-rmpg-400 mb-1">
         {/* Source icon */}

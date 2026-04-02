@@ -483,6 +483,33 @@ function buildCallPhrases(call: CallFlags): VoicePhrase[] {
   return phrases;
 }
 
+// ─── Safety Flag Summary ───────────────────────────────────
+
+/**
+ * Build a concise, spoken-friendly summary of active safety flags.
+ * Returns a comma-separated string like "weapons involved, domestic violence, officer safety"
+ * or empty string if no flags.
+ */
+function buildSafetyFlagSummary(call: CallFlags): string {
+  const flags: string[] = [];
+  // Critical flags first
+  if (call.weapons_involved && call.weapons_involved !== 'None') flags.push('weapons involved');
+  if (call.felony_in_progress) flags.push('felony in progress');
+  if (call.officer_safety_caution) flags.push('officer safety');
+  if (call.vehicle_pursuit) flags.push('vehicle pursuit');
+  if (call.foot_pursuit) flags.push('foot pursuit');
+  if (call.domestic_violence) flags.push('domestic violence');
+  if (call.gang_related) flags.push('gang related');
+  if (call.hazmat) flags.push('hazmat');
+  // High priority
+  if (call.mental_health_crisis) flags.push('mental health crisis');
+  if (call.injuries_reported) flags.push('injuries reported');
+  if (call.ems_requested) flags.push('E.M.S. requested');
+  if (call.k9_requested) flags.push('K-9 requested');
+  if (call.drugs_involved) flags.push('drugs involved');
+  return flags.join(', ');
+}
+
 // ─── Main Entry Points ──────────────────────────────────────
 
 /**
@@ -511,64 +538,83 @@ export function announceScreeningAlerts(result: ScreeningResult): void {
 }
 
 /**
- * Announce safety alerts from a call's flags.
- * Only speaks if the call has safety-relevant flags.
- * Plays a warning tone before speaking.
+ * Announce safety alerts from a call's flags with call reference:
+ * "Caution. Call 26-CFS00110 has active flags: weapons involved, officer safety. Use caution on approach."
  */
-export async function announceCallAlerts(call: CallFlags): Promise<void> {
+export async function announceCallAlerts(call: CallFlags & {
+  call_number?: string;
+  location?: string;
+  location_address?: string;
+}): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
-  const phrases = buildCallPhrases(call);
-  if (phrases.length === 0) return;
+  const flagSummary = buildSafetyFlagSummary(call);
+  if (!flagSummary) return;
 
-  // Dedup: hash which flags are set
-  const flagHash = phrases.map(p => p.text).join(',');
-  const dedupKey = `call:${call.id || 'unknown'}:${flagHash}`;
+  // Dedup
+  const dedupKey = `call:${call.id || 'unknown'}:${flagSummary}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
-
   markAnnounced(dedupKey);
 
   // Play warning tone first, then speak
   await playToneAsync('warning');
   await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [];
+  const callRef = call.call_number ? `Call ${call.call_number}` : 'Current call';
+  phrases.push({ text: `Caution. ${callRef} has active flags: ${flagSummary}.` });
+  phrases.push({ text: 'Use caution on approach.' });
+
   enqueuePhrases(phrases);
 }
 
 /**
- * Announce a panic alert.
- * Called when a panic_alert WebSocket event arrives.
- * Plays the alarm tone, then speaks "PANIC ALERT. OFFICER NEEDS ASSISTANCE."
+ * Announce a panic alert with location details:
+ * "PANIC ALERT. OFFICER NEEDS IMMEDIATE ASSISTANCE. Officer Smith, unit S19. All units respond."
  */
-export async function announcePanicAlert(officerName?: string): Promise<void> {
+export async function announcePanicAlert(officerName?: string, location?: string, callSign?: string): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
   const dedupKey = `panic:${officerName || 'unknown'}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play alarm tone (urgent repeating two-tone)
+  // Play alarm tone twice for emphasis (urgent repeating two-tone)
+  await playToneAsync('alarm');
+  await delay(200);
   await playToneAsync('alarm');
   await delay(TONE_GAP_MS);
 
   const phrases: VoicePhrase[] = [
-    { text: naturalPhrase('PANIC ALERT') },
-    { text: naturalPhrase('OFFICER NEEDS ASSISTANCE') },
+    { text: 'Panic alert. Officer needs immediate assistance.' },
   ];
-  if (officerName) {
-    phrases.push({ text: `Officer ${officerName}.` });
+  if (officerName || callSign) {
+    let officer = '';
+    if (officerName) officer += `Officer ${officerName}`;
+    if (callSign) officer += officer ? `, unit ${callSign}` : `Unit ${callSign}`;
+    phrases.push({ text: `${officer}.` });
   }
+  if (location) {
+    phrases.push({ text: `Location: ${location}.` });
+  }
+  phrases.push({ text: 'All units respond.' });
   enqueuePhrases(phrases);
 }
 
 /**
- * Announce a dispatch event: "DISPATCH — [CALL NUMBER] — [INCIDENT TYPE] — [LOCATION]"
- * plus any safety flags on the call. Triggered on call_status_changed to 'dispatched'.
+ * Announce a dispatch event with full detail:
+ * "Dispatch, call 26-CFS00110. Priority 2. PSO Client Request at 3392 Mockingbird Way.
+ *  Caution: weapons involved, officer safety."
  */
 export async function announceDispatchEvent(call: CallFlags & {
   call_number?: string;
   incident_type?: string;
   location?: string;
+  location_address?: string;
   priority?: string;
+  caller_name?: string;
+  city?: string;
+  assigned_units?: string[];
 }): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
@@ -576,36 +622,61 @@ export async function announceDispatchEvent(call: CallFlags & {
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play info tone for dispatch confirmation
-  await playToneAsync('info');
+  // Play alert tone for dispatch
+  await playToneAsync('alert');
   await delay(TONE_GAP_MS);
 
-  const phrases: VoicePhrase[] = [{ text: naturalPhrase('DISPATCH') }];
-  if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
-  if (call.incident_type) {
-    // Convert snake_case incident types to natural spoken form
-    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-    phrases.push({ text: `${type}.` });
-  }
-  if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
-  else if (call.priority === 'P2') phrases.push({ text: naturalPhrase('PRIORITY TWO') });
-  if (call.location) phrases.push({ text: `At ${call.location}.` });
+  const phrases: VoicePhrase[] = [];
 
-  // Append safety flags
-  const safetyPhrases = buildCallPhrases(call);
-  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+  // "Dispatch, call 26-CFS00110"
+  phrases.push({ text: `Dispatch${call.call_number ? `, call ${call.call_number}` : ''}.` });
+
+  // Priority
+  const priorityLabel = call.priority === 'P1' ? 'Priority 1, emergency.' : call.priority === 'P2' ? 'Priority 2.' : '';
+  if (priorityLabel) phrases.push({ text: priorityLabel });
+
+  // Incident type + location
+  const type = call.incident_type ? call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
+  const loc = call.location || call.location_address || '';
+  if (type && loc) {
+    const city = call.city || '';
+    phrases.push({ text: `${type} at ${loc}${city ? `, ${city}` : ''}.` });
+  } else if (type) {
+    phrases.push({ text: `${type}.` });
+  } else if (loc) {
+    phrases.push({ text: `At ${loc}.` });
+  }
+
+  // Assigned units
+  if (call.assigned_units && call.assigned_units.length > 0) {
+    const unitList = call.assigned_units.slice(0, 3).join(', ');
+    phrases.push({ text: `Units: ${unitList}.` });
+  }
+
+  // Safety flags — concise summary
+  const flagSummary = buildSafetyFlagSummary(call);
+  if (flagSummary) {
+    phrases.push({ text: `Caution: ${flagSummary}. Use caution on approach.` });
+  }
 
   enqueuePhrases(phrases);
 }
 
 /**
- * Announce a new call arrival: "NEW CALL — [CALL NUMBER] — [INCIDENT TYPE]"
- * Plays a tone and announces call details. Used on call_created events.
+ * Announce a new call arrival with full dispatch cadence:
+ * "Attention all units. New priority 2 call. PSO Client Request at 3392 Mockingbird Way. Caller: Michael Currie."
+ * Plays a priority-appropriate tone and announces call details. Used on call_created events.
  */
 export async function announceNewCall(call: CallFlags & {
   call_number?: string;
   incident_type?: string;
   priority?: string;
+  location?: string;
+  location_address?: string;
+  caller_name?: string;
+  caller_phone?: string;
+  city?: string;
+  description?: string;
 }): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
@@ -613,57 +684,174 @@ export async function announceNewCall(call: CallFlags & {
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play caution tone for new calls
-  await playToneAsync('caution');
+  // Play priority-appropriate tone
+  if (call.priority === 'P1') await playToneAsync('alarm');
+  else if (call.priority === 'P2') await playToneAsync('warning');
+  else await playToneAsync('caution');
   await delay(TONE_GAP_MS);
 
-  const phrases: VoicePhrase[] = [{ text: naturalPhrase('NEW CALL') }];
-  if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
-  if (call.incident_type) {
-    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-    phrases.push({ text: `${type}.` });
-  }
-  if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
-  else if (call.priority === 'P2') phrases.push({ text: naturalPhrase('PRIORITY TWO') });
+  const phrases: VoicePhrase[] = [];
 
-  // Append safety flags
-  const safetyPhrases = buildCallPhrases(call);
-  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+  // Opening — "Attention all units" for P1/P2, just "New call" for routine
+  if (call.priority === 'P1' || call.priority === 'P2') {
+    phrases.push({ text: 'Attention all units.' });
+  }
+
+  // Priority + call type
+  const priorityLabel = call.priority === 'P1' ? 'priority 1' : call.priority === 'P2' ? 'priority 2' : call.priority === 'P3' ? 'priority 3' : call.priority === 'P4' ? 'priority 4' : '';
+  const type = call.incident_type ? call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'call';
+  phrases.push({ text: `New ${priorityLabel} call. ${type}.` });
+
+  // Location
+  const loc = call.location || call.location_address || '';
+  if (loc) {
+    const city = call.city || '';
+    phrases.push({ text: `At ${loc}${city ? `, ${city}` : ''}.` });
+  }
+
+  // Caller
+  if (call.caller_name) {
+    phrases.push({ text: `Caller: ${call.caller_name}.` });
+  }
+
+  // Safety flags — critical ones announced inline
+  const flagSummary = buildSafetyFlagSummary(call);
+  if (flagSummary) {
+    phrases.push({ text: `Caution: ${flagSummary}.` });
+  }
 
   enqueuePhrases(phrases);
 }
 
 // ─── Additional Dispatch Voice Alerts ────────────────────────
 
-/** Announce a status change: "UNIT [CALL_SIGN] NOW [STATUS]" */
-export async function announceStatusChange(callSign: string, newStatus: string): Promise<void> {
+/**
+ * Announce a status change with dispatch cadence:
+ * "Unit S19, en route to call 26-CFS00110."
+ * "Unit S19, on scene at 3392 Mockingbird Way."
+ * "Unit S19, clear from call 26-CFS00110. Disposition: Personal Service."
+ */
+export async function announceStatusChange(callOrSign: string | { call_sign?: string; call_number?: string; location?: string; location_address?: string; disposition?: string; assigned_units?: string[] }, newStatus: string): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  // Support both simple callSign string and rich call object
+  let callSign: string;
+  let callNumber: string | undefined;
+  let location: string | undefined;
+  let disposition: string | undefined;
+
+  if (typeof callOrSign === 'string') {
+    callSign = callOrSign;
+  } else {
+    callSign = callOrSign.call_sign || (callOrSign.assigned_units?.[0]) || 'unknown';
+    callNumber = callOrSign.call_number;
+    location = callOrSign.location || callOrSign.location_address;
+    disposition = callOrSign.disposition;
+  }
+
   const dedupKey = `status:${callSign}:${newStatus}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  const status = newStatus.replace(/_/g, ' ').toUpperCase();
-  enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
+
+  // Play appropriate chirp based on status
+  const statusNorm = newStatus.replace(/_/g, '').toLowerCase();
+  if (statusNorm === 'enroute') {
+    await playToneAsync('info');
+    await delay(200);
+    enqueuePhrases([{ text: `Unit ${callSign}, en route${callNumber ? ` to call ${callNumber}` : ''}.` }]);
+  } else if (statusNorm === 'onscene') {
+    await playToneAsync('info');
+    await delay(100);
+    await playToneAsync('info');
+    await delay(200);
+    enqueuePhrases([{ text: `Unit ${callSign}, on scene${location ? ` at ${location}` : callNumber ? ` on call ${callNumber}` : ''}.` }]);
+  } else if (statusNorm === 'cleared' || statusNorm === 'closed') {
+    enqueuePhrases([{
+      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ')}.` : ''}`
+    }]);
+  } else {
+    const status = newStatus.replace(/_/g, ' ');
+    enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
+  }
 }
 
-/** Announce unit dispatched: "UNIT [CALL_SIGN] DISPATCHED TO CALL [NUMBER]" */
-export async function announceUnitDispatched(callSign: string, callNumber: string): Promise<void> {
+/**
+ * Announce unit dispatched with location details:
+ * "Unit S19, dispatched to call 26-CFS00110. PSO Client Request at 3392 Mockingbird Way."
+ */
+export async function announceUnitDispatched(callOrSign: string | { call_sign?: string; call_number?: string; incident_type?: string; location?: string; location_address?: string; assigned_units?: string[] }, callNumberOrUnits?: string | string[]): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
-  const dedupKey = `dispatched:${callSign}:${callNumber}`;
+
+  let callSign: string;
+  let callNumber: string | undefined;
+  let incidentType: string | undefined;
+  let location: string | undefined;
+
+  if (typeof callOrSign === 'string') {
+    callSign = callOrSign;
+    callNumber = typeof callNumberOrUnits === 'string' ? callNumberOrUnits : undefined;
+  } else {
+    // Rich call object — units passed as second arg
+    const unitNames = Array.isArray(callNumberOrUnits) ? callNumberOrUnits : [];
+    callSign = unitNames.length > 0 ? unitNames.join(' and ') : (callOrSign.call_sign || callOrSign.assigned_units?.[0] || 'unit');
+    callNumber = callOrSign.call_number;
+    incidentType = callOrSign.incident_type;
+    location = callOrSign.location || callOrSign.location_address;
+  }
+
+  const dedupKey = `dispatched:${callSign}:${callNumber || ''}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  enqueuePhrases([{ text: `Unit ${callSign}, dispatched to call ${callNumber}.` }]);
+
+  await playToneAsync('info');
+  await delay(200);
+
+  const phrases: VoicePhrase[] = [];
+  let mainText = `Unit ${callSign}, dispatched`;
+  if (callNumber) mainText += ` to call ${callNumber}`;
+  mainText += '.';
+  phrases.push({ text: mainText });
+
+  if (incidentType) {
+    const type = incidentType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    phrases.push({ text: `${type}${location ? ` at ${location}` : ''}.` });
+  } else if (location) {
+    phrases.push({ text: `At ${location}.` });
+  }
+
+  enqueuePhrases(phrases);
 }
 
-/** Announce BOLO alert: "ATTENTION ALL UNITS — BOLO — [TITLE]" */
-export async function announceBolo(title: string, priority?: string): Promise<void> {
+/**
+ * Announce BOLO alert with details:
+ * "Attention all units. Be on the lookout. [Title]. [Description]. Use caution."
+ */
+export async function announceBolo(title: string, priority?: string, details?: { description?: string; vehicle_description?: string; suspect_description?: string; last_seen_location?: string; call_number?: string }): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
   const dedupKey = `bolo:${title}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('caution');
+  await playToneAsync('warning');
   await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [{ text: naturalPhrase('ATTENTION ALL UNITS') }, { text: `B.O.L.O. ${title}.` }];
-  if (priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
+
+  const phrases: VoicePhrase[] = [
+    { text: 'Attention all units.' },
+    { text: `Be on the lookout. ${title}.` },
+  ];
+  if (details?.suspect_description) {
+    phrases.push({ text: `Subject description: ${details.suspect_description}.` });
+  }
+  if (details?.vehicle_description) {
+    phrases.push({ text: `Vehicle: ${details.vehicle_description}.` });
+  }
+  if (details?.last_seen_location) {
+    phrases.push({ text: `Last seen near ${details.last_seen_location}.` });
+  }
+  if (details?.call_number) {
+    phrases.push({ text: `Reference call ${details.call_number}.` });
+  }
+  if (priority === 'P1') phrases.push({ text: 'Priority one. Use extreme caution.' });
+  else phrases.push({ text: 'Use caution.' });
   enqueuePhrases(phrases);
 }
 
