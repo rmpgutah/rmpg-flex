@@ -346,7 +346,7 @@ export const GlobalSearch: React.FC = () => {
       style={{ touchAction: 'manipulation' }}
     >
       <div
-        className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[60vh] flex flex-col animate-scale-in"
+        className="bg-surface-base border border-rmpg-600 shadow-md w-full max-w-2xl max-h-[60vh] flex flex-col animate-scale-in"
         style={{ borderTop: '2px solid #1a5a9e' }}
         onClick={(e) => e.stopPropagation()}
       >

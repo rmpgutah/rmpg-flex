@@ -101,7 +101,7 @@ export default function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} ref={dialogRef} onClick={onClose} style={{ touchAction: 'manipulation' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
-      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
           style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}

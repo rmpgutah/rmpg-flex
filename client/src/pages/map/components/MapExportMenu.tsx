@@ -43,7 +43,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
   const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)';
   const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)';
   const textColor = light ? 'text-gray-700' : 'text-rmpg-200';
-  const hoverBg = light ? 'hover:bg-gray-100' : 'hover:bg-white/5';
+  const hoverBg = light ? 'hover:bg-[#1a2636]' : 'hover:bg-[#1a2636]';
 
   const handleScreenshot = async () => {
     setBusy(true);
@@ -70,7 +70,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
         disabled={busy}
         className={`backdrop-blur-md shadow-xl transition-colors ${
           light
-            ? 'bg-white/90 border border-gray-300 hover:bg-gray-100'
+            ? 'bg-white/90 border border-gray-300 hover:bg-[#1a2636]'
             : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
         }`}
         style={isMobile

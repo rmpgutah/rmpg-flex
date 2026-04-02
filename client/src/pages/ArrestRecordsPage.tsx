@@ -989,7 +989,7 @@ export default function ArrestRecordsPage() {
       {deleteConfirm !== null && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
-          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-fade-in">
             <div
               className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600"
               style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}

@@ -744,7 +744,7 @@ export default function ServeAttemptModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Document Service Attempt">
-      <div className="bg-[#141e2b] panel-beveled rounded-[2px] w-full max-w-lg mx-4 max-h-[90vh] flex flex-col shadow-2xl shadow-black/40 animate-in zoom-in-95 duration-200">
+      <div className="bg-[#141e2b] panel-beveled rounded-[2px] w-full max-w-lg mx-4 max-h-[90vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048] bg-[#0d1520]">
           <h2 className="text-sm font-bold text-rmpg-100 tracking-wide">
@@ -752,7 +752,7 @@ export default function ServeAttemptModal({
           </h2>
           <button type="button"
             onClick={onClose}
-            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-[#1a2636] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
             aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>

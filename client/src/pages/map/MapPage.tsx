@@ -147,7 +147,7 @@ const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
   red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
   amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
   blue: { active: 'bg-blue-900/40 text-blue-400 border border-blue-700/40' },
-  gray: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
+  gray: { active: 'bg-[#0d1520]/40 text-gray-400 border border-gray-700/40' },
 };
 
 // Default map center (Salt Lake City)
@@ -2271,7 +2271,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-black/90 border border-white/15 shadow-2xl backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-black/90 border border-white/15 shadow-md backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -2338,7 +2338,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-black/80 border border-white/15 shadow-2xl backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-black/80 border border-white/15 shadow-md backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -2401,7 +2401,7 @@ export default function MapPage() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="bg-surface-deep border border-rmpg-600 shadow-2xl overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
+          <div className="bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
@@ -3132,7 +3132,7 @@ export default function MapPage() {
                   key={key}
                   onClick={() => toggleIntelLayer(key)}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-slate-900/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
+                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-[#0d1520]/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
                   }`}
                 >
                   <Shield className="w-3 h-3" />
@@ -3219,7 +3219,7 @@ export default function MapPage() {
                           )}
                           className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                             callHistoryPriorities.includes(p)
-                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-gray-900/40 text-gray-400 border border-gray-700/40')
+                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-[#0d1520]/40 text-gray-400 border border-gray-700/40')
                               : 'text-rmpg-600 hover:text-rmpg-400'
                           }`}
                         >
@@ -4800,7 +4800,7 @@ export default function MapPage() {
           style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
         >
           <div
-            className="backdrop-blur-md shadow-2xl"
+            className="backdrop-blur-md shadow-md"
             style={{
               borderRadius: 2,
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
@@ -4971,7 +4971,7 @@ export default function MapPage() {
             }}
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
-                ? 'bg-white/90 border border-gray-300 hover:bg-gray-100'
+                ? 'bg-white/90 border border-gray-300 hover:bg-[#1a2636]'
                 : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
             }`}
             style={isMobile

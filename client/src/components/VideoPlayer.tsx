@@ -97,7 +97,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         ref={containerRef}
-        className={`bg-black border border-rmpg-800 rounded-sm shadow-2xl overflow-hidden ${
+        className={`bg-black border border-rmpg-800 rounded-sm shadow-md overflow-hidden ${
           isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
         }`}
         onClick={e => e.stopPropagation()}

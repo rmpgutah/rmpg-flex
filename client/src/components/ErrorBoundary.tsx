@@ -82,7 +82,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex items-center justify-center min-h-[400px] p-8">
-          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-2xl animate-scale-in" style={{ borderTop: '2px solid #dc2626' }}>
+          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-md animate-scale-in" style={{ borderTop: '2px solid #dc2626' }}>
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3 border-b border-red-900/30"

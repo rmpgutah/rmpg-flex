@@ -102,7 +102,7 @@ export default function FormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
-      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-scale-in panel-beveled`} style={{ background: '#141e2b' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
+      <div className={`relative w-full ${maxWidth} mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background: '#141e2b' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#1a5a9e' }} />
@@ -146,7 +146,7 @@ export default function FormModal({
       {showDiscardConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={handleCancelDiscard} style={{ touchAction: 'manipulation' }}>
           <div className="absolute inset-0 bg-black/50" role="presentation" />
-          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
               style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}

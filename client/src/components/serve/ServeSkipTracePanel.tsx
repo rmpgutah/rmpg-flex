@@ -165,7 +165,7 @@ export default function ServeSkipTracePanel({
 
       {/* Panel */}
       <div
-        className="fixed top-0 right-0 z-50 h-full w-full sm:w-[400px] bg-[#141e2b] border-l border-[#1e3048] panel-beveled shadow-2xl shadow-black/40 flex flex-col"
+        className="fixed top-0 right-0 z-50 h-full w-full sm:w-[400px] bg-[#141e2b] border-l border-[#1e3048] panel-beveled shadow-md flex flex-col"
         style={{ animation: 'slideInRight 0.2s ease-out' }}
         role="dialog"
         aria-modal="true"
@@ -179,7 +179,7 @@ export default function ServeSkipTracePanel({
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+            className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#1a2636] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
             aria-label="Close skip trace panel"
           >
             <X size={16} />

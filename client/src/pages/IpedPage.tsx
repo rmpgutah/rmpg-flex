@@ -813,7 +813,7 @@ export default function IpedPage() {
       {/* ── New Job Modal ────────────────────────────────── */}
       {showNewJob && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowNewJob(false)}>
-          <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <Plus size={14} className="text-brand-blue" />
@@ -910,7 +910,7 @@ export default function IpedPage() {
       {/* ── Import Hash Set Modal ────────────────────────── */}
       {showImportHashSet && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowImportHashSet(false)}>
-          <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <Upload size={14} className="text-brand-blue" />

@@ -582,8 +582,8 @@ export default function AIDevChatPanel() {
               <div
                 className={`max-w-[80%] ${
                   msg.role === 'user'
-                    ? 'bg-[#1a5a9e] text-white rounded-lg rounded-tr-sm px-3 py-2'
-                    : 'bg-[#1a2636] text-gray-200 rounded-lg rounded-tl-sm px-3 py-2 border border-[#1a3550]'
+                    ? 'bg-[#1a5a9e] text-white rounded-sm px-3 py-2'
+                    : 'bg-[#1a2636] text-gray-200 rounded-sm px-3 py-2 border border-[#1a3550]'
                 }`}
               >
                 <div className="text-sm whitespace-pre-wrap leading-relaxed">
@@ -594,7 +594,7 @@ export default function AIDevChatPanel() {
                 ) : null}
               </div>
               {msg.role === 'user' && (
-                <div className="w-7 h-7 rounded bg-gray-700 flex items-center justify-center flex-shrink-0">
+                <div className="w-7 h-7 rounded bg-[#1a2636] flex items-center justify-center flex-shrink-0">
                   <User className="w-4 h-4 text-gray-300" />
                 </div>
               )}
@@ -610,7 +610,7 @@ export default function AIDevChatPanel() {
               <div className="max-w-[80%]">
                 {/* Thinking phase — rich visual reasoning display (stays visible during response) */}
                 {(isThinking || thinkingText) && (
-                  <div className={`bg-gradient-to-b from-[#1a2636] to-[#141e2b] rounded-lg rounded-tl-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
+                  <div className={`bg-gradient-to-b from-[#1a2636] to-[#141e2b] rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
                     streamingContent ? 'border-amber-500/10 max-h-28' : 'border-amber-500/20'
                   }`}>
                     {/* Animated header bar */}
@@ -678,7 +678,7 @@ export default function AIDevChatPanel() {
 
                 {/* Response content — streams alongside reasoning */}
                 {streamingContent ? (
-                  <div className="bg-[#1a2636] text-gray-200 rounded-lg rounded-tl-sm px-3 py-2 border border-blue-500/30">
+                  <div className="bg-[#1a2636] text-gray-200 rounded-sm px-3 py-2 border border-blue-500/30">
                     <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a3550]">
                       <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
                       <span className="text-[10px] text-blue-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
@@ -690,7 +690,7 @@ export default function AIDevChatPanel() {
                     </div>
                   </div>
                 ) : !thinkingText && (
-                  <div className="bg-[#1a2636] rounded-lg rounded-tl-sm border border-blue-500/30 overflow-hidden">
+                  <div className="bg-[#1a2636] rounded-sm border border-blue-500/30 overflow-hidden">
                     <div className="h-0.5 bg-[#0d1520] overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-transparent via-blue-500 to-transparent"
                         style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
@@ -768,7 +768,7 @@ export default function AIDevChatPanel() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
-              className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
+              className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-[#1a2636] disabled:text-gray-500 text-white rounded transition-colors"
             >
               {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>

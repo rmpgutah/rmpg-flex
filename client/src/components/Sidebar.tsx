@@ -183,7 +183,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                   onClick={() => navigate(item.path)}
                   onMouseEnter={() => collapsed ? setHoveredSection(item.path) : undefined}
                   onMouseLeave={() => setHoveredSection(null)}
-                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-white/[0.03]' : ''}`}
+                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-[#1a2636]' : ''}`}
                   style={{
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',

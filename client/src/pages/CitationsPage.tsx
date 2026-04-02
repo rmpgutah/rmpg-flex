@@ -1104,7 +1104,7 @@ export default function CitationsPage() {
                   {(c as any).accident_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">ACCIDENT RELATED</span> : null}
                   {(c as any).dui_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">DUI RELATED</span> : null}
                   {(c as any).is_warning ? <span className="text-[8px] font-bold text-blue-400 bg-blue-900/30 px-1.5 py-0.5 border border-blue-700/30">WARNING ONLY</span> : null}
-                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-gray-900/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
+                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-[#0d1520]/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
                 </div>
               </div>
             </section>

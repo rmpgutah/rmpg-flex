@@ -1661,7 +1661,7 @@ export default function IncidentsPage() {
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-white font-medium truncate">{offense.description}</span>
-                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-[#141e2b] text-gray-400 border border-gray-700'}`}>
                         {(offense.offense_level || 'other').toUpperCase()}
                       </span>
                       {offense.attempted_completed === 'attempted' && <span className="text-[8px] text-purple-400 bg-purple-900/30 px-1 py-0.5 rounded-sm border border-purple-700/30">ATTEMPTED</span>}
@@ -1712,7 +1712,7 @@ export default function IncidentsPage() {
                     officer.role === 'primary' ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50' :
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
                     officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
-                    'bg-gray-800 text-gray-400 border border-gray-700'
+                    'bg-[#141e2b] text-gray-400 border border-gray-700'
                   }`}>{officer.role}</span>
                   <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}

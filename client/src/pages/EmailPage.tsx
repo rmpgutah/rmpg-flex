@@ -1084,13 +1084,13 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-[#141e2b] border border-[#1e3048] rounded-t-lg sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-2xl shadow-black/50 transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
+        className={`bg-[#141e2b] border border-[#1e3048] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520] rounded-t-lg">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520] rounded-t-sm">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
@@ -1238,7 +1238,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#1e3048] bg-[#0d1520] rounded-b-lg">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#1e3048] bg-[#0d1520] rounded-b-sm">
           <div className="text-[9px] text-rmpg-600">
             <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
             <span className="sm:hidden">Ctrl+Enter to send</span>

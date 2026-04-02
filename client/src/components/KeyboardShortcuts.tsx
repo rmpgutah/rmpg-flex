@@ -100,7 +100,7 @@ export const KeyboardShortcuts: React.FC = () => {
       onClick={() => setIsOpen(false)}
     >
       <div
-        className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[65vh] flex flex-col"
+        className="bg-surface-base border border-rmpg-600 shadow-md w-full max-w-2xl max-h-[65vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

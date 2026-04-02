@@ -163,7 +163,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
             return (
               <div key={p} className="flex items-center gap-3 px-3 py-2">
                 <span className="text-xs text-rmpg-500 font-mono w-5">{i + 1}.</span>
-                <div className={`w-2 h-2 rounded-full ${info?.available ? 'bg-green-500' : 'bg-gray-500'}`} />
+                <div className={`w-2 h-2 rounded-full ${info?.available ? 'bg-green-500' : 'bg-[#2a3e58]'}`} />
                 <span className="text-xs text-white flex-1">{p.charAt(0).toUpperCase() + p.slice(1)}</span>
                 <div className="flex gap-0.5">
                   <button

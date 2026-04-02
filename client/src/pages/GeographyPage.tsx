@@ -104,7 +104,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   P1: 'bg-red-600 text-white',
   P2: 'bg-amber-600 text-white',
   P3: 'bg-blue-600 text-white',
-  P4: 'bg-gray-600 text-white',
+  P4: 'bg-[#1e3048] text-white',
 };
 
 // ── Page Component ─────────────────────────────────────────

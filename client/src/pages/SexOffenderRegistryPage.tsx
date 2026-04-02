@@ -999,7 +999,7 @@ function RecordFormModal({
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
-        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl"
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-md"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >
@@ -1163,7 +1163,7 @@ function ImportModal({
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
-        className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl"
+        className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-md"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >

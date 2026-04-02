@@ -2537,7 +2537,7 @@ export default function WarrantsPage() {
         <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setPersonProfileOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
-            className={`relative ${isMobile ? 'w-full' : 'w-[420px]'} h-full bg-surface-base border-l border-rmpg-600 shadow-2xl flex flex-col overflow-hidden`}
+            className={`relative ${isMobile ? 'w-full' : 'w-[420px]'} h-full bg-surface-base border-l border-rmpg-600 shadow-md flex flex-col overflow-hidden`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600 bg-[var(--grid-header-bg)]">
@@ -2909,7 +2909,7 @@ export default function WarrantsPage() {
       {utahDetailWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setUtahDetailWarrant(null)}>
           <div
-            className="bg-[#0d1520] border border-[#1e3048] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-2xl"
+            className="bg-[#0d1520] border border-[#1e3048] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}

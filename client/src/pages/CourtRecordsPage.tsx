@@ -568,7 +568,7 @@ export default function CourtRecordsPage() {
       {showCreateModal && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div
-            className="bg-[#141e2b] border border-[#1e3048] w-full max-w-lg mx-4 shadow-2xl animate-fadeIn"
+            className="bg-[#141e2b] border border-[#1e3048] w-full max-w-lg mx-4 shadow-md animate-fadeIn"
             onClick={e => e.stopPropagation()}
           >
             <PanelTitleBar title="NEW COURT EVENT" icon={Plus}>
@@ -732,7 +732,7 @@ export default function CourtRecordsPage() {
       {showOutcomeModal !== null && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowOutcomeModal(null)}>
           <div
-            className="bg-[#141e2b] border border-[#1e3048] w-full max-w-md mx-4 shadow-2xl animate-fadeIn"
+            className="bg-[#141e2b] border border-[#1e3048] w-full max-w-md mx-4 shadow-md animate-fadeIn"
             onClick={e => e.stopPropagation()}
           >
             <PanelTitleBar title="RECORD OUTCOME" icon={Scale}>

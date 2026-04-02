@@ -92,7 +92,7 @@ export default function MapOverlays({
         style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
       >
         <div
-          className="backdrop-blur-md shadow-2xl transition-all duration-200"
+          className="backdrop-blur-md shadow-md transition-all duration-200"
           role="status"
           aria-label="Map statistics"
           style={{
@@ -266,7 +266,7 @@ export default function MapOverlays({
           }}
           className={`backdrop-blur-md shadow-xl transition-colors ${
             isLightMapStyle(mapStyle)
-              ? 'bg-white/90 border border-gray-300 hover:bg-gray-100'
+              ? 'bg-white/90 border border-gray-300 hover:bg-[#1a2636]'
               : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
           }`}
           style={isMobile

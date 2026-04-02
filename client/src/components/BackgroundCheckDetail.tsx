@@ -65,7 +65,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
-        className="bg-surface-base border border-rmpg-700 rounded-sm shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        className="bg-surface-base border border-rmpg-700 rounded-sm shadow-md w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

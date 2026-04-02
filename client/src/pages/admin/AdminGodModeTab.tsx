@@ -504,7 +504,7 @@ export default function AdminGodModeTab() {
             <div className="bg-[#0d1520] rounded-sm p-2 max-h-40 overflow-y-auto">
               {userPresence.users.map((u: any, i: number) => (
                 <div key={i} className="flex items-center gap-2 py-0.5 border-b border-[#1a2636]/50 text-[11px]">
-                  <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-600'}`} />
+                  <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-[#1e3048]'}`} />
                   <span className="text-gray-300 font-mono">{u.username || u.full_name}</span>
                   <span className="text-gray-600 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                   {u.last_seen && <span className="text-gray-600 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}

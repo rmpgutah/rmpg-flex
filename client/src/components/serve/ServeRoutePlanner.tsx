@@ -599,7 +599,7 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl shadow-black/40 animate-in zoom-in-95 duration-200">
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         {/* ─── Header ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
           <div className="flex items-center gap-2">
@@ -634,7 +634,7 @@ export default function ServeRoutePlanner({
             </button>
             <button type="button"
               onClick={onClose}
-              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#1a2636] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
               aria-label="Close route planner"
             >
               <X size={16} />
