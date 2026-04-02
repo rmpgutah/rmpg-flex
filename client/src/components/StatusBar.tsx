@@ -61,7 +61,7 @@ export default function StatusBar({
       <div className="status-bar-section">
         <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span>
         {callsByPriority && callsByPriority.length > 0 && activeCallCount > 0 && (
-          <span style={{ color: '#5a6e80', marginLeft: 4 }}>
+          <span style={{ color: '#666666', marginLeft: 4 }}>
             ({callsByPriority.filter(p => p.count > 0).map(p => `${p.count} ${p.priority}`).join(', ')})
           </span>
         )}
@@ -93,7 +93,7 @@ export default function StatusBar({
                 GPS: {gpsUnitCallSign || 'ON'}
               </span>
               {gpsAccuracy != null && (
-                <span className="tabular-nums" style={{ color: '#5a6e80', marginLeft: 4 }}>
+                <span className="tabular-nums" style={{ color: '#666666', marginLeft: 4 }}>
                   ±{Math.round(gpsAccuracy)}m
                 </span>
               )}
@@ -105,7 +105,7 @@ export default function StatusBar({
             </>
           );
         })() : (
-          <span style={{ color: '#3a4e60' }}>GPS: OFF</span>
+          <span style={{ color: '#3a3a3a' }}>GPS: OFF</span>
         )}
       </div>
 
@@ -124,7 +124,7 @@ export default function StatusBar({
         <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
-        <span style={{ color: '#5a6e80', marginLeft: 8 }}>
+        <span style={{ color: '#666666', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',

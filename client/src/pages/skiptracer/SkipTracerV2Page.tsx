@@ -242,7 +242,7 @@ function detectInputType(q: string): InputType {
 }
 
 const INPUT_BADGE_COLORS: Record<InputType, string> = {
-  Name: '#60a5fa',
+  Name: '#aaaaaa',
   Phone: '#f59e0b',
   Email: '#f472b6',
   Address: '#34d399',
@@ -251,7 +251,7 @@ const INPUT_BADGE_COLORS: Record<InputType, string> = {
 // ─── Source category colors ──────────────────────────────────
 
 const CATEGORY_COLORS: Record<string, string> = {
-  people: '#3b82f6',
+  people: '#888888',
   court: '#22c55e',
   property: '#f59e0b',
   business: '#8b5cf6',
@@ -998,8 +998,8 @@ export default function SkipTracerV2Page() {
                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
                 style={{
                   backgroundColor: isActive ? color + '33' : 'transparent',
-                  color: isActive ? color : '#556677',
-                  borderColor: isActive ? color + '55' : '#1e2d40',
+                  color: isActive ? color : '#555555',
+                  borderColor: isActive ? color + '55' : '#1e1e1e',
                 }}
               >
                 {cat}
@@ -1025,7 +1025,7 @@ export default function SkipTracerV2Page() {
                 key={s.name}
                 title={`${s.displayName || s.name} — ${s.healthy ? 'OK' : s.enabled ? 'Error' : 'Disabled'}`}
                 className="w-2 h-2 rounded-full flex-shrink-0 cursor-help"
-                style={{ backgroundColor: s.healthy ? '#22c55e' : s.enabled ? '#f59e0b' : '#334455' }}
+                style={{ backgroundColor: s.healthy ? '#22c55e' : s.enabled ? '#f59e0b' : '#444444' }}
               />
             ))}
           </div>
@@ -1276,7 +1276,7 @@ export default function SkipTracerV2Page() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { label: 'Addresses', count: selected.addresses?.length || 0, icon: MapPin, color: '#f59e0b' },
-              { label: 'Phones', count: selected.phones?.length || 0, icon: Phone, color: '#3b82f6' },
+              { label: 'Phones', count: selected.phones?.length || 0, icon: Phone, color: '#888888' },
               { label: 'Court', count: selected.courtRecords?.length || 0, icon: Scale, color: '#22c55e' },
               { label: 'Sources', count: selected.sources.length, icon: Database, color: '#a855f7' },
             ].map(item => {
@@ -1825,7 +1825,7 @@ export default function SkipTracerV2Page() {
               <div className="flex items-center gap-2">
                 <span
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: s.healthy ? '#22c55e' : s.enabled ? '#f59e0b' : '#334455' }}
+                  style={{ backgroundColor: s.healthy ? '#22c55e' : s.enabled ? '#f59e0b' : '#444444' }}
                 />
                 <div>
                   <div className="text-[11px] font-bold text-white">{s.displayName || s.name}</div>
@@ -1875,7 +1875,7 @@ export default function SkipTracerV2Page() {
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Today', value: stats.totalSearches.today, color: '#3b82f6' },
+              { label: 'Today', value: stats.totalSearches.today, color: '#888888' },
               { label: 'This Week', value: stats.totalSearches.week, color: '#22c55e' },
               { label: 'All Time', value: stats.totalSearches.allTime, color: '#a855f7' },
             ].map(item => (

@@ -47,7 +47,7 @@ function activityColor(type: string): string {
     case 'leave_request': return '#f59e0b';
     case 'leave_approved': return '#22c55e';
     case 'disciplinary': return '#ef4444';
-    case 'review': return '#3b82f6';
+    case 'review': return '#888888';
     case 'commendation': return '#8b5cf6';
     default: return '#6b7280';
   }
@@ -83,7 +83,7 @@ function MetricCard({
   icon: Icon,
   label,
   value,
-  accent = '#3b82f6',
+  accent = '#888888',
   onClick,
 }: {
   icon: React.ElementType;
@@ -109,7 +109,7 @@ function MetricCard({
 }
 
 // ─── Progress Bar ───────────────────────────────────────────
-function ProgressBar({ label, pct, color = '#3b82f6' }: { label: string; pct: number; color?: string }) {
+function ProgressBar({ label, pct, color = '#888888' }: { label: string; pct: number; color?: string }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
@@ -170,7 +170,7 @@ function ManagerDashboard({
     <div className="space-y-4">
       {/* Top metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="group" aria-label="HR metrics">
-        <MetricCard icon={Users} label="Total Active" value={data.total_active} accent="#3b82f6" />
+        <MetricCard icon={Users} label="Total Active" value={data.total_active} accent="#888888" />
         <MetricCard icon={UserPlus} label="New Hires (30d)" value={data.new_hires_30d} accent="#22c55e" />
         <MetricCard icon={CalendarOff} label="On Leave Today" value={data.on_leave_today} accent="#f59e0b" />
         <MetricCard
@@ -279,7 +279,7 @@ function OfficerDashboard({
       {/* PTO Balances */}
       {balances ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <BalanceCard label="Vacation" used={balances.vacation_used} total={balances.vacation_total} color="#3b82f6" />
+          <BalanceCard label="Vacation" used={balances.vacation_used} total={balances.vacation_total} color="#888888" />
           <BalanceCard label="Sick" used={balances.sick_used} total={balances.sick_total} color="#ef4444" />
           <BalanceCard label="Personal" used={balances.personal_used} total={balances.personal_total} color="#8b5cf6" />
         </div>

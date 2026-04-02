@@ -44,7 +44,7 @@ function markerColor(status: ServeJob['status']): string {
     case 'served': return '#22c55e';      // green
     case 'in_progress': return '#eab308'; // yellow
     case 'failed': return '#ef4444';      // red
-    default: return '#3b82f6';            // blue — pending/unvisited
+    default: return '#888888';            // blue — pending/unvisited
   }
 }
 
@@ -295,7 +295,7 @@ export default function ServeRoutePlanner({
         map,
         suppressMarkers: true, // we draw our own numbered markers
         polylineOptions: {
-          strokeColor: '#3b82f6',
+          strokeColor: '#888888',
           strokeWeight: 4,
           strokeOpacity: 0.8,
         },
@@ -358,7 +358,7 @@ export default function ServeRoutePlanner({
         map: mapRef.current,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
-          fillColor: '#3b82f6',
+          fillColor: '#888888',
           fillOpacity: 1,
           strokeColor: '#ffffff',
           strokeWeight: 2,
@@ -709,7 +709,7 @@ export default function ServeRoutePlanner({
 
                     {/* Order Number */}
                     <span className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold text-[#d4a017] tabular-nums"
-                      style={{ backgroundColor: stop.selected ? markerColor(stop.job.status) : '#374151', boxShadow: stop.selected ? `0 0 6px ${markerColor(stop.job.status)}80` : 'none' }}
+                      style={{ backgroundColor: stop.selected ? markerColor(stop.job.status) : '#444444', boxShadow: stop.selected ? `0 0 6px ${markerColor(stop.job.status)}80` : 'none' }}
                     >
                       {idx + 1}
                     </span>

@@ -48,7 +48,7 @@ function parseEquipment(eq: unknown): string[] {
 }
 
 const TYPE_BORDER_COLOR: Record<string, string> = {
-  oil_change: '#3b82f6', tire_rotation: '#06b6d4',
+  oil_change: '#888888', tire_rotation: '#22c55e',
   brake_service: '#ef4444', inspection: '#22c55e',
   repair: '#f59e0b', other: '#6b7280',
 };

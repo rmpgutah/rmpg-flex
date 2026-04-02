@@ -65,7 +65,7 @@ interface AnalysisDashboardPanelProps {
 function shiftColor(shift: string): string {
   const s = shift.toLowerCase();
   if (s.includes('day')) return '#d4a017';
-  if (s.includes('swing')) return '#3b82f6';
+  if (s.includes('swing')) return '#888888';
   if (s.includes('night') || s.includes('grave')) return '#a855f7';
   return '#6b7280';
 }
@@ -101,14 +101,14 @@ export default function AnalysisDashboardPanel({
       style={{
         width: 320,
         maxHeight: 'calc(100dvh - 160px)',
-        background: '#141e2b',
+        background: '#0a0a0a',
         border: '1px solid #1e2a3a',
       }}
     >
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-purple-400" />
@@ -181,7 +181,7 @@ export default function AnalysisDashboardPanel({
                       onClick={() => onNavigate(loc.latitude, loc.longitude)}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-surface-raised/50 transition-all duration-150 active:scale-[0.97] group"
                       style={{
-                        background: '#0d1520',
+                        background: '#050505',
                         borderLeft: `2px solid ${loc.safetyRisk === 'high' ? '#ef4444' : '#f59e0b'}`,
                       }}
                     >
@@ -239,7 +239,7 @@ export default function AnalysisDashboardPanel({
                     <div
                       key={i}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-sm"
-                      style={{ background: '#0d1520' }}
+                      style={{ background: '#050505' }}
                     >
                       <div className="flex-1 min-w-0">
                         <span
@@ -290,7 +290,7 @@ export default function AnalysisDashboardPanel({
               <div className="space-y-1.5">
                 <div
                   className="w-full h-3 rounded-sm overflow-hidden"
-                  style={{ background: '#0d1520' }}
+                  style={{ background: '#050505' }}
                 >
                   <div
                     className="h-full rounded-sm transition-all duration-500"
@@ -395,7 +395,7 @@ function MetricCell({
   return (
     <div
       className="flex flex-col items-center justify-center py-2 px-1 rounded-sm panel-inset"
-      style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
     >
       {/* #52: Metric cell value with text shadow glow */}
       <span className="text-[14px] font-mono font-bold leading-none tabular-nums" style={{ color, textShadow: `0 0 8px ${color}30` }}>
@@ -420,7 +420,7 @@ function SectionBlock({
   return (
     <div
       className="rounded-sm p-2 panel-inset"
-      style={{ background: '#141e2b', border: '1px solid #1e2a3a' }}
+      style={{ background: '#0a0a0a', border: '1px solid #1e2a3a' }}
     >
       <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #1e2a3a, #2a3f5a, #1e2a3a) 1' }}>
         {icon}

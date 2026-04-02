@@ -54,7 +54,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'county.geojson',
     visible: true,
     selectable: true,
-    style: { fillColor: '#1a2636', fillOpacity: 0.15, strokeColor: '#3b82f6', strokeOpacity: 0.5, strokeWeight: 1.5 },
+    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#888888', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],
@@ -101,7 +101,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'place.geojson',
     visible: false,
     selectable: false,
-    style: { fillColor: '#06b6d4', fillOpacity: 0.7, strokeColor: '#06b6d4', strokeOpacity: 0.9, strokeWeight: 1, iconScale: 4 },
+    style: { fillColor: '#22c55e', fillOpacity: 0.7, strokeColor: '#22c55e', strokeOpacity: 0.9, strokeWeight: 1, iconScale: 4 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['COUNTY', 'POPULATION', 'TYPE'],
@@ -130,12 +130,12 @@ const ASSIGNED_STYLE = {
 // ── Section color palette (12 distinct hues for beat sections) ──
 
 export const SECTION_COLORS: Record<string, string> = {
-  SL1: '#22c55e', SL2: '#3b82f6', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#06b6d4',
+  SL1: '#22c55e', SL2: '#888888', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#22c55e',
   DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
   WB1: '#8b5cf6', WB2: '#10b981',
   UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
 };
-const SECTION_COLOR_FALLBACKS = ['#64748b', '#78716c', '#a3a3a3', '#71717a', '#737373', '#6b7280'];
+const SECTION_COLOR_FALLBACKS = ['#666666', '#78716c', '#a3a3a3', '#71717a', '#737373', '#6b7280'];
 
 export function getSectionColor(sectionId: string): string {
   if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];

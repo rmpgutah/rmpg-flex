@@ -429,7 +429,7 @@ export default function DashCamerasPage() {
 
   // ── Detail Panel (Right Panel) ───────────
   const detailPanel = selectedVideo ? (
-    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ background: '#050505' }}>
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
         style={{ background: 'linear-gradient(180deg, #1e3048, #1a2636)', borderBottom: '1px solid #141e2b' }}>
@@ -455,7 +455,7 @@ export default function DashCamerasPage() {
         {selectedVideo.cpg_channel && (
           <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-[9px] font-mono font-bold uppercase tracking-wider"
             style={{
-              color: selectedVideo.cpg_channel === 'outside' ? '#60a5fa' : '#c084fc',
+              color: selectedVideo.cpg_channel === 'outside' ? '#aaaaaa' : '#c084fc',
               border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#2563eb40' : '#7c3aed40'}`,
             }}>
             {selectedVideo.cpg_channel === 'outside' ? 'FRONT CAM' : 'REAR CAM'}
@@ -700,7 +700,7 @@ export default function DashCamerasPage() {
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
 
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
-          <span className="led-dot" style={{ width: 5, height: 5, background: '#60a5fa', boxShadow: '0 0 4px #60a5fa80' }} />
+          <span className="led-dot" style={{ width: 5, height: 5, background: '#aaaaaa', boxShadow: '0 0 4px #60a5fa80' }} />
           <span className="text-[10px] font-mono font-bold text-blue-400">{stats.frontCam}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Front</span>
         </div>
@@ -828,7 +828,7 @@ export default function DashCamerasPage() {
       {/* ── Pagination ───────────────────── */}
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between px-3 py-1 flex-shrink-0"
-          style={{ borderTop: '1px solid #141e2b', background: '#0d1520' }}>
+          style={{ borderTop: '1px solid #141e2b', background: '#050505' }}>
           <span className="text-[10px] text-rmpg-500">
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>

@@ -43,10 +43,10 @@ import { useToast } from '../components/ToastProvider';
 
 const UNIT_STATUSES = [
   { label: 'AVAIL', status: 'available', color: '#22c55e' },
-  { label: 'ENROUTE', status: 'enroute', color: '#3b82f6' },
+  { label: 'ENROUTE', status: 'enroute', color: '#888888' },
   { label: 'ON SCENE', status: 'onscene', color: '#a855f7' },
   { label: 'BUSY', status: 'busy', color: '#ef4444' },
-  { label: 'OFF', status: 'off_duty', color: '#5a6e80' },
+  { label: 'OFF', status: 'off_duty', color: '#666666' },
 ] as const;
 
 // ── MDT Messages Panel ────────────────────────────────────
@@ -121,11 +121,11 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
   };
 
   const channelBadge = (ch: string) => {
-    const colors: Record<string, string> = { dispatch: '#3b82f6', broadcast: '#a855f7', direct: '#22c55e', zone: '#f59e0b' };
+    const colors: Record<string, string> = { dispatch: '#888888', broadcast: '#a855f7', direct: '#22c55e', zone: '#f59e0b' };
     return (
       <span
         className="text-[7px] font-black uppercase px-1 py-px rounded-sm"
-        style={{ background: colors[ch] || '#5a6e80', color: '#000', letterSpacing: '0.05em' }}
+        style={{ background: colors[ch] || '#666666', color: '#000', letterSpacing: '0.05em' }}
       >
         {ch}
       </span>
@@ -195,9 +195,9 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               onClick={() => setComposeChannel(ch)}
               className="text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors"
               style={{
-                background: composeChannel === ch ? '#3b82f6' : 'transparent',
-                color: composeChannel === ch ? '#000' : '#5a6e80',
-                border: `1px solid ${composeChannel === ch ? '#3b82f6' : '#1e3048'}`,
+                background: composeChannel === ch ? '#888888' : 'transparent',
+                color: composeChannel === ch ? '#000' : '#666666',
+                border: `1px solid ${composeChannel === ch ? '#888888' : '#222222'}`,
               }}
             >
               {ch}
@@ -505,7 +505,7 @@ export default function MdtPage() {
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#5a6e80';
+      default: return '#666666';
     }
   };
 
@@ -680,7 +680,7 @@ export default function MdtPage() {
           <div className="text-[9px] text-green-500 font-mono font-bold">
             {getStatusElapsed(myCalls[0]) ? formatTimer(getStatusElapsed(myCalls[0])!) : ''}
           </div>
-          <ChevronRight style={{ width: 12, height: 12, color: '#5a6e80' }} />
+          <ChevronRight style={{ width: 12, height: 12, color: '#666666' }} />
         </div>
       )}
 
@@ -696,9 +696,9 @@ export default function MdtPage() {
                 onClick={() => setActiveTab(tab)}
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
-                  background: activeTab === tab ? '#141e2b' : 'transparent',
-                  color: activeTab === tab ? (tab === 'ncic' ? '#22d3ee' : '#fff') : '#5a6e80',
-                  borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22d3ee' : '#22c55e'}` : '2px solid transparent',
+                  background: activeTab === tab ? '#0a0a0a' : 'transparent',
+                  color: activeTab === tab ? (tab === 'ncic' ? '#22c55e' : '#fff') : '#666666',
+                  borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22c55e' : '#22c55e'}` : '2px solid transparent',
                 }}
               >
                 {tab === 'my-calls' ? `My Calls (${myCalls.length})` :
@@ -990,9 +990,9 @@ export default function MdtPage() {
                           key={u}
                           className="text-[9px] font-mono font-bold px-1.5 py-0.5"
                           style={{
-                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : '#1a2636',
-                            color: u === myUnit?.call_sign ? '#22c55e' : '#8a9aaa',
-                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : '#1e3048'}`,
+                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : '#141414',
+                            color: u === myUnit?.call_sign ? '#22c55e' : '#888888',
+                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : '#222222'}`,
                           }}
                         >
                           {u}

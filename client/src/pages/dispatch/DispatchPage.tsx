@@ -2577,7 +2577,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#374151', border: '1px solid #4b5563', color: '#d1d5db', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #4b5563', color: '#d1d5db', touchAction: 'manipulation' }}
                     >
                       Close
                     </button>
@@ -2669,7 +2669,7 @@ export default function DispatchPage() {
                     {([
                       { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#9ca3af' },
                       { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
+                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
                       { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
                       { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
                       { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
@@ -2781,7 +2781,7 @@ export default function DispatchPage() {
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
                       className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : '#888888', border: '1px solid #2a6ab0' }}
+                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#444444' : '#888888', border: '1px solid #2a6ab0' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
                     </button>
@@ -2913,7 +2913,7 @@ export default function DispatchPage() {
                           <button type="button"
                             className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
                             style={{
-                              background: sendingToServe ? '#374151' : '#7c3aed20',
+                              background: sendingToServe ? '#444444' : '#7c3aed20',
                               border: '1px solid #7c3aed50',
                               color: sendingToServe ? '#9ca3af' : '#a78bfa',
                             }}
@@ -2955,7 +2955,7 @@ export default function DispatchPage() {
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
                                 {visit.time_window && (
-                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#88888820', border: '1px solid #88888840', color: '#6ba3d4' }}>
+                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#88888820', border: '1px solid #88888840', color: '#888888' }}>
                                     {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
                                     {visit.is_weekend ? ' (wknd)' : ''}
                                   </span>
@@ -3233,7 +3233,7 @@ export default function DispatchPage() {
                   minWidth: '220px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#1a2636',
+                  background: '#141414',
                   border: '1px solid #2a3e58',
                   borderRadius: '2px',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
@@ -3260,8 +3260,8 @@ export default function DispatchPage() {
                         setShowTemplateDropdown(false);
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
-                      style={{ fontSize: '11px', color: '#b0bcc8', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a3e58'; }}
+                      style={{ fontSize: '11px', color: '#aaaaaa', background: 'transparent', border: 'none', borderRadius: 0 }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2e2e2e'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
                       <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
@@ -3302,7 +3302,7 @@ export default function DispatchPage() {
         />
 
         {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1.5 border-b border-[#1e3048] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#0d1520' }}>
+        <div className="px-3 py-1.5 border-b border-[#1e3048] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
           {(() => {
             const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
             const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
@@ -3561,7 +3561,7 @@ export default function DispatchPage() {
                   )}
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#1e3048] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#0d1520' }}>
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#1e3048] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
@@ -3827,7 +3827,7 @@ export default function DispatchPage() {
 
               {/* Call Duration + Response Time + Safety Summary — always visible above tabs */}
               {!isEditing && (
-                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
+                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#050505', borderBottom: '1px solid #1e3048' }}>
                   {/* Call duration — running timer */}
                   <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
                     <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
@@ -3876,7 +3876,7 @@ export default function DispatchPage() {
                       <div className="flex items-center gap-1 ml-auto">
                         <AlertTriangle style={{ width: 10, height: 10 }} className="text-red-400" />
                         {flags.map(f => (
-                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c4b5fd' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#60a5fa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c4b5fd' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
                             {f}
                           </span>
                         ))}
@@ -3887,7 +3887,7 @@ export default function DispatchPage() {
               )}
 
               {/* Detail Tabs */}
-              <div className="flex border-b border-[#1e3048] flex-shrink-0" style={{ background: '#0d1520' }}>
+              <div className="flex border-b border-[#1e3048] flex-shrink-0" style={{ background: '#050505' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'flags'] as const).map(tab => {
                   const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', flags: 'Flags' };
                   const icons: Record<string, React.ReactNode> = {
@@ -3910,7 +3910,7 @@ export default function DispatchPage() {
                       onClick={() => setDetailTab(tab)}
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
-                        color: isActive ? '#4a9ede' : '#6b7280',
+                        color: isActive ? '#999999' : '#6b7280',
                         background: isActive ? 'rgba(26,90,158,0.1)' : 'transparent',
                         borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                       }}
@@ -3920,7 +3920,7 @@ export default function DispatchPage() {
                       <span className="flex items-center gap-1.5">
                         {icons[tab]}
                         {labels[tab]}
-                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#1e304830', color: isActive ? '#4a9ede' : '#6b7280' }}>{count}</span> : ''}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#1e304830', color: isActive ? '#999999' : '#6b7280' }}>{count}</span> : ''}
                       </span>
                     </button>
                   );
@@ -4127,14 +4127,14 @@ export default function DispatchPage() {
                         {([
                           { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#6b7280', showElapsed: true },
                           { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
+                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
                           { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
                           { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
                           { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
                           { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#6b7280' },
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#1e3048', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
                             <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
@@ -4269,10 +4269,10 @@ export default function DispatchPage() {
                             const displayName = unitObj ? unitObj.call_sign : unitIdStr;
                             const statusColor = unitObj ? (
                               unitObj.status === 'onscene' ? '#a855f7' :
-                              unitObj.status === 'enroute' ? '#3b82f6' :
+                              unitObj.status === 'enroute' ? '#888888' :
                               unitObj.status === 'dispatched' ? '#f59e0b' :
                               '#22c55e'
-                            ) : '#5a6e80';
+                            ) : '#666666';
                             const statusLabel = unitObj ? (
                               unitObj.status === 'onscene' ? 'OS' :
                               unitObj.status === 'enroute' ? 'ER' :
@@ -4878,7 +4878,7 @@ export default function DispatchPage() {
                             </span>
                           )}
                           {selectedCall.pso_authorization && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#3b82f615', border: '1px solid #3b82f635', color: '#93c5fd' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#3b82f615', border: '1px solid #3b82f635', color: '#cccccc' }}>
                               AUTH: {selectedCall.pso_authorization}
                             </span>
                           )}
@@ -5185,7 +5185,7 @@ export default function DispatchPage() {
                   <div className="border-t border-[#1e3048] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
-                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#60a5fa' }}>
+                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#aaaaaa' }}>
                         {selectedCall.visit_history.length} PRIOR {selectedCall.visit_history.length === 1 ? 'VISIT' : 'VISITS'}
                       </span>
                     </label>
@@ -5253,20 +5253,20 @@ export default function DispatchPage() {
                         { field: 'drugs_involved', label: 'Drugs', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'domestic_violence', label: 'DV', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'injuries_reported', label: 'Injuries', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'supervisor_notified', label: 'Supervisor', onBg: '#3b82f630', onBorder: '#3b82f650', onText: '#60a5fa' },
-                        { field: 'le_notified', label: 'LE Notified', onBg: '#3b82f630', onBorder: '#3b82f650', onText: '#60a5fa' },
+                        { field: 'supervisor_notified', label: 'Supervisor', onBg: '#3b82f630', onBorder: '#3b82f650', onText: '#aaaaaa' },
+                        { field: 'le_notified', label: 'LE Notified', onBg: '#3b82f630', onBorder: '#3b82f650', onText: '#aaaaaa' },
                         { field: 'mental_health_crisis', label: 'Mental Health', onBg: '#a855f730', onBorder: '#a855f750', onText: '#c084fc' },
                         { field: 'juvenile_involved', label: 'Juvenile', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
                         { field: 'felony_in_progress', label: 'Felony', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'officer_safety_caution', label: 'Officer Safety', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'gang_related', label: 'Gang', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'body_camera_active', label: 'Body Cam', onBg: '#22c55e30', onBorder: '#22c55e50', onText: '#4ade80' },
-                        { field: 'k9_requested', label: 'K9', onBg: '#06b6d430', onBorder: '#06b6d450', onText: '#22d3ee' },
+                        { field: 'k9_requested', label: 'K9', onBg: '#06b6d430', onBorder: '#06b6d450', onText: '#22c55e' },
                         { field: 'ems_requested', label: 'EMS', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'fire_requested', label: 'Fire', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
                         { field: 'hazmat', label: 'HazMat', onBg: '#eab30830', onBorder: '#eab30850', onText: '#fbbf24' },
                         { field: 'evidence_collected', label: 'Evidence', onBg: '#10b98130', onBorder: '#10b98150', onText: '#34d399' },
-                        { field: 'photos_taken', label: 'Photos', onBg: '#6366f130', onBorder: '#6366f150', onText: '#818cf8' },
+                        { field: 'photos_taken', label: 'Photos', onBg: '#6366f130', onBorder: '#6366f150', onText: '#aaaaaa' },
                         { field: 'trespass_issued', label: 'Trespass', onBg: '#f59e0b30', onBorder: '#f59e0b50', onText: '#fbbf24' },
                         { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
@@ -5325,7 +5325,7 @@ export default function DispatchPage() {
                     <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {activityEntries.map((entry: any, idx: number) => {
                         const actionColor = (entry.action || '').includes('dispatch') ? '#f59e0b' :
-                          (entry.action || '').includes('enroute') ? '#3b82f6' :
+                          (entry.action || '').includes('enroute') ? '#888888' :
                           (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? '#a855f7' :
                           (entry.action || '').includes('clear') ? '#22c55e' :
                           (entry.action || '').includes('note') ? '#6b7280' :
@@ -5663,7 +5663,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-            style={{ background: '#1a2636', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
+            style={{ background: '#141414', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -5711,7 +5711,7 @@ export default function DispatchPage() {
               {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
                 <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
-                  style={{ background: pri === 'P1' ? '#dc2626' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#2563eb' : '#4b5563', color: '#fff' }}>
+                  style={{ background: pri === 'P1' ? '#dc2626' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
                   {pri}
                 </button>
               ))}
@@ -5790,7 +5790,7 @@ export default function DispatchPage() {
 
             <div className="p-4 space-y-4">
               {/* Template banner */}
-              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: '#0d1520' }}>
+              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: '#050505' }}>
                 <span className={`text-xs font-bold px-2 py-0.5 border ${
                   quickTemplateData.priority === 'P1' ? 'border-red-500 text-red-400 bg-red-900/30' :
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
@@ -6281,7 +6281,7 @@ export default function DispatchPage() {
       {showHandoffNotes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
           <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
                 <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
@@ -6317,7 +6317,7 @@ export default function DispatchPage() {
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[90]"
-        style={{ background: '#0d1520', borderColor: '#1a2636', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
+        style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
@@ -6334,10 +6334,10 @@ export default function DispatchPage() {
             PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? '#fbbf24' : '#4ade80' }}>{calls.filter(c => c.status === 'pending').length}</span>
           </span>
           <span style={{ color: '#9ca3af' }}>
-            ACTIVE: <span style={{ color: '#60a5fa' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
+            ACTIVE: <span style={{ color: '#aaaaaa' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
           </span>
           <span style={{ color: '#9ca3af' }}>
-            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? '#f97316' : '#4b5563' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
+            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? '#f97316' : '#555555' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
           </span>
           {(() => {
             const stacked = new Map<string, number>();
@@ -6358,7 +6358,7 @@ export default function DispatchPage() {
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
             <span style={{ color: '#86efac' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
           </span>
-          <span style={{ color: '#60a5fa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
+          <span style={{ color: '#aaaaaa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
           <span style={{ color: '#a78bfa' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
           <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
           <span style={{ color: '#6b7280' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
@@ -6370,14 +6370,14 @@ export default function DispatchPage() {
 
         {/* Right: F-key hints + clock */}
         <div className="flex items-center gap-2 text-[8px] tabular-nums">
-          <span style={{ color: '#4b5563' }}>F2:New</span>
-          <span style={{ color: '#4b5563' }}>F3:Disp</span>
-          <span style={{ color: '#4b5563' }}>F5:EnR</span>
-          <span style={{ color: '#4b5563' }}>F6:OnS</span>
-          <span style={{ color: '#4b5563' }}>F7:Clr</span>
-          <span style={{ color: '#4b5563' }}>F8:CMD</span>
-          <span style={{ color: '#4b5563' }}>F12:NCIC</span>
-          <span style={{ color: '#374151' }}>|</span>
+          <span style={{ color: '#555555' }}>F2:New</span>
+          <span style={{ color: '#555555' }}>F3:Disp</span>
+          <span style={{ color: '#555555' }}>F5:EnR</span>
+          <span style={{ color: '#555555' }}>F6:OnS</span>
+          <span style={{ color: '#555555' }}>F7:Clr</span>
+          <span style={{ color: '#555555' }}>F8:CMD</span>
+          <span style={{ color: '#555555' }}>F12:NCIC</span>
+          <span style={{ color: '#444444' }}>|</span>
           <span style={{ color: '#9ca3af' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
         </div>
       </div>

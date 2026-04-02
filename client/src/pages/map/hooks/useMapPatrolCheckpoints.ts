@@ -274,7 +274,7 @@ export function useMapPatrolCheckpoints(
       const polyline = new google.maps.Polyline({
         path,
         geodesic: true,
-        strokeColor: '#60a5fa',
+        strokeColor: '#aaaaaa',
         strokeOpacity: 0,
         strokeWeight: 2,
         map,

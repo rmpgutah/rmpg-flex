@@ -101,7 +101,7 @@ export default function ForcePasswordChangeModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#141e2b',
+          background: '#0a0a0a',
           border: '1px solid #1e3048',
           borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
@@ -198,7 +198,7 @@ export default function ForcePasswordChangeModal() {
                   {rule.met ? (
                     <Check style={{ width: 10, height: 10, color: '#22c55e', flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle style={{ width: 10, height: 10, color: '#5a6e80', flexShrink: 0 }} />
+                    <AlertCircle style={{ width: 10, height: 10, color: '#666666', flexShrink: 0 }} />
                   )}
                   <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
                     {rule.label}

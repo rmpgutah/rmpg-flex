@@ -297,13 +297,13 @@ export function useMapCoverageGaps(
             ];
             const arrowLine = new google.maps.Polyline({
               path: arrowPath,
-              strokeColor: '#60a5fa',
+              strokeColor: '#aaaaaa',
               strokeWeight: 2,
               strokeOpacity: 0.6,
               map,
               zIndex: 5,
               icons: [{
-                icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 3, fillColor: '#60a5fa', fillOpacity: 0.8, strokeWeight: 1, strokeColor: '#fff' },
+                icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 3, fillColor: '#aaaaaa', fillOpacity: 0.8, strokeWeight: 1, strokeColor: '#fff' },
                 offset: '100%',
               }],
             });

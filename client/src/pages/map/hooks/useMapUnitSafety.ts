@@ -269,9 +269,9 @@ export function useMapUnitSafety(
         const circle = new google.maps.Circle({
           center: { lat: cl.lat, lng: cl.lng },
           radius: 100,
-          fillColor: '#3b82f6',
+          fillColor: '#888888',
           fillOpacity: 0.15,
-          strokeColor: '#3b82f6',
+          strokeColor: '#888888',
           strokeWeight: 2,
           strokeOpacity: 0.5,
           map,

@@ -84,7 +84,7 @@ interface OfflineMapFallbackProps {
 const STATUS_COLORS: Record<string, string> = {
   available: '#22c55e',
   dispatched: '#f59e0b',
-  enroute: '#3b82f6',
+  enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
   off_duty: '#6b7280',
@@ -102,7 +102,7 @@ const STATUS_LABELS: Record<string, string> = {
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#ef4444',
   P2: '#f59e0b',
-  P3: '#3b82f6',
+  P3: '#888888',
   P4: '#6b7280',
 };
 
@@ -261,8 +261,8 @@ export default function OfflineMapFallback({
       if (selfPosition.accuracy && selfPosition.accuracy < 500) {
         selfAccuracyRef.current = L.circle(latlng, {
           radius: selfPosition.accuracy,
-          color: '#3b82f6',
-          fillColor: '#3b82f6',
+          color: '#888888',
+          fillColor: '#888888',
           fillOpacity: 0.08,
           weight: 1,
           opacity: 0.25,
@@ -566,8 +566,8 @@ export default function OfflineMapFallback({
             disabled={retrying}
             className="ml-2 flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
             style={{
-              background: retrying ? '#1e3048' : '#888888',
-              color: retrying ? '#5a6e80' : '#fff',
+              background: retrying ? '#222222' : '#888888',
+              color: retrying ? '#666666' : '#fff',
               borderRadius: 2,
             }}
           >
@@ -593,7 +593,7 @@ export default function OfflineMapFallback({
           }}
           title="Center on your position"
         >
-          <Navigation style={{ width: 18, height: 18, color: '#3b82f6' }} />
+          <Navigation style={{ width: 18, height: 18, color: '#888888' }} />
         </button>
       )}
 

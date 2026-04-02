@@ -20,14 +20,14 @@ interface Props {
 }
 
 const ROLE_HEX: Record<string, string> = {
-  admin: '#ef4444', manager: '#f59e0b', supervisor: '#3b82f6',
-  officer: '#22c55e', dispatcher: '#a855f7', contract_manager: '#06b6d4',
+  admin: '#ef4444', manager: '#f59e0b', supervisor: '#888888',
+  officer: '#22c55e', dispatcher: '#a855f7', contract_manager: '#22c55e',
 };
 
 const ChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#0d1520', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
+    <div style={{ background: '#050505', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
       <div style={{ color: '#e5e7eb', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
         {payload[0].name}: {payload[0].value}
       </div>
@@ -240,14 +240,14 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
               <AreaChart data={hoursByDay} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
                 <defs>
                   <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#888888" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#888888" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="hours" name="Hours" stroke="#3b82f6" fill="url(#hoursGrad)" strokeWidth={2} />
+                <Area type="monotone" dataKey="hours" name="Hours" stroke="#888888" fill="url(#hoursGrad)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

@@ -163,7 +163,7 @@ export default function TacticalSummaryPanel({
             {/* Field Interviews */}
             {showFieldInterviews && (
               <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
-                <DotIndicator color="#60a5fa" />
+                <DotIndicator color="#aaaaaa" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Field Interviews
                 </span>

@@ -64,7 +64,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           style={{
             background: 'none',
             border: 'none',
-            color: '#5a6e80',
+            color: '#666666',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',
@@ -90,16 +90,16 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
         gap: 8,
         fontSize: 10,
       }}>
-        <Wifi size={12} color="#3b82f6" style={{ flexShrink: 0 }} />
-        <span style={{ color: '#8a9aaa', flex: 1 }}>
-          Tracking via <strong style={{ color: '#3b82f6' }}>WiFi positioning</strong> — accuracy may be reduced
+        <Wifi size={12} color="#888888" style={{ flexShrink: 0 }} />
+        <span style={{ color: '#888888', flex: 1 }}>
+          Tracking via <strong style={{ color: '#888888' }}>WiFi positioning</strong> — accuracy may be reduced
         </span>
         <button type="button"
           onClick={() => setWifiDismissed(true)}
           style={{
             background: 'none',
             border: 'none',
-            color: '#5a6e80',
+            color: '#666666',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',

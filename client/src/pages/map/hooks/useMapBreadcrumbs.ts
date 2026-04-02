@@ -3,7 +3,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { escapeHtml } from '../../../utils/sanitize';
 
 // Unit colors for breadcrumb trails — cycle through distinct colors per unit
-const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
+const TRAIL_COLORS = ['#22c55e', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#aaaaaa', '#c084fc'];
 
 // Fix 15: cap trail points per unit to prevent performance issues
 const MAX_TRAIL_POINTS_PER_UNIT = 2000;
@@ -29,7 +29,7 @@ export const speedToColor = (speedMps: number | null): string => {
   if (speedMps == null || !Number.isFinite(speedMps) || speedMps < 0.2) return '#6b7280';  // Stationary (gray)
   const mph = speedMps * MPS_TO_MPH;
   if (mph < 3)   return '#9ca3af';   // Walking (light gray)
-  if (mph < 10)  return '#06b6d4';   // Jogging/Slow drive (cyan)
+  if (mph < 10)  return '#22c55e';   // Jogging/Slow drive (cyan)
   if (mph < 25)  return '#22c55e';   // Residential (green)
   if (mph < 35)  return '#84cc16';   // City street (lime)
   if (mph < 45)  return '#eab308';   // Urban arterial (yellow)
@@ -52,7 +52,7 @@ const speedToWeight = (speedMps: number | null): number => {
 export const SPEED_LEGEND_BANDS = [
   { color: '#6b7280', label: 'Stationary', range: '0 mph' },
   { color: '#9ca3af', label: 'Walking', range: '<3 mph' },
-  { color: '#06b6d4', label: 'Slow Drive', range: '3-10 mph' },
+  { color: '#22c55e', label: 'Slow Drive', range: '3-10 mph' },
   { color: '#22c55e', label: 'Residential', range: '10-25 mph' },
   { color: '#84cc16', label: 'City Street', range: '25-35 mph' },
   { color: '#eab308', label: 'Arterial', range: '35-45 mph' },
@@ -65,12 +65,12 @@ export const SPEED_LEGEND_BANDS = [
 const statusToColor = (status: string): string => {
   switch (status) {
     case 'dispatched': return '#f59e0b';
-    case 'enroute':    return '#3b82f6';
+    case 'enroute':    return '#888888';
     case 'onscene':    return '#ef4444';
     case 'available':  return '#22c55e';
     case 'busy':       return '#8b5cf6';
     case 'off_duty':   return '#6b7280';
-    default:           return '#5a6e80';
+    default:           return '#666666';
   }
 };
 

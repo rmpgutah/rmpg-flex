@@ -28,7 +28,7 @@ const RINGS = [
 // Cursor distance rings — concentric circles following mouse
 const CURSOR_RINGS = [
   { radiusMeters: 100,  strokeColor: '#22c55e', fillOpacity: 0.05, label: '100m' },
-  { radiusMeters: 250,  strokeColor: '#3b82f6', fillOpacity: 0.04, label: '250m' },
+  { radiusMeters: 250,  strokeColor: '#888888', fillOpacity: 0.04, label: '250m' },
   { radiusMeters: 500,  strokeColor: '#f59e0b', fillOpacity: 0.03, label: '500m' },
   { radiusMeters: 1000, strokeColor: '#ef4444', fillOpacity: 0.02, label: '1km' },
 ];

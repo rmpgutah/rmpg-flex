@@ -38,12 +38,12 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ];
 
 const MARKER_COLORS: Record<string, string> = {
-  pending: '#3b82f6',
+  pending: '#888888',
   in_progress: '#eab308',
   served: '#22c55e',
   failed: '#ef4444',
   skipped: '#6b7280',
-  archived: '#4b5563',
+  archived: '#555555',
 };
 
 const DOCUMENT_TYPES = [
@@ -571,7 +571,7 @@ export default function ServePage() {
         polylineRef.current = new google.maps.Polyline({
           path,
           geodesic: true,
-          strokeColor: '#3b82f6',
+          strokeColor: '#888888',
           strokeOpacity: 0.8,
           strokeWeight: 3,
           map: mapRef.current,
@@ -887,7 +887,7 @@ export default function ServePage() {
                           <span
                             className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0"
                             style={{
-                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#3b82f6',
+                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#888888',
                             }}
                           >
                             {idx + 1}
@@ -914,7 +914,7 @@ export default function ServePage() {
                           {/* Status badge */}
                           <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0" style={{
                             background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#3b82f620',
-                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#60a5fa',
+                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
                             border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#3b82f630'}`,
                           }}>
                             {job.status.replace('_', ' ')}

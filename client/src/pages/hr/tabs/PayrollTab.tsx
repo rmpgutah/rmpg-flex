@@ -84,7 +84,7 @@ interface OvertimeRequest {
 type SubTab = 'periods' | 'rates' | 'entries' | 'overtime' | 'leave';
 
 const STATUS_COLORS: Record<string, string> = {
-  open: '#3b82f6',
+  open: '#888888',
   processing: '#f59e0b',
   closed: '#22c55e',
   draft: '#6b7280',

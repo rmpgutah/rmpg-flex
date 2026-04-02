@@ -481,7 +481,7 @@ function RecordCard({
   onDelete?: () => void;
 }) {
   const isComm = rec.type === 'commendation';
-  const borderColor = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#3b82f6');
+  const borderColor = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
   const sBadge = statusBadge(rec.status);
   const fuStatus = followUpStatus(rec.follow_up_date);
 
@@ -601,7 +601,7 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
 
       {records.map(rec => {
         const isComm = rec.type === 'commendation';
-        const color = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#3b82f6');
+        const color = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
 
         return (
           <div key={rec.id} className="relative flex gap-3">

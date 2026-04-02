@@ -101,8 +101,8 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
             fontSize: 22,
             fontWeight: 700,
             fontFamily: 'monospace',
-            background: '#0d1520',
-            border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#1e3048'}`,
+            background: '#050505',
+            border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222'}`,
             borderRadius: 2,
             color: '#fff',
             outline: 'none',
@@ -114,7 +114,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
             e.target.select();
           }}
           onBlur={(e) => {
-            e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#1e3048';
+            e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222';
           }}
         />
       ))}

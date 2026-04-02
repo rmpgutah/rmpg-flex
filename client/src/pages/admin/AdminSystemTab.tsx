@@ -118,20 +118,20 @@ type SysSection = 'incident_types' | 'dispositions' | 'priorities' | 'call_sourc
 const DEFAULT_PRIORITIES: PriorityConfig[] = [
   { level: 'P1', label: 'Emergency', color: '#dc2626', target: '< 3 min' },
   { level: 'P2', label: 'Urgent', color: '#f59e0b', target: '< 5 min' },
-  { level: 'P3', label: 'Routine', color: '#3b82f6', target: '< 10 min' },
+  { level: 'P3', label: 'Routine', color: '#888888', target: '< 10 min' },
   { level: 'P4', label: 'Scheduled', color: '#6b7280', target: 'Scheduled' },
 ];
 
 const DEFAULT_CALL_SOURCES = ['phone', 'radio', 'walk_in', 'alarm', 'patrol', 'online', 'dispatch', 'email', 'servemanager', 'other'];
 
 const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
-  { type: 'patrol', label: 'Patrol', color: '#3b82f6' },
+  { type: 'patrol', label: 'Patrol', color: '#888888' },
   { type: 'supervisor', label: 'Supervisor', color: '#f59e0b' },
   { type: 'k9', label: 'K9', color: '#8b5cf6' },
   { type: 'medical', label: 'Medical', color: '#ef4444' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
   { type: 'foot', label: 'Foot Patrol', color: '#6366f1' },
-  { type: 'vehicle', label: 'Vehicle', color: '#64748b' },
+  { type: 'vehicle', label: 'Vehicle', color: '#666666' },
 ];
 
 const DEFAULT_EVIDENCE_TYPES = [
@@ -228,7 +228,7 @@ export default function AdminSystemTab({
   const [newIncidentType, setNewIncidentType] = useState('');
   const [newDispCode, setNewDispCode] = useState('');
   const [newDispDesc, setNewDispDesc] = useState('');
-  const [newDispColor, setNewDispColor] = useState('#3b82f6');
+  const [newDispColor, setNewDispColor] = useState('#888888');
 
   // Active section (sidebar navigation instead of collapsible sections)
   const [activeSection, setActiveSectionState] = useState<SysSection>(() => {
@@ -263,7 +263,7 @@ export default function AdminSystemTab({
   const [unitTypes, setUnitTypes] = useState<UnitTypeConfig[]>(DEFAULT_UNIT_TYPES);
   const [newUnitType, setNewUnitType] = useState('');
   const [newUnitLabel, setNewUnitLabel] = useState('');
-  const [newUnitColor, setNewUnitColor] = useState('#3b82f6');
+  const [newUnitColor, setNewUnitColor] = useState('#888888');
   const [unitTypesDirty, setUnitTypesDirty] = useState(false);
 
   // Dispatch Units
@@ -325,7 +325,7 @@ export default function AdminSystemTab({
   // Editing inline state — Disposition Codes
   const [editingDispId, setEditingDispId] = useState<number | null>(null);
   const [editDispDesc, setEditDispDesc] = useState('');
-  const [editDispColor, setEditDispColor] = useState('#3b82f6');
+  const [editDispColor, setEditDispColor] = useState('#888888');
 
   // Editing inline state — Call Sources
   const [editingCallSourceIdx, setEditingCallSourceIdx] = useState<number | null>(null);
@@ -334,7 +334,7 @@ export default function AdminSystemTab({
   // Editing inline state — Unit Types
   const [editingUnitTypeKey, setEditingUnitTypeKey] = useState<string | null>(null);
   const [editUnitTypeLabel, setEditUnitTypeLabel] = useState('');
-  const [editUnitTypeColor, setEditUnitTypeColor] = useState('#3b82f6');
+  const [editUnitTypeColor, setEditUnitTypeColor] = useState('#888888');
 
   // Editing inline state — Zones & Beats
   const [editingZoneCode, setEditingZoneCode] = useState<string | null>(null);
@@ -592,7 +592,7 @@ export default function AdminSystemTab({
       });
       setNewDispCode('');
       setNewDispDesc('');
-      setNewDispColor('#3b82f6');
+      setNewDispColor('#888888');
       await fetchConfig();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add disposition code');
@@ -603,7 +603,7 @@ export default function AdminSystemTab({
     try {
       const item = dispositionCodes.find((d) => d.id === id);
       if (!item) return;
-      let parsed = { code: '', description: '', color: '#3b82f6' };
+      let parsed = { code: '', description: '', color: '#888888' };
       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
 
       await apiFetch(`/admin/config/${id}`, {
@@ -693,7 +693,7 @@ export default function AdminSystemTab({
     setUnitTypes((prev) => [...prev, { type: t, label: lbl, color: newUnitColor }]);
     setNewUnitType('');
     setNewUnitLabel('');
-    setNewUnitColor('#3b82f6');
+    setNewUnitColor('#888888');
     setUnitTypesDirty(true);
   };
 
@@ -1348,7 +1348,7 @@ export default function AdminSystemTab({
                   </thead>
                   <tbody>
                     {dispositionCodes.map((item) => {
-                      let parsed = { code: '', description: '', color: '#3b82f6' };
+                      let parsed = { code: '', description: '', color: '#888888' };
                       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
                       const isEditing = editingDispId === item.id;
                       return (
@@ -1357,7 +1357,7 @@ export default function AdminSystemTab({
                             {isEditing ? (
                               <input type="color" value={editDispColor} onChange={(e) => setEditDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
                             ) : (
-                              <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: parsed.color || '#3b82f6' }} />
+                              <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: parsed.color || '#888888' }} />
                             )}
                           </td>
                           <td className="font-bold text-white font-mono">{parsed.code}</td>
@@ -1388,7 +1388,7 @@ export default function AdminSystemTab({
                               ) : (
                                 <>
                                   <button type="button"
-                                    onClick={() => { setEditingDispId(item.id); setEditDispDesc(parsed.description); setEditDispColor(parsed.color || '#3b82f6'); }}
+                                    onClick={() => { setEditingDispId(item.id); setEditDispDesc(parsed.description); setEditDispColor(parsed.color || '#888888'); }}
                                     className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400"
                                     title="Edit"
                                   >

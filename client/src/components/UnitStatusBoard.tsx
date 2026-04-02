@@ -87,7 +87,7 @@ export default React.memo(function UnitStatusBoard({
             onDragEnd={handleDragEnd}
             onClick={() => onUnitClick?.(unit)}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            style={{ background: '#141e2b' }}
+            style={{ background: '#0a0a0a' }}
           >
             {/* 33: aria-hidden on decorative LED dot */}
             <span className={STATUS_LED_CLASSES[unit.status]} aria-hidden="true" />

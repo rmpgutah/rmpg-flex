@@ -193,7 +193,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
       {/* Fuel Log List */}
       {fuelLogs.length === 0 ? (
         <div className="text-center py-12 panel-beveled bg-surface-base">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#050505' }}>
             <Fuel className="w-8 h-8 text-rmpg-600" />
           </div>
           <p className="text-xs text-rmpg-400 font-semibold">No Fuel Logs Recorded</p>

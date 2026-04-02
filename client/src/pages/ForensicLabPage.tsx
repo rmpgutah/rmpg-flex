@@ -39,16 +39,16 @@ const CASE_TYPES = [
 ] as const;
 
 const PRIORITIES = [
-  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: '#5a6e80' },
-  { value: 'expedited', label: 'Expedited', desc: 'Priority processing — 14 day turnaround', color: '#3b82f6' },
+  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: '#666666' },
+  { value: 'expedited', label: 'Expedited', desc: 'Priority processing — 14 day turnaround', color: '#888888' },
   { value: 'urgent', label: 'Urgent', desc: 'Urgent case need — 7 day turnaround', color: '#f59e0b' },
   { value: 'rush', label: 'Rush', desc: 'Immediate attention — 48 hour turnaround', color: '#ef4444' },
 ] as const;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
-  submitted: { label: 'Submitted', color: '#60a5fa', bgColor: 'bg-blue-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
+  submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-blue-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: '#a78bfa', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
-  assigned: { label: 'Assigned', color: '#38bdf8', bgColor: 'bg-sky-900/20', nextAction: 'Examiner is preparing to begin analysis' },
+  assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-sky-900/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: '#fbbf24', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
   analysis_complete: { label: 'Analysis Complete', color: '#34d399', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: '#a3e635', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
@@ -745,7 +745,7 @@ export default function ForensicLabPage() {
 
   // ── Helpers ────────────────────────────────────────────
 
-  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: '#5a6e80', bgColor: 'bg-surface-sunken/20', nextAction: '' };
+  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: '#666666', bgColor: 'bg-surface-sunken/20', nextAction: '' };
   const getCaseTypeLabel = (t: string) => CASE_TYPES.find(c => c.value === t)?.label || t;
   const getPriorityConfig = (p: string) => PRIORITIES.find(pr => pr.value === p) || PRIORITIES[0];
 
@@ -1034,7 +1034,7 @@ export default function ForensicLabPage() {
                 const custodyLog = meta.custody_log || [];
                 const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
                 const actionColors: Record<string, string> = {
-                  received: '#60a5fa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: '#6b7280',
+                  received: '#aaaaaa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: '#6b7280',
                 };
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
@@ -1065,14 +1065,14 @@ export default function ForensicLabPage() {
                           {custodyLog.map((ev, i) => (
                             <div key={ev.id} className="flex gap-3 relative">
                               <div className="w-3 h-3 rounded-full border-2 flex-shrink-0 mt-0.5 z-10" style={{
-                                borderColor: actionColors[ev.action] || '#5a6e80',
-                                backgroundColor: i === 0 ? (actionColors[ev.action] || '#5a6e80') : '#0d1520',
+                                borderColor: actionColors[ev.action] || '#666666',
+                                backgroundColor: i === 0 ? (actionColors[ev.action] || '#666666') : '#050505',
                               }} />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm" style={{
-                                    backgroundColor: (actionColors[ev.action] || '#5a6e80') + '20',
-                                    color: actionColors[ev.action] || '#5a6e80',
+                                    backgroundColor: (actionColors[ev.action] || '#666666') + '20',
+                                    color: actionColors[ev.action] || '#666666',
                                   }}>{ev.action}</span>
                                   <span className="text-[10px] text-rmpg-300">
                                     <span className="text-rmpg-200 font-semibold">{ev.from_person}</span>
@@ -1200,7 +1200,7 @@ export default function ForensicLabPage() {
                   {selectedCase.exhibits.map(ex => {
                     const exStatus = ex.status === 'complete' ? { color: '#22c55e', icon: CheckCircle } :
                       ex.status === 'examining' ? { color: '#f59e0b', icon: Activity } :
-                      { color: '#60a5fa', icon: Package };
+                      { color: '#aaaaaa', icon: Package };
                     return (
                       <div key={ex.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: exStatus.color }}>
                         <div className="flex items-start gap-2">
@@ -1268,7 +1268,7 @@ export default function ForensicLabPage() {
               ) : (
                 <div className="space-y-2">
                   {selectedCase.analyses.map(an => {
-                    const anStatus = an.status === 'complete' ? '#22c55e' : an.status === 'in_progress' ? '#f59e0b' : '#60a5fa';
+                    const anStatus = an.status === 'complete' ? '#22c55e' : an.status === 'in_progress' ? '#f59e0b' : '#aaaaaa';
                     const typeLabel = ANALYSIS_TYPES.find(t => t.value === an.analysis_type)?.label || an.analysis_type;
                     return (
                       <div key={an.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: anStatus }}>
@@ -2183,7 +2183,7 @@ export default function ForensicLabPage() {
                         }`}
                         style={wizardData.priority === p.value ? { borderColor: p.color, color: p.color } : undefined}
                       >
-                        <div className="text-[11px] font-bold" style={{ color: wizardData.priority === p.value ? p.color : '#8a9aaa' }}>{p.label}</div>
+                        <div className="text-[11px] font-bold" style={{ color: wizardData.priority === p.value ? p.color : '#888888' }}>{p.label}</div>
                         <div className="text-[8px] text-rmpg-500">{p.desc}</div>
                       </button>
                     ))}

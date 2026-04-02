@@ -162,7 +162,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
             {!collapsed && (
               <div
                 className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em]"
-                style={{ color: '#5a6e80' }}
+                style={{ color: '#666666' }}
               >
                 {section.label}
               </div>
@@ -188,7 +188,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
                     background: active ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
-                    color: active ? '#ffffff' : '#8a9aaa',
+                    color: active ? '#ffffff' : '#888888',
                     borderLeft: active ? '3px solid #888888' : '3px solid transparent',
                   }}
                   title={collapsed ? item.label : undefined}
@@ -198,7 +198,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       width: 16,
                       height: 16,
                       flexShrink: 0,
-                      color: active ? '#aaaaaa' : '#5a6e80',
+                      color: active ? '#aaaaaa' : '#666666',
                       transition: 'color 0.1s',
                     }}
                   />
@@ -216,7 +216,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                     <div
                       className="absolute left-full ml-2 px-2.5 py-1.5 whitespace-nowrap z-50"
                       style={{
-                        background: '#1a2636',
+                        background: '#141414',
                         border: '1px solid #2a3e58',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                         top: '50%',
@@ -240,8 +240,8 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
         style={{
           height: 36,
           borderTop: '1px solid #1e3048',
-          background: '#0d1520',
-          color: '#5a6e80',
+          background: '#050505',
+          color: '#666666',
         }}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >

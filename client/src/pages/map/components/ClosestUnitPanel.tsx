@@ -64,7 +64,7 @@ export default function ClosestUnitPanel({
         right: 12,
         width: 320,
         maxHeight: 'calc(100% - 64px)',
-        background: '#0d1520',
+        background: '#050505',
         border: `1px solid ${pColor}40`,
         borderRadius: 2,
         boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
@@ -76,10 +76,10 @@ export default function ClosestUnitPanel({
         className="flex items-center gap-2 px-3 py-2 shrink-0"
         style={{ borderBottom: '1px solid #1e304860' }}
       >
-        <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: '#60a5fa' }} />
+        <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: '#aaaaaa' }} />
         <span
           className="text-[10px] font-black uppercase tracking-wider flex-1"
-          style={{ color: '#60a5fa', letterSpacing: '0.8px' }}
+          style={{ color: '#aaaaaa', letterSpacing: '0.8px' }}
         >
           Closest Units
         </span>
@@ -96,7 +96,7 @@ export default function ClosestUnitPanel({
       {/* Call Info */}
       <div
         className="px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #1e304830', background: '#141e2b' }}
+        style={{ borderBottom: '1px solid #1e304830', background: '#0a0a0a' }}
       >
         <div className="flex items-center gap-2 mb-1">
           <span
@@ -126,11 +126,11 @@ export default function ClosestUnitPanel({
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {results.length === 0 ? (
           <div className="flex flex-col items-center text-center py-8 gap-2">
-            <Navigation className="w-6 h-6" style={{ color: '#5a6e80', opacity: 0.4 }} />
-            <div className="text-[10px] font-bold" style={{ color: '#5a6e80' }}>
+            <Navigation className="w-6 h-6" style={{ color: '#666666', opacity: 0.4 }} />
+            <div className="text-[10px] font-bold" style={{ color: '#666666' }}>
               No available units found
             </div>
-            <div className="text-[8px]" style={{ color: '#5a6e80' }}>
+            <div className="text-[8px]" style={{ color: '#666666' }}>
               All units are currently assigned or have no position data
             </div>
           </div>
@@ -148,14 +148,14 @@ export default function ClosestUnitPanel({
                 className="px-3 py-2 hover:bg-[#1a2636]/30 transition-colors duration-100"
                 style={{
                   borderBottom: idx < results.length - 1 ? '1px solid #1e304820' : undefined,
-                  background: idx % 2 === 0 ? '#0d1520' : '#111b28',
+                  background: idx % 2 === 0 ? '#050505' : '#111b28',
                 }}
               >
                 <div className="flex items-center gap-2">
                   {/* Rank */}
                   <span
                     className="text-[8px] font-black w-4 text-center shrink-0"
-                    style={{ color: '#5a6e80' }}
+                    style={{ color: '#666666' }}
                   >
                     #{idx + 1}
                   </span>
@@ -203,7 +203,7 @@ export default function ClosestUnitPanel({
 
                   {/* #42: Distance + ETA with tabular-nums for alignment */}
                   <div className="text-right shrink-0">
-                    <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: '#60a5fa' }}>
+                    <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: '#aaaaaa' }}>
                       {distanceMiles < 0.1
                         ? '<0.1 mi'
                         : `${distanceMiles.toFixed(1)} mi`}
@@ -239,7 +239,7 @@ export default function ClosestUnitPanel({
                       style={{
                         background: isDispatching ? '#88888820' : '#88888830',
                         border: '1px solid #88888880',
-                        color: '#60a5fa',
+                        color: '#aaaaaa',
                         fontSize: 8,
                         fontWeight: 900,
                         fontFamily: "'Courier New','JetBrains Mono',monospace",
@@ -283,9 +283,9 @@ export default function ClosestUnitPanel({
       <div
         className="px-3 py-1.5 text-[7px] font-bold uppercase tracking-wider shrink-0"
         style={{
-          color: '#5a6e80',
+          color: '#666666',
           borderTop: '1px solid #1e304830',
-          background: '#141e2b',
+          background: '#0a0a0a',
           letterSpacing: '0.8px',
         }}
       >

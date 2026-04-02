@@ -25,7 +25,7 @@ export default function MobileContextBar({
     <div
       style={{
         height: 32,
-        background: '#0d1520',
+        background: '#050505',
         borderBottom: '1px solid #1e3048',
         display: 'flex',
         alignItems: 'center',
@@ -50,7 +50,7 @@ export default function MobileContextBar({
             fontSize: 12,
             fontFamily: 'var(--font-mono, monospace)',
             fontWeight: 700,
-            color: '#4a9ede',
+            color: '#999999',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}
@@ -59,14 +59,14 @@ export default function MobileContextBar({
         </span>
 
         {/* Separator */}
-        <span style={{ color: '#2a3e58', fontSize: 12 }}>│</span>
+        <span style={{ color: '#2e2e2e', fontSize: 12 }}>│</span>
 
         {/* Radio channel */}
         <span
           style={{
             fontSize: 11,
             fontFamily: 'var(--font-mono, monospace)',
-            color: radioChannel ? '#22c55e' : '#5a6e80',
+            color: radioChannel ? '#22c55e' : '#666666',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}
@@ -77,7 +77,7 @@ export default function MobileContextBar({
         {/* Active call */}
         {activeCallNumber && (
           <>
-            <span style={{ color: '#2a3e58', fontSize: 12 }}>│</span>
+            <span style={{ color: '#2e2e2e', fontSize: 12 }}>│</span>
             <span
               style={{
                 fontSize: 11,
@@ -100,7 +100,7 @@ export default function MobileContextBar({
           style={{
             fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
-            color: gpsTracking ? '#22c55e' : '#5a6e80',
+            color: gpsTracking ? '#22c55e' : '#666666',
           }}
         >
           {gpsTracking ? 'GPS' : ''}

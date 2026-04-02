@@ -297,7 +297,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         {[
           { key: 'units' as const, icon: <Shield className="w-3 h-3" />, label: 'Units', count: unitsWithCoords.length, color: '#22c55e' },
           { key: 'incidents' as const, icon: <AlertTriangle className="w-3 h-3" />, label: 'Active Calls', count: callsWithCoords.length, color: '#ef4444' },
-          { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#3b82f6' },
+          { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#888888' },
         ].map(({ key, icon, label, count, color }) => (
           <button type="button"
             key={key}
@@ -311,10 +311,10 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           >
             {layers[key] ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
             {layers[key] && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}` }} />}
-            <span style={{ color: layers[key] ? color : '#5a6e80' }}>{icon}</span>
+            <span style={{ color: layers[key] ? color : '#666666' }}>{icon}</span>
             <span className="text-[10px] text-rmpg-200 flex-1">{label}</span>
             {/* Fix 92: show feature count next to each toggle */}
-            <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#5a6e80' }}>{count}</span>
+            <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#666666' }}>{count}</span>
           </button>
         ))}
 
@@ -764,7 +764,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.style.strokeColor, opacity: state?.visible ? 1 : 0.3 }} />
                   <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
                   {state?.loaded && state.featureCount > 0 && (
-                    <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#5a6e80' }}>
+                    <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#666666' }}>
                       {state.featureCount}
                     </span>
                   )}

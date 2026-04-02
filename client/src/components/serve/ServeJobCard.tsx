@@ -128,7 +128,7 @@ export default React.memo(function ServeJobCard({
         ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
         ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
       `}
-      style={{ background: '#1a2636', borderColor: '#1e3048' }}
+      style={{ background: '#141414', borderColor: '#222222' }}
     >
       {/* Clickable header area */}
       <div

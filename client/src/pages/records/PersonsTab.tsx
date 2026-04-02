@@ -138,8 +138,8 @@ const FLAG_COLORS: Record<string, string> = {
 
 // Name-hash avatar colors for initials circles
 const AVATAR_COLORS = [
-  '#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed',
-  '#db2777', '#0891b2', '#65a30d', '#ea580c', '#4f46e5',
+  '#dc2626', '#d97706', '#059669', '#888888', '#7c3aed',
+  '#db2777', '#22c55e', '#65a30d', '#ea580c', '#888888',
 ];
 function getAvatarColor(name: string): string {
   let hash = 0;

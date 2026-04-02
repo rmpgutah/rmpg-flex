@@ -192,7 +192,7 @@ export function useMapGeofences(
     // Fix 88: zone type color mapping
     const ZONE_TYPE_COLORS: Record<string, string> = {
       restricted: '#dc2626',     // red
-      patrol: '#3b82f6',         // blue
+      patrol: '#888888',         // blue
       safety: '#f59e0b',         // amber
       exclusion: '#ef4444',      // bright red
       monitoring: '#8b5cf6',     // purple
@@ -214,7 +214,7 @@ export function useMapGeofences(
       if (path.length < 3) return;
 
       // Fix 88: color code by zone type, fallback to fence color
-      const color = ZONE_TYPE_COLORS[fence.zone_type?.toLowerCase()] || fence.color || '#3b82f6';
+      const color = ZONE_TYPE_COLORS[fence.zone_type?.toLowerCase()] || fence.color || '#888888';
 
       const polygon = new google.maps.Polygon({
         paths: path,
@@ -342,7 +342,7 @@ export function useMapGeofences(
           scale: 5,
           fillColor: '#d4a017',
           fillOpacity: 1,
-          strokeColor: '#0d1520',
+          strokeColor: '#050505',
           strokeWeight: 2,
         },
         clickable: false,

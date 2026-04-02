@@ -20,8 +20,8 @@ interface Props {
   loading: boolean;
 }
 
-const AXIS_TICK = { fill: '#5a6e80', fontSize: 9 };
-const GRID_STROKE = '#162236';
+const AXIS_TICK = { fill: '#666666', fontSize: 9 };
+const GRID_STROKE = '#181818';
 const BRAND_500 = '#888888';
 const OVERTIME_COLOR = '#f59e0b';
 
@@ -172,7 +172,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
             <div className="relative w-28 h-28">
               <svg viewBox="0 0 120 120" className="w-full h-full">
                 {/* Background circle */}
-                <circle cx="60" cy="60" r="50" fill="none" stroke="#162236" strokeWidth="10" />
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#181818" strokeWidth="10" />
                 {/* Progress arc */}
                 <circle
                   cx="60"
@@ -195,7 +195,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
 
           {/* Progress bar segments */}
           <div className="space-y-2 mt-2">
-            <div className="w-full h-2 rounded-full overflow-hidden flex" style={{ background: '#162236' }}>
+            <div className="w-full h-2 rounded-full overflow-hidden flex" style={{ background: '#181818' }}>
               <div className="h-full bg-green-500" style={{ width: `${validPct}%` }} />
               <div className="h-full bg-amber-500" style={{ width: `${expiringPct}%` }} />
               <div className="h-full bg-red-500" style={{ width: `${expiredPct}%` }} />

@@ -133,7 +133,7 @@ import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 // ============================================================
 
 // Unit colors for breadcrumb trails — cycle through distinct colors per unit
-const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
+const TRAIL_COLORS = ['#22c55e', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#aaaaaa', '#c084fc'];
 
 // Static Tailwind class lookups — avoids dynamic class generation that Tailwind can't purge
 const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
@@ -163,7 +163,7 @@ const PRIORITY_TO_COLOR: Record<string, string> = { P1: 'red', P2: 'amber', P3: 
 const STATUS_FILTER_ITEMS = [
   { key: 'available', label: 'AVL', color: '#22c55e' },
   { key: 'dispatched', label: 'DSP', color: '#f59e0b' },
-  { key: 'enroute', label: 'ENR', color: '#3b82f6' },
+  { key: 'enroute', label: 'ENR', color: '#888888' },
   { key: 'onscene', label: 'ONS', color: '#a855f7' },
 ] as const;
 
@@ -187,12 +187,12 @@ const speedToColor = (mps: number | null): string => {
 const statusToColor = (status: string): string => {
   switch (status) {
     case 'dispatched': return '#f59e0b';  // amber
-    case 'enroute':    return '#3b82f6';  // blue
+    case 'enroute':    return '#888888';  // blue
     case 'onscene':    return '#ef4444';  // red
     case 'available':  return '#22c55e';  // green
     case 'busy':       return '#8b5cf6';  // purple
     case 'off_duty':   return '#6b7280';  // gray
-    default:           return '#5a6e80';
+    default:           return '#666666';
   }
 };
 
@@ -817,7 +817,7 @@ export default function MapPage() {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#17263c',
+        backgroundColor: '#171717',
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
@@ -1121,7 +1121,7 @@ export default function MapPage() {
       calls.forEach((call) => {
         if (call.latitude != null && call.longitude != null) {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
-          const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
+          const pColor = PRIORITY_COLORS[call.priority] || '#666666';
 
           const marker = createMarker({
             map,
@@ -1136,7 +1136,7 @@ export default function MapPage() {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #1e3048;">
                   <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
                   ${assignedUnits.map(u => {
-                    const uc = UNIT_STATUS_COLORS[u.status] || '#5a6e80';
+                    const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
                     const routeBtn = (u.latitude != null && u.longitude != null && call.latitude != null && call.longitude != null)
                       ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
                            data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
@@ -1216,7 +1216,7 @@ export default function MapPage() {
 
                 // Build linked persons rows
                 const RELATIONSHIP_COLORS: Record<string, string> = {
-                  employee: '#22d3ee', contact: '#60a5fa', tenant: '#a78bfa', owner: '#4ade80',
+                  employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
                   manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
                   banned: '#ef4444', frequent_visitor: '#9ca3af', associated: '#6b7280',
                 };
@@ -1240,7 +1240,7 @@ export default function MapPage() {
                 const callRows = recentCalls.slice(0, 5).map((c: any) => {
                   const date = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
                   const time = c.created_at ? new Date(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
-                  const statusColor = c.status === 'cleared' || c.status === 'closed' ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : '#60a5fa';
+                  const statusColor = c.status === 'cleared' || c.status === 'closed' ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : '#aaaaaa';
                   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #1e304820;">
                     <div>
                       <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
@@ -1475,7 +1475,7 @@ export default function MapPage() {
       // Fix 21: skip zero-length lines
       if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
 
-      const statusColor = UNIT_STATUS_COLORS[unit.status] || '#5a6e80';
+      const statusColor = UNIT_STATUS_COLORS[unit.status] || '#666666';
       const isDashed = unit.status === 'dispatched';
 
       try { // Fix 20: try/catch around Polyline creation
@@ -2420,7 +2420,7 @@ export default function MapPage() {
               {[
                 { key: 'units' as const, icon: <Shield className="w-3 h-3" />, label: 'Units', count: unitsWithCoords.length, color: '#22c55e' },
                 { key: 'incidents' as const, icon: <AlertTriangle className="w-3 h-3" />, label: 'Active Calls', count: callsWithCoords.length, color: '#ef4444' },
-                { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#3b82f6' },
+                { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#888888' },
               ].map(({ key, icon, label, count, color }) => (
                 <button
                   key={key}
@@ -2430,9 +2430,9 @@ export default function MapPage() {
                   }`}
                 >
                   {layers[key] ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                  <span style={{ color: layers[key] ? color : '#5a6e80' }}>{icon}</span>
+                  <span style={{ color: layers[key] ? color : '#666666' }}>{icon}</span>
                   <span className="text-[10px] text-rmpg-200 flex-1">{label}</span>
-                  <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#5a6e80' }}>{count}</span>
+                  <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#666666' }}>{count}</span>
                 </button>
               ))}
 
@@ -2672,9 +2672,9 @@ export default function MapPage() {
                         <span className="text-[7px] text-rmpg-400 font-mono block mb-0.5">COLOR SCHEME</span>
                         <div className="flex items-center gap-0.5">
                           {([
-                            ['heat', ['#0080ff', '#00c864', '#c8c800', '#ff8c00', '#ff3200']],
+                            ['heat', ['#888888', '#00c864', '#c8c800', '#ff8c00', '#ff3200']],
                             ['risk', ['#4caf50', '#ffeb3b', '#ff9800', '#f44336', '#b71c1c']],
-                            ['blue', ['#add8e6', '#6495ed', '#4169e1', '#0000cd', '#00008b']],
+                            ['blue', ['#cccccc', '#999999', '#888888', '#666666', '#444444']],
                             ['green', ['#90ee90', '#3cb371', '#228b22', '#006400', '#003c00']],
                             ['purple', ['#d8bfd8', '#ba55d3', '#9467bd', '#6a0dad', '#4b0082']],
                           ] as [HeatmapColorScheme, string[]][]).map(([scheme, colors]) => (
@@ -2907,7 +2907,7 @@ export default function MapPage() {
                                 className="h-1 rounded-full"
                                 style={{
                                   width: `${Math.max(10, (t.count / (advancedHeatmap.stats?.topTypes[0]?.count || 1)) * 50)}%`,
-                                  backgroundColor: i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#3b82f6',
+                                  backgroundColor: i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#888888',
                                 }}
                               />
                               <span className="text-[6px] text-rmpg-400 font-mono truncate flex-1">{formatIncidentType(t.type)}</span>
@@ -3710,7 +3710,7 @@ export default function MapPage() {
                         <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.style.strokeColor, opacity: state?.visible ? 1 : 0.3 }} />
                         <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
                         {state?.loaded && (state?.featureCount ?? 0) > 0 && (
-                          <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#5a6e80' }}>
+                          <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#666666' }}>
                             {state.featureCount}
                           </span>
                         )}
@@ -4875,12 +4875,12 @@ export default function MapPage() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: '#3b82f6', fontWeight: 900, letterSpacing: '0.05em' }}>
+              <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
                 {activeRoute.unitCallSign} → {activeRoute.callNumber}
               </span>
               <button
                 onClick={clearRoute}
-                style={{ background: 'none', border: 'none', color: '#5a6e80', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
+                style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
                 title="Clear route"
               >
                 ✕
@@ -5004,7 +5004,7 @@ export default function MapPage() {
             </div>
             {/* Units On Duty */}
             <div className="flex items-center gap-1.5">
-              <div className="led-dot" style={{ backgroundColor: '#3b82f6', width: 5, height: 5 }} />
+              <div className="led-dot" style={{ backgroundColor: '#888888', width: 5, height: 5 }} />
               <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Units On Duty</span>
               <span className="text-[9px] font-mono font-bold text-rmpg-200">{units.filter(u => u.status !== 'off_duty').length}</span>
             </div>
@@ -5055,11 +5055,11 @@ export default function MapPage() {
         {sidebarOpen && (
           <>
             {/* Compact status counters */}
-            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0d1520' }}>
+            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#050505' }}>
               {([
                 { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
                 { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },
-                { label: 'ENR', count: unitsByStatus['enroute'] || 0, color: '#3b82f6' },
+                { label: 'ENR', count: unitsByStatus['enroute'] || 0, color: '#888888' },
                 { label: 'ONS', count: unitsByStatus['onscene'] || 0, color: '#a855f7' },
                 { label: 'BSY', count: unitsByStatus['busy'] || 0, color: '#ef4444' },
               ]).map(({ label, count, color }) => (
@@ -5150,7 +5150,7 @@ export default function MapPage() {
                 <div className="divide-y divide-rmpg-700/50">
                   {filteredCalls.map((call) => {
                     const hasCoords = call.latitude != null && call.longitude != null;
-                    const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
+                    const pColor = PRIORITY_COLORS[call.priority] || '#666666';
                     const { category } = getIncidentCategory(call.incident_type);
                     return (
                       <div
@@ -5249,7 +5249,7 @@ export default function MapPage() {
             onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
             aria-label="Toggle layers"
           >
-            <Layers style={{ width: 22, height: 22, color: '#3b82f6' }} />
+            <Layers style={{ width: 22, height: 22, color: '#888888' }} />
           </button>
 
           <MobileBottomSheet
@@ -5260,7 +5260,7 @@ export default function MapPage() {
             header={
               <div className="flex items-center gap-1">
                 {([
-                  { id: 'layers' as const, icon: Layers, label: 'Layers', color: '#3b82f6' },
+                  { id: 'layers' as const, icon: Layers, label: 'Layers', color: '#888888' },
                   { id: 'units' as const, icon: Shield, label: `Units (${filteredUnits.length})`, color: '#22c55e' },
                   { id: 'calls' as const, icon: AlertTriangle, label: `Calls (${filteredCalls.length})`, color: '#ef4444' },
                 ] as const).map(({ id, icon: Icon, label, color }) => (
@@ -5269,7 +5269,7 @@ export default function MapPage() {
                     onClick={() => setMobileSheetTab(id)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
                     style={{
-                      color: mobileSheetTab === id ? color : '#6a7a8a',
+                      color: mobileSheetTab === id ? color : '#666666',
                       background: mobileSheetTab === id ? `${color}10` : 'transparent',
                       borderBottom: mobileSheetTab === id ? `2px solid ${color}` : '2px solid transparent',
                     }}
@@ -5287,20 +5287,20 @@ export default function MapPage() {
                 {[
                   { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
                   { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
-                  { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#3b82f6' },
+                  { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#888888' },
                 ].map(({ key, icon: Icon, label, color }) => (
                   <button
                     key={key}
                     onClick={() => toggleLayer(key)}
                     className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                     style={{
-                      background: layers[key] ? 'rgba(34,197,94,0.08)' : '#141e2b',
+                      background: layers[key] ? 'rgba(34,197,94,0.08)' : '#0a0a0a',
                       border: '1px solid #1e3048',
                       minHeight: 44,
                     }}
                   >
                     {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-                    <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#5a6e80' }} />
+                    <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#666666' }} />
                     <span className="text-sm text-rmpg-200 flex-1">{label}</span>
                   </button>
                 ))}
@@ -5309,7 +5309,7 @@ export default function MapPage() {
                   onClick={() => setShowHeatmap(!showHeatmap)}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#141e2b',
+                    background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#0a0a0a',
                     border: '1px solid #1e3048',
                     minHeight: 44,
                   }}
@@ -5324,7 +5324,7 @@ export default function MapPage() {
                   onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#141e2b',
+                    background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#0a0a0a',
                     border: '1px solid #1e3048',
                     minHeight: 44,
                   }}
@@ -5336,7 +5336,7 @@ export default function MapPage() {
 
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
-                  <div className="px-3 py-2 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                  <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #1e3048' }}>
                     <div className="flex gap-1">
                       {[2, 4, 8, 12, 24].map((h) => (
                         <button
@@ -5371,7 +5371,7 @@ export default function MapPage() {
                 )}
 
                 {/* Map Style Selector (mobile) */}
-                <div className="px-3 py-2 space-y-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div className="px-3 py-2 space-y-1.5" style={{ background: '#050505', border: '1px solid #1e3048' }}>
                   <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
@@ -5403,7 +5403,7 @@ export default function MapPage() {
                   }}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: '#141e2b',
+                    background: '#0a0a0a',
                     border: '1px solid #1e3048',
                     minHeight: 44,
                   }}
@@ -5453,7 +5453,7 @@ export default function MapPage() {
               <div className="divide-y divide-rmpg-700/50">
                 {filteredCalls.map((call) => {
                   const hasCoords = call.latitude != null && call.longitude != null;
-                  const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
+                  const pColor = PRIORITY_COLORS[call.priority] || '#666666';
                   const { category } = getIncidentCategory(call.incident_type);
                   return (
                     <button

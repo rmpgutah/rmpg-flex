@@ -22,12 +22,12 @@ import { useToast } from '../components/ToastProvider';
 // ── Constants ────────────────────────────────────────────────
 
 const NODE_PALETTE: Record<string, { primary: string; glow: string; dark: string }> = {
-  person:   { primary: '#4a9eff', glow: '#2979ff', dark: '#1a3a6e' },
+  person:   { primary: '#999999', glow: '#888888', dark: '#222222' },
   vehicle:  { primary: '#ffb74d', glow: '#ff9800', dark: '#6e4a1a' },
   property: { primary: '#4dd0a0', glow: '#00c853', dark: '#1a6e4a' },
   case:     { primary: '#ff6b6b', glow: '#ff1744', dark: '#6e1a1a' },
   incident: { primary: '#ce93d8', glow: '#aa00ff', dark: '#4a1a6e' },
-  evidence: { primary: '#90a4ae', glow: '#607d8b', dark: '#2a3840' },
+  evidence: { primary: '#999999', glow: '#666666', dark: '#2a2a2a' },
 };
 
 // Backward-compatible flat color map (used in sidebar UI, filters, search dropdown)
@@ -39,14 +39,14 @@ const NODE_COLORS: Record<string, string> = Object.fromEntries(
 
 const RELATIONSHIP_COLORS: Record<string, string> = {
   suspect: '#ff5252', suspect_vehicle: '#ff5252',
-  owner: '#4fc3f7',
+  owner: '#aaaaaa',
   victim: '#ffab40', victim_vehicle: '#ffab40',
   witness: '#80cbc4', witness_vehicle: '#80cbc4',
   reporting_party: '#b39ddb',
   location: '#4dd0a0',
-  collected_from: '#90a4ae',
-  linked: '#546e7a', associated: '#455a64',
-  involved: '#37474f', evidence: '#607d8b', other: '#37474f',
+  collected_from: '#999999',
+  linked: '#666666', associated: '#555555',
+  involved: '#444444', evidence: '#666666', other: '#444444',
 };
 
 const RELATIONSHIP_WEIGHT: Record<string, number> = {
@@ -437,7 +437,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
     if (!start?.x || !end?.x) return;
     const midX = (start.x + end.x) / 2;
     const midY = (start.y + end.y) / 2;
-    const relColor = RELATIONSHIP_COLORS[link.relationship] || '#37474f';
+    const relColor = RELATIONSHIP_COLORS[link.relationship] || '#444444';
 
     if (globalScale >= 1.0 && link.relationship) {
       // Pill badge at high zoom
@@ -524,7 +524,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
       </div>
 
       {/* Graph canvas */}
-      <div ref={containerRef} className="flex-1 relative" style={{ background: '#0d1520' }}>
+      <div ref={containerRef} className="flex-1 relative" style={{ background: '#050505' }}>
         <GraphLegend visible={showLegend && filteredGraph.nodes.length > 0} />
         {filteredGraph.nodes.length > 0 ? (
           <ForceGraph2D
@@ -547,7 +547,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
             onNodeClick={(node: any) => onSelectNode(node.id)}
             onBackgroundClick={() => onSelectNode(null)}
             // Enhanced link styling — colored by relationship type
-            linkColor={(link: any) => RELATIONSHIP_COLORS[link.relationship] || '#37474f'}
+            linkColor={(link: any) => RELATIONSHIP_COLORS[link.relationship] || '#444444'}
             linkWidth={(link: any) => RELATIONSHIP_WEIGHT[link.relationship] || 1}
             linkCurvature={0.15}
             // Animated directional particles
@@ -559,7 +559,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
             linkDirectionalParticleColor={(link: any) => {
               const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target;
               const targetNode = filteredGraph.nodes.find((n: any) => n.id === targetId);
-              return targetNode ? (NODE_PALETTE[targetNode.type]?.glow || '#546e7a') : '#546e7a';
+              return targetNode ? (NODE_PALETTE[targetNode.type]?.glow || '#666666') : '#666666';
             }}
             // Seed glow background
             onRenderFramePost={(ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -575,7 +575,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
               ctx.fillStyle = grad;
               ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
             }}
-            backgroundColor="#0d1520"
+            backgroundColor="#050505"
             d3AlphaDecay={0.02}
             d3VelocityDecay={0.3}
             warmupTicks={50}
@@ -888,7 +888,7 @@ export default function ForensicsPage() {
       {/* ── Content ─────────────────────────────────────────── */}
       {!graph && !loading ? (
         /* Empty state */
-        <div className="flex-1 flex items-center justify-center" style={{ background: '#0d1520' }}>
+        <div className="flex-1 flex items-center justify-center" style={{ background: '#050505' }}>
           <div className="text-center px-6">
             <Network className="w-16 h-16 mx-auto mb-4 text-rmpg-800" />
             <h2 className="text-[13px] font-bold text-rmpg-400 mb-1">Connection Analysis</h2>

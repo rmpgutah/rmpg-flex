@@ -3545,7 +3545,7 @@ function GraphsPanel() {
   useEffect(() => { load(); }, [load]);
 
   const addDataset = () => {
-    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#3b82f6' }]);
+    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#888888' }]);
   };
 
   const removeDataset = (idx: number) => {

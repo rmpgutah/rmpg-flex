@@ -81,7 +81,7 @@ const ALERT_TYPES: AlertTypeDef[] = [
     type: 'pursuit',
     label: 'Pursuit',
     icon: <Car size={16} />,
-    color: '#3b82f6',
+    color: '#888888',
     bgColor: 'rgba(59,130,246,0.15)',
   },
   {
@@ -109,7 +109,7 @@ const ALERT_TYPES: AlertTypeDef[] = [
     type: 'hazmat',
     label: 'HAZMAT',
     icon: <Biohazard size={16} />,
-    color: '#3b82f6',
+    color: '#888888',
     bgColor: 'rgba(59,130,246,0.15)',
   },
   {
@@ -204,7 +204,7 @@ export default function SafetyAlertModal({
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 shrink-0"
-          style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+          style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
         >
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-red-500" />
@@ -236,14 +236,14 @@ export default function SafetyAlertModal({
                     onClick={() => setSelectedType(at.type)}
                     className="rounded-sm flex items-center gap-2 px-2.5 py-2 text-left transition-all duration-150 active:scale-[0.97]"
                     style={{
-                      background: isSelected ? at.bgColor : '#0d1520',
-                      border: `1px solid ${isSelected ? at.color : '#1e2a3a'}`,
+                      background: isSelected ? at.bgColor : '#050505',
+                      border: `1px solid ${isSelected ? at.color : '#1e1e1e'}`,
                     }}
                   >
                     <span style={{ color: at.color }}>{at.icon}</span>
                     <span
                       className="text-xs font-semibold"
-                      style={{ color: isSelected ? at.color : '#94a3b8' }}
+                      style={{ color: isSelected ? at.color : '#888888' }}
                     >
                       {at.label}
                     </span>
@@ -271,7 +271,7 @@ export default function SafetyAlertModal({
                   onChange={(e) => setLat(e.target.value)}
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
                   style={{
-                    background: '#0d1520',
+                    background: '#050505',
                     border: '1px solid #1e2a3a',
                   }}
                   placeholder="40.7608"
@@ -289,7 +289,7 @@ export default function SafetyAlertModal({
                   onChange={(e) => setLng(e.target.value)}
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
                   style={{
-                    background: '#0d1520',
+                    background: '#050505',
                     border: '1px solid #1e2a3a',
                   }}
                   placeholder="-111.891"
@@ -310,7 +310,7 @@ export default function SafetyAlertModal({
               rows={3}
               className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 resize-none"
               style={{
-                background: '#0d1520',
+                background: '#050505',
                 border: '1px solid #1e2a3a',
               }}
               placeholder="Describe the situation..."
@@ -329,9 +329,9 @@ export default function SafetyAlertModal({
                   onClick={() => setRadius(r)}
                   className="flex-1 rounded-sm py-1.5 text-xs font-semibold transition-all duration-150 active:scale-[0.97]"
                   style={{
-                    background: radius === r ? 'rgba(59,130,246,0.2)' : '#0d1520',
-                    border: `1px solid ${radius === r ? '#3b82f6' : '#1e2a3a'}`,
-                    color: radius === r ? '#60a5fa' : '#64748b',
+                    background: radius === r ? 'rgba(59,130,246,0.2)' : '#050505',
+                    border: `1px solid ${radius === r ? '#888888' : '#1e1e1e'}`,
+                    color: radius === r ? '#aaaaaa' : '#666666',
                   }}
                 >
                   {r >= 1000 ? `${r / 1000}km` : `${r}m`}
@@ -352,7 +352,7 @@ export default function SafetyAlertModal({
         {/* Footer */}
         <div
           className="flex items-center justify-end gap-2 px-4 py-3 shrink-0"
-          style={{ borderTop: '1px solid #1e2a3a', background: '#0d1520' }}
+          style={{ borderTop: '1px solid #1e2a3a', background: '#050505' }}
         >
           <button type="button"
             onClick={onClose}

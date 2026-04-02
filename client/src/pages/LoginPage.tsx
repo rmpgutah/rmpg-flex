@@ -325,8 +325,8 @@ export default function LoginPage() {
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0d1520' }}>
-      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>{label}</span>
-      <span className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>{value}</span>
+      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
+      <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
     </div>
   );
 
@@ -411,8 +411,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
@@ -477,7 +477,7 @@ export default function LoginPage() {
             {isCredentialStep && (
               <form onSubmit={handleCredentialsSubmit} className="space-y-3">
                 <div>
-                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                     Username
                   </label>
                   <input
@@ -494,7 +494,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                     Password
                   </label>
                   <div className="relative">
@@ -514,9 +514,9 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11"
-                      style={{ color: '#5a6e80' }}
+                      style={{ color: '#666666' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       tabIndex={0}
                     >
@@ -556,10 +556,10 @@ export default function LoginPage() {
                 className="space-y-4"
               >
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                     Enter Authenticator Code
                   </p>
-                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>
+                  <p className="text-[9px]" style={{ color: '#666666' }}>
                     Open your authenticator app and enter the 6-digit code
                   </p>
                 </div>
@@ -600,7 +600,7 @@ export default function LoginPage() {
                     style={{ accentColor: '#888888' }}
                     aria-label="Trust this device for 30 days"
                   />
-                  <span className="text-[10px] group-hover:text-rmpg-200 transition-colors" style={{ color: '#8a9aaa' }}>
+                  <span className="text-[10px] group-hover:text-rmpg-200 transition-colors" style={{ color: '#888888' }}>
                     Trust this device for 30 days
                   </span>
                 </label>
@@ -611,9 +611,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                    style={{ color: '#5a6e80' }}
+                    style={{ color: '#666666' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                     aria-label="Go back to credentials"
                   >
                     <ArrowLeft className="w-3 h-3" aria-hidden="true" />
@@ -625,9 +625,9 @@ export default function LoginPage() {
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
                       disabled={loginBusy}
                       className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                      style={{ color: '#5a6e80' }}
+                      style={{ color: '#666666' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#d97706'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                       aria-label="Verify with YubiKey security key"
                     >
                       <Usb className="w-3 h-3" aria-hidden="true" />
@@ -637,9 +637,9 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                       className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                      style={{ color: '#5a6e80' }}
+                      style={{ color: '#666666' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                       aria-label="Use a backup recovery code"
                     >
                       Backup Code
@@ -653,8 +653,8 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'webauthn' && (
               <div className="space-y-4">
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>Security Key</p>
-                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Security Key</p>
+                  <p className="text-[9px]" style={{ color: '#666666' }}>
                     {webauthnError ? 'Authentication failed — try again' : 'Touch your security key when it flashes'}
                   </p>
                 </div>
@@ -685,9 +685,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#5a6e80' }}
+                    style={{ color: '#666666' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -700,8 +700,8 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'backup' && (
               <form onSubmit={handleBackupSubmit} className="space-y-3">
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>Recovery Code</p>
-                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>Enter one of your single-use backup codes</p>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Recovery Code</p>
+                  <p className="text-[9px]" style={{ color: '#666666' }}>Enter one of your single-use backup codes</p>
                 </div>
 
                 <input
@@ -737,9 +737,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#5a6e80' }}
+                    style={{ color: '#666666' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -748,9 +748,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#5a6e80' }}
+                    style={{ color: '#666666' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                   >
                     Use Authenticator
                   </button>
@@ -763,10 +763,10 @@ export default function LoginPage() {
               <div className="space-y-4">
                 <div className="text-center">
                   <ShieldCheck className="w-10 h-10 mx-auto mb-2" style={{ color: '#888888' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                     Two-Factor Authentication Required
                   </p>
-                  <p className="text-[9px] leading-relaxed" style={{ color: '#5a6e80' }}>
+                  <p className="text-[9px] leading-relaxed" style={{ color: '#666666' }}>
                     Your account requires two-factor authentication. You'll need an authenticator app like
                     <strong> Google Authenticator</strong> or <strong>Authy</strong>.
                   </p>
@@ -790,7 +790,7 @@ export default function LoginPage() {
                 <button type="button"
                   onClick={handleBack}
                   className="w-full flex items-center justify-center gap-1 py-1.5 text-[9px] uppercase tracking-wider"
-                  style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}
+                  style={{ color: '#666666', background: 'transparent', border: 'none' }}
                 >
                   <ArrowLeft className="w-3 h-3" /> Set Up Later
                 </button>
@@ -801,8 +801,8 @@ export default function LoginPage() {
             {loginStep === 'confirm_setup_2fa' && (
               <form onSubmit={handleConfirmSetup} className="space-y-4">
                 <div className="text-center">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>Scan QR Code</p>
-                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Scan QR Code</p>
+                  <p className="text-[9px]" style={{ color: '#666666' }}>
                     Scan with your authenticator app, then enter the 6-digit code
                   </p>
                 </div>
@@ -827,7 +827,7 @@ export default function LoginPage() {
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: '#0d1520', border: '1px solid #1e3048', color: '#e0e0e0' }}
+                      style={{ background: '#050505', border: '1px solid #1e3048', color: '#e0e0e0' }}
                     >
                       {manualKey}
                     </div>
@@ -835,7 +835,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="setup-code" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="setup-code" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                     Enter code from app to verify
                   </label>
                   <input
@@ -877,7 +877,7 @@ export default function LoginPage() {
               <div>
                 <div className="text-center mb-4">
                   <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: '#d4a017' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                     Backup Recovery Codes
                   </p>
                 </div>
@@ -893,16 +893,16 @@ export default function LoginPage() {
               <form onSubmit={handlePasswordChange} className="space-y-3">
                 <div className="text-center mb-2">
                   <Lock className="w-8 h-8 mx-auto mb-2" style={{ color: '#888888' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                     Password Change Required
                   </p>
-                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>
+                  <p className="text-[9px]" style={{ color: '#666666' }}>
                     Your password has expired or must be changed before continuing.
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                     New Password
                   </label>
                   <input
@@ -921,7 +921,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                     Confirm Password
                   </label>
                   <input
@@ -968,7 +968,7 @@ export default function LoginPage() {
               <span>{status.text}</span>
             </div>
             <div className="status-bar-section" aria-label="Connection encrypted">
-              <span style={{ color: '#5a6e80' }}>ENCRYPTED</span>
+              <span style={{ color: '#666666' }}>ENCRYPTED</span>
             </div>
             <div className="status-bar-section border-r-0">
               <span>v{APP_VERSION}</span>
@@ -992,7 +992,7 @@ export default function LoginPage() {
                 <InfoRow label="Operator" value="Rocky Mountain Protective Group" />
                 <InfoRow label="Jurisdiction" value="Salt Lake City, UT" />
                 <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>Server</span>
+                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>Server</span>
                   <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e' }} />
                     <span className="text-[9px] font-mono" style={{ color: '#4ade80' }}>Online</span>
@@ -1014,7 +1014,7 @@ export default function LoginPage() {
                 <InfoRow label="Display" value={device.screen} />
                 <InfoRow label="Viewport" value={device.viewport} />
                 <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>Connection</span>
+                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>Connection</span>
                   <div className="flex items-center gap-1">
                     <Wifi className="w-2.5 h-2.5" style={{ color: device.online ? '#4ade80' : '#ef4444' }} />
                     <span className="text-[9px] font-mono" style={{ color: device.online ? '#4ade80' : '#ef4444' }}>
@@ -1040,7 +1040,7 @@ export default function LoginPage() {
             <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: '#333333' }}>
               Internal Use Only
             </p>
-            <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: '#5a6e80' }}>
+            <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: '#666666' }}>
               Company Confidential — Do Not Distribute
             </p>
           </div>
@@ -1048,12 +1048,12 @@ export default function LoginPage() {
 
         {/* Footer with clock */}
         <div className="text-center mt-2 flex items-center justify-center gap-3" aria-label="Application footer">
-          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2a3e58' }}>
+          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2e2e2e' }}>
             RMPG Flex v{APP_VERSION} | Rocky Mountain Protective Group, LLC
           </p>
           <div className="flex items-center gap-1" role="timer" aria-label="Current Mountain Time">
-            <Clock className="w-2.5 h-2.5" style={{ color: '#2a3e58' }} aria-hidden="true" />
-            <time className="text-[8px] font-mono tabular-nums" style={{ color: '#3a5070' }}>{clock} MT</time>
+            <Clock className="w-2.5 h-2.5" style={{ color: '#2e2e2e' }} aria-hidden="true" />
+            <time className="text-[8px] font-mono tabular-nums" style={{ color: '#383838' }}>{clock} MT</time>
           </div>
         </div>
       </div>

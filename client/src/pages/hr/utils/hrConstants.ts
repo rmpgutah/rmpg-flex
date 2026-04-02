@@ -16,11 +16,11 @@ export const HR_TABS = [
 export type HRTab = typeof HR_TABS[number]['key'];
 
 export const LEAVE_TYPE_COLORS: Record<string, string> = {
-  vacation: '#3b82f6',   // blue
+  vacation: '#888888',   // blue
   sick: '#ef4444',       // red
   personal: '#8b5cf6',   // purple
   bereavement: '#6b7280', // gray
-  training: '#06b6d4',   // cyan
+  training: '#22c55e',   // cyan
   unpaid: '#f59e0b',     // amber
 };
 
@@ -32,7 +32,7 @@ export const LEAVE_STATUS_COLORS: Record<string, string> = {
 };
 
 export const SEVERITY_COLORS: Record<string, string> = {
-  minor: '#3b82f6',
+  minor: '#888888',
   moderate: '#f59e0b',
   major: '#f97316',
   critical: '#ef4444',

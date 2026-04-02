@@ -118,7 +118,7 @@ export default function ThreatAssessmentPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -142,7 +142,7 @@ export default function ThreatAssessmentPanel({
             onClick={onAssessCenter}
             disabled={loading}
             className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-all duration-150 hover:text-white disabled:opacity-50 active:scale-[0.97]"
-            style={{ background: '#1a2636', border: '1px solid #1e2a3a' }}
+            style={{ background: '#141414', border: '1px solid #1e2a3a' }}
             aria-label="Assess threat at map center"
           >
             {loading ? (
@@ -156,7 +156,7 @@ export default function ThreatAssessmentPanel({
             <button type="button"
               onClick={onClear}
               className="rounded-sm px-2 py-1.5 text-[10px] font-semibold text-rmpg-500 hover:text-rmpg-300 transition-colors"
-              style={{ background: '#1a2636', border: '1px solid #1e2a3a' }}
+              style={{ background: '#141414', border: '1px solid #1e2a3a' }}
             >
               Clear
             </button>
@@ -211,7 +211,7 @@ export default function ThreatAssessmentPanel({
                   </span>
                 </div>
                 {/* Threat gauge bar */}
-                <div className="h-1.5 rounded-sm overflow-hidden" style={{ background: '#1e2a3a' }}>
+                <div className="h-1.5 rounded-sm overflow-hidden" style={{ background: '#1e1e1e' }}>
                   <div
                     className="h-full rounded-sm transition-all duration-500"
                     style={{ width: `${Math.min(assessment.score, 100)}%`, background: scoreColor(assessment.score) }}
@@ -267,7 +267,7 @@ export default function ThreatAssessmentPanel({
                     <div
                       key={`hazard-${i}`}
                       className="rounded-sm p-1.5 text-[9px] font-mono"
-                      style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+                      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
                     >
                       <div className="flex items-center gap-1 text-rmpg-300">
                         <MapPin size={9} className="text-red-400 shrink-0" />
@@ -315,7 +315,7 @@ export default function ThreatAssessmentPanel({
                     <div
                       key={`dv-${i}`}
                       className="rounded-sm p-1.5 text-[9px] font-mono"
-                      style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+                      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
                     >
                       <div className="flex items-center gap-1">
                         <AlertTriangle size={9} className="text-amber-400 shrink-0" />
@@ -340,7 +340,7 @@ export default function ThreatAssessmentPanel({
                   onClick={onGetApproachRoutes}
                   disabled={loading}
                   className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-white transition-all duration-150 disabled:opacity-50 active:scale-[0.97]"
-                  style={{ background: '#1a2636', border: '1px solid #1e2a3a' }}
+                  style={{ background: '#141414', border: '1px solid #1e2a3a' }}
                   aria-label="Get approach routes"
                 >
                   {loading ? (
@@ -353,12 +353,12 @@ export default function ThreatAssessmentPanel({
               ) : approachRoutes.length > 0 ? (
                 <div className="space-y-1">
                   {approachRoutes.map((route, i) => {
-                    const color = RISK_COLORS[route.risk_level] ?? '#94a3b8';
+                    const color = RISK_COLORS[route.risk_level] ?? '#888888';
                     return (
                       <div
                         key={`route-${i}`}
                         className="rounded-sm p-1.5"
-                        style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+                        style={{ background: '#050505', border: '1px solid #1e2a3a' }}
                       >
                         <div className="flex items-center gap-1.5">
                           <Navigation

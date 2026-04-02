@@ -27,8 +27,8 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   if (!active || !payload?.length) return null;
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
-    <div style={{ background: '#0d1520', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: '#8ab4f8', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
+    <div style={{ background: '#050505', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
       <div style={{ color: '#e5e7eb', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
@@ -36,7 +36,7 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
 
 /* ── Shared axis / grid props ───────────────────────────────── */
 const AXIS_STYLE = { fill: '#6b7b8d', fontSize: 9, fontFamily: 'monospace' };
-const GRID_PROPS = { stroke: '#1e2a3a', strokeDasharray: '3 3' } as const;
+const GRID_PROPS = { stroke: '#1e1e1e', strokeDasharray: '3 3' } as const;
 
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
@@ -113,7 +113,7 @@ export default function CrimeAnalysisPage() {
     <defs>
       <linearGradient id="blueBar" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0%" stopColor="#888888" />
-        <stop offset="100%" stopColor="#3b82f6" />
+        <stop offset="100%" stopColor="#888888" />
       </linearGradient>
     </defs>
   );
@@ -130,7 +130,7 @@ export default function CrimeAnalysisPage() {
   const AreaGradientBlue = (
     <defs>
       <linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
+        <stop offset="0%" stopColor="#888888" stopOpacity={0.4} />
         <stop offset="100%" stopColor="#888888" stopOpacity={0.05} />
       </linearGradient>
     </defs>
@@ -199,7 +199,7 @@ export default function CrimeAnalysisPage() {
         {/* ── Summary Cards ──────────────────────────────────── */}
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
-            { label: 'Total Incidents', value: totalIncidents, color: 'text-white', spark: '#3b82f6' },
+            { label: 'Total Incidents', value: totalIncidents, color: 'text-white', spark: '#888888' },
             { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: '#10b981' },
             { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '\u2014'} min`, color: 'text-amber-400', spark: '#d97706' },
             { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: '#ef4444' },
@@ -285,7 +285,7 @@ export default function CrimeAnalysisPage() {
                   </ResponsiveContainer>
                   <div className="flex items-center justify-center gap-4 mt-2">
                     <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                      <div className="w-3 h-2" style={{ background: '#2563eb' }} /> Day (06-18)
+                      <div className="w-3 h-2" style={{ background: '#888888' }} /> Day (06-18)
                     </span>
                     <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
                       <div className="w-3 h-2" style={{ background: '#7c3aed' }} /> Night
@@ -378,7 +378,7 @@ export default function CrimeAnalysisPage() {
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;
                     const barColor = overTarget ? '#ef4444' : metric.priority === 'critical' ? '#f59e0b' : '#10b981';
-                    const labelColor = metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#3b82f6' : '#9ca3af';
+                    const labelColor = metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#888888' : '#9ca3af';
                     return (
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">
@@ -418,9 +418,9 @@ export default function CrimeAnalysisPage() {
                     <XAxis dataKey="name" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
                     <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={30} />
                     <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} incidents`} />} />
-                    <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2}
-                      fill="url(#areaBlue)" dot={{ r: 3, fill: '#888888', stroke: '#3b82f6', strokeWidth: 1 }}
-                      activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 1 }} />
+                    <Area type="monotone" dataKey="count" stroke="#888888" strokeWidth={2}
+                      fill="url(#areaBlue)" dot={{ r: 3, fill: '#888888', stroke: '#888888', strokeWidth: 1 }}
+                      activeDot={{ r: 5, fill: '#888888', stroke: '#fff', strokeWidth: 1 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}

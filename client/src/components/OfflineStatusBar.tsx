@@ -47,7 +47,7 @@ export default function OfflineStatusBar() {
         style={{
           background: 'rgba(59, 130, 246, 0.15)',
           borderBottom: '1px solid rgba(59, 130, 246, 0.3)',
-          color: '#93c5fd',
+          color: '#cccccc',
         }}
       >
         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -59,7 +59,7 @@ export default function OfflineStatusBar() {
         <div className="w-24 h-1.5 bg-blue-900/50 overflow-hidden" style={{ borderRadius: 1 }}>
           <div
             className="h-full transition-all duration-300"
-            style={{ width: `${pct}%`, background: '#3b82f6' }}
+            style={{ width: `${pct}%`, background: '#888888' }}
           />
         </div>
       </div>

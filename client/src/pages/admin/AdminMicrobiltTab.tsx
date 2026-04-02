@@ -321,7 +321,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                 style={{
                   background: environment === env ? (env === 'production' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)') : 'transparent',
                   border: environment === env ? `1px solid ${env === 'production' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)'}` : '1px solid transparent',
-                  color: environment === env ? (env === 'production' ? '#f87171' : '#60a5fa') : '#8a9aaa',
+                  color: environment === env ? (env === 'production' ? '#f87171' : '#aaaaaa') : '#888888',
                 }}
               >
                 {env === 'sandbox' ? 'Sandbox' : 'Production'}

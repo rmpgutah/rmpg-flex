@@ -405,7 +405,7 @@ export default function TrespassOrdersPage() {
       )}
 
       {/* Toolbar */}
-      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#141e2b' }}>
+      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#0a0a0a' }}>
         <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input type="text" placeholder="Search orders..." aria-label="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
@@ -523,14 +523,14 @@ export default function TrespassOrdersPage() {
                       <AlertTriangle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Violated
                     </button>
                     {isExpiringWithin30Days(selectedOrder) && (
-                      <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
+                      <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#aaaaaa', minHeight: isMobile ? 48 : undefined }}>
                         <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                       </button>
                     )}
                   </>
                 )}
                 {(selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
-                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#aaaaaa', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                   </button>
                 )}
@@ -612,7 +612,7 @@ export default function TrespassOrdersPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
               <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
               <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>

@@ -102,7 +102,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#17263c',
+        backgroundColor: '#171717',
         gestureHandling: 'greedy',
       });
       mapInstanceRef.current = map;
@@ -182,7 +182,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       scansByDate.set(date, list);
     });
 
-    const colors = ['#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
+    const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
     scansByDate.forEach((dayScans) => {
       const sorted = dayScans.sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());

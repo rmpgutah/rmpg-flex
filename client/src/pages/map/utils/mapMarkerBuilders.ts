@@ -253,7 +253,7 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
 export function buildIncidentReportMarkerContent(status: string): HTMLElement {
   const statusColors: Record<string, string> = {
     draft: '#6b7280',
-    submitted: '#3b82f6',
+    submitted: '#888888',
     under_review: '#f59e0b',
     approved: '#22c55e',
     returned: '#ef4444',

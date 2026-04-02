@@ -1222,7 +1222,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const ext = att.name.split('.').pop()?.toLowerCase() || '';
                 const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext);
                 const isPdf = ext === 'pdf';
-                const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : '#8b5cf6';
+                const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
                   <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
@@ -2292,7 +2292,7 @@ export default function EmailPage() {
 
                     {displayMessages.map(msg => {
                       // Generate consistent avatar color from sender
-                      const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                      const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
                       const senderKey = (msg.fromAddress || msg.fromName || '').toLowerCase();
                       const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
                       const avatarInitial = (msg.fromName || msg.fromAddress || '?').charAt(0).toUpperCase();
@@ -2407,7 +2407,7 @@ export default function EmailPage() {
               {/* Sender info with avatar */}
               {(() => {
                 const senderKey = (fullMessage.fromAddress || '').toLowerCase();
-                const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
                 const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
                 return (
                   <div className="flex items-start gap-3 px-4 pb-2">
@@ -2476,7 +2476,7 @@ export default function EmailPage() {
                       const isPdf = ext === 'pdf';
                       const isDoc = ['doc','docx','rtf','odt'].includes(ext);
                       const isSheet = ['xls','xlsx','csv'].includes(ext);
-                      const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : isDoc ? '#3b82f6' : isSheet ? '#10b981' : '#8b5cf6';
+                      const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : isDoc ? '#888888' : isSheet ? '#10b981' : '#8b5cf6';
                       return (
                         <a key={att.id} href={`/api/email/messages/${selectedMessage!.id}/attachments/${att.id}`} target="_blank" rel="noopener"
                           className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">

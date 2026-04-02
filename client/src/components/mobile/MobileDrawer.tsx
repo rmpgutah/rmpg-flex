@@ -365,7 +365,7 @@ export default function MobileDrawer({
                 {/* Group label */}
                 <div
                   className="px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] font-mono"
-                  style={{ color: '#5a6e80' }}
+                  style={{ color: '#666666' }}
                 >
                   {group.label}
                 </div>
@@ -388,7 +388,7 @@ export default function MobileDrawer({
                         background: isActive
                           ? 'rgba(136, 136, 136, 0.15)'
                           : 'transparent',
-                        color: isActive ? '#fff' : '#b0bcc8',
+                        color: isActive ? '#fff' : '#aaaaaa',
                         borderLeft: isActive
                           ? '3px solid #888888'
                           : '3px solid transparent',
@@ -416,7 +416,7 @@ export default function MobileDrawer({
         {/* ── Status Footer ── */}
         <div
           className="border-t border-rmpg-700 px-4 py-3"
-          style={{ background: '#0d1520' }}
+          style={{ background: '#050505' }}
         >
           {/* Status indicators row */}
           <div className="flex items-center gap-3 mb-3">
@@ -443,7 +443,7 @@ export default function MobileDrawer({
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#1e3048' }} />
+            <div className="w-px h-4" style={{ background: '#222222' }} />
 
             {/* WebSocket */}
             <div className="flex items-center gap-1.5">
@@ -459,7 +459,7 @@ export default function MobileDrawer({
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#1e3048' }} />
+            <div className="w-px h-4" style={{ background: '#222222' }} />
 
             {/* Users online */}
             <div className="flex items-center gap-1.5">

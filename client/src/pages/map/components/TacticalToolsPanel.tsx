@@ -31,7 +31,7 @@ interface QuickDeployConfig {
 
 const QUICK_DEPLOY_PRESETS: QuickDeployConfig[] = [
   { key: 'traffic_stop', label: 'Traffic Stop', icon: Car, accent: '#f59e0b', description: '1 rally point, 100m perimeter' },
-  { key: 'building_search', label: 'Building Search', icon: Search, accent: '#3b82f6', description: '4 entry pts (N/S/E/W), 200m K9' },
+  { key: 'building_search', label: 'Building Search', icon: Search, accent: '#888888', description: '4 entry pts (N/S/E/W), 200m K9' },
   { key: 'active_threat', label: 'Active Threat', icon: AlertOctagon, accent: '#ef4444', description: '300m inner, 500m outer, rally pt' },
   { key: 'crowd_control', label: 'Crowd Control', icon: Shield, accent: '#a855f7', description: '4 corner rally pts, 500m perimeter' },
 ];

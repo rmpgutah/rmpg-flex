@@ -9,8 +9,8 @@ const ALERT_TYPE_COLORS: Record<string, string> = {
   armed_subject: '#f59e0b',
   bomb_threat: '#f59e0b',
   barricaded: '#f59e0b',
-  pursuit: '#3b82f6',
-  hazmat: '#3b82f6',
+  pursuit: '#888888',
+  hazmat: '#888888',
   missing_officer: '#a855f7',
 };
 
@@ -92,7 +92,7 @@ export default function AlertSystemPanel({
       style={{
         maxWidth: 300,
         width: 300,
-        backgroundColor: '#141e2b',
+        backgroundColor: '#0a0a0a',
         borderColor: 'var(--rmpg-700, #2a3a4e)',
       }}
       role="complementary"
@@ -147,7 +147,7 @@ export default function AlertSystemPanel({
                   key={alert.id}
                   className={`rounded-sm hover:bg-[#1a2636]/50 transition-colors duration-100 ${!alert.acknowledged ? 'animate-pulse' : ''}`}
                   style={{
-                    backgroundColor: '#0d1520',
+                    backgroundColor: '#050505',
                     borderLeft: `3px solid ${color}`,
                   }}
                 >
@@ -182,7 +182,7 @@ export default function AlertSystemPanel({
                           className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
                           style={{
                             backgroundColor: '#88888833',
-                            color: '#60a5fa',
+                            color: '#aaaaaa',
                             border: '1px solid #88888855',
                           }}
                           title="Acknowledge"
@@ -251,7 +251,7 @@ export default function AlertSystemPanel({
                   <div
                     key={alert.id}
                     className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm opacity-60"
-                    style={{ backgroundColor: '#0d1520' }}
+                    style={{ backgroundColor: '#050505' }}
                   >
                     <Clock size={8} className="text-rmpg-400 flex-shrink-0" />
                     <span

@@ -97,12 +97,12 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
 
   const getCategoryColor = (cat: string) => {
     switch (cat) {
-      case 'people': return '#60a5fa';
+      case 'people': return '#aaaaaa';
       case 'court': return '#f59e0b';
       case 'property': return '#34d399';
       case 'business': return '#a78bfa';
       case 'registry': return '#f472b6';
-      case 'osint': return '#818cf8';
+      case 'osint': return '#aaaaaa';
       default: return '#888';
     }
   };

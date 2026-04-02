@@ -152,7 +152,7 @@ export default function MobileBottomSheet({
           style={{
             width: 36,
             height: 4,
-            background: '#3a5070',
+            background: '#383838',
             borderRadius: 2,
           }}
         />

@@ -166,7 +166,7 @@ export default function SecurityKeyManager() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Usb className="w-3.5 h-3.5" style={{ color: '#d97706' }} />
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
             Security Keys ({credentials.length})
           </span>
         </div>
@@ -191,7 +191,7 @@ export default function SecurityKeyManager() {
             <div
               key={cred.id}
               className="flex items-center gap-3 px-3 py-2 panel-beveled"
-              style={{ background: '#141e2b' }}
+              style={{ background: '#0a0a0a' }}
             >
               <div className="p-1.5 panel-inset" style={{ color: '#d97706', background: 'rgba(217,119,6,0.1)' }}>
                 {cred.deviceType === 'multiDevice' ? (
@@ -209,14 +209,14 @@ export default function SecurityKeyManager() {
                   <span className="text-[9px] font-mono" style={{ color: '#6b7280' }}>
                     {transportLabel(cred.transports)}
                   </span>
-                  <span className="text-[9px]" style={{ color: '#4b5563' }}>
+                  <span className="text-[9px]" style={{ color: '#555555' }}>
                     Last used {timeAgo(cred.lastUsedAt)}
                   </span>
                 </div>
               </div>
 
               <div className="text-right flex-shrink-0">
-                <div className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>
+                <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
                   Added {cred.createdAt ? new Date(cred.createdAt).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
@@ -225,7 +225,7 @@ export default function SecurityKeyManager() {
                 onClick={() => handleRevoke(cred.id)}
                 disabled={revoking === cred.id}
                 className="toolbar-btn flex items-center gap-1 text-[9px]"
-                style={{ color: revoking === cred.id ? '#4b5563' : '#ef4444' }}
+                style={{ color: revoking === cred.id ? '#555555' : '#ef4444' }}
                 title="Remove key"
               >
                 <Trash2 className="w-3 h-3" />
@@ -235,9 +235,9 @@ export default function SecurityKeyManager() {
         </div>
       ) : (
         <div className="text-center py-4">
-          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2a3e58' }} />
+          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
           <p className="text-[10px]" style={{ color: '#6b7280' }}>No security keys registered</p>
-          <p className="text-[9px] mt-1" style={{ color: '#4b5563' }}>
+          <p className="text-[9px] mt-1" style={{ color: '#555555' }}>
             Register a YubiKey, Touch ID, or Windows Hello to use as 2FA
           </p>
         </div>
@@ -295,7 +295,7 @@ export default function SecurityKeyManager() {
         </button>
       )}
 
-      <p className="text-[9px]" style={{ color: '#4b5563' }}>
+      <p className="text-[9px]" style={{ color: '#555555' }}>
         Supports YubiKey, Touch ID, Windows Hello, and other FIDO2-compatible keys
       </p>
     </div>

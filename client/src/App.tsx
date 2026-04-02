@@ -98,7 +98,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         {/* Animated scanning line beneath logo */}
         <div
           className="mt-4 mb-3 overflow-hidden"
-          style={{ width: 140, height: 2, background: '#141e2b', borderRadius: 1 }}
+          style={{ width: 140, height: 2, background: '#0a0a0a', borderRadius: 1 }}
         >
           <div
             className="h-full"

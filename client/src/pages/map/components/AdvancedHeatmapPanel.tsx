@@ -95,16 +95,16 @@ const MODE_CONFIG: {
   accent: string;
   accentBg: string;
 }[] = [
-  { key: 'density', label: 'DENSITY', icon: BarChart3, accent: '#3b82f6', accentBg: 'rgba(59,130,246,0.15)' },
+  { key: 'density', label: 'DENSITY', icon: BarChart3, accent: '#888888', accentBg: 'rgba(59,130,246,0.15)' },
   { key: 'risk', label: 'RISK', icon: AlertTriangle, accent: '#ef4444', accentBg: 'rgba(239,68,68,0.15)' },
   { key: 'temporal', label: 'TEMPORAL', icon: Clock, accent: '#f97316', accentBg: 'rgba(249,115,22,0.15)' },
   { key: 'comparison', label: 'COMPARE', icon: GitCompare, accent: '#a855f7', accentBg: 'rgba(168,85,247,0.15)' },
 ];
 
 const COLOR_SCHEME_GRADIENTS: Record<HeatmapColorScheme, string[]> = {
-  heat: ['#3b82f6', '#22c55e', '#eab308', '#f97316', '#ef4444'],
+  heat: ['#888888', '#22c55e', '#eab308', '#f97316', '#ef4444'],
   risk: ['#22c55e', '#eab308', '#f97316', '#ef4444', '#7f1d1d'],
-  blue: ['#93c5fd', '#3b82f6', '#1e40af', '#1e3a5f', '#0c1929'],
+  blue: ['#cccccc', '#888888', '#555555', '#222222', '#0c1929'],
   green: ['#86efac', '#22c55e', '#15803d', '#14532d', '#0a2918'],
   purple: ['#c4b5fd', '#a855f7', '#7c3aed', '#5b21b6', '#2e1065'],
 };
@@ -137,7 +137,7 @@ interface HeatmapPreset {
 const QUICK_PRESETS: HeatmapPreset[] = [
   { key: 'crime', label: 'Crime', mode: 'density', colorScheme: 'heat', radius: 30, accent: '#f97316' },
   { key: 'risk', label: 'Risk', mode: 'risk', colorScheme: 'risk', radius: 25, accent: '#ef4444' },
-  { key: 'temporal', label: 'Temporal', mode: 'temporal', colorScheme: 'blue', radius: 20, accent: '#3b82f6' },
+  { key: 'temporal', label: 'Temporal', mode: 'temporal', colorScheme: 'blue', radius: 20, accent: '#888888' },
   { key: 'night', label: 'Night Shift', mode: 'density', colorScheme: 'purple', radius: 30, hourRange: [19, 7], accent: '#a855f7' },
 ];
 
@@ -260,7 +260,7 @@ export default function AdvancedHeatmapPanel({
       style={{
         width: 400,
         maxHeight: '85vh',
-        background: '#141e2b',
+        background: '#0a0a0a',
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
         border: '1px solid #1e2a3a',
       }}
@@ -270,7 +270,7 @@ export default function AdvancedHeatmapPanel({
       {/* ── Header Bar ────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-4 py-2.5 shrink-0"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2.5">
           <SlidersHorizontal size={14} className="text-rmpg-400" />
@@ -315,7 +315,7 @@ export default function AdvancedHeatmapPanel({
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
                     border: active ? `2px solid ${m.accent}` : '1px solid #1e2a3a',
-                    color: active ? m.accent : '#64748b',
+                    color: active ? m.accent : '#666666',
                   }}
                   aria-label={`${m.label} heatmap mode`}
                   title={`${m.label} - ${m.key === 'density' ? 'Show incident density' : m.key === 'risk' ? 'Show risk analysis' : m.key === 'temporal' ? 'Animate by time of day' : 'Compare time periods'}`}
@@ -369,7 +369,7 @@ export default function AdvancedHeatmapPanel({
               </span>
               <span
                 className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
-                style={{ background: '#0d1520', color: '#94a3b8' }}
+                style={{ background: '#050505', color: '#888888' }}
               >
                 {formatHourCompact(hourRange[0])} &mdash; {formatHourCompact(hourRange[1])}:59
               </span>
@@ -426,7 +426,7 @@ export default function AdvancedHeatmapPanel({
                     className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-all duration-150 hover:text-rmpg-200 hover:bg-[#1a2636]/50 active:scale-[0.97]"
                     style={{
                       background: 'rgba(255,255,255,0.03)',
-                      color: '#64748b',
+                      color: '#666666',
                       border: '1px solid #1e2a3a',
                     }}
                   >
@@ -444,9 +444,9 @@ export default function AdvancedHeatmapPanel({
                     onClick={() => toggleDay(idx)}
                     className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all duration-150 text-center active:scale-[0.97] hover:bg-[#1a2636]/50"
                     style={{
-                      background: active ? activeMode.accentBg : '#0d1520',
-                      border: `1px solid ${active ? activeMode.accent + '55' : '#1e2a3a'}`,
-                      color: active ? activeMode.accent : '#475569',
+                      background: active ? activeMode.accentBg : '#050505',
+                      border: `1px solid ${active ? activeMode.accent + '55' : '#1e1e1e'}`,
+                      color: active ? activeMode.accent : '#555555',
                     }}
                     aria-label={`Toggle ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][idx]}`}
                   >
@@ -491,7 +491,7 @@ export default function AdvancedHeatmapPanel({
                     />
                     <span
                       className="text-[7px] uppercase tracking-wider transition-colors"
-                      style={{ color: active ? colors[2] : '#475569' }}
+                      style={{ color: active ? colors[2] : '#555555' }}
                     >
                       {scheme}
                     </span>
@@ -553,9 +553,9 @@ export default function AdvancedHeatmapPanel({
                     onClick={() => onResolutionChange(opt.key)}
                     className="px-2.5 py-1 rounded-sm text-[9px] font-semibold uppercase tracking-wider transition-all"
                     style={{
-                      background: active ? activeMode.accentBg : '#0d1520',
-                      border: `1px solid ${active ? activeMode.accent + '55' : '#1e2a3a'}`,
-                      color: active ? activeMode.accent : '#475569',
+                      background: active ? activeMode.accentBg : '#050505',
+                      border: `1px solid ${active ? activeMode.accent + '55' : '#1e1e1e'}`,
+                      color: active ? activeMode.accent : '#555555',
                     }}
                   >
                     {opt.label}
@@ -583,7 +583,7 @@ export default function AdvancedHeatmapPanel({
                 onClick={() => onShowClustersChange(!showClusters)}
                 className="relative w-8 h-4 rounded-full transition-colors"
                 style={{
-                  background: showClusters ? activeMode.accent : '#1e2a3a',
+                  background: showClusters ? activeMode.accent : '#1e1e1e',
                 }}
               >
                 <div
@@ -610,7 +610,7 @@ export default function AdvancedHeatmapPanel({
                 className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
                 style={{
                   background: 'rgba(255,255,255,0.03)',
-                  color: '#64748b',
+                  color: '#666666',
                   border: '1px solid #1e2a3a',
                 }}
               >
@@ -621,7 +621,7 @@ export default function AdvancedHeatmapPanel({
                 className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
                 style={{
                   background: 'rgba(255,255,255,0.03)',
-                  color: '#64748b',
+                  color: '#666666',
                   border: '1px solid #1e2a3a',
                 }}
               >
@@ -631,7 +631,7 @@ export default function AdvancedHeatmapPanel({
           </div>
           <div
             className="max-h-32 overflow-y-auto space-y-0.5 rounded-sm p-1"
-            style={{ background: '#0d1520', border: '1px solid #1e2a3a', scrollbarWidth: 'thin' }}
+            style={{ background: '#050505', border: '1px solid #1e2a3a', scrollbarWidth: 'thin' }}
           >
             {availableTypes.map((t) => {
               const checked = types.includes(t.incident_type);
@@ -645,14 +645,14 @@ export default function AdvancedHeatmapPanel({
                     className="w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 transition-all"
                     style={{
                       background: checked ? activeMode.accent : 'transparent',
-                      borderColor: checked ? activeMode.accent : '#334155',
+                      borderColor: checked ? activeMode.accent : '#444444',
                     }}
                   >
                     {checked && <Check size={9} className="text-white" strokeWidth={3} />}
                   </div>
                   <span
                     className="text-[9px] flex-1 truncate"
-                    style={{ color: checked ? '#e2e8f0' : '#64748b' }}
+                    style={{ color: checked ? '#e0e0e0' : '#666666' }}
                   >
                     {(t.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                   </span>
@@ -678,7 +678,7 @@ export default function AdvancedHeatmapPanel({
               {/* Digital time display */}
               <div
                 className="flex items-center justify-center py-2 rounded-sm"
-                style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
               >
                 <span className="text-[18px] font-mono font-bold" style={{ color: '#f97316' }}>
                   {formatHourCompact(temporalHour)}
@@ -739,9 +739,9 @@ export default function AdvancedHeatmapPanel({
                         onClick={() => onTemporalSpeedChange(s)}
                         className="px-2.5 py-1 rounded-sm text-[9px] font-bold font-mono transition-all"
                         style={{
-                          background: active ? 'rgba(249,115,22,0.15)' : '#0d1520',
-                          border: `1px solid ${active ? '#f9731655' : '#1e2a3a'}`,
-                          color: active ? '#f97316' : '#475569',
+                          background: active ? 'rgba(249,115,22,0.15)' : '#050505',
+                          border: `1px solid ${active ? '#f9731655' : '#1e1e1e'}`,
+                          color: active ? '#f97316' : '#555555',
                         }}
                       >
                         {s}x
@@ -752,7 +752,7 @@ export default function AdvancedHeatmapPanel({
               </div>
 
               {/* Progress bar */}
-              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: '#0d1520' }}>
+              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: '#050505' }}>
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
@@ -781,9 +781,9 @@ export default function AdvancedHeatmapPanel({
                       onClick={() => onComparisonDaysChange(p.days)}
                       className="flex-1 py-1.5 rounded-sm text-[10px] font-bold font-mono text-center transition-all"
                       style={{
-                        background: active ? 'rgba(168,85,247,0.15)' : '#0d1520',
-                        border: `1px solid ${active ? '#a855f755' : '#1e2a3a'}`,
-                        color: active ? '#a855f7' : '#475569',
+                        background: active ? 'rgba(168,85,247,0.15)' : '#050505',
+                        border: `1px solid ${active ? '#a855f755' : '#1e1e1e'}`,
+                        color: active ? '#a855f7' : '#555555',
                       }}
                     >
                       {p.label}
@@ -795,7 +795,7 @@ export default function AdvancedHeatmapPanel({
               {/* Color legend */}
               <div
                 className="flex items-center justify-between px-3 py-2 rounded-sm"
-                style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
               >
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} />
@@ -806,10 +806,10 @@ export default function AdvancedHeatmapPanel({
                 </div>
                 <div
                   className="w-px h-4"
-                  style={{ background: '#1e2a3a' }}
+                  style={{ background: '#1e1e1e' }}
                 />
                 <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#3b82f6' }} />
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#888888' }} />
                   <span className="text-[9px] text-rmpg-400">Previous</span>
                   <span className="text-[10px] font-mono font-bold text-rmpg-300">
                     {comparisonPointCount.toLocaleString()}
@@ -852,7 +852,7 @@ export default function AdvancedHeatmapPanel({
               {/* Total incidents */}
               <div
                 className="flex items-center justify-between px-3 py-2.5 rounded-sm"
-                style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
               >
                 <span className="text-[8px] uppercase tracking-wider text-rmpg-500 font-semibold">
                   Total Incidents
@@ -873,7 +873,7 @@ export default function AdvancedHeatmapPanel({
                       <span className="text-[9px] text-rmpg-400 w-24 truncate shrink-0">
                         {(t.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                       </span>
-                      <div className="flex-1 h-3 rounded-sm overflow-hidden" style={{ background: '#0d1520' }}>
+                      <div className="flex-1 h-3 rounded-sm overflow-hidden" style={{ background: '#050505' }}>
                         <div
                           className="h-full rounded-sm transition-all"
                           style={{

@@ -232,7 +232,7 @@ export default function CriminalHistoryPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #1e3048' }}>
           <select className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
             <option value="name">Name</option>
             <option value="dob">DOB</option>

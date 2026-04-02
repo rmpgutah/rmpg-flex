@@ -246,7 +246,7 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
       <div className="flex items-center gap-4">
         <div className="relative w-16 h-16">
           <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1a2636" strokeWidth="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#141414" strokeWidth="3" />
             <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={ratingColor} strokeWidth="3" strokeDasharray={`${data.score}, 100`} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -293,7 +293,7 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
   if (links.length === 0) return null;
 
   const typeColors: Record<string, string> = {
-    incident: '#3b82f6',
+    incident: '#888888',
     case: '#8b5cf6',
     warrant: '#ef4444',
     person: '#22c55e',
@@ -316,7 +316,7 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
           <Target className="w-3 h-3" /> THIS CASE
         </div>
         {links.map((link: any, idx: number) => {
-          const color = typeColors[link.rel_type] || '#5a6e80';
+          const color = typeColors[link.rel_type] || '#666666';
           return (
             <div key={idx} className="flex items-center gap-1">
               <ArrowRight className="w-3 h-3 text-rmpg-600" />
@@ -1072,7 +1072,7 @@ export default function CaseManagementPage() {
                   ) : (
                     <div className="relative pl-4 border-l border-rmpg-700 space-y-3">
                       {[
-                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.case_number || '#' + c.id} — ${c.call_type || 'Unknown'}`, color: '#3b82f6' })),
+                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.case_number || '#' + c.id} — ${c.call_type || 'Unknown'}`, color: '#888888' })),
                         ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: '#f59e0b' })),
                         ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: n.content?.substring(0, 80) || 'Note', color: '#8b5cf6' })),
                       ]

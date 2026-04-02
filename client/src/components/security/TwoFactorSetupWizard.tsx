@@ -100,7 +100,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             style={{
               background: ['intro', 'scan', 'verify', 'backup'].indexOf(step) >= i
                 ? '#888888'
-                : '#1e3048',
+                : '#222222',
             }}
           />
         ))}
@@ -123,7 +123,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             </div>
           </div>
 
-          <div className="space-y-2 text-[10px]" style={{ color: '#8a9aaa' }}>
+          <div className="space-y-2 text-[10px]" style={{ color: '#888888' }}>
             <p>You will need an authenticator app such as:</p>
             <ul className="space-y-1 pl-4">
               <li className="flex items-center gap-2">
@@ -162,7 +162,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {/* Step: Scan QR */}
       {step === 'scan' && (
         <div className="space-y-4">
-          <p className="text-[10px]" style={{ color: '#8a9aaa' }}>
+          <p className="text-[10px]" style={{ color: '#888888' }}>
             Scan this QR code with your authenticator app:
           </p>
 
@@ -177,7 +177,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           <button type="button"
             onClick={() => setShowManual(!showManual)}
             className="text-[10px] flex items-center gap-1 mx-auto"
-            style={{ color: '#4a90c4' }}
+            style={{ color: '#888888' }}
           >
             <Keyboard className="w-3 h-3" />
             {showManual ? 'Hide manual key' : "Can't scan? Enter key manually"}
@@ -186,7 +186,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           {showManual && (
             <div
               className="flex items-center gap-2 p-2 font-mono text-xs"
-              style={{ background: '#0d1520', border: '1px solid #1e3048' }}
+              style={{ background: '#050505', border: '1px solid #1e3048' }}
             >
               <span className="flex-1 tracking-widest text-center" style={{ color: '#e5e7eb' }}>
                 {manualKey}
@@ -209,7 +209,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {/* Step: Verify */}
       {step === 'verify' && (
         <div className="space-y-4">
-          <p className="text-[10px]" style={{ color: '#8a9aaa' }}>
+          <p className="text-[10px]" style={{ color: '#888888' }}>
             Enter the 6-digit code from your authenticator app to confirm setup:
           </p>
 

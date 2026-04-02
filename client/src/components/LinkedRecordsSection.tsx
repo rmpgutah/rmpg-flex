@@ -133,7 +133,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
   /* ---- Render ---------------------------------------------------- */
 
   return (
-    <div className="panel-beveled p-3" style={{ background: '#141e2b' }}>
+    <div className="panel-beveled p-3" style={{ background: '#0a0a0a' }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">

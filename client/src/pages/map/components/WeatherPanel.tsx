@@ -125,7 +125,7 @@ export default function WeatherPanel({
       className="panel-beveled rounded-sm flex flex-col select-none pointer-events-auto transition-all duration-200 ease-out shadow-lg"
       style={{
         width: 320,
-        background: '#141e2b',
+        background: '#0a0a0a',
         border: '1px solid #1e2a3a',
         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       }}
@@ -135,7 +135,7 @@ export default function WeatherPanel({
       {/* ── Header ──────────────────────────────────────── */}
       <div
         className="flex items-center gap-2 px-3 py-2"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <HeaderIcon size={14} className="text-white/60" />
         <span className="text-[10px] font-semibold tracking-widest text-white/80 uppercase flex-1">
@@ -170,7 +170,7 @@ export default function WeatherPanel({
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Lighting Conditions
           </div>
-          <div className="flex items-center gap-3 panel-inset p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}>
+          <div className="flex items-center gap-3 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #1e2a3a' }}>
             <div className={`p-2 rounded-sm ${lc.bg}`}>
               <lc.Icon size={20} className={`${lc.color} transition-all duration-200`} />
             </div>
@@ -256,7 +256,7 @@ export default function WeatherPanel({
             Wind
           </div>
           {windCondition ? (
-            <div className="flex items-center gap-4 panel-inset p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e2a3a', borderLeft: '2px solid #22d3ee' }}>
+            <div className="flex items-center gap-4 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #1e2a3a', borderLeft: '2px solid #22d3ee' }}>
               <div className="flex items-baseline gap-1">
                 <span className="text-[20px] font-bold font-mono tabular-nums text-white/90">
                   {Math.round(windCondition.speed)}

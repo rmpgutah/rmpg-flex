@@ -23,7 +23,7 @@ interface SyncStatus {
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   citation: { label: 'CITATION', color: '#d4a017' },
-  fi_card: { label: 'FI CARD', color: '#3b82f6' },
+  fi_card: { label: 'FI CARD', color: '#888888' },
   evidence: { label: 'EVIDENCE', color: '#a855f7' },
   call: { label: 'CALL', color: '#22c55e' },
 };
@@ -139,7 +139,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
           ) : (
             <div className="divide-y divide-[#1e3048]">
               {[...pendingItems, ...failedItems].map((item) => {
-                const typeInfo = TYPE_LABELS[item.type] || { label: (item.type || 'unknown').toUpperCase(), color: '#8ba2b8' };
+                const typeInfo = TYPE_LABELS[item.type] || { label: (item.type || 'unknown').toUpperCase(), color: '#999999' };
                 const isFailed = item.status === 'failed';
 
                 return (

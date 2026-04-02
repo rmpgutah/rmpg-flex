@@ -99,11 +99,11 @@ export default function ResetPasswordPage() {
 
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#4a9aee' }} />
+            <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
             <span>SET NEW PASSWORD</span>
             <div className="ml-auto flex items-center gap-1" aria-hidden="true">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>&#9633;</div>
             </div>
           </div>
 
@@ -111,8 +111,8 @@ export default function ResetPasswordPage() {
             {/* Loading state */}
             {validating && (
               <div className="text-center py-8" role="status" aria-live="polite">
-                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: '#4a9aee' }} aria-hidden="true" />
-                <p className="text-[10px]" style={{ color: '#8a9aaa' }}>Validating reset link...</p>
+                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: '#999999' }} aria-hidden="true" />
+                <p className="text-[10px]" style={{ color: '#888888' }}>Validating reset link...</p>
               </div>
             )}
 
@@ -123,7 +123,7 @@ export default function ResetPasswordPage() {
                   <XCircle className="w-6 h-6 text-red-400" />
                 </div>
                 <h2 className="text-sm font-bold text-white mb-2">Invalid Reset Link</h2>
-                <p className="text-[10px] leading-relaxed" style={{ color: '#8a9aaa' }}>
+                <p className="text-[10px] leading-relaxed" style={{ color: '#888888' }}>
                   {tokenError}
                 </p>
                 <a
@@ -145,11 +145,11 @@ export default function ResetPasswordPage() {
               <>
                 <div className="text-center mb-5">
                   <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(136, 136, 136, 0.15)', border: '1px solid rgba(136, 136, 136, 0.3)' }}>
-                    <Lock className="w-5 h-5" style={{ color: '#4a9aee' }} />
+                    <Lock className="w-5 h-5" style={{ color: '#999999' }} />
                   </div>
                   <h2 className="text-sm font-bold text-white mb-1">Set New Password</h2>
                   {username && (
-                    <p className="text-[10px] font-mono" style={{ color: '#6b7a8a' }}>
+                    <p className="text-[10px] font-mono" style={{ color: '#666666' }}>
                       @{username}
                     </p>
                   )}
@@ -163,11 +163,11 @@ export default function ResetPasswordPage() {
 
                 <form onSubmit={handleSubmit} className="space-y-3">
                   <div>
-                    <label htmlFor="new-password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
+                    <label htmlFor="new-password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                       New Password
                     </label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#3a5070' }} />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
                       <input
                         id="new-password"
                         type={showPassword ? 'text' : 'password'}
@@ -183,9 +183,9 @@ export default function ResetPasswordPage() {
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm"
-                        style={{ color: '#5a6e80' }}
+                        style={{ color: '#666666' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -194,11 +194,11 @@ export default function ResetPasswordPage() {
                   </div>
 
                   <div>
-                    <label htmlFor="confirm-password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
+                    <label htmlFor="confirm-password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                       Confirm Password
                     </label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#3a5070' }} />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
                       <input
                         id="confirm-password"
                         type={showPassword ? 'text' : 'password'}
@@ -220,9 +220,9 @@ export default function ResetPasswordPage() {
                           {check.met ? (
                             <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" aria-hidden="true" />
                           ) : (
-                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#4a5568' }} aria-hidden="true" />
+                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#555555' }} aria-hidden="true" />
                           )}
-                          <span style={{ color: check.met ? '#4ade80' : '#6b7a8a' }}>{check.label}</span>
+                          <span style={{ color: check.met ? '#4ade80' : '#666666' }}>{check.label}</span>
                           <span className="sr-only">{check.met ? '(met)' : '(not met)'}</span>
                         </div>
                       ))}
@@ -263,7 +263,7 @@ export default function ResetPasswordPage() {
                   <CheckCircle className="w-6 h-6 text-green-400" aria-hidden="true" />
                 </div>
                 <h2 className="text-sm font-bold text-white mb-2">Password Reset Complete</h2>
-                <p className="text-[10px] leading-relaxed mb-1" style={{ color: '#8a9aaa' }}>
+                <p className="text-[10px] leading-relaxed mb-1" style={{ color: '#888888' }}>
                   Your password has been updated. All existing sessions have been signed out for security.
                 </p>
                 <a
@@ -285,9 +285,9 @@ export default function ResetPasswordPage() {
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"
-                style={{ color: '#3a6a9e' }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = '#5a9ade'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = '#3a6a9e'; }}
+                style={{ color: '#666666' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
               >
                 <ArrowLeft className="w-3 h-3" aria-hidden="true" />
                 Back to Login
@@ -297,7 +297,7 @@ export default function ResetPasswordPage() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[8px] mt-4" style={{ color: '#2a3e58' }}>
+        <p className="text-center text-[8px] mt-4" style={{ color: '#2e2e2e' }}>
           RMPG Flex &mdash; Rocky Mountain Protective Group
         </p>
       </div>

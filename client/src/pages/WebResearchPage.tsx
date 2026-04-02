@@ -282,7 +282,7 @@ export default function WebResearchPage() {
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {/* Header bar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700" style={{ background: '#050505' }}>
         <Globe className="w-4 h-4 text-brand-400" />
         <h1 className="text-sm font-bold text-rmpg-100 tracking-wide uppercase flex-1">Web Research</h1>
 

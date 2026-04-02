@@ -75,7 +75,7 @@ function getStatusColor(status: string): string {
   switch (status) {
     case 'cleared': return '#22c55e';
     case 'closed': return '#6b7280';
-    case 'archived': return '#4b5563';
+    case 'archived': return '#555555';
     default: return '#6b7280';
   }
 }
@@ -132,7 +132,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
         title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
         zIndex: 50,
         onClick: () => {
-        const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
+        const pColor = PRIORITY_COLORS[call.priority] || '#666666';
         const sColor = getStatusColor(call.status);
 
         infoWindowRef.current?.setContent(`

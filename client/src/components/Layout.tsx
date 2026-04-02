@@ -729,7 +729,7 @@ export default function Layout() {
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#141e2b',
+              background: '#0a0a0a',
               border: '1px solid #1e3048',
               borderTop: '3px solid #888888',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
@@ -857,7 +857,7 @@ export default function Layout() {
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+              <div className="w-px h-6" style={{ background: '#2e2e2e' }} />
               {/* 3: Page title with subtle letter-spacing and smoother color */}
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-300" style={{ letterSpacing: '0.08em' }}>
                 {pageTitle.toUpperCase()}
@@ -871,7 +871,7 @@ export default function Layout() {
                   aria-label="Open current page in new window"
                   style={{ padding: '2px 4px' }}
                 >
-                  <ExternalLink className="w-3 h-3" style={{ color: '#5a6e80' }} />
+                  <ExternalLink className="w-3 h-3" style={{ color: '#666666' }} />
                 </button>
               )}
             </div>
@@ -910,10 +910,10 @@ export default function Layout() {
               {/* GPS */}
               <div
                 className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
-                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#0d1520' }}
+                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#050505' }}
                 title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || 'no unit'}` : 'GPS acquiring...'}
               >
-                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#5a6e80', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#666666', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
@@ -961,13 +961,13 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2a3e58' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: '#2e2e2e' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2a3e58' }} />
+            <div className="w-px h-7" style={{ background: '#2e2e2e' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
@@ -1010,7 +1010,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: '#5a6e80',
+                    color: '#666666',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
@@ -1171,7 +1171,7 @@ export default function Layout() {
         </button>
         <div
           className="self-stretch mx-0.5"
-          style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+          style={{ width: 1, background: '#222222', margin: '6px 2px' }}
         />
 
         {(() => {
@@ -1208,7 +1208,7 @@ export default function Layout() {
                     aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
-                    <Icon style={{ width: 16, height: 16, color: '#5a6e80', marginBottom: 1 }} />
+                    <Icon style={{ width: 16, height: 16, color: '#666666', marginBottom: 1 }} />
                     <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
                   </button>
                 </React.Fragment>
@@ -1220,7 +1220,7 @@ export default function Layout() {
                 {showSep && (
                   <div
                     className="self-stretch mx-0.5"
-                    style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+                    style={{ width: 1, background: '#222222', margin: '6px 2px' }}
                   />
                 )}
                 <div className="relative">
@@ -1249,7 +1249,7 @@ export default function Layout() {
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
                       borderBottom: isActive ? '2px solid #5aa8e8' : '2px solid transparent',
-                      color: isActive ? '#ffffff' : '#8a9aaa',
+                      color: isActive ? '#ffffff' : '#888888',
                       cursor: 'pointer',
                     }}
                     onMouseEnter={(e) => {
@@ -1271,7 +1271,7 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        color: isActive ? '#5aa8e8' : '#5a6e80',
+                        color: isActive ? '#999999' : '#666666',
                         marginBottom: 1,
                       }}
                     />
@@ -1304,7 +1304,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? '#5aa8e8' : '#3a4e60',
+                          color: isActive ? '#999999' : '#3a3a3a',
                         }}
                       >
                         {item.shortcut}
@@ -1318,7 +1318,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: '#3a4e60',
+                          color: '#3a3a3a',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1335,7 +1335,7 @@ export default function Layout() {
                       aria-label={`${item.label} submenu`}
                       style={{
                         minWidth: 210,
-                        background: '#1a2636',
+                        background: '#141414',
                         border: '1px solid #2a3e58',
                         borderTop: '2px solid #888888',
                         boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
@@ -1363,7 +1363,7 @@ export default function Layout() {
                             className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
                             role="menuitem"
                             style={{
-                              color: childActive ? '#ffffff' : '#b0bcc8',
+                              color: childActive ? '#ffffff' : '#aaaaaa',
                               background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
                             }}
                             onMouseEnter={(e) => {
@@ -1375,12 +1375,12 @@ export default function Layout() {
                             onMouseLeave={(e) => {
                               if (!childActive) {
                                 (e.currentTarget as HTMLElement).style.background = 'transparent';
-                                (e.currentTarget as HTMLElement).style.color = '#b0bcc8';
+                                (e.currentTarget as HTMLElement).style.color = '#aaaaaa';
                               }
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : '#5a6e80', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : '#666666', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );
@@ -1410,7 +1410,7 @@ export default function Layout() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
-        <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#1a2636', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+        <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">

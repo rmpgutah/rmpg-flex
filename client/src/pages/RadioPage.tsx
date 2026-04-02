@@ -318,7 +318,7 @@ export default function RadioPage() {
         }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Users style={{ width: 12, height: 12, color: '#5a6e80' }} />
+          <Users style={{ width: 12, height: 12, color: '#666666' }} />
           <span className="text-[10px] font-mono font-bold tracking-wider text-rmpg-400">
             ON CHANNEL ({channelUsers.length})
           </span>
@@ -384,7 +384,7 @@ export default function RadioPage() {
               onClick={() => setShowHistory(false)}
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
               style={{
-                color: !showHistory ? '#fff' : '#5a6e80',
+                color: !showHistory ? '#fff' : '#666666',
                 borderBottom: !showHistory ? '2px solid #888888' : '2px solid transparent',
               }}
             >
@@ -394,7 +394,7 @@ export default function RadioPage() {
               onClick={() => setShowHistory(true)}
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
               style={{
-                color: showHistory ? '#fff' : '#5a6e80',
+                color: showHistory ? '#fff' : '#666666',
                 borderBottom: showHistory ? '2px solid #3b82f6' : '2px solid transparent',
               }}
             >
@@ -414,8 +414,8 @@ export default function RadioPage() {
 
         {/* History filters */}
         {showHistory && (
-          <div className="px-3 py-1.5 flex items-center gap-1" style={{ borderBottom: '1px solid #162236', background: '#0d1520' }}>
-            <Search style={{ width: 9, height: 9, color: '#5a6e80' }} />
+          <div className="px-3 py-1.5 flex items-center gap-1" style={{ borderBottom: '1px solid #162236', background: '#050505' }}>
+            <Search style={{ width: 9, height: 9, color: '#666666' }} />
             <input
               type="text"
               value={historySearch}
@@ -541,7 +541,7 @@ export default function RadioPage() {
   useEffect(() => { document.title = 'Radio Communications \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="h-full flex flex-col" style={{ background: '#141e2b' }}>
+    <div className="h-full flex flex-col" style={{ background: '#0a0a0a' }}>
 
       {/* ─── HTTPS Warning Banner ────────────────────────────── */}
       {!micSupported && (
@@ -603,7 +603,7 @@ export default function RadioPage() {
             flexShrink: 0,
           }}
         >
-          <Radio style={{ width: 16, height: 16, color: '#60a5fa', flexShrink: 0 }} />
+          <Radio style={{ width: 16, height: 16, color: '#aaaaaa', flexShrink: 0 }} />
           <div className="flex-1">
             <div className="text-[10px] font-mono font-bold text-blue-300 tracking-wider">
               PAGE FROM {incomingPage.from_full_name || incomingPage.from_username}
@@ -635,7 +635,7 @@ export default function RadioPage() {
             flexShrink: 0,
           }}
         >
-          <PhoneCall style={{ width: 16, height: 16, color: '#3b82f6', flexShrink: 0 }} />
+          <PhoneCall style={{ width: 16, height: 16, color: '#888888', flexShrink: 0 }} />
           <div className="flex-1 min-w-0">
             <div className="text-xs font-mono font-bold text-blue-300 truncate">
               PRIVATE CALL — {activeCall.partnerName}
@@ -650,8 +650,8 @@ export default function RadioPage() {
               onClick={toggleMute}
               className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold transition-colors"
               style={{
-                border: `1px solid ${callMuted ? '#ef4444' : '#2a3e58'}`,
-                color: callMuted ? '#ef4444' : '#8a9aaa',
+                border: `1px solid ${callMuted ? '#ef4444' : '#2e2e2e'}`,
+                color: callMuted ? '#ef4444' : '#888888',
                 background: callMuted ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
               }}
             >
@@ -680,7 +680,7 @@ export default function RadioPage() {
             flexShrink: 0,
           }}
         >
-          <Phone style={{ width: 14, height: 14, color: '#60a5fa', animation: 'radioPulse 1.5s ease infinite' }} />
+          <Phone style={{ width: 14, height: 14, color: '#aaaaaa', animation: 'radioPulse 1.5s ease infinite' }} />
           <span className="text-xs font-mono text-blue-300">
             Calling <strong>{ringingTarget.name}</strong>...
           </span>
@@ -784,8 +784,8 @@ export default function RadioPage() {
                   className="px-3 py-1 text-[10px] font-mono font-bold uppercase tracking-wider transition-all border"
                   style={{
                     background: channelGroup === g.label ? 'rgba(136, 136, 136, 0.25)' : 'transparent',
-                    borderColor: channelGroup === g.label ? '#888888' : '#2a3e58',
-                    color: channelGroup === g.label ? '#fff' : '#5a6e80',
+                    borderColor: channelGroup === g.label ? '#888888' : '#2e2e2e',
+                    color: channelGroup === g.label ? '#fff' : '#666666',
                   }}
                 >
                   {g.label}
@@ -813,7 +813,7 @@ export default function RadioPage() {
                     }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#2a3e58';
+                    e.currentTarget.style.borderColor = '#2e2e2e';
                     e.currentTarget.style.background = 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)';
                   }}
                 >
@@ -859,7 +859,7 @@ export default function RadioPage() {
                         ? 'rgba(136, 136, 136, 0.25)'
                         : 'transparent',
                       borderColor: isActive ? '#888888' : 'transparent',
-                      color: isActive ? '#fff' : '#5a6e80',
+                      color: isActive ? '#fff' : '#666666',
                       minHeight: isMobile ? 36 : undefined,
                     }}
                   >
@@ -892,8 +892,8 @@ export default function RadioPage() {
                 }}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold transition-colors"
                 style={{
-                  border: `1px solid ${scanActive ? '#22c55e' : '#2a3e58'}`,
-                  color: scanActive ? '#22c55e' : '#5a6e80',
+                  border: `1px solid ${scanActive ? '#22c55e' : '#2e2e2e'}`,
+                  color: scanActive ? '#22c55e' : '#666666',
                   background: scanActive ? 'rgba(34, 197, 94, 0.1)' : 'transparent',
                 }}
               >
@@ -1033,9 +1033,9 @@ export default function RadioPage() {
 
                 <div className="flex flex-col items-center">
                   {isInCall ? (
-                    <PhoneCall style={{ width: 32, height: 32, color: '#60a5fa' }} />
+                    <PhoneCall style={{ width: 32, height: 32, color: '#aaaaaa' }} />
                   ) : !micSupported ? (
-                    <MicOff style={{ width: 32, height: 32, color: '#5a6e80' }} />
+                    <MicOff style={{ width: 32, height: 32, color: '#666666' }} />
                   ) : isTransmitting ? (
                     <Mic style={{ width: 32, height: 32, color: '#fff' }} />
                   ) : otherSpeaking ? (
@@ -1046,8 +1046,8 @@ export default function RadioPage() {
                   <span
                     className="text-[10px] font-mono font-bold tracking-wider mt-2"
                     style={{
-                      color: isInCall ? '#60a5fa'
-                        : !micSupported ? '#5a6e80'
+                      color: isInCall ? '#aaaaaa'
+                        : !micSupported ? '#666666'
                         : isTransmitting ? '#fff'
                         : otherSpeaking ? '#d4a030'
                         : '#66cc66',
@@ -1099,7 +1099,7 @@ export default function RadioPage() {
                   style={{
                     background: 'rgba(136, 136, 136, 0.3)',
                     border: '1px solid #888888',
-                    color: '#4a9ede',
+                    color: '#999999',
                   }}
                 >
                   <Users style={{ width: 12, height: 12 }} />
@@ -1113,7 +1113,7 @@ export default function RadioPage() {
               showMobileSidebar ? (
                 <div
                   className="absolute inset-0 z-40 flex flex-col"
-                  style={{ background: '#0d1520' }}
+                  style={{ background: '#050505' }}
                 >
                   <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid #1e3048' }}>
                     <span className="text-[10px] font-mono font-bold text-rmpg-400 tracking-wider">CHANNEL INFO</span>
@@ -1131,7 +1131,7 @@ export default function RadioPage() {
             ) : (
               <div
                 className="flex flex-col w-72 border-l border-rmpg-700"
-                style={{ background: '#0d1520', flexShrink: 0 }}
+                style={{ background: '#050505', flexShrink: 0 }}
               >
                 {renderSidebarContent()}
               </div>

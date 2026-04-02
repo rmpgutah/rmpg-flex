@@ -78,11 +78,11 @@ export default function MapSidebar({
       {sidebarOpen && (
         <>
           {/* Compact status counters */}
-          <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0d1520' }}>
+          <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#050505' }}>
             {([
               { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
               { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },
-              { label: 'ENR', count: unitsByStatus['enroute'] || 0, color: '#3b82f6' },
+              { label: 'ENR', count: unitsByStatus['enroute'] || 0, color: '#888888' },
               { label: 'ONS', count: unitsByStatus['onscene'] || 0, color: '#a855f7' },
               { label: 'BSY', count: unitsByStatus['busy'] || 0, color: '#ef4444' },
             ]).map(({ label, count, color }) => (
@@ -209,7 +209,7 @@ export default function MapSidebar({
                 {/* Fix 99: calls sorted by priority (P1 first) */}
                 {sortedCalls.map((call) => {
                   const hasCoords = call.latitude != null && call.longitude != null;
-                  const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
+                  const pColor = PRIORITY_COLORS[call.priority] || '#666666';
                   const { category } = getIncidentCategory(call.incident_type);
                   return (
                     <button type="button"

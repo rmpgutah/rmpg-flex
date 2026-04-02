@@ -661,7 +661,7 @@ export default function DashboardPage() {
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
           { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
-          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#4b5563' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#555555' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
@@ -749,7 +749,7 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
                     <div className="p-3 rounded-sm bg-surface-sunken border border-[#1e3048] shadow-inner">
-                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#60a5fa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#94a3b8' }} />
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
                     </div>
                     <div>
                       <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
@@ -814,9 +814,9 @@ export default function DashboardPage() {
                 { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
                 { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
                 { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
-                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#3b82f6' },
+                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
                 { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
-                { icon: Mail, label: 'Email', path: '/email', color: '#06b6d4' },
+                { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
               ].map(({ icon: ActionIcon, label, path, color, action }) => (
                 <button type="button"
                   key={label}
@@ -938,31 +938,31 @@ export default function DashboardPage() {
                   <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
-                tickLine={{ stroke: '#1e3048' }}
-                axisLine={{ stroke: '#1e3048' }}
+                tick={{ fill: '#666666', fontSize: 9 }}
+                tickLine={{ stroke: '#222222' }}
+                axisLine={{ stroke: '#222222' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
-                tickLine={{ stroke: '#1e3048' }}
-                axisLine={{ stroke: '#1e3048' }}
+                tick={{ fill: '#666666', fontSize: 9 }}
+                tickLine={{ stroke: '#222222' }}
+                axisLine={{ stroke: '#222222' }}
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#141e2b',
+                  backgroundColor: '#0a0a0a',
                   border: '1px solid #2a3e58',
                   borderRadius: '2px',
-                  color: '#d0d8e0',
+                  color: '#cccccc',
                   fontSize: '11px',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                   padding: '8px 12px',
                 }}
-                labelStyle={{ color: '#8a9aaa', fontSize: '10px', marginBottom: '4px' }}
+                labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
                 cursor={{ stroke: '#888888', strokeWidth: 1, strokeDasharray: '4 4' }}
               />
               <Area
@@ -992,7 +992,7 @@ export default function DashboardPage() {
                 { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: '#dc2626' },
                 { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
                 { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#888888' },
-                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#4b5563' },
+                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#555555' },
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
@@ -1014,10 +1014,10 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#141e2b',
+                        backgroundColor: '#0a0a0a',
                         border: '1px solid #2a3e58',
                         borderRadius: '2px',
-                        color: '#d0d8e0',
+                        color: '#cccccc',
                         fontSize: '11px',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                         padding: '8px 12px',
@@ -1040,7 +1040,7 @@ export default function DashboardPage() {
                 { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
                 { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
                 { key: 'P3', label: 'Routine', color: '#888888', count: stats.calls_by_priority.P3 },
-                { key: 'P4', label: 'Scheduled', color: '#4b5563', count: stats.calls_by_priority.P4 },
+                { key: 'P4', label: 'Scheduled', color: '#555555', count: stats.calls_by_priority.P4 },
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors">
                   <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: color }} />
@@ -1075,7 +1075,7 @@ export default function DashboardPage() {
       {/* Shift Summary Row */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics">
         {[
-          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#3b82f6', path: '/dispatch' },
+          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#888888', path: '/dispatch' },
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
           { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: '#22c55e', path: '/personnel' },
           { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#888888', path: '/reports' },
@@ -1120,7 +1120,7 @@ export default function DashboardPage() {
           </div>
           <div className="relative w-16 h-16 mx-auto my-1">
             <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-              <circle cx="18" cy="18" r="14" fill="none" stroke="#1e3048" strokeWidth="3" />
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#222222" strokeWidth="3" />
               <circle
                 cx="18" cy="18" r="14" fill="none"
                 stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
@@ -1151,13 +1151,13 @@ export default function DashboardPage() {
                   { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
                   { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
                   { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
-                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#4b5563' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#555555' },
                 ].filter(d => d.value > 0)}
                 cx="50%" cy="50%" innerRadius={20} outerRadius={32}
                 paddingAngle={2} dataKey="value" stroke="none"
               >
                 {[
-                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#4b5563' },
+                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#555555' },
                 ].map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
             </PieChart>
@@ -1363,12 +1363,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-lg font-bold font-mono text-green-400 tabular-nums">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : '#f59e0b' }} />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
                   </div>
-                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
+                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
                     {serveRate !== null ? `${serveRate}%` : 'N/A'}
                   </div>
                 </div>
@@ -1614,7 +1614,7 @@ export default function DashboardPage() {
         const ROLE_COLORS: Record<string, string> = {
           admin: '#ef4444',
           supervisor: '#f59e0b',
-          manager: '#3b82f6',
+          manager: '#888888',
           officer: '#22c55e',
         };
         const ROLE_ORDER = ['admin', 'supervisor', 'manager', 'officer'];
@@ -1636,7 +1636,7 @@ export default function DashboardPage() {
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,
-          fill: ROLE_COLORS[o.role] || '#5a6e80',
+          fill: ROLE_COLORS[o.role] || '#666666',
         }));
 
         return (
@@ -1654,17 +1654,17 @@ export default function DashboardPage() {
               </div>
               <ResponsiveContainer width="100%" height={Math.max(180, chartRows.length * 32)}>
                 <BarChart data={chartRows} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e3048" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#8a9aaa', fontSize: 10 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222222" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 10 }} allowDecimals={false} />
                   <YAxis
                     type="category"
                     dataKey="name"
                     width={140}
-                    tick={{ fill: '#b0bcc8', fontSize: 10 }}
+                    tick={{ fill: '#aaaaaa', fontSize: 10 }}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#141e2b',
+                      backgroundColor: '#0a0a0a',
                       border: '1px solid #2a3e58',
                       borderRadius: '2px',
                       color: '#e0e0e0',

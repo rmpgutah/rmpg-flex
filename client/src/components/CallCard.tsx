@@ -212,7 +212,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       style={{
         background: call.status === 'on_hold'
           ? 'rgba(180, 130, 0, 0.08)'
-          : isSelected ? undefined : '#141e2b',
+          : isSelected ? undefined : '#0a0a0a',
         borderLeftColor: call.status === 'on_hold' ? '#f59e0b' : undefined,
         scrollSnapAlign: 'start',
         WebkitTouchCallout: 'none',
@@ -357,7 +357,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         if ((call as any).vehicle_pursuit || (call as any).foot_pursuit) flagBadges.push({ label: 'PURSUIT', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)' });
         if ((call as any).officer_safety_caution) flagBadges.push({ label: 'SAFETY', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.35)' });
         if ((call as any).felony_in_progress) flagBadges.push({ label: 'FELONY', color: '#ef4444', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.5)' });
-        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#60a5fa', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.35)' });
+        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#aaaaaa', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.35)' });
         if ((call as any).injuries_reported) flagBadges.push({ label: 'INJ', color: '#fb923c', bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.35)' });
         if (flagBadges.length === 0) return null;
         return (

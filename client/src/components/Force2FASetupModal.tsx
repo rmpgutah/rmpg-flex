@@ -87,7 +87,7 @@ export default function Force2FASetupModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#141e2b',
+          background: '#0a0a0a',
           border: '1px solid #1e3048',
           borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
@@ -118,7 +118,7 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: '#0d1520', border: '1px solid #162236', color: '#8a9aaa' }}
+              style={{ background: '#050505', border: '1px solid #162236', color: '#888888' }}
             >
               <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: '#e0e0e0' }}>
                 What You'll Need
@@ -141,9 +141,9 @@ export default function Force2FASetupModal() {
             <button type="button"
               onClick={handleDefer}
               className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
-              style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#8a9aaa')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#5a6e80')}
+              style={{ color: '#666666', background: 'transparent', border: 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#888888')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#666666')}
             >
               <Clock style={{ width: 12, height: 12 }} />
               Set Up Later
@@ -154,10 +154,10 @@ export default function Force2FASetupModal() {
         {/* ── QR Code + Verify ─────────────────────────── */}
         {step === 'qr' && (
           <div className="space-y-4">
-            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
               Step 1: Scan QR Code
             </div>
-            <p className="text-[10px]" style={{ color: '#5a6e80' }}>
+            <p className="text-[10px]" style={{ color: '#666666' }}>
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
@@ -172,10 +172,10 @@ export default function Force2FASetupModal() {
               )}
             </div>
 
-            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#8a9aaa' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
               Step 2: Enter Verification Code
             </div>
-            <p className="text-[10px]" style={{ color: '#5a6e80' }}>
+            <p className="text-[10px]" style={{ color: '#666666' }}>
               Enter the 6-digit code shown in Google Authenticator.
             </p>
 
@@ -190,7 +190,7 @@ export default function Force2FASetupModal() {
             {busy && (
               <div className="flex items-center justify-center gap-2">
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span className="text-[10px]" style={{ color: '#8a9aaa' }}>Verifying...</span>
+                <span className="text-[10px]" style={{ color: '#888888' }}>Verifying...</span>
               </div>
             )}
           </div>
@@ -219,7 +219,7 @@ export default function Force2FASetupModal() {
                   <div
                     key={i}
                     className="text-center font-mono text-xs py-1"
-                    style={{ background: '#0d1520', border: '1px solid #162236', color: '#e0e0e0' }}
+                    style={{ background: '#050505', border: '1px solid #162236', color: '#e0e0e0' }}
                   >
                     {code}
                   </div>
@@ -227,7 +227,7 @@ export default function Force2FASetupModal() {
               </div>
             </div>
 
-            <p className="text-[9px] text-center" style={{ color: '#5a6e80' }}>
+            <p className="text-[9px] text-center" style={{ color: '#666666' }}>
               If you lose your phone, use one of these one-time codes to log in.
               Each code can only be used once.
             </p>

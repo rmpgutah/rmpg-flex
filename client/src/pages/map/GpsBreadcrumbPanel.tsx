@@ -75,7 +75,7 @@ const speedToColor = (speedMps: number | null): string => {
   if (speedMps == null || speedMps < 0.2) return '#6b7280';
   const mph = speedMps * MPS_TO_MPH;
   if (mph < 3)   return '#9ca3af';
-  if (mph < 10)  return '#06b6d4';
+  if (mph < 10)  return '#22c55e';
   if (mph < 25)  return '#22c55e';
   if (mph < 35)  return '#84cc16';
   if (mph < 45)  return '#eab308';
@@ -96,7 +96,7 @@ const speedToWeight = (speedMps: number | null): number => {
 const SPEED_LEGEND_BANDS = [
   { color: '#6b7280', label: 'Stationary', range: '0 mph' },
   { color: '#9ca3af', label: 'Walking', range: '<3 mph' },
-  { color: '#06b6d4', label: 'Slow Drive', range: '3-10 mph' },
+  { color: '#22c55e', label: 'Slow Drive', range: '3-10 mph' },
   { color: '#22c55e', label: 'Residential', range: '10-25 mph' },
   { color: '#84cc16', label: 'City Street', range: '25-35 mph' },
   { color: '#eab308', label: 'Arterial', range: '35-45 mph' },
@@ -108,12 +108,12 @@ const SPEED_LEGEND_BANDS = [
 const statusToColor = (status: string): string => {
   switch (status) {
     case 'dispatched': return '#f59e0b';
-    case 'enroute':    return '#3b82f6';
+    case 'enroute':    return '#888888';
     case 'onscene':    return '#ef4444';
     case 'available':  return '#22c55e';
     case 'busy':       return '#8b5cf6';
     case 'off_duty':   return '#6b7280';
-    default:           return '#5a6e80';
+    default:           return '#666666';
   }
 };
 

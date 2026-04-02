@@ -125,7 +125,7 @@ export default function MapOverlays({
                 {([
                   { key: 'available', label: 'AVL', color: '#22c55e' },
                   { key: 'dispatched', label: 'DSP', color: '#f59e0b' },
-                  { key: 'enroute', label: 'ENR', color: '#3b82f6' },
+                  { key: 'enroute', label: 'ENR', color: '#888888' },
                   { key: 'onscene', label: 'ONS', color: '#a855f7' },
                 ] as const).filter(s => (unitsByStatus[s.key] || 0) > 0).map(({ key, label, color }) => (
                   <span key={key} className="text-[8px] font-mono font-bold px-1 rounded-sm" style={{ color, background: color + '15' }}>
@@ -164,13 +164,13 @@ export default function MapOverlays({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 10, color: '#3b82f6', fontWeight: 900, letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
               {activeRoute.unitCallSign} → {activeRoute.callNumber}
             </span>
             <button type="button"
               onClick={clearRoute}
               className="hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
-              style={{ background: 'none', border: 'none', color: '#5a6e80', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
+              style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
               aria-label="Clear route"
               title="Clear route"
             >

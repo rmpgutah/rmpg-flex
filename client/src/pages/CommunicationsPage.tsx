@@ -702,7 +702,7 @@ export default function CommunicationsPage() {
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Communications Center</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -711,7 +711,7 @@ export default function CommunicationsPage() {
       <PanelTitleBar title="COMMUNICATIONS" icon={MessageSquare}>
         {activePanel === 'messages' && (
           <>
-            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#0d1520' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#050505' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
@@ -761,7 +761,7 @@ export default function CommunicationsPage() {
       </PanelTitleBar>
 
       {/* Panel Tabs */}
-      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#0d1520' }}>
+      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#050505' }}>
         <div className="flex gap-1">
           {panels.map((panel) => {
             const Icon = panel.icon;
@@ -926,7 +926,7 @@ export default function CommunicationsPage() {
                 {selectedThread && (
                   <div className={`${isMobile ? 'w-full' : 'flex-1'} flex flex-col overflow-hidden animate-slide-in-right`}>
                     {/* Thread header */}
-                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
                       <button type="button"
                         onClick={() => setSelectedThreadId(null)}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-400 transition-colors"
@@ -1037,7 +1037,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Reply compose area */}
-                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
+                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
                       <div className="flex items-center gap-2 mb-2">
                         <Reply className="w-3.5 h-3.5 text-rmpg-400" />
                         <span className="text-[10px] text-rmpg-400 font-medium">

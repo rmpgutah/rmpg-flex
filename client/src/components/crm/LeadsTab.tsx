@@ -47,7 +47,7 @@ import type {
 
 // ── Stage colors ──────────────────────────────────────────
 const STAGE_COLORS: Record<PipelineStage, string> = {
-  new: '#3b82f6',
+  new: '#888888',
   contacted: '#8b5cf6',
   qualified: '#d4a017',
   proposal: '#f59e0b',

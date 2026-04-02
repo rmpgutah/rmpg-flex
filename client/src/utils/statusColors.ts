@@ -13,7 +13,7 @@ import type { UnitStatus, CallStatus, CallPriority, IncidentStatus } from '../ty
 export const UNIT_STATUS_HEX: Record<UnitStatus, string> = {
   available: '#22c55e',
   dispatched: '#f59e0b',
-  enroute: '#3b82f6',
+  enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
   off_duty: '#6b7280',
@@ -55,7 +55,7 @@ export const UNIT_STATUS_ABBREV: Record<UnitStatus, string> = {
 export const PRIORITY_HEX: Record<string, string> = {
   P1: '#dc2626',
   P2: '#f59e0b',
-  P3: '#3b82f6',
+  P3: '#888888',
   P4: '#6b7280',
 };
 

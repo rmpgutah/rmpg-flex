@@ -515,7 +515,7 @@ export default function FieldInterviewsPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={`${editingFi ? 'Edit' : 'New'} Field Interview`} onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-dark shadow-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
               <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>

@@ -204,9 +204,9 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               disabled={isSyncing}
               className="mt-2 flex items-center gap-1 px-2 py-1 text-[10px] transition-colors"
               style={{
-                background: '#1e3048',
+                background: '#222222',
                 border: '1px solid #2a3e58',
-                color: isSyncing ? '#3a5070' : '#8a9aaa',
+                color: isSyncing ? '#383838' : '#888888',
               }}
             >
               <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -248,9 +248,9 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               disabled={generatingAll}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors"
               style={{
-                background: '#1e3048',
+                background: '#222222',
                 border: '1px solid #2a3e58',
-                color: generatingAll ? '#3a5070' : '#8a9aaa',
+                color: generatingAll ? '#383838' : '#888888',
               }}
             >
               {generatingAll ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
@@ -313,9 +313,9 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 transition-colors"
                         style={{
-                          background: '#1e3048',
+                          background: '#222222',
                           border: '1px solid #2a3e58',
-                          color: generatingSingle === s.user_id ? '#3a5070' : '#d97706',
+                          color: generatingSingle === s.user_id ? '#383838' : '#d97706',
                         }}
                       >
                         {generatingSingle === s.user_id ? (
@@ -329,7 +329,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        style={{ background: '#141e2b', border: '1px solid #1e3048' }}
+                        style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (

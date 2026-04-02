@@ -74,7 +74,7 @@ export default function MobileHeader({
         <button type="button"
           onClick={onMenuOpen}
           className="flex items-center justify-center w-11 h-11"
-          style={{ color: '#b0bcc8' }}
+          style={{ color: '#aaaaaa' }}
           aria-label="Open navigation"
         >
           <Menu style={{ width: 20, height: 20 }} />
@@ -85,7 +85,7 @@ export default function MobileHeader({
           onClick={onNavBack}
           disabled={!canGoBack}
           className="flex items-center justify-center w-9 h-11"
-          style={{ color: canGoBack ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
+          style={{ color: canGoBack ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
           aria-label="Go back"
         >
           <ChevronLeft style={{ width: 16, height: 16 }} />
@@ -94,7 +94,7 @@ export default function MobileHeader({
           onClick={onNavForward}
           disabled={!canGoForward}
           className="flex items-center justify-center w-9 h-11"
-          style={{ color: canGoForward ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
+          style={{ color: canGoForward ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
           aria-label="Go forward"
         >
           <ChevronRight style={{ width: 16, height: 16 }} />
@@ -104,7 +104,7 @@ export default function MobileHeader({
         <RmpgLogo height={28} iconOnly />
 
         {/* Page title */}
-        <div className="w-px h-4 mx-0.5" style={{ background: '#2a3e58' }} />
+        <div className="w-px h-4 mx-0.5" style={{ background: '#2e2e2e' }} />
         <span
           className="text-[10px] sm:text-[11px] font-mono font-bold tracking-wider text-rmpg-400 truncate"
         >

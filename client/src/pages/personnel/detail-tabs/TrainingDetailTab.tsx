@@ -137,7 +137,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
       {/* Training Cards */}
       {training.length === 0 ? (
         <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#050505' }}>
             <GraduationCap className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-xs text-rmpg-500">No training records for this officer.</p>

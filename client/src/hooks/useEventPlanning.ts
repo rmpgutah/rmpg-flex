@@ -42,7 +42,7 @@ export interface EventPlan {
 
 export const PLAN_COLORS: Record<PlanItemType, string> = {
   perimeter: '#ef4444',   // Red
-  route: '#3b82f6',       // Blue
+  route: '#888888',       // Blue
   staging: '#22c55e',     // Green
   annotation: '#f59e0b',  // Amber
 };

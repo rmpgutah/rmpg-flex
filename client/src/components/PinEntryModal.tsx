@@ -212,7 +212,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
       <div
         className="w-full max-w-sm mx-4"
         style={{
-          background: '#141e2b',
+          background: '#0a0a0a',
           border: '1px solid #1e3048',
           borderTop: '3px solid #d97706',
         }}
@@ -246,7 +246,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
             <div>
               <label
                 className="block text-[10px] font-bold uppercase mb-1 tracking-wide"
-                style={{ color: '#8a9aaa' }}
+                style={{ color: '#888888' }}
               >
                 <User className="w-3 h-3 inline-block mr-1 -mt-0.5" />
                 Employee
@@ -259,7 +259,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                   className="w-full h-9 pl-3 pr-8 text-sm text-white appearance-none cursor-pointer focus:outline-none"
                   style={{
                     background: '#0d0d0d',
-                    border: `1px solid ${!selectedUserId ? '#d97706' : '#2a3e58'}`,
+                    border: `1px solid ${!selectedUserId ? '#d97706' : '#2e2e2e'}`,
                     borderRadius: 0,
                   }}
                 >
@@ -274,7 +274,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 </select>
                 <ChevronDown
                   className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                  style={{ color: '#5a6e80' }}
+                  style={{ color: '#666666' }}
                 />
               </div>
               {selectedEmployee && (
@@ -317,7 +317,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                   className="w-11 h-13 text-center text-2xl font-mono font-bold text-white transition-colors focus:outline-none disabled:opacity-40"
                   style={{
                     background: '#0d0d0d',
-                    border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#2a3e58'}`,
+                    border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#2e2e2e'}`,
                     caretColor: '#d97706',
                   }}
                 />

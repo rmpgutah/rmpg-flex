@@ -386,7 +386,7 @@ export default function DlSearchPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #1e3048' }}>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />

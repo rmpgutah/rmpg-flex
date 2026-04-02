@@ -45,12 +45,12 @@ interface SearchHistoryRow {
 
 // Search type display labels
 const SEARCH_TYPE_LABELS: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  byname: { label: 'Name', icon: User, color: '#60a5fa' },
+  byname: { label: 'Name', icon: User, color: '#aaaaaa' },
   byaddress: { label: 'Address', icon: MapPin, color: '#34d399' },
   bynameandaddress: { label: 'Name + Address', icon: Search, color: '#a78bfa' },
   byphone: { label: 'Phone', icon: Phone, color: '#f59e0b' },
   byemail: { label: 'Email', icon: Mail, color: '#f472b6' },
-  personDetailsByID: { label: 'Person ID', icon: Hash, color: '#818cf8' },
+  personDetailsByID: { label: 'Person ID', icon: Hash, color: '#aaaaaa' },
 };
 
 const timeAgo = (date: string): string => {

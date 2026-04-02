@@ -67,13 +67,13 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
       {/* Codes grid */}
       <div
         className="grid grid-cols-2 gap-1.5 p-3 font-mono"
-        style={{ background: '#0d1520', border: '1px solid #1e3048' }}
+        style={{ background: '#050505', border: '1px solid #1e3048' }}
       >
         {codes.map((code, i) => (
           <div
             key={i}
             className="flex items-center gap-2 px-2 py-1"
-            style={{ background: '#141e2b' }}
+            style={{ background: '#0a0a0a' }}
           >
             <span className="text-[9px] w-4 text-right" style={{ color: '#6b7280' }}>
               {i + 1}.
@@ -112,7 +112,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
             onChange={(e) => setAcknowledged(e.target.checked)}
             className="accent-brand-500"
           />
-          <span className="text-[10px]" style={{ color: '#8a9aaa' }}>
+          <span className="text-[10px]" style={{ color: '#888888' }}>
             I have saved my backup codes in a secure location
           </span>
         </label>

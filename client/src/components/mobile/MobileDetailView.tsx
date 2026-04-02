@@ -149,7 +149,7 @@ export default function MobileDetailView({
       <div
         className="absolute inset-0 flex flex-col"
         style={{
-          background: '#0d1520',
+          background: '#050505',
           transform: `translateX(${translateX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.32,0.72,0,1)',
           willChange: 'transform',
@@ -180,7 +180,7 @@ export default function MobileDetailView({
             <button type="button"
               onClick={onClose}
               className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
-              style={{ color: '#b0bcc8' }}
+              style={{ color: '#aaaaaa' }}
               aria-label="Go back"
             >
               <ArrowLeft style={{ width: 20, height: 20 }} />
@@ -204,7 +204,7 @@ export default function MobileDetailView({
               <button type="button"
                 onClick={() => setMenuOpen((v) => !v)}
                 className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
-                style={{ color: '#b0bcc8' }}
+                style={{ color: '#aaaaaa' }}
                 aria-label="More actions"
               >
                 <MoreVertical style={{ width: 20, height: 20 }} />
@@ -221,7 +221,7 @@ export default function MobileDetailView({
                   <div
                     className="absolute right-0 top-full mt-1 z-50 py-1 min-w-[180px]"
                     style={{
-                      background: '#1a2636',
+                      background: '#141414',
                       border: '1px solid #2a3e58',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}
@@ -237,7 +237,7 @@ export default function MobileDetailView({
                           }}
                           className="flex items-center gap-2 w-full px-4 py-3 text-left text-sm font-mono hover:bg-rmpg-700 transition-colors"
                           style={{
-                            color: action.danger ? '#ef4444' : '#b0bcc8',
+                            color: action.danger ? '#ef4444' : '#aaaaaa',
                             minHeight: 44,
                           }}
                         >
@@ -267,7 +267,7 @@ export default function MobileDetailView({
             className="flex-shrink-0"
             style={{
               borderTop: '1px solid #1e3048',
-              background: '#141e2b',
+              background: '#0a0a0a',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}
           >

@@ -419,8 +419,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               onClick={() => setMode(m => m === 'quick' ? 'full' : 'quick')}
               className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border transition-colors flex items-center gap-1"
               style={{
-                borderColor: mode === 'quick' ? '#d4a017' : '#3a5070',
-                color: mode === 'quick' ? '#d4a017' : '#8899aa',
+                borderColor: mode === 'quick' ? '#d4a017' : '#383838',
+                color: mode === 'quick' ? '#d4a017' : '#888888',
                 background: mode === 'quick' ? 'rgba(212,160,23,0.1)' : 'transparent',
               }}
             >

@@ -386,7 +386,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           background: 'rgba(0,0,0,0.9)', border: '1px solid #3b82f650',
           padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
         }}>
-          <span style={{ fontSize: 8, color: '#60a5fa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
@@ -403,7 +403,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: '#060c14',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#3a5070' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>
       )}
 

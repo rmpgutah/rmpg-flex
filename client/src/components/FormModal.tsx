@@ -102,7 +102,7 @@ export default function FormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
-      <div className={`relative w-full ${maxWidth} mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background: '#141e2b' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
+      <div className={`relative w-full ${maxWidth} mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background: '#0a0a0a' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#888888' }} />
@@ -120,7 +120,7 @@ export default function FormModal({
               onClick={guardedClose}
               className="toolbar-btn min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
               style={{ padding: '1px 4px', touchAction: 'manipulation' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#164d87'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#444444'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
               aria-label="Close"
             >

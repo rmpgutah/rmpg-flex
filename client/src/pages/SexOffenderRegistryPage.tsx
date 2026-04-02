@@ -48,8 +48,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; ledClass: st
   compliant:      { label: 'Compliant',      color: '#4ade80', ledClass: 'led-green' },
   non_compliant:  { label: 'Non-Compliant',  color: '#fbbf24', ledClass: 'led-amber' },
   absconded:      { label: 'Absconded',      color: '#f87171', ledClass: 'led-red'   },
-  incarcerated:   { label: 'Incarcerated',   color: '#94a3b8', ledClass: ''          },
-  removed:        { label: 'Removed',        color: '#64748b', ledClass: ''          },
+  incarcerated:   { label: 'Incarcerated',   color: '#888888', ledClass: ''          },
+  removed:        { label: 'Removed',        color: '#666666', ledClass: ''          },
 };
 
 const RISK_COLORS: Record<string, string> = {
@@ -292,7 +292,7 @@ export default function SexOffenderRegistryPage() {
   // LEFT PANEL — Registry List
   // ============================================================
   const leftPanel = (
-    <div className="flex flex-col h-full" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full" style={{ background: '#050505' }}>
       {/* Stats Strip */}
       <div
         className="flex items-center gap-4 px-3 py-1.5 text-[11px] font-mono flex-shrink-0 overflow-x-auto"
@@ -329,7 +329,7 @@ export default function SexOffenderRegistryPage() {
       {/* Search + Filters */}
       <div
         className="flex items-center gap-2 px-3 py-2 flex-shrink-0 flex-wrap"
-        style={{ background: '#141e2b', borderBottom: '1px solid #1e3048' }}
+        style={{ background: '#0a0a0a', borderBottom: '1px solid #1e3048' }}
       >
         <div className="relative flex-1 min-w-[140px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
@@ -400,7 +400,7 @@ export default function SexOffenderRegistryPage() {
                   {/* Mugshot Thumbnail */}
                   <div
                     className="w-12 h-14 rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-                    style={{ background: '#1a2636', border: '1px solid #2a3e58' }}
+                    style={{ background: '#141414', border: '1px solid #2a3e58' }}
                   >
                     {r.photo_url ? (
                       <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
@@ -441,7 +441,7 @@ export default function SexOffenderRegistryPage() {
                   {/* Risk indicator */}
                   {r.risk_level && (
                     <div className="flex-shrink-0">
-                      <ShieldAlert size={14} style={{ color: RISK_COLORS[r.risk_level] || '#94a3b8' }} />
+                      <ShieldAlert size={14} style={{ color: RISK_COLORS[r.risk_level] || '#888888' }} />
                     </div>
                   )}
                 </button>
@@ -455,7 +455,7 @@ export default function SexOffenderRegistryPage() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5 text-[10px] text-rmpg-500 flex-shrink-0"
-          style={{ background: '#141e2b', borderTop: '1px solid #1e3048' }}
+          style={{ background: '#0a0a0a', borderTop: '1px solid #1e3048' }}
         >
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
@@ -482,7 +482,7 @@ export default function SexOffenderRegistryPage() {
   // RIGHT PANEL — Detail Profile
   // ============================================================
   const rightPanel = selected ? (
-    <div className="h-full overflow-y-auto" style={{ background: '#0d1520' }}>
+    <div className="h-full overflow-y-auto" style={{ background: '#050505' }}>
       {/* Close button */}
       <button type="button"
         onClick={() => setSelected(null)}
@@ -498,7 +498,7 @@ export default function SexOffenderRegistryPage() {
           {/* Large Mugshot */}
           <div
             className="w-[100px] h-[130px] rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-            style={{ background: '#0d1520', border: '2px solid #2a3e58' }}
+            style={{ background: '#050505', border: '2px solid #2a3e58' }}
           >
             {selected.photo_url ? (
               <img src={selected.photo_url} alt="" className="w-full h-full object-cover" />
@@ -596,7 +596,7 @@ export default function SexOffenderRegistryPage() {
               {addrs.map((a, i) => (
                 <div key={i} className="flex items-start gap-2 text-[11px]">
                   <span className="text-rmpg-500 flex-shrink-0 w-14 uppercase text-[9px] font-bold mt-0.5"
-                    style={{ color: a.type === 'home' ? '#4ade80' : a.type === 'work' ? '#60a5fa' : a.type === 'school' ? '#c084fc' : '#fbbf24' }}>
+                    style={{ color: a.type === 'home' ? '#4ade80' : a.type === 'work' ? '#aaaaaa' : a.type === 'school' ? '#c084fc' : '#fbbf24' }}>
                     {a.type}
                   </span>
                   <div>
@@ -618,7 +618,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Offenses" icon={<FileText size={12} />}>
             <div className="space-y-2">
               {offs.map((o, i) => (
-                <div key={i} className="p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div key={i} className="p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #1e3048' }}>
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-[11px] font-mono font-bold">{o.statute}</span>
                     {o.date && <span className="text-[10px] text-rmpg-500">{formatDate(o.date)}</span>}
@@ -773,7 +773,7 @@ export default function SexOffenderRegistryPage() {
       </div>
     </div>
   ) : (
-    <div className="flex flex-col items-center justify-center h-full text-rmpg-500" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col items-center justify-center h-full text-rmpg-500" style={{ background: '#050505' }}>
       <ShieldAlert size={48} className="mb-3 opacity-20" />
       <span className="text-sm">Select a record to view details</span>
     </div>
@@ -795,7 +795,7 @@ export default function SexOffenderRegistryPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full" style={{ background: '#050505' }}>
       {/* Title Bar */}
       <PanelTitleBar
         title="Sex Offender Registry"
@@ -1000,10 +1000,10 @@ function RecordFormModal({
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-md"
-        style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
+        style={{ background: '#0a0a0a', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#1a2636', borderBottom: '1px solid #2a3e58' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a3e58' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <ShieldAlert size={14} className="text-[#d4a017]" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
@@ -1164,10 +1164,10 @@ function ImportModal({
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-md"
-        style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
+        style={{ background: '#0a0a0a', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#1a2636', borderBottom: '1px solid #2a3e58' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a3e58' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <Upload size={14} className="text-[#d4a017]" /> Import Records
           </h2>

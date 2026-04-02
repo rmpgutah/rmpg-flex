@@ -106,7 +106,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#17263c',
+        backgroundColor: '#171717',
         renderingType: 'RASTER' as any,
         isFractionalZoomEnabled: false,
         gestureHandling: 'greedy',

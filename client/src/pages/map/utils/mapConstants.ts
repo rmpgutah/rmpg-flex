@@ -151,7 +151,7 @@ export function getMapStyleIcon(style: MapStyleId): string {
 export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   THEFT: '#f59e0b',
   ASLT: '#ef4444',
-  TRFC: '#3b82f6',
+  TRFC: '#888888',
   FIRE: '#f97316',
   MED: '#22c55e',
   SUSP: '#a855f7',
@@ -160,7 +160,7 @@ export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   DV: '#ec4899',
   DRUG: '#14b8a6',
   VNDL: '#f43f5e',
-  PTRL: '#60a5fa',
+  PTRL: '#aaaaaa',
   NOIS: '#84cc16',
   FRAD: '#8b5cf6',
   MISP: '#fb923c',

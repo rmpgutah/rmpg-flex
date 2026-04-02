@@ -136,7 +136,7 @@ export function useMapTactical(
         },
         label: {
           text: '\u2605',
-          color: '#0d1520',
+          color: '#050505',
           fontSize: '14px',
           fontWeight: 'bold',
         },
@@ -168,7 +168,7 @@ export function useMapTactical(
       const rings: { radius: number; color: string; label: string }[] = [
         { radius: 100, color: '#ef4444', label: 'Inner Perimeter' },
         { radius: 300, color: '#f59e0b', label: 'Outer Perimeter' },
-        { radius: 500, color: '#3b82f6', label: 'Staging Area' },
+        { radius: 500, color: '#888888', label: 'Staging Area' },
       ];
 
       for (const ring of rings) {
@@ -237,9 +237,9 @@ export function useMapTactical(
         title: h.name,
         icon: {
           path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
-          fillColor: '#3b82f6',
+          fillColor: '#888888',
           fillOpacity: 0.9,
-          strokeColor: '#1d4ed8',
+          strokeColor: '#666666',
           strokeWeight: 1,
           scale: 1.4,
           anchor: new google.maps.Point(12, 22),

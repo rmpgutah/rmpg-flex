@@ -444,7 +444,7 @@ export default function CrmPage() {
     <div className="flex h-full">
       {/* ── Sidebar ────────────────────────────────────── */}
       <div className="w-48 border-r border-rmpg-600 bg-surface-sunken flex flex-col flex-shrink-0">
-        <div className="px-3 py-2.5 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
+        <div className="px-3 py-2.5 border-b border-rmpg-600" style={{ background: '#050505' }}>
           <div className="flex items-center gap-2">
             <RmpgLogo height={14} iconOnly />
             <span className="text-xs font-bold text-brand-400 tracking-wider uppercase">Overwatch</span>

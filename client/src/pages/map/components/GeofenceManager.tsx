@@ -23,7 +23,7 @@ interface GeofenceManagerProps {
 // ─── Zone type badge colors ─────────────────────────────────
 
 const ZONE_TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  school:     { bg: '#3b82f622', border: '#3b82f644', text: '#60a5fa' },
+  school:     { bg: '#3b82f622', border: '#3b82f644', text: '#aaaaaa' },
   restricted: { bg: '#dc262622', border: '#dc262644', text: '#f87171' },
   custom:     { bg: '#8b5cf622', border: '#8b5cf644', text: '#a78bfa' },
   patrol:     { bg: '#22c55e22', border: '#22c55e44', text: '#4ade80' },
@@ -137,7 +137,7 @@ export default function GeofenceManager({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -213,7 +213,7 @@ export default function GeofenceManager({
               key={fence.id}
               className="rounded-sm hover:bg-[#1a2636]/50 transition-colors duration-100 cursor-pointer"
               style={{
-                background: '#0d1520',
+                background: '#050505',
                 border: '1px solid #1e2a3a',
                 borderLeft: `2px solid ${fence.color || typeStyle.text}`,
                 opacity: isActive ? 1 : 0.5,
@@ -229,7 +229,7 @@ export default function GeofenceManager({
                   <ChevronRight size={10} className={`text-rmpg-500 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} />
                   <div
                     className="w-2 h-2 rounded-sm flex-shrink-0"
-                    style={{ background: fence.color || '#3b82f6' }}
+                    style={{ background: fence.color || '#888888' }}
                   />
                   <span className="text-[10px] text-rmpg-200 font-mono truncate" title={fence.name}>
                     {fence.name}
@@ -284,7 +284,7 @@ export default function GeofenceManager({
                         <div
                           key={i}
                           className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
-                          style={{ background: '#141e2b' }}
+                          style={{ background: '#0a0a0a' }}
                         >
                           <span className="text-rmpg-300">{a.unitCallSign}</span>
                           <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-blue-400'}>

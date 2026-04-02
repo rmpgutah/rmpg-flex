@@ -49,7 +49,7 @@ interface UseMapIncidentReportsReturn {
 
 const STATUS_COLORS: Record<string, string> = {
   draft: '#6b7280',
-  submitted: '#3b82f6',
+  submitted: '#888888',
   under_review: '#f59e0b',
   approved: '#22c55e',
   returned: '#ef4444',
@@ -66,7 +66,7 @@ const STATUS_LABELS: Record<string, string> = {
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
   P2: '#f59e0b',
-  P3: '#3b82f6',
+  P3: '#888888',
   P4: '#6b7280',
 };
 
@@ -124,7 +124,7 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
         zIndex: 40,
         onClick: () => {
         const sColor = STATUS_COLORS[incident.status] || '#6b7280';
-        const pColor = PRIORITY_COLORS[incident.priority] || '#5a6e80';
+        const pColor = PRIORITY_COLORS[incident.priority] || '#666666';
         const sLabel = STATUS_LABELS[incident.status] || incident.status;
 
         infoWindowRef.current?.setContent(`

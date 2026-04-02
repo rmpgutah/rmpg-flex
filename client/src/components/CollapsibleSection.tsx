@@ -28,7 +28,7 @@ export default function CollapsibleSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className={`border border-[#1e3048] ${className}`} style={{ background: '#0d1520' }}>
+    <div className={`border border-[#1e3048] ${className}`} style={{ background: '#050505' }}>
       <button type="button"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
@@ -44,7 +44,7 @@ export default function CollapsibleSection({
           {Icon && <Icon className="w-3.5 h-3.5" style={{ color: '#d4a017', filter: 'drop-shadow(0 0 3px rgba(212,160,23,0.3))' }} />}
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>{title}</span>
           {count !== undefined && (
-            <span className="text-[9px] font-mono tabular-nums" style={{ color: count > 0 ? '#86efac' : '#4b5563' }}>({count})</span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: count > 0 ? '#86efac' : '#555555' }}>({count})</span>
           )}
         </div>
         {actions && (
@@ -54,7 +54,7 @@ export default function CollapsibleSection({
         )}
       </button>
       {isOpen && (
-        <div className="pb-3 px-2.5 pt-2 animate-fade-in" style={{ background: '#0d1520' }}>
+        <div className="pb-3 px-2.5 pt-2 animate-fade-in" style={{ background: '#050505' }}>
           {children}
         </div>
       )}

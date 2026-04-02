@@ -356,7 +356,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             left: dropdownPos.left,
             width: '360px',
             maxHeight: '420px',
-            background: '#141e2b',
+            background: '#0a0a0a',
             display: 'flex',
             flexDirection: 'column',
             boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',
@@ -463,7 +463,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   className="group flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors duration-150 hover:bg-rmpg-800/60"
                   style={{
                     padding: '6px 8px',
-                    background: notification.is_read ? '#141e2b' : '#1a2636',
+                    background: notification.is_read ? '#0a0a0a' : '#141414',
                     borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #888888',
                   }}
                   title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}

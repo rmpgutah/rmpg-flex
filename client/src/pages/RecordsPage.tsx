@@ -446,7 +446,7 @@ export default function RecordsPage() {
       </div>
 
       {/* Compact Stats Strip */}
-      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#0d1520' }}>
+      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#050505' }}>
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>

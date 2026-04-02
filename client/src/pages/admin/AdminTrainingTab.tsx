@@ -230,7 +230,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px]">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#0f1a28' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#080808' }}>
             <th className="text-left px-3 py-1.5 font-bold">Officer</th>
             <th className="text-left px-3 py-1.5 font-bold">Badge</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>
@@ -250,7 +250,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>
                 <td className="px-3 py-2 text-center font-mono text-rmpg-300">{o.completed}/{o.required}</td>
-                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#5a6e80' }}>
+                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#666666' }}>
                   {o.overdue}
                 </td>
                 <td className="px-3 py-2">

@@ -408,7 +408,7 @@ export default function DashCamDetailPage() {
       disableDefaultUI: true,
       zoomControl: true,
       styles: DARK_MAP_STYLE,
-      backgroundColor: '#17263c',
+      backgroundColor: '#171717',
     });
     mapRef.current = map;
 
@@ -419,9 +419,9 @@ export default function DashCamDetailPage() {
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 7,
-        fillColor: '#3b82f6',
+        fillColor: '#888888',
         fillOpacity: 1,
-        strokeColor: '#93c5fd',
+        strokeColor: '#cccccc',
         strokeWeight: 2,
       },
     });
@@ -432,7 +432,7 @@ export default function DashCamDetailPage() {
       const path = gpsTrack.map(p => ({ lat: p.latitude, lng: p.longitude }));
       const polyline = new google.maps.Polyline({
         path,
-        strokeColor: '#3b82f6',
+        strokeColor: '#888888',
         strokeOpacity: 0.5,
         strokeWeight: 2,
         map,
@@ -969,7 +969,7 @@ export default function DashCamDetailPage() {
               isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
               <div ref={mapContainerRef}
                 className="w-full rounded-sm"
-                style={{ height: 200, background: '#0d1520' }}>
+                style={{ height: 200, background: '#050505' }}>
                 {!window.google?.maps && (
                   <div className="flex items-center justify-center h-full">
                     <span className="text-[9px] text-rmpg-500">Maps unavailable</span>

@@ -515,7 +515,7 @@ function DashboardTab({ records, requirements, officers }: {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
         <StatCard value={records.length} label="Total Records" color="#6b8aad" borderColor="#4a6a8a" />
         <StatCard value={stats.completed} label="Completed" color="#22c55e" borderColor="#15803d" />
-        <StatCard value={stats.inProgress} label="In Progress" color="#3b82f6" borderColor="#1d4ed8" />
+        <StatCard value={stats.inProgress} label="In Progress" color="#888888" borderColor="#666666" />
         <StatCard value={stats.scheduled} label="Scheduled" color="#f59e0b" borderColor="#b45309" />
         <StatCard value={stats.overdue} label="Overdue" color="#ef4444" borderColor="#b91c1c" />
         <StatCard value={stats.expiringSoon} label="Expiring (30d)" color="#f97316" borderColor="#c2410c" />

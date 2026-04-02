@@ -136,7 +136,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px] mb-6" aria-label="Active sessions">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-[#162236]" style={{ background: '#0d1520' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-[#162236]" style={{ background: '#050505' }}>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">User</th>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Role</th>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Device</th>

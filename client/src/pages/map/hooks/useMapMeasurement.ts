@@ -122,7 +122,7 @@ const VERTEX_ICON = {
   scale: 5,
   fillColor: '#d4a017',
   fillOpacity: 1,
-  strokeColor: '#0d1520',
+  strokeColor: '#050505',
   strokeWeight: 2,
 };
 

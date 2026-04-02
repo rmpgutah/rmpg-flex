@@ -44,8 +44,8 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#888888',
-  accent_color: '#8a8e9c',
-  header_bg_color: '#f0f1f4',
+  accent_color: '#888888',
+  header_bg_color: '#f0f0f0',
 };
 
 /** Fetch branding settings from admin config API (gracefully falls back to defaults) */

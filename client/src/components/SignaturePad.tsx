@@ -66,7 +66,7 @@ export default function SignaturePad({
     ctx.font = '12px Helvetica';
     ctx.fillText('X', 10, canvas.height - 28);
     // Reset for drawing
-    ctx.strokeStyle = '#1a1a4e';
+    ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -143,7 +143,7 @@ export default function SignaturePad({
     ctx.beginPath();
     ctx.moveTo(last.x, last.y);
     ctx.quadraticCurveTo(last.x, last.y, midX, midY);
-    ctx.strokeStyle = '#1a1a4e';
+    ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = smoothWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -187,7 +187,7 @@ export default function SignaturePad({
     ctx.stroke();
 
     // Render typed name
-    ctx.fillStyle = '#1a1a4e';
+    ctx.fillStyle = '#1a1a1a';
     ctx.font = SIGNATURE_FONTS[selectedFont].css;
     ctx.textBaseline = 'bottom';
 
@@ -339,7 +339,7 @@ export default function SignaturePad({
                 className="text-center truncate max-w-full"
                 style={{
                   font: SIGNATURE_FONTS[selectedFont].css,
-                  color: '#1a1a4e',
+                  color: '#1a1a1a',
                   fontSize: typedName.length > 20 ? '22px' : undefined,
                 }}
               >

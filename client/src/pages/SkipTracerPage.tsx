@@ -24,7 +24,7 @@ import { safeDateStr } from '../utils/dateUtils';
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
 
 const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; color: string; description: string }[] = [
-  { id: 'name', label: 'By Name', icon: User, color: '#60a5fa', description: 'Search by full name (first and last)' },
+  { id: 'name', label: 'By Name', icon: User, color: '#aaaaaa', description: 'Search by full name (first and last)' },
   { id: 'address', label: 'By Address', icon: MapPin, color: '#34d399', description: 'Search by street address' },
   { id: 'nameaddress', label: 'Name + Address', icon: Search, color: '#a78bfa', description: 'Search by name and address combined' },
   { id: 'phone', label: 'By Phone', icon: Phone, color: '#f59e0b', description: 'Reverse phone lookup' },
@@ -230,7 +230,7 @@ export default function SkipTracerPage() {
         {/* ─── Left Panel: Search Form ──────────────────────── */}
         <div
           className={`${isMobile ? 'flex-shrink-0' : 'w-80'} overflow-y-auto border-r border-rmpg-700`}
-          style={{ background: '#0d1520' }}
+          style={{ background: '#050505' }}
         >
           {/* Search Mode Selector */}
           <div className="p-3 space-y-3">

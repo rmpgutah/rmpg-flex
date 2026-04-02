@@ -18,14 +18,14 @@ function nextId(): string { return `iw${++_iwCounter}`; }
 
 const FONT_MONO = "'Courier New','JetBrains Mono',monospace";
 const FONT_SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
-const C_BASE = '#141e2b';
-const C_SUNKEN = '#0d1520';
-const C_RAISED = '#1a2636';
-const C_BORDER = '#1e3048';
+const C_BASE = '#0a0a0a';
+const C_SUNKEN = '#050505';
+const C_RAISED = '#141414';
+const C_BORDER = '#222222';
 const C_TEXT = '#e5e7eb';
 const C_TEXT_DIM = '#9ca3af';
-const C_TEXT_MUTED = '#5a6e80';
-const C_BLUE = '#60a5fa';
+const C_TEXT_MUTED = '#666666';
+const C_BLUE = '#aaaaaa';
 const C_BRAND = '#888888';
 const C_GOLD = '#d4a017';
 const C_RED = '#f87171';
@@ -303,7 +303,7 @@ export function buildCallInfoWindow(
   const timelineItems: Array<{ label: string; ts: string | null | undefined; color: string }> = [
     { label: 'Created', ts: call.created_at, color: C_TEXT_DIM },
     { label: 'Dispatched', ts: call.dispatched_at, color: '#f59e0b' },
-    { label: 'First En Route', ts: call.first_enroute_at, color: '#3b82f6' },
+    { label: 'First En Route', ts: call.first_enroute_at, color: '#888888' },
     { label: 'First On Scene', ts: call.first_onscene_at, color: '#a855f7' },
     { label: 'Cleared', ts: call.cleared_at, color: '#22c55e' },
   ];
@@ -401,7 +401,7 @@ export function buildPropertyInfoWindow(
   }
 
   const RELATIONSHIP_COLORS: Record<string, string> = {
-    employee: '#22d3ee', contact: '#60a5fa', tenant: '#a78bfa', owner: '#4ade80',
+    employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
     manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
     banned: '#ef4444', frequent_visitor: '#9ca3af', associated: '#6b7280',
   };
@@ -416,7 +416,7 @@ export function buildPropertyInfoWindow(
     ${prop.client_name ? dataRow('Client', prop.client_name, C_GOLD) : ''}
     ${details.property_type ? dataRow('Type', details.property_type, C_TEXT_DIM) : ''}
     ${details.emergency_contact ? dataRow('Emergency', details.emergency_contact, '#f87171') : ''}
-    ${details.gate_code ? dataRow('Gate Code', details.gate_code, '#22d3ee') : ''}
+    ${details.gate_code ? dataRow('Gate Code', details.gate_code, '#22c55e') : ''}
     ${details.alarm_code ? dataRow('Alarm Code', details.alarm_code, '#f59e0b') : ''}
     ${details.access_instructions ? `
       <div style="margin-top:4px;padding:3px 5px;background:${C_RAISED};border:1px solid ${C_BORDER};border-radius:2px;">
@@ -453,7 +453,7 @@ export function buildPropertyInfoWindow(
       ${sectionHeader(`Call History (${recentCalls.length})`)}
       ${recentCalls.slice(0, 5).map(c => {
         const isActive = c.status === 'dispatched' || c.status === 'en_route' || c.status === 'on_scene';
-        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#93c5fd' : C_BLUE;
+        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#cccccc' : C_BLUE;
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
           <div style="overflow:hidden;flex:1;">
             <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>

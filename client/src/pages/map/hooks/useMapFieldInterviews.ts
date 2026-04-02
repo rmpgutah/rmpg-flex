@@ -34,7 +34,7 @@ interface UseMapFieldInterviewsReturn {
 const REASON_COLORS: Record<string, string> = {
   trespass: '#f59e0b',
   suspicious: '#dc2626',
-  welfare: '#3b82f6',
+  welfare: '#888888',
 };
 
 function getReasonColor(reason: string): string {

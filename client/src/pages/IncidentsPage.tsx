@@ -824,7 +824,7 @@ export default function IncidentsPage() {
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: '#0d1520' }}>
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: '#050505' }}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
@@ -1217,7 +1217,7 @@ export default function IncidentsPage() {
         const currentIdx = steps.indexOf(selectedIncident.status as any);
         const idx = currentIdx >= 0 ? currentIdx : selectedIncident.status === 'returned' ? 1 : 0;
         return (
-          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#1e3048]" style={{ background: '#0d1520' }}>
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#1e3048]" style={{ background: '#050505' }}>
             {labels.map((label, i) => (
               <div key={label} className="flex items-center flex-1">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px #22c55e' } : {}} />
@@ -1654,7 +1654,7 @@ export default function IncidentsPage() {
           {detailOffenses.length > 0 ? (
             <div className="space-y-1.5">
               {detailOffenses.map((offense: any) => (
-                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#141e2b', border: '1px solid #1e3048' }}>
+                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#6b7280' }}>
@@ -1707,7 +1707,7 @@ export default function IncidentsPage() {
           {detailOfficers.length > 0 ? (
             <div className="space-y-1">
               {detailOfficers.map((officer: any) => (
-                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#141e2b', border: '1px solid #1e3048' }}>
+                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase ${
                     officer.role === 'primary' ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50' :
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
@@ -1753,10 +1753,10 @@ export default function IncidentsPage() {
           {detailLinks.length > 0 ? (
             <div className="space-y-1">
               {detailLinks.map((link: any) => {
-                const typeColors: Record<string, string> = { incident: '#3b82f6', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
+                const typeColors: Record<string, string> = { incident: '#888888', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
-                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#141e2b', border: '1px solid #1e3048' }}>
+                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
                     <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#6b7280', background: (typeColors[link.linked_type] || '#6b7280') + '20', border: `1px solid ${typeColors[link.linked_type] || '#6b7280'}40` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>

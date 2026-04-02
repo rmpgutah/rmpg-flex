@@ -848,8 +848,8 @@ function EditModal({ type, item, onSave, onClose, areas, sections, zones }: {
               </FormField>
               <FormField label="Color">
                 <div className="flex items-center gap-2">
-                  <input type="color" value={form.color || '#3b82f6'} onChange={e => set('color', e.target.value)} className="w-8 h-8 border-0 bg-transparent cursor-pointer" />
-                  <input value={form.color || '#3b82f6'} onChange={e => set('color', e.target.value)} className="form-input flex-1" />
+                  <input type="color" value={form.color || '#888888'} onChange={e => set('color', e.target.value)} className="w-8 h-8 border-0 bg-transparent cursor-pointer" />
+                  <input value={form.color || '#888888'} onChange={e => set('color', e.target.value)} className="form-input flex-1" />
                 </div>
               </FormField>
               <FormField label="Supervisor"><input value={form.supervisor || ''} onChange={e => set('supervisor', e.target.value)} className="form-input" /></FormField>

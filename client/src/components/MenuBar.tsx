@@ -913,11 +913,11 @@ export default function MenuBar({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShow10Codes(false)} role="dialog" aria-modal="true" aria-label="10-Codes Quick Reference">
           <div
             className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col animate-dropdown-appear"
-            style={{ background: '#141e2b' }}
+            style={{ background: '#0a0a0a' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 23: 10-codes header with top accent and version tag */}
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #888888' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
@@ -1061,7 +1061,7 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#0d1520' }}>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#050505' }}>
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
@@ -1160,11 +1160,11 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Law reference" onClick={onClose}>
       <div
         className="panel-beveled w-[800px] max-h-[85vh] overflow-hidden flex flex-col animate-dropdown-appear"
-        style={{ background: '#141e2b' }}
+        style={{ background: '#0a0a0a' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 24: Law reference header with top accent */}
-        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #888888' }}>
+        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <Scale className="w-4 h-4 text-brand-400" />
             Law Reference — Criminal & Vehicle Code
@@ -1176,7 +1176,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* State Tabs */}
-        <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-dark" style={{ background: '#0d1520' }}>
+        <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-dark" style={{ background: '#050505' }}>
           {LAW_STATE_CODES.map(st => (
             <button type="button"
               key={st}
@@ -1280,7 +1280,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Footer */}
-        <div className="p-2 border-t border-rmpg-700 flex items-center justify-between" style={{ background: '#0d1520' }}>
+        <div className="p-2 border-t border-rmpg-700 flex items-center justify-between" style={{ background: '#050505' }}>
           <span className="text-[9px] text-rmpg-500">
             {activeState !== 'ALL' && `${LAW_STATE_LABELS[activeState]} — `}
             {statutes.length} of {total} statutes shown

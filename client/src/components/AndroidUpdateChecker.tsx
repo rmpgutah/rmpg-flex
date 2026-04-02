@@ -216,9 +216,9 @@ export default function AndroidUpdateChecker() {
               background: downloading
                 ? 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)'
                 : 'linear-gradient(180deg, #888888 0%, #333333 100%)',
-              color: downloading ? '#8a9aaa' : '#fff',
+              color: downloading ? '#888888' : '#fff',
               border: '1px solid',
-              borderColor: downloading ? '#2a3e58' : '#d41515',
+              borderColor: downloading ? '#2e2e2e' : '#d41515',
             }}
           >
             {downloading ? (
