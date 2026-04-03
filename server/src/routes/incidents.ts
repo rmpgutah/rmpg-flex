@@ -1805,7 +1805,7 @@ router.get('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 
   try {
     const db = getDb();
     const officers = db.prepare(`
-      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
       FROM incident_officers io
       JOIN users u ON u.id = io.officer_id
       WHERE io.incident_id = ?
@@ -1829,7 +1829,7 @@ router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor',
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(req.params.id, officer_id, role || 'responding', arrived_at, departed_at, action_taken, notes, userId);
     const officer = db.prepare(`
-      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
       FROM incident_officers io JOIN users u ON u.id = io.officer_id
       WHERE io.id = ?
     `).get(result.lastInsertRowid);
@@ -1966,7 +1966,7 @@ router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'off
 
     try {
       officers = db.prepare(`
-        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
         FROM incident_officers io JOIN users u ON u.id = io.officer_id
         WHERE io.incident_id = ?
         ORDER BY CASE io.role WHEN 'primary' THEN 0 WHEN 'supervisor' THEN 1 ELSE 2 END

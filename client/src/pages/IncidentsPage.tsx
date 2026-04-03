@@ -2400,16 +2400,9 @@ export default function IncidentsPage() {
               <button type="button" onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
-                <select name="officer_id" required className="input-dark w-full text-xs">
-                  <option value="">Select officer...</option>
-                  {incidents.length > 0 && (() => {
-                    // Use personnel from any loaded data
-                    return null;
-                  })()}
-                </select>
-                <p className="text-[9px] text-rmpg-500 mt-0.5">Enter officer user ID if dropdown is empty</p>
-                <input name="officer_id" type="number" className="input-dark w-full text-xs mt-1" placeholder="Officer User ID" />
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer User ID *</label>
+                <input name="officer_id" type="number" required className="input-dark w-full text-xs" placeholder="Enter officer user ID" />
+                <p className="text-[9px] text-rmpg-500 mt-0.5">Find IDs in Personnel or Admin &gt; Users</p>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Role</label>
                 <select name="role" className="input-dark w-full text-xs">
