@@ -1168,7 +1168,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('DESCRIPTION', lx, y);
     y += 2;
-    doc.setFont('helvetica', 'normal');
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
       const cw = getContentWidth(doc);
@@ -1238,8 +1237,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         y += 0.3;
       }
 
-      // Visit header line
-      doc.setFont('helvetica', 'bold');
+      // Visit header line — Courier for all body text
+      doc.setFont('courier', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(`Visit #${visit.visit_number}`, lx, y);
@@ -1247,7 +1246,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Status badge
       const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(statusText, lx + visitLabelW, y);
@@ -1256,7 +1255,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
@@ -1265,7 +1264,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
       y += SPACING.SM;
 
-      // Timestamps row
+      // Timestamps row — Courier
       const timeFields: string[] = [];
       if (visit.dispatched_at) timeFields.push(`Disp: ${fmtDateTime(visit.dispatched_at)}`);
       if (visit.enroute_at) timeFields.push(`EnRt: ${fmtDateTime(visit.enroute_at)}`);
@@ -1274,14 +1273,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
 
       if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
       }
 
-      // Mileage row (if present)
+      // Mileage row — Courier
       const mileageFields: string[] = [];
       if (visit.responding_vehicle_id) mileageFields.push(`Vehicle: ${visit.responding_vehicle_id}`);
       if (visit.starting_mileage != null) mileageFields.push(`Start: ${visit.starting_mileage.toLocaleString()} mi`);
@@ -1291,16 +1290,16 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
       }
 
-      // Disposition
+      // Disposition — Courier
       if (visit.disposition) {
-        doc.setFont('helvetica', 'italic');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);

@@ -205,8 +205,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         { top: tableStartY, bottom: y, page: tableStartPage },
       ];
 
-      // Data rows
-      doc.setFont('helvetica', 'normal');
+      // Data rows — Courier for body text
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
         // Page break check — re-draw headers on new page
@@ -219,14 +219,14 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           y = drawItemHeaders(y);
           // Start new segment on new page
           tableSegments.push({ top: y - 8, bottom: y, page: doc.getNumberOfPages() });
-          doc.setFont('helvetica', 'normal');
+          doc.setFont('courier', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
 
         const item = items[i];
 
         // Dynamic row height for multi-line descriptions — use wordWrapText to prevent mid-word breaks
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         const descLines = wordWrapText(doc, sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
@@ -280,7 +280,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const totX = pageWidth - LAYOUT.PAGE_MARGIN - 60;
   const totVX = pageWidth - LAYOUT.PAGE_MARGIN;
   const addTotal = (label: string, value: string, bold = false, color?: readonly [number, number, number]) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFont('courier', bold ? 'bold' : 'normal');
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
@@ -308,7 +308,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const balBoxX = totX - 8;
   const balBoxW = totVX - balBoxX + 3;
   doc.rect(balBoxX, y - 2, balBoxW, 9);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });
