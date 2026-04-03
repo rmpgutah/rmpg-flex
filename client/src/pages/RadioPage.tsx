@@ -395,7 +395,7 @@ export default function RadioPage() {
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
               style={{
                 color: showHistory ? '#fff' : '#666666',
-                borderBottom: showHistory ? '2px solid #3b82f6' : '2px solid transparent',
+                borderBottom: showHistory ? '2px solid #888888' : '2px solid transparent',
               }}
             >
               <History style={{ width: 10, height: 10 }} /> HISTORY
@@ -599,7 +599,7 @@ export default function RadioPage() {
           className="flex items-center gap-3 px-4 py-2"
           style={{
             background: 'rgba(59, 130, 246, 0.15)',
-            borderBottom: '2px solid #3b82f6',
+            borderBottom: '2px solid #888888',
             flexShrink: 0,
           }}
         >
@@ -618,7 +618,7 @@ export default function RadioPage() {
           <button type="button"
             onClick={dismissPage}
             className="text-[9px] font-mono text-blue-400 hover:text-white px-2 py-0.5"
-            style={{ border: '1px solid #3b82f680' }}
+            style={{ border: '1px solid #88888880' }}
           >
             DISMISS
           </button>
@@ -631,7 +631,7 @@ export default function RadioPage() {
           className="flex items-center gap-3 px-4 py-2"
           style={{
             background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.08) 100%)',
-            borderBottom: '2px solid #3b82f6',
+            borderBottom: '2px solid #888888',
             flexShrink: 0,
           }}
         >
@@ -676,7 +676,7 @@ export default function RadioPage() {
           className="flex items-center gap-3 px-4 py-2"
           style={{
             background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%)',
-            borderBottom: '1px solid #3b82f680',
+            borderBottom: '1px solid #88888880',
             flexShrink: 0,
           }}
         >
@@ -1001,7 +1001,7 @@ export default function RadioPage() {
                           ? 'radial-gradient(circle, #b89030 0%, #6a5010 70%, #3a2a06 100%)'
                           : 'radial-gradient(circle, #2a4a2a 0%, #1a3a1a 70%, #0a2a0a 100%)',
                   border: isInCall
-                    ? '4px solid #3b82f680'
+                    ? '4px solid #88888880'
                     : !micSupported
                       ? '4px solid #2a3e58'
                       : isTransmitting

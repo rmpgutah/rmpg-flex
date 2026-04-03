@@ -10271,7 +10271,7 @@ function LeadGenPanel() {
       <div className="flex items-center gap-2 mb-3">
         <Users size={16} className="text-[#888888]" />
         <h3 className="text-sm font-bold text-white uppercase tracking-wider">Lead Generation</h3>
-        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#60a5fa] font-bold uppercase">Firecrawl</span>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#999999] font-bold uppercase">Firecrawl</span>
       </div>
 
       {configured === false && (

@@ -814,7 +814,7 @@ export default function SkipTracerV2Page() {
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${
               isActive
-                ? 'border-[#888888] text-[#60a5fa] bg-[#141e2b]'
+                ? 'border-[#888888] text-[#999999] bg-[#141e2b]'
                 : 'border-transparent text-[#556677] hover:text-[#8899aa] hover:bg-[#141e2b]/50'
             }`}
           >
@@ -1055,7 +1055,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   key={ex}
                   onClick={() => setQuery(ex)}
-                  className="text-[9px] text-[#888888] hover:text-[#60a5fa] bg-[#888888]/10 px-2 py-0.5 rounded-sm"
+                  className="text-[9px] text-[#888888] hover:text-[#999999] bg-[#888888]/10 px-2 py-0.5 rounded-sm"
                 >
                   {ex}
                 </button>
@@ -1372,7 +1372,7 @@ export default function SkipTracerV2Page() {
                     <td className="px-2 py-1.5"><SourceBadge source={p.source} /></td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1">
-                        <a href={`tel:${p.number.replace(/\D/g, '')}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#3b82f6] hover:text-[#60a5fa] transition-colors" title="Call">
+                        <a href={`tel:${p.number.replace(/\D/g, '')}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#888888] hover:text-[#999999] transition-colors" title="Call">
                           <PhoneCall size={12} />
                         </a>
                         <CopyBtn value={p.number} label={`phone-${i}`} copied={copied} copy={copy} />
@@ -1417,7 +1417,7 @@ export default function SkipTracerV2Page() {
                     <div key={`social-${sp.platform}-${sp.username}-${i}`} className="flex items-center gap-2 text-[11px]">
                       <Globe size={11} className="text-[#556677]" />
                       <span className="text-[#8899aa] font-bold text-[10px] uppercase">{sp.platform}</span>
-                      <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-[#60a5fa] hover:underline font-mono truncate">
+                      <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-[#999999] hover:underline font-mono truncate">
                         {sp.username}
                       </a>
                       <ExternalLink size={10} className="text-[#445566]" />
@@ -1435,7 +1435,7 @@ export default function SkipTracerV2Page() {
                 {selected.associates!.map((a, i) => (
                   <tr key={`assoc-${a.name}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5">
-                      <button type="button" onClick={() => searchAssociate(a.name)} className="text-[#60a5fa] hover:underline font-mono flex items-center gap-1">
+                      <button type="button" onClick={() => searchAssociate(a.name)} className="text-[#999999] hover:underline font-mono flex items-center gap-1">
                         {a.name} <Search size={9} className="text-[#445566]" />
                       </button>
                     </td>
@@ -1473,7 +1473,7 @@ export default function SkipTracerV2Page() {
                     <td className="px-2 py-1.5"><SourceBadge source={c.source} /></td>
                     <td className="px-2 py-1.5">
                       {c.sourceUrl && (
-                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[#60a5fa] hover:text-blue-300">
+                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[#999999] hover:text-blue-300">
                           <ExternalLink size={11} />
                         </a>
                       )}
@@ -1783,7 +1783,7 @@ export default function SkipTracerV2Page() {
                       {h.searcher_name && <span>&middot; {h.searcher_name}</span>}
                     </div>
                   </div>
-                  <button type="button" onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#60a5fa] hover:bg-surface-raised/50 rounded-sm" title="Re-run">
+                  <button type="button" onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#999999] hover:bg-surface-raised/50 rounded-sm" title="Re-run">
                     <RefreshCw size={13} />
                   </button>
                 </div>

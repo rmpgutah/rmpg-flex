@@ -141,7 +141,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
               <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
               <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
             </div>
-            <div style="font-size:12px;color:#60a5fa;font-weight:bold;">${escapeHtml(call.call_number)}</div>
+            <div style="font-size:12px;color:#999999;font-weight:bold;">${escapeHtml(call.call_number)}</div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
               <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(call.status)}</span>
               ${call.disposition ? `<span style="font-size:9px;color:#9ca3af;">${escapeHtml(call.disposition)}</span>` : ''}
@@ -151,7 +151,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
               <div style="display:flex;gap:12px;font-size:9px;color:#5a6e80;">
                 <div><span style="color:#9ca3af;font-weight:bold;">Response:</span> ${escapeHtml(formatResponseTime(call.response_time_min))}</div>
               </div>
-              ${call.assigned_units ? `<div style="font-size:9px;color:#60a5fa;margin-top:4px;font-weight:bold;">${escapeHtml(call.assigned_units)}</div>` : ''}
+              ${call.assigned_units ? `<div style="font-size:9px;color:#999999;margin-top:4px;font-weight:bold;">${escapeHtml(call.assigned_units)}</div>` : ''}
               <div style="font-size:8px;color:#4b5563;margin-top:4px;">
                 ${escapeHtml(formatTimestamp(call.created_at))} &rarr; ${escapeHtml(formatTimestamp(call.cleared_at))}
               </div>

@@ -23,7 +23,7 @@ interface GeofenceManagerProps {
 // ─── Zone type badge colors ─────────────────────────────────
 
 const ZONE_TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  school:     { bg: '#3b82f622', border: '#3b82f644', text: '#aaaaaa' },
+  school:     { bg: '#88888822', border: '#88888844', text: '#aaaaaa' },
   restricted: { bg: '#dc262622', border: '#dc262644', text: '#f87171' },
   custom:     { bg: '#8b5cf622', border: '#8b5cf644', text: '#a78bfa' },
   patrol:     { bg: '#22c55e22', border: '#22c55e44', text: '#4ade80' },

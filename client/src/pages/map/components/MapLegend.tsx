@@ -127,7 +127,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
               </div>
             )}
             <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
-              <div className="shrink-0" style={{ width: 12, height: 2, background: 'linear-gradient(90deg, #3b82f6, #22c55e)', borderRadius: 1 }} />
+              <div className="shrink-0" style={{ width: 12, height: 2, background: 'linear-gradient(90deg, #888888, #22c55e)', borderRadius: 1 }} />
               <span className="text-[9px] font-mono text-[#9ca3af]">Tracking line</span>
             </div>
             <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">

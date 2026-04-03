@@ -739,7 +739,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               {/* #47: Progress bar with glow and smoother animation */}
               <div className="relative w-full h-1.5 bg-rmpg-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-[#888888] to-[#60a5fa] transition-all duration-150 ease-out"
+                  className="h-full bg-gradient-to-r from-[#888888] to-[#999999] transition-all duration-150 ease-out"
                   style={{ width: `${totalPts > 0 ? ((playbackIdx + 1) / totalPts) * 100 : 0}%`, boxShadow: '0 0 6px rgba(96,165,250,0.4)' }}
                 />
               </div>

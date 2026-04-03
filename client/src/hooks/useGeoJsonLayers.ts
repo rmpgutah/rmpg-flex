@@ -524,7 +524,7 @@ export function useGeoJsonLayers({
           icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
           label: {
             text: name.toUpperCase() + ' CO.',
-            color: '#3b82f680',
+            color: '#88888880',
             fontSize: '10px',
             fontWeight: 'bold',
             fontFamily: 'JetBrains Mono, Courier New, monospace',

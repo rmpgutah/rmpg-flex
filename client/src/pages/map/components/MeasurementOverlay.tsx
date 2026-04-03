@@ -59,7 +59,7 @@ export default function MeasurementOverlay({
           <span className="text-[9px] text-[#5a6e80] uppercase tracking-widest font-bold leading-none">
             {measureMode === 'distance' ? 'Distance' : 'Area'}
           </span>
-          <span className="text-base font-mono font-bold text-[#60a5fa] leading-tight tabular-nums">
+          <span className="text-base font-mono font-bold text-[#999999] leading-tight tabular-nums">
             {measureDisplay}
           </span>
           {measureDisplayMetric && (

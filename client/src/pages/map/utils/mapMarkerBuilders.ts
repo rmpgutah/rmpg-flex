@@ -142,7 +142,7 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   const dot = document.createElement('div');
   dot.style.cssText =
     'width:12px;height:12px;border-radius:50%;' +
-    'background:radial-gradient(circle at 30% 30%, #93c5fd, #1e3a5f);' +
+    'background:radial-gradient(circle at 30% 30%, #93c5fd, #222222);' +
     'border:2px solid rgba(255,255,255,0.95);' +
     'box-shadow:0 0 8px rgba(59,130,246,0.7), 0 1px 4px rgba(0,0,0,0.5);' +
     'transition:transform 0.2s ease, box-shadow 0.2s ease;will-change:transform, box-shadow;';
@@ -151,13 +151,13 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   const tooltip = document.createElement('div');
   tooltip.style.cssText =
     'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);' +
-    "background:#0d1520;color:#e5e7eb;padding:8px 12px;border:1px solid #3b82f650;border-radius:2px;" +
+    "background:#0d1520;color:#e5e7eb;padding:8px 12px;border:1px solid #88888850;border-radius:2px;" +
     "font-family:'JetBrains Mono',monospace;white-space:nowrap;pointer-events:none;" +
     'opacity:0;transition:opacity 0.15s ease;z-index:9999;min-width:120px;max-width:220px;' +
     'box-shadow:0 4px 12px rgba(0,0,0,0.5);backdrop-filter:blur(8px);';
 
   const nameEl = document.createElement('div');
-  nameEl.style.cssText = 'font-size:10px;font-weight:900;color:#60a5fa;margin-bottom:2px;text-overflow:ellipsis;overflow:hidden;';
+  nameEl.style.cssText = 'font-size:10px;font-weight:900;color:#999999;margin-bottom:2px;text-overflow:ellipsis;overflow:hidden;';
   nameEl.textContent = name;
   tooltip.appendChild(nameEl);
 
@@ -305,7 +305,7 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
   // Heading arrow
   if (heading != null) {
     const arrow = document.createElement('div');
-    arrow.style.cssText = `position:absolute;top:-10px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #3b82f6;transform:rotate(${heading}deg);transform-origin:center 17px;filter:drop-shadow(0 0 3px rgba(59,130,246,0.6));z-index:2;transition:transform 0.3s ease;will-change:transform;`;
+    arrow.style.cssText = `position:absolute;top:-10px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #888888;transform:rotate(${heading}deg);transform-origin:center 17px;filter:drop-shadow(0 0 3px rgba(59,130,246,0.6));z-index:2;transition:transform 0.3s ease;will-change:transform;`;
     el.appendChild(arrow);
   }
 

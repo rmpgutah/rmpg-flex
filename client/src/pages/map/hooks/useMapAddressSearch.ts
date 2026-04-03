@@ -40,12 +40,12 @@ function buildAddressMarkerElement(label: string): HTMLElement {
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
 
   const badge = document.createElement('div');
-  badge.style.cssText = "background:#3b82f6;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;";
+  badge.style.cssText = "background:#888888;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;";
   badge.textContent = label;
   wrapper.appendChild(badge);
 
   const arrow = document.createElement('div');
-  arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #3b82f6;';
+  arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #888888;';
   wrapper.appendChild(arrow);
 
   return wrapper;
@@ -140,7 +140,7 @@ export function useMapAddressSearch({ mapInstanceRef, infoWindowRef, createMarke
               const container = document.createElement('div');
               container.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a";
               const heading = document.createElement('div');
-              heading.style.cssText = 'font-weight:bold;font-size:12px;margin-bottom:4px;color:#3b82f6';
+              heading.style.cssText = 'font-weight:bold;font-size:12px;margin-bottom:4px;color:#888888';
               heading.textContent = description.split(',')[0];
               container.appendChild(heading);
               const addr = document.createElement('div');

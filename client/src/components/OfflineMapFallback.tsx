@@ -139,8 +139,8 @@ export default function OfflineMapFallback({
         100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
       }
       @keyframes rmpg-gps-glow {
-        0%, 100% { box-shadow: 0 0 4px #3b82f6, 0 0 8px #3b82f680; }
-        50%      { box-shadow: 0 0 8px #3b82f6, 0 0 16px #3b82f680; }
+        0%, 100% { box-shadow: 0 0 4px #888888, 0 0 8px #88888880; }
+        50%      { box-shadow: 0 0 8px #888888, 0 0 16px #88888880; }
       }
     `;
     document.head.appendChild(s);
@@ -282,7 +282,7 @@ export default function OfflineMapFallback({
               position:absolute;top:50%;left:50%;
               width:20px;height:20px;
               background:transparent;
-              border:2px solid #3b82f6;
+              border:2px solid #888888;
               border-radius:50%;
               animation:rmpg-pulse-ring 2s ease-out infinite;
               pointer-events:none;
@@ -304,7 +304,7 @@ export default function OfflineMapFallback({
             <div style="
               position:absolute;top:50%;left:50%;
               width:14px;height:14px;
-              background:#3b82f6;
+              background:#888888;
               border:2.5px solid #fff;
               border-radius:50%;
               transform:translate(-50%,-50%);
@@ -502,7 +502,7 @@ export default function OfflineMapFallback({
         className: 'rmpg-prop-marker',
         html: `<div style="
           width:10px;height:10px;border-radius:50%;
-          background:radial-gradient(circle at 35% 35%, #60a5fa, #1e3a5f);
+          background:radial-gradient(circle at 35% 35%, #999999, #222222);
           border:2px solid rgba(255,255,255,0.9);
           box-shadow:0 0 6px rgba(59,130,246,0.6), 0 1px 3px rgba(0,0,0,0.4);
         "></div>`,
@@ -512,7 +512,7 @@ export default function OfflineMapFallback({
 
       const marker = L.marker([prop.lat, prop.lng], { icon, zIndexOffset: 200 }).addTo(map);
       const tooltipHtml = `<div style="text-align:center;">
-        <div style="font-weight:900;font-size:9px;color:#60a5fa;">${prop.name}</div>
+        <div style="font-weight:900;font-size:9px;color:#999999;">${prop.name}</div>
         ${prop.address ? `<div style="font-size:7px;opacity:0.7;">${prop.address}</div>` : ''}
         ${prop.client_name ? `<div style="font-size:7px;color:#d4a017;">Client: ${prop.client_name}</div>` : ''}
       </div>`;

@@ -211,7 +211,7 @@ export default function WeatherPanel({
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Weather
           </div>
-          <div className="text-[12px] text-white/80 font-medium mb-2 border-l-2 border-[#60a5fa] pl-2">
+          <div className="text-[12px] text-white/80 font-medium mb-2 border-l-2 border-[#999999] pl-2">
             {weatherHazards.description || 'No data'}
           </div>
           {hasHazards ? (
@@ -304,7 +304,7 @@ export default function WeatherPanel({
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Visibility
           </div>
-          <div className="flex items-center gap-2 mb-1.5 border-l-2 border-[#60a5fa] pl-2">
+          <div className="flex items-center gap-2 mb-1.5 border-l-2 border-[#999999] pl-2">
             <Eye size={13} className={visibilityColor(visibilityRange)} />
             <span className={`text-[14px] font-bold font-mono tabular-nums ${visibilityColor(visibilityRange)}`}>
               {formatVisibility(visibilityRange)}
@@ -337,7 +337,7 @@ export default function WeatherPanel({
                   className="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[10px] font-semibold text-blue-300"
                   style={{
                     background: 'rgba(59,130,246,0.08)',
-                    borderLeft: '3px solid #3b82f6',
+                    borderLeft: '3px solid #888888',
                   }}
                 >
                   <Snowflake size={12} className="text-blue-400" />

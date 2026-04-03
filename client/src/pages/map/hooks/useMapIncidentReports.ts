@@ -144,7 +144,7 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
             <div style="margin-top:8px;padding-top:6px;border-top:1px solid #1e3048;font-size:9px;">
               ${incident.officer_name ? `<div style="color:#9ca3af;margin-bottom:2px;">${escapeHtml(incident.officer_name)}</div>` : ''}
               <div style="color:#4b5563;">${escapeHtml(formatDate(incident.created_at))}</div>
-              ${incident.call_number ? `<div style="color:#60a5fa;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
+              ${incident.call_number ? `<div style="color:#999999;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
               ${incident.case_number ? `<div style="color:#d4a017;margin-top:2px;font-weight:bold;">Case: ${escapeHtml(incident.case_number)}</div>` : ''}
             </div>
           </div>

@@ -102,7 +102,7 @@ export default function MapSidebar({
           <div className="tab-bar" role="tablist">
             <button type="button"
               onClick={() => setSidebarTab('units')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'units' ? 'active border-b-2 border-[#60a5fa] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'units' ? 'active border-b-2 border-[#999999] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               role="tab"
               aria-selected={sidebarTab === 'units'}
             >
@@ -110,7 +110,7 @@ export default function MapSidebar({
             </button>
             <button type="button"
               onClick={() => setSidebarTab('calls')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'calls' ? 'active border-b-2 border-[#60a5fa] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'calls' ? 'active border-b-2 border-[#999999] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               role="tab"
               aria-selected={sidebarTab === 'calls'}
             >
