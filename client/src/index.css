@@ -776,8 +776,8 @@ body.fx-noise::after {
   }
 
   .led-blue {
-    background: #3b82f6;
-    box-shadow: 0 0 4px #3b82f6, 0 0 8px rgba(59, 130, 246, 0.4);
+    background: #888888;
+    box-shadow: 0 0 4px #888888, 0 0 8px rgba(136, 136, 136, 0.4);
   }
 
   .led-purple {
@@ -3465,7 +3465,7 @@ select:not(.select-dark) {
    FIX 4: Focus-visible for keyboard users only
    ============================================================ */
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid #888888;
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {
@@ -3640,7 +3640,7 @@ form.overflow-y-auto,
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: #3b82f6;
+    background: #888888;
     border: 2px solid white;
   }
 }
@@ -3973,8 +3973,8 @@ html, body {
     box-shadow: 0 0 4px #f59e0b80, inset 0 -1px 1px rgba(0,0,0,0.3);
   }
   .led-blue {
-    background: #3b82f6;
-    box-shadow: 0 0 4px #3b82f680, inset 0 -1px 1px rgba(0,0,0,0.3);
+    background: #888888;
+    box-shadow: 0 0 4px #88888880, inset 0 -1px 1px rgba(0,0,0,0.3);
   }
   .led-blink {
     animation: led-blink 1s ease-in-out infinite;
@@ -4077,7 +4077,7 @@ html, body {
 
   /* --- Spillman Console Glow Effects --- */
   .glow-blue {
-    text-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+    text-shadow: 0 0 8px rgba(136, 136, 136, 0.4);
   }
   .glow-green {
     text-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
@@ -4379,7 +4379,7 @@ a:not([class]) {
   text-decoration: none;
 }
 a:not([class]):hover {
-  color: #60a5fa;
+  color: #999999;
   text-decoration: underline;
 }
 
