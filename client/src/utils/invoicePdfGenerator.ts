@@ -23,6 +23,7 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
+  applyPoliceReportFormatting,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -90,6 +91,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   setGenerationTimestamp(new Date().toLocaleString());
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPoliceReportFormatting(doc);
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
   const lx = getLeftX();
@@ -148,7 +150,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       const drawItemHeaders = (atY: number): number => {
         doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
         doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, cw - 2, 6, 'F');
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('courier', 'bold');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         // Luminance check: use dark text on light backgrounds, white on dark
         const hdrLum = headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114;
@@ -171,7 +173,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       ];
 
       // Data rows
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
         // Page break check — re-draw headers on new page
@@ -184,7 +186,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           y = drawItemHeaders(y);
           // Start new segment on new page
           tableSegments.push({ top: y - 8, bottom: y, page: doc.getNumberOfPages() });
-          doc.setFont('helvetica', 'normal');
+          doc.setFont('courier', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
 
@@ -250,7 +252,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const totX = pageWidth - LAYOUT.PAGE_MARGIN - 60;
   const totVX = pageWidth - LAYOUT.PAGE_MARGIN;
   const addTotal = (label: string, value: string, bold = false, color?: readonly [number, number, number]) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFont('courier', bold ? 'bold' : 'normal');
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
@@ -277,7 +279,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const balBoxX = totX - 8;
   const balBoxW = totVX - balBoxX + 3;
   doc.rect(balBoxX, y - 2, balBoxW, 9);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });
@@ -317,7 +319,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = checkPageBreak(doc, y, 20);
     const sec = openAutoSection(doc, 'Notes', y);
     y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     y = addWrappedText(doc, data.notes, lx, y, ffw, 9);
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);

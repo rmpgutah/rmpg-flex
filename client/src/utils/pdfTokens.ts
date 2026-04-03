@@ -50,10 +50,10 @@ export const COLOR = {
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     8,     // Section header bar text (all-caps)
-  SIZE_FIELD_VALUE:       8.5,   // Courier values inside field boxes
+  SIZE_FIELD_VALUE:       8,     // Courier values inside field boxes (dense police-report style)
   SIZE_FIELD_LABEL:       6,     // Helvetica labels above field boxes
   SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
-  SIZE_TABLE_BODY:        7.5,   // Courier table row content
+  SIZE_TABLE_BODY:        7,     // Courier table row content
   SIZE_FOOTER_PRIMARY:    5,     // Footer form #, page #
   SIZE_FOOTER_SECONDARY:  4.5,   // Footer secondary info
   SIZE_SMALL_META:        5,     // Form revision, report date
@@ -69,7 +69,7 @@ export const FONT = {
   SIZE_CLASSIF_BAR:       7,     // Classification/priority bar (kept for compat)
   SIZE_SUBHEADER:         6.5,   // Subheader text in report header
   SIZE_REPORT_TYPE:       7,     // Report type label in header
-  SIZE_CASE_NUMBER:       9,     // Case number value (courier bold)
+  SIZE_CASE_NUMBER:       8.5,   // Case number value (courier bold)
   SIZE_FORM_CELL_LABEL:   6,     // Form cell label (same as field label)
   SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value (same as field value)
   SIZE_SIDEBAR_TAB:       7,     // Sidebar tab rotated text
@@ -101,9 +101,9 @@ export const BORDER = {
 export const SPACING = {
   XS:                 0.2,   // Micro padding
   SM:                 0.8,   // Small gap
-  MD:                 1.5,   // Base unit
-  LG:                 3,     // Line height
-  XL:                 3.5,   // Generous gap
+  MD:                 1.2,   // Base unit (tight)
+  LG:                 2.6,   // Line height
+  XL:                 3,     // Generous gap
 
   CONTENT_INSET:      1.5,   // Left/right padding inside sections
   SECTION_HEADER_H:   5,     // Section header bar height
@@ -111,8 +111,8 @@ export const SPACING = {
   SECTION_CONTENT_PAD: 2,    // Gap from header bar to first content
   SECTION_BOTTOM_PAD:  2,    // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   8,     // Height of field box
-  FIELD_ROW_ADVANCE:  8.5,   // Y-advance after field row
+  FIELD_ROW_HEIGHT:   7.2,   // Height of field box
+  FIELD_ROW_ADVANCE:  7.6,   // Y-advance after field row
 
   SIGNATURE_BOX_H:    28,    // Signature block total height
   SIGNATURE_ROLE_H:   4.5,   // Role label header bar height
@@ -134,7 +134,7 @@ export const LAYOUT = {
   SEAL_SIZE:         13,     // Compact logo
   ACCENT_STRIP_H:    0.8,   // Thin accent strip below header
   CASE_BOX_W:        42,     // Case number box width
-  LINE_HEIGHT:       3.2,    // Base line height for wrapped text
+  LINE_HEIGHT:       2.9,    // Base line height for wrapped text
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
 } as const;
