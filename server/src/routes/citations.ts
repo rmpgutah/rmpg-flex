@@ -271,6 +271,15 @@ router.post('/', (req: Request, res: Response) => {
       court_name,
       court_address,
       notes,
+      // Spillman Flex extended fields
+      section_id, zone_id, beat_id, zone_beat, latitude, longitude,
+      vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
+      speed_recorded, speed_limit, radar_type, bac_level,
+      bond_amount, bond_type,
+      is_warning, is_equipment_violation,
+      school_zone, construction_zone, accident_related, dui_related, commercial_vehicle, hazmat,
+      court_time, court_room, appearance_required,
+      case_id,
     } = req.body;
 
     if (!violation_description?.trim()) {
@@ -334,7 +343,14 @@ router.post('/', (req: Request, res: Response) => {
         incident_id, call_id,
         issuing_officer_id, issuing_officer_name, badge_number,
         court_date, court_name, court_address,
-        notes, created_at, updated_at
+        notes, created_at, updated_at,
+        section_id, zone_id, beat_id, zone_beat, latitude, longitude,
+        vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
+        speed_recorded, speed_limit, radar_type, bac_level,
+        bond_amount, bond_type,
+        is_warning, is_equipment_violation,
+        school_zone, construction_zone, accident_related, dui_related, commercial_vehicle, hazmat,
+        court_time, court_room, appearance_required, case_id
       ) VALUES (
         ?, ?, ?,
         ?, ?, ?, ?, ?,
@@ -344,7 +360,14 @@ router.post('/', (req: Request, res: Response) => {
         ?, ?,
         ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?
       )
     `).run(
       citation_number, type, status,
@@ -355,7 +378,14 @@ router.post('/', (req: Request, res: Response) => {
       incident_id || null, call_id || null,
       issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
       court_date || null, court_name || null, court_address || null,
-      notes || null, created_at, now
+      notes || null, created_at, now,
+      section_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
+      vehicle_vin || null, vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
+      speed_recorded ?? null, speed_limit ?? null, radar_type || null, bac_level ?? null,
+      bond_amount ?? null, bond_type || null,
+      is_warning ? 1 : 0, is_equipment_violation ? 1 : 0,
+      school_zone ? 1 : 0, construction_zone ? 1 : 0, accident_related ? 1 : 0, dui_related ? 1 : 0, commercial_vehicle ? 1 : 0, hazmat ? 1 : 0,
+      court_time || null, court_room || null, appearance_required ? 1 : 0, case_id || null
     );
 
     // Activity log
@@ -429,6 +459,41 @@ router.put('/:id', (req: Request, res: Response) => {
       court_name: v => v ?? null,
       court_address: v => v ?? null,
       notes: v => v ?? null,
+      section_id: v => v ?? null,
+      zone_id: v => v ?? null,
+      beat_id: v => v ?? null,
+      zone_beat: v => v ?? null,
+      latitude: v => v ?? null,
+      longitude: v => v ?? null,
+      vehicle_vin: v => v ?? null,
+      vehicle_year: v => v ?? null,
+      vehicle_make: v => v ?? null,
+      vehicle_model: v => v ?? null,
+      vehicle_color: v => v ?? null,
+      vehicle_id: v => v || null,
+      speed_recorded: v => v ?? null,
+      speed_limit: v => v ?? null,
+      radar_type: v => v ?? null,
+      bac_level: v => v ?? null,
+      bond_amount: v => v ?? null,
+      bond_type: v => v ?? null,
+      is_warning: v => v ? 1 : 0,
+      is_equipment_violation: v => v ? 1 : 0,
+      school_zone: v => v ? 1 : 0,
+      construction_zone: v => v ? 1 : 0,
+      accident_related: v => v ? 1 : 0,
+      dui_related: v => v ? 1 : 0,
+      commercial_vehicle: v => v ? 1 : 0,
+      hazmat: v => v ? 1 : 0,
+      voided_reason: v => v ?? null,
+      court_time: v => v ?? null,
+      court_room: v => v ?? null,
+      appearance_required: v => v ? 1 : 0,
+      plea: v => v ?? null,
+      verdict: v => v ?? null,
+      sentence: v => v ?? null,
+      disposition_date: v => v ?? null,
+      case_id: v => v || null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
