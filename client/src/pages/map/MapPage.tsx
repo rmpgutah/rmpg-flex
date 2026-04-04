@@ -274,6 +274,8 @@ export default function MapPage() {
   // Heat map state
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showTrackingLines, setShowTrackingLines] = useState(true);
+  const [showPatrolTrails, setShowPatrolTrails] = useState(false);
+  const patrolTrailPolylinesRef = useRef<google.maps.Polyline[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
@@ -717,6 +719,54 @@ export default function MapPage() {
 
     return () => { unsubscribeUnit(); unsubscribeCall(); };
   }, [subscribe]);
+
+  // ============================================================
+  // Patrol Trail Polylines
+  // ============================================================
+
+  useEffect(() => {
+    // Clear existing trails
+    for (const pl of patrolTrailPolylinesRef.current) pl.setMap(null);
+    patrolTrailPolylinesRef.current = [];
+
+    if (!showPatrolTrails || !mapInstanceRef.current) return;
+
+    const colors = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+    let cancelled = false;
+
+    apiFetch<any>('/dispatch/gps/trails?hours=8')
+      .then(data => {
+        if (cancelled) return;
+        const trails = Array.isArray(data) ? data : data?.trails || data?.data || [];
+
+        trails.forEach((trail: any, i: number) => {
+          const points = (trail.points || trail.breadcrumbs || []).map((p: any) => ({
+            lat: p.lat || p.latitude,
+            lng: p.lng || p.longitude,
+          })).filter((p: any) => p.lat && p.lng);
+
+          if (points.length < 2) return;
+
+          const polyline = new google.maps.Polyline({
+            path: points,
+            strokeColor: colors[i % colors.length],
+            strokeOpacity: 0.6,
+            strokeWeight: 3,
+            map: mapInstanceRef.current!,
+            clickable: false,
+          });
+
+          patrolTrailPolylinesRef.current.push(polyline);
+        });
+      })
+      .catch(err => console.warn('[PatrolTrails] Failed to load:', err));
+
+    return () => {
+      cancelled = true;
+      for (const pl of patrolTrailPolylinesRef.current) pl.setMap(null);
+      patrolTrailPolylinesRef.current = [];
+    };
+  }, [showPatrolTrails]);
 
   // ============================================================
   // Heat Map Data
@@ -3474,6 +3524,20 @@ export default function MapPage() {
                 )}
                 {showPatrolCheckpoints && !patrolCheckpoints.loading && patrolCheckpoints.overdueCount === 0 && (
                   <span className="text-[9px] font-mono">{patrolCheckpoints.checkpoints.length}</span>
+                )}
+              </button>
+
+              {/* Patrol Trails */}
+              <button
+                onClick={() => setShowPatrolTrails(prev => !prev)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showPatrolTrails ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Route className="w-3 h-3" />
+                <span className="flex-1 text-left">Patrol Trails</span>
+                {showPatrolTrails && patrolTrailPolylinesRef.current.length > 0 && (
+                  <span className="text-[9px] font-mono">{patrolTrailPolylinesRef.current.length} units</span>
                 )}
               </button>
 
