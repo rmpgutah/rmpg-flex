@@ -5,7 +5,7 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '..
 import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
-import { identifyBeat, reloadGeofence } from '../../utils/geofence';
+import { identifyBeat, findNearestBeat, reloadGeofence } from '../../utils/geofence';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -1108,20 +1108,37 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       return;
     }
 
-    const beat = identifyBeat(latNum, lngNum);
+    let beat = identifyBeat(latNum, lngNum);
+    let exact = true;
+
+    // Fallback: find nearest beat centroid within 1.25 mi
     if (!beat) {
-      res.json({ found: false });
-      return;
+      const nearest = findNearestBeat(latNum, lngNum);
+      if (!nearest) {
+        res.json({ found: false });
+        return;
+      }
+      beat = nearest;
+      exact = false;
     }
 
     // Lookup dispatch_districts table for rich names
-    const district = db.prepare(
-      'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-    ).get(beat.city_code, beat.district_letter) as any;
+    // Try dispatch_code first, then zone_id + beat_id
+    let district = db.prepare(
+      'SELECT * FROM dispatch_districts WHERE dispatch_code = ?'
+    ).get(beat.beat_code) as any;
+
+    if (!district) {
+      district = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+      ).get(beat.city_code, beat.district_letter) as any;
+    }
 
     if (district) {
       res.json({
         found: true,
+        exact,
+        ...(!exact && 'distance_mi' in beat ? { distance_mi: (beat as any).distance_mi } : {}),
         section_id: district.section_id,
         zone_id: district.zone_name,
         beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
@@ -1135,6 +1152,8 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       // Fallback to raw geofence data
       res.json({
         found: true,
+        exact,
+        ...(!exact && 'distance_mi' in beat ? { distance_mi: (beat as any).distance_mi } : {}),
         section_id: beat.district_letter,
         zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
         beat_id: beat.beat_id,
