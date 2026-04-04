@@ -1647,7 +1647,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     flagX = addCheckboxField(doc, 'Sex Offender', !!data.is_sex_offender, flagX, y);
     flagX = addCheckboxField(doc, 'Veteran', !!data.is_veteran, flagX + SPACING.SM, y);
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
-    y += SPACING.LG;
+    y += SPACING.SM + 1;
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
     const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;
