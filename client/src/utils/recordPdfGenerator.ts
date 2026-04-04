@@ -1056,7 +1056,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const unitCount2 = unitDetail2?.length || data.assigned_units?.length || 0;
     if (unitCount2 > 0) {
       y = checkPageBreak(doc, y, 18, prio); // header + at least 1 unit row
-      const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.contentY;
+      const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.sectionY + 3.8;
       if (unitDetail2 && unitDetail2.length > 0) {
         const UNIT_ROLES2 = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
         const uqw = ffw / 4;
@@ -1109,12 +1109,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Linked Persons — clean table: section header + column headers + data rows
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + 3.8;
     const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
     const pColW = [ffw * 0.28, ffw * 0.17, ffw * 0.15, ffw * 0.17, ffw * 0.23];
     const rowH = 4.5;
     // Column header row — light gray background, dark text
-    doc.setFillColor(...COLOR.BG_ZEBRA);
+    doc.setFillColor(200, 200, 200);
     doc.rect(lx, y, ffw, rowH, 'F');
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
@@ -1159,12 +1159,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Linked Vehicles — clean table: section header + column headers + data rows
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.sectionY + 3.8;
     const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
     const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
     const rowH = 4.5;
     // Column header row — light gray background, dark text
-    doc.setFillColor(...COLOR.BG_ZEBRA);
+    doc.setFillColor(200, 200, 200);
     doc.rect(lx, y, ffw, rowH, 'F');
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
