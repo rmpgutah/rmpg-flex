@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Settings,
   Plus,
@@ -9,8 +9,11 @@ import {
   Loader2,
   AlertCircle,
   ChevronDown,
+  ChevronRight,
   Save,
   MapPin,
+  Shield,
+  Globe,
   Phone,
   FileText,
   ToggleLeft,
@@ -62,12 +65,6 @@ interface PriorityConfig {
   label: string;
   color: string;
   target: string;
-}
-
-interface ZoneBeat {
-  code: string;
-  name: string;
-  description: string;
 }
 
 interface UnitTypeConfig {
@@ -280,12 +277,17 @@ export default function AdminSystemTab({
   const [unitDeleteLoading, setUnitDeleteLoading] = useState(false);
   const [unitSaving, setUnitSaving] = useState(false);
 
-  // Zones & Beats
-  const [zones, setZones] = useState<ZoneBeat[]>([]);
-  const [newZoneCode, setNewZoneCode] = useState('');
-  const [newZoneName, setNewZoneName] = useState('');
-  const [newZoneDesc, setNewZoneDesc] = useState('');
-  const [zonesDirty, setZonesDirty] = useState(false);
+  // Dispatch Districts (tree view)
+  const [districts, setDistricts] = useState<any[]>([]);
+  const [districtsLoading, setDistrictsLoading] = useState(false);
+  const [expandedDistSections, setExpandedDistSections] = useState<Set<string>>(new Set());
+  const [expandedDistZones, setExpandedDistZones] = useState<Set<string>>(new Set());
+  const [editingDistrictId, setEditingDistrictId] = useState<number | null>(null);
+  const [editFields, setEditFields] = useState({ section_name: '', zone_name: '', beat_name: '', beat_descriptor: '' });
+  const [addingTo, setAddingTo] = useState<{ level: 'section' | 'zone' | 'beat'; sectionId?: string; zoneId?: string } | null>(null);
+  const [addFields, setAddFields] = useState({ id: '', name: '', descriptor: '' });
+  const [pendingSections, setPendingSections] = useState<{ id: string; name: string }[]>([]);
+  const [pendingZones, setPendingZones] = useState<{ sectionId: string; id: string; name: string }[]>([]);
 
   // Call Templates
   const [callTemplates, setCallTemplates] = useState<CallTemplate[]>([]);
@@ -336,10 +338,7 @@ export default function AdminSystemTab({
   const [editUnitTypeLabel, setEditUnitTypeLabel] = useState('');
   const [editUnitTypeColor, setEditUnitTypeColor] = useState('#3b82f6');
 
-  // Editing inline state — Zones & Beats
-  const [editingZoneCode, setEditingZoneCode] = useState<string | null>(null);
-  const [editZoneName, setEditZoneName] = useState('');
-  const [editZoneDesc, setEditZoneDesc] = useState('');
+  // (Zones editing state removed — now using district tree view)
 
   // Editing inline state — Call Templates
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
@@ -356,7 +355,6 @@ export default function AdminSystemTab({
   const prioritiesRef = useRef(priorities);
   const callSourcesRef = useRef(callSources);
   const unitTypesRef = useRef(unitTypes);
-  const zonesRef = useRef(zones);
   const evidenceTypesRef = useRef(evidenceTypes);
   const securityConfigRef = useRef(securityConfig);
   const brandingConfigRef = useRef(brandingConfig);
@@ -365,14 +363,13 @@ export default function AdminSystemTab({
   useEffect(() => { prioritiesRef.current = priorities; }, [priorities]);
   useEffect(() => { callSourcesRef.current = callSources; }, [callSources]);
   useEffect(() => { unitTypesRef.current = unitTypes; }, [unitTypes]);
-  useEffect(() => { zonesRef.current = zones; }, [zones]);
   useEffect(() => { evidenceTypesRef.current = evidenceTypes; }, [evidenceTypes]);
   useEffect(() => { securityConfigRef.current = securityConfig; }, [securityConfig]);
   useEffect(() => { brandingConfigRef.current = brandingConfig; }, [brandingConfig]);
   useEffect(() => { systemSettingsRef.current = systemSettings; }, [systemSettings]);
 
   // Navigation guard
-  const hasUnsaved = prioritiesDirty || callSourcesDirty || unitTypesDirty || zonesDirty
+  const hasUnsaved = prioritiesDirty || callSourcesDirty || unitTypesDirty
     || evidenceTypesDirty || securityDirty || brandingDirty || settingsDirty;
   useUnsavedChanges(hasUnsaved);
 
@@ -411,7 +408,6 @@ export default function AdminSystemTab({
       loadJsonSection<PriorityConfig[]>('priority_config', 'priority_levels', setPriorities);
       loadJsonSection<string[]>('call_sources', 'call_source_list', setCallSources);
       loadJsonSection<UnitTypeConfig[]>('unit_types', 'unit_type_list', setUnitTypes);
-      loadJsonSection<ZoneBeat[]>('zones_beats', 'zone_beat_list', setZones);
       loadJsonSection<string[]>('evidence_types', 'evidence_type_list', setEvidenceTypes);
       loadJsonSection<SecurityConfig>('security_config', 'security_settings', setSecurityConfig, DEFAULT_SECURITY);
       loadJsonSection<BrandingConfig>('branding', 'branding_settings', setBrandingConfig, DEFAULT_BRANDING);
@@ -428,7 +424,6 @@ export default function AdminSystemTab({
       setPrioritiesDirty(false);
       setCallSourcesDirty(false);
       setUnitTypesDirty(false);
-      setZonesDirty(false);
       setEvidenceTypesDirty(false);
       setSecurityDirty(false);
       setBrandingDirty(false);
@@ -728,48 +723,79 @@ export default function AdminSystemTab({
     setEditingUnitTypeKey(null);
   };
 
-  // Zones handlers
-  const addZone = () => {
-    const code = newZoneCode.trim().toUpperCase();
-    const name = newZoneName.trim();
-    if (!code || !name) return;
-    if (zones.some((z) => z.code === code)) return;
-    setZones((prev) => [...prev, { code, name, description: newZoneDesc.trim() }]);
-    setNewZoneCode('');
-    setNewZoneName('');
-    setNewZoneDesc('');
-    setZonesDirty(true);
-  };
-
-  const removeZone = (code: string) => {
-    setZones((prev) => prev.filter((z) => z.code !== code));
-    setZonesDirty(true);
-  };
-
-  const saveZones = async () => {
+  // District handlers (tree view CRUD)
+  const fetchDistricts = async () => {
+    setDistrictsLoading(true);
     try {
-      await saveJsonConfig('zone_beat_list', 'zones_beats', zonesRef.current);
-      setZonesDirty(false);
-    } catch { /* dirty flag stays true so user retries */ }
+      const data = await apiFetch<any[]>('/dispatch/districts');
+      setDistricts(data || []);
+    } finally { setDistrictsLoading(false); }
   };
 
-  const startEditZone = (z: ZoneBeat) => {
-    setEditingZoneCode(z.code);
-    setEditZoneName(z.name);
-    setEditZoneDesc(z.description);
+  const districtTree = useMemo(() => {
+    const tree = new Map<string, { name: string; zones: Map<string, { name: string; beats: any[] }> }>();
+    for (const d of districts) {
+      if (!tree.has(d.section_id)) tree.set(d.section_id, { name: d.section_name, zones: new Map() });
+      const section = tree.get(d.section_id)!;
+      if (!section.zones.has(d.zone_id)) section.zones.set(d.zone_id, { name: d.zone_name, beats: [] });
+      section.zones.get(d.zone_id)!.beats.push(d);
+    }
+    return tree;
+  }, [districts]);
+
+  const toggleDistSection = (sectionId: string) => {
+    setExpandedDistSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId); else next.add(sectionId);
+      return next;
+    });
   };
 
-  const saveEditZone = () => {
-    if (!editingZoneCode) return;
-    const name = editZoneName.trim();
-    if (!name) return;
-    setZones((prev) => prev.map((z) => z.code === editingZoneCode ? { ...z, name, description: editZoneDesc.trim() } : z));
-    setEditingZoneCode(null);
-    setZonesDirty(true);
+  const toggleDistZone = (key: string) => {
+    setExpandedDistZones(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
   };
 
-  const cancelEditZone = () => {
-    setEditingZoneCode(null);
+  const saveDistrictEdit = async (id: number) => {
+    try {
+      await apiFetch(`/dispatch/districts/${id}`, { method: 'PUT', body: JSON.stringify(editFields) });
+      setEditingDistrictId(null);
+      await fetchDistricts();
+    } catch { /* keep editing on error */ }
+  };
+
+  const deleteDistrict = async (id: number, label: string) => {
+    if (!window.confirm(`Delete beat "${label}"? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/dispatch/districts/${id}`, { method: 'DELETE' });
+      await fetchDistricts();
+    } catch { /* silent */ }
+  };
+
+  const submitAddBeat = async (sectionId: string, sectionName: string, zoneId: string, zoneName: string) => {
+    const beatId = addFields.id.trim().toUpperCase();
+    const beatName = addFields.name.trim();
+    if (!beatId || !beatName) return;
+    try {
+      await apiFetch('/dispatch/districts', {
+        method: 'POST',
+        body: JSON.stringify({
+          section_id: sectionId,
+          zone_id: zoneId,
+          beat_id: beatId,
+          section_name: sectionName,
+          zone_name: zoneName,
+          beat_name: beatName,
+          beat_descriptor: addFields.descriptor.trim(),
+        }),
+      });
+      setAddingTo(null);
+      setAddFields({ id: '', name: '', descriptor: '' });
+      await fetchDistricts();
+    } catch { /* silent */ }
   };
 
   // Evidence Types handlers
@@ -1023,7 +1049,6 @@ export default function AdminSystemTab({
     priorities: false,
     callSources: false,
     unitTypes: false,
-    zones: false,
     evidenceTypes: false,
     security: false,
     branding: false,
@@ -1032,7 +1057,6 @@ export default function AdminSystemTab({
   useEffect(() => { dirtyRef.current.priorities = prioritiesDirty; }, [prioritiesDirty]);
   useEffect(() => { dirtyRef.current.callSources = callSourcesDirty; }, [callSourcesDirty]);
   useEffect(() => { dirtyRef.current.unitTypes = unitTypesDirty; }, [unitTypesDirty]);
-  useEffect(() => { dirtyRef.current.zones = zonesDirty; }, [zonesDirty]);
   useEffect(() => { dirtyRef.current.evidenceTypes = evidenceTypesDirty; }, [evidenceTypesDirty]);
   useEffect(() => { dirtyRef.current.security = securityDirty; }, [securityDirty]);
   useEffect(() => { dirtyRef.current.branding = brandingDirty; }, [brandingDirty]);
@@ -1055,7 +1079,6 @@ export default function AdminSystemTab({
     if (d.priorities) { savePriorities(); }
     if (d.callSources) { saveCallSources(); }
     if (d.unitTypes) { saveUnitTypes(); }
-    if (d.zones) { saveZones(); }
     if (d.evidenceTypes) { saveEvidenceTypes(); }
     if (d.security) { saveSecurityConfig(); }
     if (d.branding) { saveBrandingConfig(); }
@@ -1099,7 +1122,6 @@ export default function AdminSystemTab({
     if (d.priorities) saveConfigBeacon('priority_levels', 'priority_config', prioritiesRef.current);
     if (d.callSources) saveConfigBeacon('call_source_list', 'call_sources', callSourcesRef.current);
     if (d.unitTypes) saveConfigBeacon('unit_type_list', 'unit_types', unitTypesRef.current);
-    if (d.zones) saveConfigBeacon('zone_beat_list', 'zones_beats', zonesRef.current);
     if (d.evidenceTypes) saveConfigBeacon('evidence_type_list', 'evidence_types', evidenceTypesRef.current);
     if (d.security) saveConfigBeacon('security_settings', 'security_config', securityConfigRef.current);
     if (d.branding) saveConfigBeacon('branding_settings', 'branding', brandingConfigRef.current);
@@ -1136,11 +1158,14 @@ export default function AdminSystemTab({
   useEffect(() => { if (prioritiesDirty) scheduleAutoSave('priorities', savePriorities); }, [prioritiesDirty, priorities]);
   useEffect(() => { if (callSourcesDirty) scheduleAutoSave('callSources', saveCallSources); }, [callSourcesDirty, callSources]);
   useEffect(() => { if (unitTypesDirty) scheduleAutoSave('unitTypes', saveUnitTypes); }, [unitTypesDirty, unitTypes]);
-  useEffect(() => { if (zonesDirty) scheduleAutoSave('zones', saveZones); }, [zonesDirty, zones]);
   useEffect(() => { if (evidenceTypesDirty) scheduleAutoSave('evidenceTypes', saveEvidenceTypes); }, [evidenceTypesDirty, evidenceTypes]);
   useEffect(() => { if (securityDirty) scheduleAutoSave('security', saveSecurityConfig); }, [securityDirty, securityConfig]);
   useEffect(() => { if (brandingDirty) scheduleAutoSave('branding', saveBrandingConfig); }, [brandingDirty, brandingConfig]);
   useEffect(() => { if (settingsDirty) scheduleAutoSave('systemSettings', saveSystemSettings); }, [settingsDirty, systemSettings]);
+
+  // Fetch districts when zones section is active
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeSection === 'zones') fetchDistricts(); }, [activeSection]);
 
   // ============================================================
   // Confirm dialog for unit delete (inline since ConfirmDialog is at parent)
@@ -1780,75 +1805,295 @@ export default function AdminSystemTab({
               </div>
           )}
 
-          {/* Section 6: Zones & Beats */}
+          {/* Section 6: Dispatch Districts (Tree View) */}
           {activeSection === 'zones' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-brand-400" />
-                Sections, Zones & Beats ({zones.length})
-                {zonesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
+                Dispatch Districts ({districts.length})
+                {districtsLoading && <Loader2 className="w-3 h-3 animate-spin text-rmpg-400" />}
               </h3>
             </div>
-                {zones.length > 0 ? (
-                  <table className="table-dark mb-3">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 80 }}>Code</th>
-                        <th style={{ width: 200 }}>Name</th>
-                        <th>Description</th>
-                        <th style={{ width: 60 }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {zones.map((z) => (
-                        <tr key={z.code}>
-                          {editingZoneCode === z.code ? (
-                            <>
-                              <td className="font-bold text-white font-mono">{z.code}</td>
-                              <td>
-                                <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneName} onChange={(e) => setEditZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} autoFocus />
-                              </td>
-                              <td>
-                                <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneDesc} onChange={(e) => setEditZoneDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} />
-                              </td>
-                              <td>
-                                <div className="flex items-center gap-1">
-                                  <button type="button" onClick={saveEditZone} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
-                                  <button type="button" onClick={cancelEditZone} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td className="font-bold text-white font-mono">{z.code}</td>
-                              <td className="text-rmpg-200">{z.name}</td>
-                              <td className="text-rmpg-300 text-xs">{z.description || '--'}</td>
-                              <td>
-                                <div className="flex items-center gap-1">
-                                  <button type="button" onClick={() => startEditZone(z)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
-                                  <button type="button" onClick={() => removeZone(z.code)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove"><Trash2 className="w-3 h-3" /></button>
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="text-xs text-rmpg-500 mb-3 py-4 text-center border border-dashed border-rmpg-700">No sections/zones/beats configured. Add your first entry below.</div>
-                )}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <input type="text" className="input-dark text-xs w-20 min-h-[36px]" placeholder="Code" value={newZoneCode} onChange={(e) => setNewZoneCode(e.target.value)} />
-                  <input type="text" className="input-dark text-xs w-40 min-h-[36px]" placeholder="Name" value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} />
-                  <input type="text" className="input-dark text-xs flex-1 min-w-[160px] min-h-[36px]" placeholder="Description (optional)" value={newZoneDesc} onChange={(e) => setNewZoneDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addZone()} />
-                  <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addZone}><Plus className="w-3 h-3" /> Add Entry</button>
-                  {zonesDirty && (
-                    <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveZones}><Save className="w-3 h-3" /> Save</button>
-                  )}
-                </div>
+
+            {districts.length === 0 && !districtsLoading && pendingSections.length === 0 ? (
+              <div className="text-xs text-rmpg-500 mb-3 py-4 text-center border border-dashed border-rmpg-700">No dispatch districts configured. Add your first section below.</div>
+            ) : (
+              <div className="border border-rmpg-700 rounded-sm">
+                {/* Render tree from API data */}
+                {Array.from(districtTree.entries()).map(([sectionId, section]) => {
+                  const secExpanded = expandedDistSections.has(sectionId);
+                  return (
+                    <div key={sectionId}>
+                      {/* Section row */}
+                      <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-surface-raised/30 cursor-pointer border-b border-rmpg-700/50" onClick={() => toggleDistSection(sectionId)}>
+                        {secExpanded ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
+                        <Shield className="w-3 h-3 text-brand-400" />
+                        <span className="font-mono font-bold text-white text-xs">{sectionId}</span>
+                        <span className="text-rmpg-200 text-xs">{section.name}</span>
+                        <div className="ml-auto flex items-center gap-1">
+                          <button type="button" className="toolbar-btn text-[9px]" onClick={(e) => { e.stopPropagation(); setAddingTo({ level: 'zone', sectionId }); setAddFields({ id: '', name: '', descriptor: '' }); }}><Plus className="w-2.5 h-2.5" /> Zone</button>
+                        </div>
+                      </div>
+
+                      {/* Zones under this section */}
+                      {secExpanded && Array.from(section.zones.entries()).map(([zoneId, zone]) => {
+                        const zoneKey = `${sectionId}:${zoneId}`;
+                        const zoneExpanded = expandedDistZones.has(zoneKey);
+                        return (
+                          <div key={zoneKey}>
+                            {/* Zone row */}
+                            <div className="flex items-center gap-2 px-2 py-1.5 ml-6 hover:bg-surface-raised/30 cursor-pointer border-b border-rmpg-700/30" onClick={() => toggleDistZone(zoneKey)}>
+                              {zoneExpanded ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
+                              <Globe className="w-3 h-3 text-blue-400" />
+                              <span className="font-mono font-bold text-white text-xs">{zoneId}</span>
+                              <span className="text-rmpg-200 text-xs">{zone.name}</span>
+                              <div className="ml-auto flex items-center gap-1">
+                                <button type="button" className="toolbar-btn text-[9px]" onClick={(e) => { e.stopPropagation(); setAddingTo({ level: 'beat', sectionId, zoneId }); setAddFields({ id: '', name: '', descriptor: '' }); }}><Plus className="w-2.5 h-2.5" /> Beat</button>
+                              </div>
+                            </div>
+
+                            {/* Beats under this zone */}
+                            {zoneExpanded && zone.beats.map((beat: any) => (
+                              <div key={beat.id} className="flex items-center gap-2 px-2 py-1 ml-12 hover:bg-surface-raised/30 border-b border-rmpg-700/20">
+                                <MapPin className="w-3 h-3 text-green-400" />
+                                {editingDistrictId === beat.id ? (
+                                  <>
+                                    <input type="text" className="input-dark text-xs w-16" value={editFields.beat_name} onChange={(e) => setEditFields(f => ({ ...f, beat_name: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') saveDistrictEdit(beat.id); if (e.key === 'Escape') setEditingDistrictId(null); }} autoFocus />
+                                    <input type="text" className="input-dark text-xs flex-1" placeholder="Descriptor" value={editFields.beat_descriptor} onChange={(e) => setEditFields(f => ({ ...f, beat_descriptor: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') saveDistrictEdit(beat.id); if (e.key === 'Escape') setEditingDistrictId(null); }} />
+                                    <button type="button" onClick={() => saveDistrictEdit(beat.id)} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
+                                    <button type="button" onClick={() => setEditingDistrictId(null)} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="font-mono font-bold text-white text-xs">{beat.beat_id}</span>
+                                    <span className="text-rmpg-200 text-xs">{beat.beat_name}</span>
+                                    {beat.beat_descriptor && <span className="text-rmpg-400 text-[10px]">({beat.beat_descriptor})</span>}
+                                    <div className="ml-auto flex items-center gap-1">
+                                      <button type="button" onClick={() => { setEditingDistrictId(beat.id); setEditFields({ section_name: beat.section_name, zone_name: beat.zone_name, beat_name: beat.beat_name, beat_descriptor: beat.beat_descriptor || '' }); }} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
+                                      <button type="button" onClick={() => deleteDistrict(beat.id, `${beat.beat_id} — ${beat.beat_name}`)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Delete"><Trash2 className="w-3 h-3" /></button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+
+                            {/* Inline add beat form */}
+                            {zoneExpanded && addingTo?.level === 'beat' && addingTo.sectionId === sectionId && addingTo.zoneId === zoneId && (
+                              <div className="flex items-center gap-2 px-2 py-1 ml-12 border-b border-rmpg-700/20 bg-surface-raised/20">
+                                <MapPin className="w-3 h-3 text-green-400/50" />
+                                <input type="text" className="input-dark text-xs w-16" placeholder="Beat ID" value={addFields.id} onChange={(e) => setAddFields(f => ({ ...f, id: e.target.value }))} autoFocus />
+                                <input type="text" className="input-dark text-xs w-28" placeholder="Beat Name" value={addFields.name} onChange={(e) => setAddFields(f => ({ ...f, name: e.target.value }))} />
+                                <input type="text" className="input-dark text-xs flex-1" placeholder="Descriptor (optional)" value={addFields.descriptor} onChange={(e) => setAddFields(f => ({ ...f, descriptor: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') submitAddBeat(sectionId, section.name, zoneId, zone.name); if (e.key === 'Escape') setAddingTo(null); }} />
+                                <button type="button" className="p-1 text-green-400 hover:text-green-300" onClick={() => submitAddBeat(sectionId, section.name, zoneId, zone.name)} title="Add"><CheckCircle className="w-3 h-3" /></button>
+                                <button type="button" className="p-1 text-rmpg-400 hover:text-rmpg-200" onClick={() => setAddingTo(null)} title="Cancel"><XCircle className="w-3 h-3" /></button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Inline add zone form */}
+                      {secExpanded && addingTo?.level === 'zone' && addingTo.sectionId === sectionId && (
+                        <div className="flex items-center gap-2 px-2 py-1 ml-6 border-b border-rmpg-700/30 bg-surface-raised/20">
+                          <Globe className="w-3 h-3 text-blue-400/50" />
+                          <input type="text" className="input-dark text-xs w-16" placeholder="Zone ID" value={addFields.id} onChange={(e) => setAddFields(f => ({ ...f, id: e.target.value }))} autoFocus />
+                          <input type="text" className="input-dark text-xs w-28" placeholder="Zone Name" value={addFields.name} onChange={(e) => setAddFields(f => ({ ...f, name: e.target.value }))} onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const zId = addFields.id.trim().toUpperCase();
+                              const zName = addFields.name.trim();
+                              if (zId && zName) {
+                                setPendingZones(prev => [...prev, { sectionId, id: zId, name: zName }]);
+                                setAddingTo(null);
+                                setAddFields({ id: '', name: '', descriptor: '' });
+                                setExpandedDistZones(prev => { const next = new Set(prev); next.add(`${sectionId}:${zId}`); return next; });
+                              }
+                            }
+                            if (e.key === 'Escape') setAddingTo(null);
+                          }} />
+                          <button type="button" className="p-1 text-green-400 hover:text-green-300" onClick={() => {
+                            const zId = addFields.id.trim().toUpperCase();
+                            const zName = addFields.name.trim();
+                            if (zId && zName) {
+                              setPendingZones(prev => [...prev, { sectionId, id: zId, name: zName }]);
+                              setAddingTo(null);
+                              setAddFields({ id: '', name: '', descriptor: '' });
+                              setExpandedDistZones(prev => { const next = new Set(prev); next.add(`${sectionId}:${zId}`); return next; });
+                            }
+                          }} title="Add"><CheckCircle className="w-3 h-3" /></button>
+                          <button type="button" className="p-1 text-rmpg-400 hover:text-rmpg-200" onClick={() => setAddingTo(null)} title="Cancel"><XCircle className="w-3 h-3" /></button>
+                        </div>
+                      )}
+
+                      {/* Render pending zones for this section */}
+                      {secExpanded && pendingZones.filter(pz => pz.sectionId === sectionId && !section.zones.has(pz.id)).map(pz => {
+                        const pzKey = `${sectionId}:${pz.id}`;
+                        const pzExpanded = expandedDistZones.has(pzKey);
+                        return (
+                          <div key={pzKey}>
+                            <div className="flex items-center gap-2 px-2 py-1.5 ml-6 hover:bg-surface-raised/30 cursor-pointer border-b border-rmpg-700/30 opacity-60" onClick={() => toggleDistZone(pzKey)}>
+                              {pzExpanded ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
+                              <Globe className="w-3 h-3 text-blue-400" />
+                              <span className="font-mono font-bold text-white text-xs">{pz.id}</span>
+                              <span className="text-rmpg-200 text-xs">{pz.name}</span>
+                              <span className="text-amber-400 text-[9px] ml-1">(pending — add a beat)</span>
+                              <div className="ml-auto flex items-center gap-1">
+                                <button type="button" className="toolbar-btn text-[9px]" onClick={(e) => { e.stopPropagation(); setAddingTo({ level: 'beat', sectionId, zoneId: pz.id }); setAddFields({ id: '', name: '', descriptor: '' }); }}><Plus className="w-2.5 h-2.5" /> Beat</button>
+                                <button type="button" className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove" onClick={(e) => { e.stopPropagation(); setPendingZones(prev => prev.filter(x => !(x.sectionId === sectionId && x.id === pz.id))); }}><Trash2 className="w-3 h-3" /></button>
+                              </div>
+                            </div>
+                            {/* Inline add beat for pending zone */}
+                            {pzExpanded && addingTo?.level === 'beat' && addingTo.sectionId === sectionId && addingTo.zoneId === pz.id && (
+                              <div className="flex items-center gap-2 px-2 py-1 ml-12 border-b border-rmpg-700/20 bg-surface-raised/20">
+                                <MapPin className="w-3 h-3 text-green-400/50" />
+                                <input type="text" className="input-dark text-xs w-16" placeholder="Beat ID" value={addFields.id} onChange={(e) => setAddFields(f => ({ ...f, id: e.target.value }))} autoFocus />
+                                <input type="text" className="input-dark text-xs w-28" placeholder="Beat Name" value={addFields.name} onChange={(e) => setAddFields(f => ({ ...f, name: e.target.value }))} />
+                                <input type="text" className="input-dark text-xs flex-1" placeholder="Descriptor (optional)" value={addFields.descriptor} onChange={(e) => setAddFields(f => ({ ...f, descriptor: e.target.value }))} onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    // For pending zones, we need to find the section name from pending or tree
+                                    const secName = section.name;
+                                    submitAddBeat(sectionId, secName, pz.id, pz.name);
+                                  }
+                                  if (e.key === 'Escape') setAddingTo(null);
+                                }} />
+                                <button type="button" className="p-1 text-green-400 hover:text-green-300" onClick={() => submitAddBeat(sectionId, section.name, pz.id, pz.name)} title="Add"><CheckCircle className="w-3 h-3" /></button>
+                                <button type="button" className="p-1 text-rmpg-400 hover:text-rmpg-200" onClick={() => setAddingTo(null)} title="Cancel"><XCircle className="w-3 h-3" /></button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+
+                {/* Render pending sections (not yet in DB) */}
+                {pendingSections.filter(ps => !districtTree.has(ps.id)).map(ps => {
+                  const psExpanded = expandedDistSections.has(ps.id);
+                  return (
+                    <div key={`pending-${ps.id}`}>
+                      <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-surface-raised/30 cursor-pointer border-b border-rmpg-700/50 opacity-60" onClick={() => toggleDistSection(ps.id)}>
+                        {psExpanded ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
+                        <Shield className="w-3 h-3 text-brand-400" />
+                        <span className="font-mono font-bold text-white text-xs">{ps.id}</span>
+                        <span className="text-rmpg-200 text-xs">{ps.name}</span>
+                        <span className="text-amber-400 text-[9px] ml-1">(pending — add a zone &amp; beat)</span>
+                        <div className="ml-auto flex items-center gap-1">
+                          <button type="button" className="toolbar-btn text-[9px]" onClick={(e) => { e.stopPropagation(); setAddingTo({ level: 'zone', sectionId: ps.id }); setAddFields({ id: '', name: '', descriptor: '' }); setExpandedDistSections(prev => { const next = new Set(prev); next.add(ps.id); return next; }); }}><Plus className="w-2.5 h-2.5" /> Zone</button>
+                          <button type="button" className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove" onClick={(e) => { e.stopPropagation(); setPendingSections(prev => prev.filter(x => x.id !== ps.id)); setPendingZones(prev => prev.filter(x => x.sectionId !== ps.id)); }}><Trash2 className="w-3 h-3" /></button>
+                        </div>
+                      </div>
+
+                      {/* Pending zones under pending section */}
+                      {psExpanded && pendingZones.filter(pz => pz.sectionId === ps.id).map(pz => {
+                        const pzKey = `${ps.id}:${pz.id}`;
+                        const pzExpanded = expandedDistZones.has(pzKey);
+                        return (
+                          <div key={pzKey}>
+                            <div className="flex items-center gap-2 px-2 py-1.5 ml-6 hover:bg-surface-raised/30 cursor-pointer border-b border-rmpg-700/30 opacity-60" onClick={() => toggleDistZone(pzKey)}>
+                              {pzExpanded ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
+                              <Globe className="w-3 h-3 text-blue-400" />
+                              <span className="font-mono font-bold text-white text-xs">{pz.id}</span>
+                              <span className="text-rmpg-200 text-xs">{pz.name}</span>
+                              <span className="text-amber-400 text-[9px] ml-1">(pending — add a beat)</span>
+                              <div className="ml-auto flex items-center gap-1">
+                                <button type="button" className="toolbar-btn text-[9px]" onClick={(e) => { e.stopPropagation(); setAddingTo({ level: 'beat', sectionId: ps.id, zoneId: pz.id }); setAddFields({ id: '', name: '', descriptor: '' }); setExpandedDistZones(prev => { const next = new Set(prev); next.add(pzKey); return next; }); }}><Plus className="w-2.5 h-2.5" /> Beat</button>
+                                <button type="button" className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove" onClick={(e) => { e.stopPropagation(); setPendingZones(prev => prev.filter(x => !(x.sectionId === ps.id && x.id === pz.id))); }}><Trash2 className="w-3 h-3" /></button>
+                              </div>
+                            </div>
+                            {pzExpanded && addingTo?.level === 'beat' && addingTo.sectionId === ps.id && addingTo.zoneId === pz.id && (
+                              <div className="flex items-center gap-2 px-2 py-1 ml-12 border-b border-rmpg-700/20 bg-surface-raised/20">
+                                <MapPin className="w-3 h-3 text-green-400/50" />
+                                <input type="text" className="input-dark text-xs w-16" placeholder="Beat ID" value={addFields.id} onChange={(e) => setAddFields(f => ({ ...f, id: e.target.value }))} autoFocus />
+                                <input type="text" className="input-dark text-xs w-28" placeholder="Beat Name" value={addFields.name} onChange={(e) => setAddFields(f => ({ ...f, name: e.target.value }))} />
+                                <input type="text" className="input-dark text-xs flex-1" placeholder="Descriptor (optional)" value={addFields.descriptor} onChange={(e) => setAddFields(f => ({ ...f, descriptor: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') submitAddBeat(ps.id, ps.name, pz.id, pz.name); if (e.key === 'Escape') setAddingTo(null); }} />
+                                <button type="button" className="p-1 text-green-400 hover:text-green-300" onClick={() => submitAddBeat(ps.id, ps.name, pz.id, pz.name)} title="Add"><CheckCircle className="w-3 h-3" /></button>
+                                <button type="button" className="p-1 text-rmpg-400 hover:text-rmpg-200" onClick={() => setAddingTo(null)} title="Cancel"><XCircle className="w-3 h-3" /></button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Add zone form under pending section */}
+                      {psExpanded && addingTo?.level === 'zone' && addingTo.sectionId === ps.id && (
+                        <div className="flex items-center gap-2 px-2 py-1 ml-6 border-b border-rmpg-700/30 bg-surface-raised/20">
+                          <Globe className="w-3 h-3 text-blue-400/50" />
+                          <input type="text" className="input-dark text-xs w-16" placeholder="Zone ID" value={addFields.id} onChange={(e) => setAddFields(f => ({ ...f, id: e.target.value }))} autoFocus />
+                          <input type="text" className="input-dark text-xs w-28" placeholder="Zone Name" value={addFields.name} onChange={(e) => setAddFields(f => ({ ...f, name: e.target.value }))} onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const zId = addFields.id.trim().toUpperCase();
+                              const zName = addFields.name.trim();
+                              if (zId && zName) {
+                                setPendingZones(prev => [...prev, { sectionId: ps.id, id: zId, name: zName }]);
+                                setAddingTo(null);
+                                setAddFields({ id: '', name: '', descriptor: '' });
+                                setExpandedDistZones(prev => { const next = new Set(prev); next.add(`${ps.id}:${zId}`); return next; });
+                              }
+                            }
+                            if (e.key === 'Escape') setAddingTo(null);
+                          }} />
+                          <button type="button" className="p-1 text-green-400 hover:text-green-300" onClick={() => {
+                            const zId = addFields.id.trim().toUpperCase();
+                            const zName = addFields.name.trim();
+                            if (zId && zName) {
+                              setPendingZones(prev => [...prev, { sectionId: ps.id, id: zId, name: zName }]);
+                              setAddingTo(null);
+                              setAddFields({ id: '', name: '', descriptor: '' });
+                              setExpandedDistZones(prev => { const next = new Set(prev); next.add(`${ps.id}:${zId}`); return next; });
+                            }
+                          }} title="Add"><CheckCircle className="w-3 h-3" /></button>
+                          <button type="button" className="p-1 text-rmpg-400 hover:text-rmpg-200" onClick={() => setAddingTo(null)} title="Cancel"><XCircle className="w-3 h-3" /></button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+            )}
+
+            {/* Inline add section form */}
+            {addingTo?.level === 'section' && (
+              <div className="flex items-center gap-2 mt-2">
+                <Shield className="w-3 h-3 text-brand-400/50" />
+                <input type="text" className="input-dark text-xs w-16" placeholder="Section ID" value={addFields.id} onChange={(e) => setAddFields(f => ({ ...f, id: e.target.value }))} autoFocus />
+                <input type="text" className="input-dark text-xs w-40" placeholder="Section Name" value={addFields.name} onChange={(e) => setAddFields(f => ({ ...f, name: e.target.value }))} onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const sId = addFields.id.trim().toUpperCase();
+                    const sName = addFields.name.trim();
+                    if (sId && sName) {
+                      setPendingSections(prev => [...prev, { id: sId, name: sName }]);
+                      setAddingTo(null);
+                      setAddFields({ id: '', name: '', descriptor: '' });
+                      setExpandedDistSections(prev => { const next = new Set(prev); next.add(sId); return next; });
+                    }
+                  }
+                  if (e.key === 'Escape') setAddingTo(null);
+                }} />
+                <button type="button" className="p-1 text-green-400 hover:text-green-300" onClick={() => {
+                  const sId = addFields.id.trim().toUpperCase();
+                  const sName = addFields.name.trim();
+                  if (sId && sName) {
+                    setPendingSections(prev => [...prev, { id: sId, name: sName }]);
+                    setAddingTo(null);
+                    setAddFields({ id: '', name: '', descriptor: '' });
+                    setExpandedDistSections(prev => { const next = new Set(prev); next.add(sId); return next; });
+                  }
+                }} title="Add"><CheckCircle className="w-3 h-3" /></button>
+                <button type="button" className="p-1 text-rmpg-400 hover:text-rmpg-200" onClick={() => setAddingTo(null)} title="Cancel"><XCircle className="w-3 h-3" /></button>
+              </div>
+            )}
+
+            {/* Footer stats + add section button */}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[10px] text-rmpg-400">
+                {districtTree.size} section{districtTree.size !== 1 ? 's' : ''} &middot;{' '}
+                {Array.from(districtTree.values()).reduce((sum, s) => sum + s.zones.size, 0)} zone{Array.from(districtTree.values()).reduce((sum, s) => sum + s.zones.size, 0) !== 1 ? 's' : ''} &middot;{' '}
+                {districts.length} beat{districts.length !== 1 ? 's' : ''}
+              </span>
+              <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px]" onClick={() => { setAddingTo({ level: 'section' }); setAddFields({ id: '', name: '', descriptor: '' }); }}><Plus className="w-3 h-3" /> Add Section</button>
+            </div>
+          </div>
           )}
 
           {/* Section 7: Evidence Types */}
