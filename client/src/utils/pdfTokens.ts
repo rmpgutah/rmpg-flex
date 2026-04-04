@@ -27,7 +27,7 @@ export const COLOR = {
 
   // Backgrounds
   BG_ZEBRA:        [245, 245, 245]  as const,  // Even-row shading (very light gray)
-  BG_SECTION_HDR:  [50, 50, 50]     as const,  // Section header bar (neutral dark gray)
+  BG_SECTION_HDR:  [60, 60, 60]     as const,  // Section header bar (dark gray)
   BG_TABLE_HDR:    [160, 160, 160]  as const,  // Table column header (medium gray)
 
   // Financial

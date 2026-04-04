@@ -2005,11 +2005,12 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Owner Address (full width)
     y = addFieldPair(doc, 'Owner Address', data.owner_address || '', lx, y, ffw);
-    // Row 3: Checkboxes + Lien Holder
+    // Row 3: Checkboxes + Lien Holder (with gap after address)
+    y += 1;
     let flagX = lx;
     flagX = addCheckboxField(doc, 'Commercial', !!data.commercial_vehicle, flagX, y);
     flagX = addCheckboxField(doc, 'Hazmat', !!data.hazmat, flagX + SPACING.SM, y);
-    y += SPACING.LG;
+    y += 3.5;
     y = addFieldPair(doc, 'Lien Holder', data.lien_holder || '', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
