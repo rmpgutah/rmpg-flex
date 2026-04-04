@@ -1382,12 +1382,12 @@ export function addImageToPage(
 }
 
 /** Render a 2-per-row image grid with captions. Returns final Y. */
-export async function addImageGrid(
+export function addImageGrid(
   doc: jsPDF,
   images: PdfImage[],
   startY: number,
   priority?: string,
-): Promise<number> {
+): number {
   const cw = getContentWidth(doc);
   const lx = getLeftX();
   const gap = SPACING.MD;
@@ -1406,14 +1406,7 @@ export async function addImageGrid(
       const img = rowImages[j];
       const x = lx + j * (imgMaxW + gap);
 
-      // Convert to monochrome B&W for ink savings
-      let bwImg = img;
-      try {
-        const bwUrl = await convertToGrayscale(img.dataUrl);
-        bwImg = { ...img, dataUrl: bwUrl };
-      } catch { /* use original */ }
-
-      const { w, h } = addImageToPage(doc, bwImg, x, y, imgMaxW, imgMaxH);
+      const { w, h } = addImageToPage(doc, img, x, y, imgMaxW, imgMaxH);
       doc.setDrawColor(...COLOR.BORDER_FIELD);
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(x, y, w, h);
@@ -1436,19 +1429,19 @@ export async function addImageGrid(
 }
 
 /** Complete attachments section with auto-sized border. */
-export async function addAttachmentsSection(
+export function addAttachmentsSection(
   doc: jsPDF,
   images: PdfImage[],
   y: number,
   title = 'ATTACHMENTS / EVIDENCE PHOTOS',
   priority?: string,
-): Promise<number> {
+): number {
   if (!images || images.length === 0) return y;
 
   y = checkPageBreak(doc, y, 40, priority);
   const sec = openAutoSection(doc, title, y);
   y = sec.contentY;
-  y = await addImageGrid(doc, images, y, priority);
+  y = addImageGrid(doc, images, y, priority);
   y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   return y;
 }
@@ -2314,7 +2307,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // SECTION 13 — ATTACHMENTS / EVIDENCE PHOTOS
   // ═══════════════════════════════════════════════════════════
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2411,7 +2404,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   // Signatures
@@ -2561,7 +2554,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
@@ -2628,7 +2621,7 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 75, data.priority);
@@ -2722,7 +2715,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
@@ -2825,7 +2818,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
@@ -2964,7 +2957,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
@@ -3122,7 +3115,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / SERVICE DOCUMENTS', data.priority);
+    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / SERVICE DOCUMENTS', data.priority);
   }
 
   // Signatures — addStackedSignatures has its own checkPageBreak internally
