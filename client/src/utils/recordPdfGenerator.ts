@@ -3143,7 +3143,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
       date: sigDateStr,
     });
 
-    const doc = generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
     const id = identifier || 'record';
     const filename = `${id}_${recordType}.pdf`;
@@ -3190,7 +3190,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
       date: sigDateStr,
     });
 
-    const doc = generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
