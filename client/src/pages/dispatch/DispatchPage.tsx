@@ -36,6 +36,7 @@ import {
   Building2,
   Terminal,
   Briefcase,
+  Crosshair,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -79,7 +80,7 @@ import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
-import { useDistrictOptions } from '../../hooks/useDistrictLookup';
+import { useDistrictOptions, useDistrictIdentify } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
@@ -177,7 +178,8 @@ export default function DispatchPage() {
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
-  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, loading: districtLoading, error: districtError, retry: retryLoadDistricts } = useDistrictOptions();
+  const { identify: identifyDistrict, identifying: districtIdentifying } = useDistrictIdentify();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -3937,10 +3939,46 @@ export default function DispatchPage() {
                             <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
                             <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
+                          {/* District loading/error states */}
+                          {districtLoading && (
+                            <div className="flex items-center gap-1 text-[9px] text-rmpg-400 mb-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading districts...</div>
+                          )}
+                          {districtError && (
+                            <div className="flex items-center gap-1 text-[9px] text-amber-400 mb-1">
+                              <AlertTriangle className="w-3 h-3" /> {districtError}
+                              <button type="button" onClick={() => retryLoadDistricts()} className="text-brand-400 underline ml-1">Retry</button>
+                            </div>
+                          )}
+                          {!districtLoading && !districtError && districts.length === 0 && (
+                            <div className="text-[9px] text-rmpg-500 mb-1">No districts configured — add in Admin &gt; System &gt; Zones &amp; Beats</div>
+                          )}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Section</label>
-                              <select className="input-dark text-xs" value={editData.section_id} onChange={(e) => {
+                              <label className="text-[9px] text-brand-gold-500 flex items-center gap-1">
+                                Section
+                                {editData.latitude && editData.longitude && (
+                                  <button type="button"
+                                    onClick={async () => {
+                                      const result = await identifyDistrict(Number(editData.latitude), Number(editData.longitude));
+                                      if (result) {
+                                        setEditData(prev => ({
+                                          ...prev,
+                                          section_id: result.section_id || '',
+                                          zone_id: result.zone_id || '',
+                                          beat_id: result.beat_id || '',
+                                          dispatch_code: result.dispatch_code || '',
+                                        }));
+                                      }
+                                    }}
+                                    disabled={districtIdentifying}
+                                    className="text-brand-400 hover:text-brand-300 transition-colors"
+                                    title="Re-detect beat from GPS location"
+                                  >
+                                    {districtIdentifying ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Crosshair className="w-2.5 h-2.5" />}
+                                  </button>
+                                )}
+                              </label>
+                              <select className="input-dark text-xs" value={editData.section_id} disabled={districtLoading} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, section_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>

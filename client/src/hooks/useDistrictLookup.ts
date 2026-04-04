@@ -36,18 +36,27 @@ export interface DistrictOption {
 export function useDistrictOptions() {
   const [districts, setDistricts] = useState<DistrictOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadDistricts = useCallback(() => {
     setLoading(true);
+    setError(null);
+    let cancelled = false;
     apiFetch<DistrictOption[]>('/dispatch/districts')
       .then((data) => {
         if (!cancelled && data) setDistricts(data);
       })
-      .catch((err) => { console.warn('[useDistrictOptions] Failed to load districts:', err); })
+      .catch((err) => {
+        console.warn('[useDistrictOptions] Failed to load districts:', err);
+        if (!cancelled) setError('Failed to load districts');
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    return loadDistricts();
+  }, [loadDistricts]);
 
   // Unique sections for top-level dropdown
   const sections = useMemo(() => Array.from(new Set(districts.map(d => d.section_id))).sort(), [districts]);
@@ -94,7 +103,7 @@ export function useDistrictOptions() {
     return beatLabels.get(`${zoneId}:${beatId}`) || beatId;
   }, [beatLabels]);
 
-  return { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels, zonesForSection, beatsForZone, getBeatLabel, loading };
+  return { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels, zonesForSection, beatsForZone, getBeatLabel, loading, error, retry: loadDistricts };
 }
 
 /**
