@@ -196,6 +196,19 @@ interface UtahSearchResults {
   totalHits: number;
 }
 
+interface UnifiedSearchResults {
+  local: Warrant[];
+  utah: UtahWarrantResult[];
+  scraped: UtahWarrantResult[];
+  meta: {
+    duration: number;
+    sources: string[];
+    utahBlocked: boolean;
+    searchedAt: string;
+    totalHits: number;
+  };
+}
+
 interface AutoPollStatus {
   syncStatus: { lastSync: string | null; warrantCount: number; status: string; lastError: string | null };
   blocked: boolean;
@@ -287,12 +300,12 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'utah-search' | 'watch' | 'sources';
+type TabId = 'dashboard' | 'warrants' | 'search-all' | 'watch' | 'sources';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
-  { id: 'utah-search', label: 'UTAH SEARCH', icon: Globe },
+  { id: 'search-all', label: 'SEARCH ALL', icon: Globe },
   { id: 'watch', label: 'WATCH LIST', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
 ];
@@ -541,6 +554,29 @@ export default function WarrantsPage() {
   const [addedToLocal, setAddedToLocal] = useState(false);
 
   // ============================================================
+  // UNIFIED SEARCH TAB STATE
+  // ============================================================
+  const [uniSearchFirst, setUniSearchFirst] = useState('');
+  const [uniSearchLast, setUniSearchLast] = useState('');
+  const [uniSearchDob, setUniSearchDob] = useState('');
+  const [uniSearchWarrantNum, setUniSearchWarrantNum] = useState('');
+  const [uniSearchCourt, setUniSearchCourt] = useState('');
+  const [uniSearchSource, setUniSearchSource] = useState('');
+  const [uniSearchOffenseLevel, setUniSearchOffenseLevel] = useState('');
+  const [uniSearchStatus, setUniSearchStatus] = useState('');
+  const [uniSearchType, setUniSearchType] = useState('');
+  const [uniSearchCharge, setUniSearchCharge] = useState('');
+  const [uniSearchDateFrom, setUniSearchDateFrom] = useState('');
+  const [uniSearchDateTo, setUniSearchDateTo] = useState('');
+  const [uniSearching, setUniSearching] = useState(false);
+  const [uniResults, setUniResults] = useState<UnifiedSearchResults | null>(null);
+  const [uniAdvancedOpen, setUniAdvancedOpen] = useState(false);
+  const [uniSearchHistory, setUniSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
+  const [nameTypeahead, setNameTypeahead] = useState<Person[]>([]);
+  const [nameTypeaheadLoading, setNameTypeaheadLoading] = useState(false);
+  const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ============================================================
   // WATCH LIST TAB STATE
   // ============================================================
   const [autoPollStatus, setAutoPollStatus] = useState<AutoPollStatus | null>(null);
@@ -728,6 +764,56 @@ export default function WarrantsPage() {
     finally { setUtahSearching(false); }
   }, [utahSearchFirst, utahSearchLast]);
 
+  // ── Unified Search ──
+  const runUnifiedSearch = useCallback(async () => {
+    if (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim()) return;
+    setUniSearching(true);
+    try {
+      const body: Record<string, string> = {};
+      if (uniSearchFirst.trim()) body.firstName = uniSearchFirst.trim();
+      if (uniSearchLast.trim()) body.lastName = uniSearchLast.trim();
+      if (uniSearchDob.trim()) body.dob = uniSearchDob.trim();
+      if (uniSearchWarrantNum.trim()) body.warrantNumber = uniSearchWarrantNum.trim();
+      if (uniSearchCourt.trim()) body.court = uniSearchCourt.trim();
+      if (uniSearchSource) body.source = uniSearchSource;
+      if (uniSearchOffenseLevel) body.offenseLevel = uniSearchOffenseLevel;
+      if (uniSearchStatus) body.status = uniSearchStatus;
+      if (uniSearchType) body.type = uniSearchType;
+      if (uniSearchCharge.trim()) body.chargeKeyword = uniSearchCharge.trim();
+      if (uniSearchDateFrom) body.dateFrom = uniSearchDateFrom;
+      if (uniSearchDateTo) body.dateTo = uniSearchDateTo;
+
+      const res = await apiFetch<UnifiedSearchResults>('/warrants/search-all', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      setUniResults(res);
+      if (uniSearchFirst.trim() && uniSearchLast.trim()) {
+        setUniSearchHistory(prev => [
+          { first: uniSearchFirst.trim(), last: uniSearchLast.trim(), hits: res.meta.totalHits, at: new Date().toISOString() },
+          ...prev.filter(h => !(h.first === uniSearchFirst.trim() && h.last === uniSearchLast.trim())),
+        ].slice(0, 10));
+      }
+    } finally { setUniSearching(false); }
+  }, [uniSearchFirst, uniSearchLast, uniSearchDob, uniSearchWarrantNum, uniSearchCourt,
+      uniSearchSource, uniSearchOffenseLevel, uniSearchStatus, uniSearchType,
+      uniSearchCharge, uniSearchDateFrom, uniSearchDateTo]);
+
+  // ── Typeahead for unified search name fields ──
+  useEffect(() => {
+    if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+    const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
+    if (query.length < 2) { setNameTypeahead([]); return; }
+    typeaheadTimer.current = setTimeout(async () => {
+      setNameTypeaheadLoading(true);
+      try {
+        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(query)}&limit=8`);
+        setNameTypeahead(res.data || []);
+      } finally { setNameTypeaheadLoading(false); }
+    }, 300);
+    return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
+  }, [uniSearchFirst, uniSearchLast]);
+
   // ── Utah Warrant Detail Modal Handlers ──
 
   const openUtahDetail = useCallback((w: UtahWarrantResult, source: 'utah' | 'local' | 'scraped') => {
@@ -808,12 +894,13 @@ export default function WarrantsPage() {
 
   const handleCheckPerson = useCallback(() => {
     if (!utahDetailWarrant) return;
-    // Switch to utah search with this person's name
-    setUtahSearchFirst(utahDetailWarrant.first_name);
-    setUtahSearchLast(utahDetailWarrant.last_name);
+    // Switch to unified search with this person's name
+    setUniSearchFirst(utahDetailWarrant.first_name);
+    setUniSearchLast(utahDetailWarrant.last_name);
     setUtahDetailWarrant(null);
-    setTimeout(() => runUtahSearch(), 100);
-  }, [utahDetailWarrant, runUtahSearch]);
+    setActiveTab('search-all');
+    setTimeout(() => runUnifiedSearch(), 100);
+  }, [utahDetailWarrant, runUnifiedSearch]);
 
   // ── Auto-Poll Status ──
   const fetchAutoPollStatus = useCallback(async () => {
@@ -826,7 +913,7 @@ export default function WarrantsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'utah-search') { /* nothing to auto-fetch */ }
+    if (activeTab === 'search-all') { /* nothing to auto-fetch */ }
   }, [activeTab]);
 
   useEffect(() => {
@@ -1875,94 +1962,259 @@ export default function WarrantsPage() {
       )}
 
       {/* ================================================================
-          TAB: UTAH SEARCH
+          TAB: SEARCH ALL (Unified Cross-Source)
          ================================================================ */}
-      {activeTab === 'utah-search' && (
+      {activeTab === 'search-all' && (
         <div className="flex-1 overflow-auto">
           <div className="p-4 space-y-4">
             {/* Search Form */}
             <div className="panel-raised p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Globe className="w-4 h-4 text-brand-blue" />
-                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Utah State Warrant Search</span>
-                <span className="text-[9px] text-rmpg-400 ml-auto">warrants.utah.gov</span>
+                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Cross-Source Warrant Search</span>
+                <span className="text-[9px] text-rmpg-400 ml-auto">Local + Utah API + Multi-State</span>
               </div>
-              <form onSubmit={(e) => { e.preventDefault(); runUtahSearch(); }} className="flex gap-2 items-end flex-wrap">
-                <div className="flex-1 min-w-[120px]">
-                  <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
-                  <input
-                    type="text"
-                    className="input-dark w-full"
-                    placeholder="First name..."
-                    value={utahSearchFirst}
-                    onChange={(e) => setUtahSearchFirst(e.target.value)}
-                    autoFocus
-                  />
+              <form onSubmit={(e) => { e.preventDefault(); runUnifiedSearch(); }}>
+                {/* Row 1: First Name, Last Name, DOB */}
+                <div className="flex gap-2 items-end flex-wrap mb-2 relative">
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="First name..."
+                      value={uniSearchFirst}
+                      onChange={(e) => setUniSearchFirst(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="Last name..."
+                      value={uniSearchLast}
+                      onChange={(e) => setUniSearchLast(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-[140px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">DOB</label>
+                    <input
+                      type="date"
+                      className="input-dark w-full"
+                      value={uniSearchDob}
+                      onChange={(e) => setUniSearchDob(e.target.value)}
+                    />
+                  </div>
+                  {/* Typeahead dropdown */}
+                  {nameTypeahead.length > 0 && (
+                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-surface-border shadow-lg max-h-48 overflow-auto">
+                      {nameTypeaheadLoading && (
+                        <div className="p-2 text-[10px] text-rmpg-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
+                      )}
+                      {nameTypeahead.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-surface-raised/80 transition-colors flex items-center gap-2"
+                          onClick={() => {
+                            setUniSearchFirst(p.first_name);
+                            setUniSearchLast(p.last_name);
+                            if (p.dob) setUniSearchDob(p.dob);
+                            setNameTypeahead([]);
+                          }}
+                        >
+                          <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                          <span className="text-xs text-white">{p.last_name}, {p.first_name}</span>
+                          {p.dob && <span className="text-[10px] text-rmpg-400 ml-auto">{p.dob}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1 min-w-[120px]">
-                  <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
-                  <input
-                    type="text"
-                    className="input-dark w-full"
-                    placeholder="Last name..."
-                    value={utahSearchLast}
-                    onChange={(e) => setUtahSearchLast(e.target.value)}
-                  />
+
+                {/* Row 2: Warrant #, Court, Source */}
+                <div className="flex gap-2 items-end flex-wrap mb-2">
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Warrant #</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="Warrant number..."
+                      value={uniSearchWarrantNum}
+                      onChange={(e) => setUniSearchWarrantNum(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Court</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="Court name..."
+                      value={uniSearchCourt}
+                      onChange={(e) => setUniSearchCourt(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-[160px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Source</label>
+                    <select className="input-dark w-full" value={uniSearchSource} onChange={(e) => setUniSearchSource(e.target.value)}>
+                      <option value="">All Sources</option>
+                      <option value="local">Local System</option>
+                      <option value="utah">Utah State API</option>
+                      <option value="scraped">Multi-State Scraped</option>
+                    </select>
+                  </div>
                 </div>
+
+                {/* Advanced Filters (collapsible) */}
                 <button
-                  type="submit"
-                  disabled={utahSearching || !utahSearchFirst.trim() || !utahSearchLast.trim()}
-                  className="toolbar-btn !h-8 !px-4 text-xs font-bold bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30 disabled:opacity-40"
+                  type="button"
+                  className="text-[10px] text-rmpg-400 hover:text-rmpg-200 flex items-center gap-1 mb-2 transition-colors"
+                  onClick={() => setUniAdvancedOpen(!uniAdvancedOpen)}
                 >
-                  {utahSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                  <span className="ml-1">{utahSearching ? 'Searching...' : 'Search'}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${uniAdvancedOpen ? 'rotate-180' : ''}`} />
+                  Advanced Filters
                 </button>
+                {uniAdvancedOpen && (
+                  <div className="flex gap-2 items-end flex-wrap mb-2 border-t border-surface-border pt-2">
+                    <div className="w-[140px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date From</label>
+                      <input type="date" className="input-dark w-full" value={uniSearchDateFrom} onChange={(e) => setUniSearchDateFrom(e.target.value)} />
+                    </div>
+                    <div className="w-[140px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date To</label>
+                      <input type="date" className="input-dark w-full" value={uniSearchDateTo} onChange={(e) => setUniSearchDateTo(e.target.value)} />
+                    </div>
+                    <div className="w-[140px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Offense Level</label>
+                      <select className="input-dark w-full" value={uniSearchOffenseLevel} onChange={(e) => setUniSearchOffenseLevel(e.target.value)}>
+                        <option value="">Any</option>
+                        {OFFENSE_LEVELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex-1 min-w-[120px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Charge Keyword</label>
+                      <input type="text" className="input-dark w-full" placeholder="e.g. theft, DUI..." value={uniSearchCharge} onChange={(e) => setUniSearchCharge(e.target.value)} />
+                    </div>
+                    <div className="w-[120px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Status</label>
+                      <select className="input-dark w-full" value={uniSearchStatus} onChange={(e) => setUniSearchStatus(e.target.value)}>
+                        <option value="">Any</option>
+                        {WARRANT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="w-[120px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Type</label>
+                      <select className="input-dark w-full" value={uniSearchType} onChange={(e) => setUniSearchType(e.target.value)}>
+                        <option value="">Any</option>
+                        {WARRANT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2 items-center">
+                  <button
+                    type="submit"
+                    disabled={uniSearching || (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim())}
+                    className="toolbar-btn !h-8 !px-4 text-xs font-bold bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30 disabled:opacity-40"
+                  >
+                    {uniSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                    <span className="ml-1">{uniSearching ? 'Searching...' : 'Search All'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-btn !h-8 !px-3 text-xs text-rmpg-400 hover:text-white"
+                    onClick={() => {
+                      setUniSearchFirst(''); setUniSearchLast(''); setUniSearchDob('');
+                      setUniSearchWarrantNum(''); setUniSearchCourt(''); setUniSearchSource('');
+                      setUniSearchOffenseLevel(''); setUniSearchStatus(''); setUniSearchType('');
+                      setUniSearchCharge(''); setUniSearchDateFrom(''); setUniSearchDateTo('');
+                      setUniResults(null); setNameTypeahead([]);
+                    }}
+                  >
+                    <X className="w-3 h-3" />
+                    <span className="ml-1">Clear</span>
+                  </button>
+                </div>
               </form>
             </div>
 
             {/* Results */}
-            {utahResults && (
+            {uniResults && (
               <div className="space-y-3">
                 {/* Summary bar */}
                 <div className="panel-raised p-3 flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${utahResults.source === 'live' ? 'bg-green-400' : 'bg-amber-400'}`} />
-                    <span className="text-[10px] text-rmpg-300 uppercase tracking-wider">
-                      Source: {utahResults.source === 'live' ? 'Live API' : 'Cached Data'}
-                    </span>
+                    {uniResults.meta.sources.map(s => (
+                      <span key={s} className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50">{s}</span>
+                    ))}
                   </div>
                   <span className="text-[10px] text-rmpg-400">
-                    {utahResults.totalHits} total hit{utahResults.totalHits !== 1 ? 's' : ''}
+                    {uniResults.meta.totalHits} total hit{uniResults.meta.totalHits !== 1 ? 's' : ''}
                   </span>
-                  {utahResults.blocked && (
+                  <span className="text-[10px] text-rmpg-400">
+                    {uniResults.meta.duration}ms
+                  </span>
+                  {uniResults.meta.utahBlocked && (
                     <span className="text-[10px] text-amber-400 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> API rate-limited — using cache
+                      <AlertTriangle className="w-3 h-3" /> Utah API rate-limited
                     </span>
                   )}
                   <span className="text-[10px] text-rmpg-500 ml-auto">
-                    Searched {formatDateTime(utahResults.searchedAt)}
+                    Searched {formatDateTime(uniResults.meta.searchedAt)}
                   </span>
                 </div>
 
-                {/* Utah State Results */}
-                {utahResults.utahResults.length > 0 && (
+                {/* LOCAL SYSTEM results */}
+                {uniResults.local.length > 0 && (
                   <div className="panel-raised">
                     <div className="p-3 border-b border-surface-border flex items-center gap-2">
-                      <Globe className="w-3.5 h-3.5 text-red-400" />
-                      <span className="text-xs font-bold text-white">Utah State Warrants</span>
-                      <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono">
-                        {utahResults.utahResults.length}
+                      <Shield className="w-3.5 h-3.5 text-brand-blue" />
+                      <span className="text-xs font-bold text-white">Local System</span>
+                      <span className="ml-auto text-[10px] bg-brand-blue/20 text-brand-blue border border-brand-blue/40 px-1.5 py-0.5 rounded font-mono">
+                        {uniResults.local.length}
                       </span>
                     </div>
                     <div className="divide-y divide-surface-border">
-                      {utahResults.utahResults.map((w, i) => (
+                      {uniResults.local.map((w) => (
+                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white">{w.warrant_number}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{w.status}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{w.type}</span>
+                          </div>
+                          <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
+                          <div className="text-[10px] text-rmpg-400 mt-1">
+                            {w.subject_first_name && <span>{w.subject_last_name}, {w.subject_first_name} • </span>}
+                            {w.issuing_court && <span>Court: {w.issuing_court} • </span>}
+                            Created {formatDateTime(w.created_at)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* UTAH STATE API results */}
+                {uniResults.utah.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <Globe className="w-3.5 h-3.5 text-red-400" />
+                      <span className="text-xs font-bold text-white">Utah State API</span>
+                      <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono">
+                        {uniResults.utah.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-surface-border">
+                      {uniResults.utah.map((w, i) => (
                         <div key={`utah-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'utah')}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-bold text-white">
-                                  {w.last_name}, {w.first_name} {w.middle_name || ''}
-                                </span>
+                                <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name} {w.middle_name || ''}</span>
                                 {w.age && <span className="text-[10px] text-rmpg-400">Age: {w.age}</span>}
                                 {w.city && <span className="text-[10px] text-rmpg-400">{w.city}</span>}
                               </div>
@@ -1976,13 +2228,17 @@ export default function WarrantsPage() {
                                 )}
                               </div>
                             </div>
-                            <div className="flex-shrink-0">
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-green-900/30 text-green-400 border-green-700/40 hover:bg-green-900/50 transition-colors"
+                                title="Import to local system"
+                                onClick={(e) => { e.stopPropagation(); openUtahDetail(w, 'utah'); }}
+                              >
+                                <Download className="w-3 h-3 inline mr-0.5" />Import
+                              </button>
                               {w.offense_level ? (
-                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                                  w.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                                  w.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                                  'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                                }`}>
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>
                                   {w.offense_level}
                                 </span>
                               ) : (
@@ -1996,57 +2252,50 @@ export default function WarrantsPage() {
                   </div>
                 )}
 
-                {/* Local System Warrants */}
-                {utahResults.localWarrants.length > 0 && (
-                  <div className="panel-raised">
-                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
-                      <Shield className="w-3.5 h-3.5 text-brand-blue" />
-                      <span className="text-xs font-bold text-white">Local System Warrants</span>
-                      <span className="ml-auto text-[10px] bg-brand-blue/20 text-brand-blue border border-brand-blue/40 px-1.5 py-0.5 rounded font-mono">
-                        {utahResults.localWarrants.length}
-                      </span>
-                    </div>
-                    <div className="divide-y divide-surface-border">
-                      {utahResults.localWarrants.map((w) => (
-                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-white">{w.warrant_number}</span>
-                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                              STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                            }`}>{w.status}</span>
-                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                              TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                            }`}>{w.type}</span>
-                          </div>
-                          <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
-                          <div className="text-[10px] text-rmpg-400 mt-1">
-                            {w.issuing_court && <span>Court: {w.issuing_court} • </span>}
-                            Created {formatDateTime(w.created_at)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Scraped Warrants */}
-                {utahResults.scrapedWarrants.length > 0 && (
+                {/* MULTI-STATE SCRAPED results */}
+                {uniResults.scraped.length > 0 && (
                   <div className="panel-raised">
                     <div className="p-3 border-b border-surface-border flex items-center gap-2">
                       <Radar className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-xs font-bold text-white">Multi-Source Warrants</span>
+                      <span className="text-xs font-bold text-white">Multi-State Scraped</span>
                       <span className="ml-auto text-[10px] bg-amber-900/40 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded font-mono">
-                        {utahResults.scrapedWarrants.length}
+                        {uniResults.scraped.length}
                       </span>
                     </div>
                     <div className="divide-y divide-surface-border">
-                      {utahResults.scrapedWarrants.map((w, i) => (
+                      {uniResults.scraped.map((w, i) => (
                         <div key={`scraped-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'scraped')}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
-                            {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
+                                {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
+                              </div>
+                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || '—'}</div>
+                              <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
+                                {w.court_name && <span>Court: {w.court_name}</span>}
+                                {w.issue_date && <span>Issued: {w.issue_date}</span>}
+                                {w.bail_amount != null && w.bail_amount > 0 && (
+                                  <span className="text-amber-400 font-bold">Bail: ${Number(w.bail_amount).toLocaleString()}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-green-900/30 text-green-400 border-green-700/40 hover:bg-green-900/50 transition-colors"
+                                title="Import to local system"
+                                onClick={(e) => { e.stopPropagation(); openUtahDetail(w, 'scraped'); }}
+                              >
+                                <Download className="w-3 h-3 inline mr-0.5" />Import
+                              </button>
+                              {w.offense_level && (
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>
+                                  {w.offense_level}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || '—'}</div>
                         </div>
                       ))}
                     </div>
@@ -2054,12 +2303,12 @@ export default function WarrantsPage() {
                 )}
 
                 {/* No results */}
-                {utahResults.totalHits === 0 && (
+                {uniResults.meta.totalHits === 0 && (
                   <div className="panel-raised p-8 text-center">
                     <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
                     <div className="text-sm font-bold text-green-400">No Active Warrants Found</div>
                     <div className="text-xs text-rmpg-400 mt-1">
-                      No warrants found for {utahSearchFirst} {utahSearchLast} across Utah state, local system, or multi-source databases.
+                      No warrants found for {uniSearchFirst} {uniSearchLast} across local system, Utah state, or multi-source databases.
                     </div>
                   </div>
                 )}
@@ -2067,18 +2316,18 @@ export default function WarrantsPage() {
             )}
 
             {/* Search History */}
-            {utahSearchHistory.length > 0 && (
+            {uniSearchHistory.length > 0 && (
               <div className="panel-raised p-3">
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 flex items-center gap-1">
                   <History className="w-3 h-3" /> Recent Searches
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {utahSearchHistory.map((h, i) => (
+                  {uniSearchHistory.map((h, i) => (
                     <button
                       key={i}
                       type="button"
                       className="text-[10px] bg-surface-base/80 text-rmpg-300 hover:text-white border border-surface-border hover:border-brand-blue/40 px-2 py-1 rounded transition-colors"
-                      onClick={() => { setUtahSearchFirst(h.first); setUtahSearchLast(h.last); }}
+                      onClick={() => { setUniSearchFirst(h.first); setUniSearchLast(h.last); }}
                     >
                       {h.last}, {h.first}
                       {h.hits > 0 && <span className="text-red-400 ml-1">({h.hits})</span>}
@@ -2197,12 +2446,12 @@ export default function WarrantsPage() {
                           <button
                             type="button"
                             className="flex-shrink-0 text-[10px] text-rmpg-400 hover:text-white"
-                            title="Search Utah warrants"
+                            title="Search all warrants"
                             onClick={() => {
-                              setUtahSearchFirst(p.first_name);
-                              setUtahSearchLast(p.last_name);
-                              setActiveTab('utah-search');
-                              setTimeout(() => runUtahSearch(), 100);
+                              setUniSearchFirst(p.first_name);
+                              setUniSearchLast(p.last_name);
+                              setActiveTab('search-all');
+                              setTimeout(() => runUnifiedSearch(), 100);
                             }}
                           >
                             <Search className="w-3.5 h-3.5" />
