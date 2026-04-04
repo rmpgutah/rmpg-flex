@@ -1329,9 +1329,12 @@ export async function convertToGrayscale(dataUrl: string): Promise<string> {
       const d = imageData.data;
       for (let i = 0; i < d.length; i += 4) {
         const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-        // Contrast boost: stretch range then threshold
-        const enhanced = Math.min(255, Math.max(0, (lum - 80) * 1.8));
-        const bw = enhanced > 100 ? 255 : 0; // Lower threshold = more black
+        // Deep black point: aggressive contrast stretch + low threshold
+        // offset 60 (was 80) captures more mid-tones as black
+        // multiplier 2.2 (was 1.8) increases contrast spread
+        // threshold 80 (was 100) keeps more detail as black
+        const enhanced = Math.min(255, Math.max(0, (lum - 60) * 2.2));
+        const bw = enhanced > 80 ? 255 : 0;
         d[i] = d[i + 1] = d[i + 2] = bw;
       }
       ctx.putImageData(imageData, 0, 0);
