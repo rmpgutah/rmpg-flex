@@ -71,6 +71,7 @@ import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
 import { useToast } from '../../components/ToastProvider';
+import { useAuth } from '../../context/AuthContext';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
@@ -203,6 +204,7 @@ const statusToColor = (status: string): string => {
 export default function MapPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
   const { prefs: userPrefs } = useUserPreferences();
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
@@ -413,7 +415,7 @@ export default function MapPage() {
   }, []);
 
   // GeoJSON spatial layers (with shift planning selection integration)
-  const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs } = useGeoJsonLayers({
+  const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs, dataLayersRef: geoDataLayersRef } = useGeoJsonLayers({
     map: mapInstanceRef.current,
     infoWindow: infoWindowRef.current,
     selectionMode: shiftPlanning.selectionMode,
@@ -423,6 +425,13 @@ export default function MapPage() {
     beatDistrictMap,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
+
+  // Beat boundary editing (admin/manager only)
+  const [editingBeats, setEditingBeats] = useState(false);
+  const [selectedEditBeat, setSelectedEditBeat] = useState<string | null>(null);
+  const [savingGeometry, setSavingGeometry] = useState(false);
+  const editablePolygonRef = useRef<google.maps.Polygon | null>(null);
+  const hiddenBeatFeatureRef = useRef<google.maps.Data.Feature | null>(null);
 
   // Event planning overlays
   const eventPlanning = useEventPlanning({
@@ -1991,6 +2000,175 @@ export default function MapPage() {
     setAddressSearch(description.split(',')[0]);
     setShowAddressResults(false);
   }, [createMarker, removeMarker]);
+
+  // ============================================================
+  // Beat Boundary Editing Helpers
+  // ============================================================
+
+  /** When a beat feature is clicked in edit mode, extract its polygon
+   *  coordinates and create an editable google.maps.Polygon overlay. */
+  const startEditingBeat = useCallback((beatCode: string) => {
+    const map = mapInstanceRef.current;
+    const beatLayer = geoDataLayersRef.current['beat'];
+    if (!map || !beatLayer) return;
+
+    // Clean up any previous editable polygon
+    if (editablePolygonRef.current) {
+      editablePolygonRef.current.setMap(null);
+      editablePolygonRef.current = null;
+    }
+    if (hiddenBeatFeatureRef.current) {
+      beatLayer.revertStyle(hiddenBeatFeatureRef.current);
+      hiddenBeatFeatureRef.current = null;
+    }
+
+    // Find the feature by beat_code
+    let targetFeature: google.maps.Data.Feature | null = null;
+    beatLayer.forEach((feature) => {
+      if (feature.getProperty('beat_code') === beatCode) {
+        targetFeature = feature;
+      }
+    });
+    if (!targetFeature) return;
+
+    // Extract geometry coordinates from the Data feature
+    const geom = (targetFeature as google.maps.Data.Feature).getGeometry();
+    if (!geom) return;
+
+    const paths: google.maps.LatLng[][] = [];
+    if (geom.getType() === 'Polygon') {
+      const poly = geom as google.maps.Data.Polygon;
+      const arr = poly.getArray();
+      for (const ring of arr) {
+        paths.push(ring.getArray());
+      }
+    } else if (geom.getType() === 'MultiPolygon') {
+      // For MultiPolygon, just edit the first polygon
+      const multi = geom as any;
+      const firstPoly = multi.getArray()[0];
+      if (firstPoly) {
+        const arr = firstPoly.getArray();
+        for (const ring of arr) {
+          paths.push(ring.getArray());
+        }
+      }
+    }
+
+    if (paths.length === 0) return;
+
+    // Hide the Data layer feature by making it invisible
+    beatLayer.overrideStyle(targetFeature, {
+      fillOpacity: 0,
+      strokeOpacity: 0,
+      clickable: false,
+    });
+    hiddenBeatFeatureRef.current = targetFeature;
+
+    // Create an editable Polygon overlay
+    const editablePoly = new google.maps.Polygon({
+      paths: paths,
+      editable: true,
+      draggable: false,
+      fillColor: '#f59e0b',
+      fillOpacity: 0.15,
+      strokeColor: '#f59e0b',
+      strokeWeight: 3,
+      strokeOpacity: 0.9,
+      map,
+    });
+
+    editablePolygonRef.current = editablePoly;
+    setSelectedEditBeat(beatCode);
+  }, [geoDataLayersRef]);
+
+  /** Cancel editing — remove editable polygon, restore Data layer feature */
+  const cancelEditingBeat = useCallback(() => {
+    const beatLayer = geoDataLayersRef.current['beat'];
+    if (editablePolygonRef.current) {
+      editablePolygonRef.current.setMap(null);
+      editablePolygonRef.current = null;
+    }
+    if (hiddenBeatFeatureRef.current && beatLayer) {
+      beatLayer.revertStyle(hiddenBeatFeatureRef.current);
+      hiddenBeatFeatureRef.current = null;
+    }
+    setSelectedEditBeat(null);
+  }, [geoDataLayersRef]);
+
+  /** Save the edited polygon geometry to the server */
+  const handleSaveGeometry = useCallback(async () => {
+    if (!selectedEditBeat || !editablePolygonRef.current) return;
+    setSavingGeometry(true);
+    try {
+      // Extract coordinates from the editable polygon
+      const path = editablePolygonRef.current.getPath();
+      const coordinates = [path.getArray().map((p: google.maps.LatLng) => [p.lng(), p.lat()])];
+      // Close the ring (GeoJSON requires first == last)
+      if (coordinates[0].length > 0) {
+        const first = coordinates[0][0];
+        const last = coordinates[0][coordinates[0].length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+          coordinates[0].push([...first]);
+        }
+      }
+
+      const resp = await apiFetch(`/dispatch/districts/beat-geometry/${encodeURIComponent(selectedEditBeat)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ geometry: { type: 'Polygon', coordinates } }),
+      });
+
+      if (resp && (resp as any).success) {
+        addToast(`Beat ${selectedEditBeat} geometry saved`, 'success');
+        // Clean up editable polygon
+        cancelEditingBeat();
+        // Reload beat layer by toggling it off and on
+        const beatLayer = geoDataLayersRef.current['beat'];
+        if (beatLayer) {
+          beatLayer.forEach((feature) => {
+            beatLayer.remove(feature);
+          });
+          // Re-fetch the geojson
+          try {
+            const res = await fetch('/geojson/beat.geojson');
+            const geojson = await res.json();
+            beatLayer.addGeoJson(geojson);
+          } catch { /* layer will be stale until next toggle */ }
+        }
+      } else {
+        addToast('Failed to save beat geometry', 'error');
+      }
+    } catch (err: any) {
+      console.error('[MapPage] Save beat geometry error:', err);
+      addToast(err?.message || 'Failed to save geometry', 'error');
+    } finally {
+      setSavingGeometry(false);
+    }
+  }, [selectedEditBeat, addToast, cancelEditingBeat, geoDataLayersRef]);
+
+  /** Beat editing click handler — intercepts beat layer clicks in edit mode */
+  useEffect(() => {
+    if (!editingBeats) return;
+    const beatLayer = geoDataLayersRef.current['beat'];
+    if (!beatLayer) return;
+
+    const listener = beatLayer.addListener('click', (event: google.maps.Data.MouseEvent) => {
+      const beatCode = event.feature.getProperty('beat_code');
+      if (beatCode) {
+        startEditingBeat(String(beatCode));
+      }
+    });
+
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [editingBeats, geoDataLayersRef, startEditingBeat]);
+
+  /** Clean up beat editing state when exiting edit mode */
+  useEffect(() => {
+    if (!editingBeats) {
+      cancelEditingBeat();
+    }
+  }, [editingBeats, cancelEditingBeat]);
 
   // ============================================================
   // Render
@@ -3639,6 +3817,22 @@ export default function MapPage() {
                       </button>
                     );
                   })}
+                  {/* Beat Boundary Editor toggle (admin/manager only) */}
+                  {(user?.role === 'admin' || user?.role === 'manager') && geoLayerStates.beat?.visible && (
+                    <button
+                      type="button"
+                      onClick={() => { setEditingBeats(prev => !prev); setSelectedEditBeat(null); }}
+                      className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors mt-1 border-t border-rmpg-700/50 pt-1 ${
+                        editingBeats ? 'bg-amber-900/30 text-amber-400' : 'opacity-60 hover:opacity-90 hover:bg-rmpg-800/50'
+                      }`}
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                      <span className="text-[9px] flex-1">{editingBeats ? 'Exit Edit Mode' : 'Edit Beats'}</span>
+                      {editingBeats && (
+                        <span className="text-[7px] px-1 py-0.5 bg-amber-900/40 text-amber-400 border border-amber-700/40 font-bold animate-pulse">EDIT</span>
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -4639,6 +4833,36 @@ export default function MapPage() {
                 // Close the summary panel — doesn't disable layers
               }}
             />
+          </div>
+        )}
+
+        {/* ── Beat Boundary Editor Toolbar ── */}
+        {editingBeats && (
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30">
+            <div className="flex items-center gap-2 bg-surface-base border border-rmpg-600 px-3 py-2 shadow-lg" style={{ borderRadius: 2 }}>
+              {selectedEditBeat ? (
+                <>
+                  <span className="text-[10px] text-amber-400 font-mono font-bold mr-1">{selectedEditBeat}</span>
+                  <button
+                    type="button"
+                    onClick={handleSaveGeometry}
+                    disabled={savingGeometry}
+                    className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1"
+                  >
+                    {savingGeometry ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditingBeat}
+                    className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1"
+                  >
+                    <X className="w-3 h-3" /> Cancel
+                  </button>
+                </>
+              ) : (
+                <span className="text-[9px] text-rmpg-400 font-mono">Click a beat polygon to edit its boundary</span>
+              )}
+            </div>
           </div>
         )}
 

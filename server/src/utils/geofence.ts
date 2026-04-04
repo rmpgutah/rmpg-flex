@@ -171,6 +171,17 @@ export function identifyBeat(lat: number, lng: number): BeatMatch | null {
 }
 
 /**
+ * Force-reload the beat features from disk.
+ * Call this after beat geometry has been updated to ensure
+ * subsequent identifyBeat() calls use the new polygons.
+ */
+export function reloadGeofence(): void {
+  beatFeatures = null;
+  loadBeats();
+  console.log('[geofence] Reloaded beat features from disk');
+}
+
+/**
  * Batch-identify beats for an array of coordinates.
  * More efficient than calling identifyBeat() in a loop since
  * features are loaded once.

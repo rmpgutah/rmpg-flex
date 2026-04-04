@@ -5,7 +5,9 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '..
 import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
-import { identifyBeat } from '../../utils/geofence';
+import { identifyBeat, reloadGeofence } from '../../utils/geofence';
+import fs from 'fs';
+import path from 'path';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -1143,6 +1145,45 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
   } catch (error: any) {
     console.error('[Dispatch] district identify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_IDENTIFY_ERROR' });
+  }
+});
+
+// PUT /api/dispatch/districts/beat-geometry/:beatCode — Update beat polygon in GeoJSON file
+router.put('/districts/beat-geometry/:beatCode', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const beatCode = req.params.beatCode;
+    const { geometry } = req.body;
+
+    if (!geometry || !geometry.type || !geometry.coordinates) {
+      res.status(400).json({ error: 'Valid GeoJSON geometry required', code: 'INVALID_GEOMETRY' });
+      return;
+    }
+
+    // Read beat.geojson, find the feature, update geometry, write back
+    const geojsonPath = path.resolve(__dirname, '../../../client/public/geojson/beat.geojson');
+    if (!fs.existsSync(geojsonPath)) {
+      res.status(404).json({ error: 'beat.geojson not found', code: 'GEOJSON_NOT_FOUND' });
+      return;
+    }
+
+    const raw = JSON.parse(fs.readFileSync(geojsonPath, 'utf-8'));
+    const feature = raw.features.find((f: any) => f.properties?.beat_code === beatCode);
+    if (!feature) {
+      res.status(404).json({ error: `Beat ${beatCode} not found in GeoJSON`, code: 'BEAT_NOT_FOUND' });
+      return;
+    }
+
+    feature.geometry = geometry;
+    fs.writeFileSync(geojsonPath, JSON.stringify(raw));
+
+    // Reload geofence engine so identifyBeat() uses updated polygons
+    reloadGeofence();
+
+    auditLog(req, 'UPDATE' as any, 'beat_geometry' as any, 0, `Updated geometry for beat ${beatCode}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Dispatch] beat geometry update error:', error?.message);
+    res.status(500).json({ error: 'Failed to update beat geometry', code: 'BEAT_GEOMETRY_ERROR' });
   }
 });
 
