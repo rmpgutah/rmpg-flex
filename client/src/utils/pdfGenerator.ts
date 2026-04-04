@@ -1171,8 +1171,8 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = fontSize * 0.35 + 0.05; // Match addFormattedText lineStep
-  const paragraphGap = SPACING.MD;
+  const lineH = fontSize * 0.35 + 0.05;
+  const paragraphGap = 3; // 3mm between paragraphs (matches other renderers)
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
   doc.setFont('courier', 'normal');

@@ -1206,13 +1206,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // ── Incident Details — dynamic page break ──
   y = checkPageBreak(doc, y, 25, prio);
   { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
-    y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text('DESCRIPTION', lx, y);
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('DESCRIPTION', lx, y + 1.5);
     y += 2;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
       const cw = getContentWidth(doc);
