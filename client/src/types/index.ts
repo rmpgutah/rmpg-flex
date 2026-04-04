@@ -469,6 +469,8 @@ export interface Person {
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;
+  photo_url?: string;
+  photo?: string;
   id_type?: string;
   id_number?: string;
   id_state?: string;

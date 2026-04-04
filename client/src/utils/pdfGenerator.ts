@@ -2314,7 +2314,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // SECTION 13 — ATTACHMENTS / EVIDENCE PHOTOS
   // ═══════════════════════════════════════════════════════════
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2411,7 +2411,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   // Signatures
@@ -2561,7 +2561,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
@@ -2628,7 +2628,7 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 75, data.priority);
@@ -2722,7 +2722,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
@@ -2825,7 +2825,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
@@ -2964,7 +2964,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   y = addSupplementsSection(doc, data, y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
   y = checkPageBreak(doc, y, 40, data.priority);
@@ -3122,7 +3122,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / SERVICE DOCUMENTS', data.priority);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / SERVICE DOCUMENTS', data.priority);
   }
 
   // Signatures — addStackedSignatures has its own checkPageBreak internally
