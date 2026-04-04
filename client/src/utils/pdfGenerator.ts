@@ -125,7 +125,8 @@ export function sanitizePdfText(text: string): string {
     .replace(/\u2713/g, '[X]')   // ✓ check mark
     .replace(/\u2717/g, '[ ]')   // ✗ cross mark
     .replace(/\u26A0/g, '[!]')   // ⚠ warning
-    .replace(/[^\x00-\xFF]/g, '?'); // Replace any remaining non-Latin-1 chars
+    .replace(/[^\x00-\xFF]/g, '?') // Replace any remaining non-Latin-1 chars
+    .toUpperCase(); // All PDF output is uppercase per police report standards
 }
 
 /**
@@ -2090,47 +2091,17 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const persons = data.linked_persons || [];
   if (persons.length > 0) {
     y = checkPageBreak(doc, y, 20, data.priority);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
-    const pHeaders = ['NAME', 'ROLE', 'DOB'];
-    const pColW = [ffw * 0.40, ffw * 0.30, ffw * 0.30];
-    const rowH = 4.5;
-    // Light gray header row
-    doc.setFillColor(...COLOR.BG_ZEBRA);
-    doc.rect(lx, y, ffw, rowH, 'F');
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    let phx = lx;
-    for (let i = 0; i < pHeaders.length; i++) {
-      doc.text(pHeaders[i], phx + 1.5, y + rowH * 0.65);
-      phx += pColW[i];
-    }
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(lx, y + rowH, lx + ffw, y + rowH);
-    y += rowH;
-    // Data rows
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    for (const p of persons) {
-      y = checkPageBreak(doc, y, rowH);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const pVals = [
-        `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '—',
-        capFirst(p.role?.replace(/_/g, ' ') || '').toUpperCase() || '—',
-        (p.dob || '—').toUpperCase(),
-      ];
-      let pdx = lx;
-      for (let i = 0; i < pVals.length; i++) {
-        doc.text(pVals[i], pdx + 1.5, y + rowH * 0.65);
-        pdx += pColW[i];
-      }
-      y += rowH;
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y, lx + ffw, y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + 3.8;
+    const personRows = persons.map((p: any) => [
+      `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || 'N/A',
+      (p.role?.replace(/_/g, ' ') || 'N/A').toUpperCase(),
+      p.dob || 'N/A',
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'NAME', x: LAYOUT.PAGE_MARGIN + 2 }, { label: 'ROLE', x: LAYOUT.PAGE_MARGIN + ffw * 0.4 + 2 }, { label: 'DOB', x: LAYOUT.PAGE_MARGIN + ffw * 0.7 + 2 }],
+      personRows, y,
+      [LAYOUT.PAGE_MARGIN + 2, LAYOUT.PAGE_MARGIN + ffw * 0.4 + 2, LAYOUT.PAGE_MARGIN + ffw * 0.7 + 2],
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2138,7 +2109,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 20, data.priority);
   const vehicles = data.linked_vehicles || [];
-  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.contentY;
+  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.sectionY + 3.8;
     if (vehicles.length > 0) {
       const colPositions = [lx, mx + 30, mx + 65, mx + 120];
       const tableHeaders = [
@@ -2166,7 +2137,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 20, data.priority);
   const evidence = data.evidence || [];
-  { const sec = openAutoSection(doc, `Evidence / Property (${evidence.length})`, y); y = sec.contentY;
+  { const sec = openAutoSection(doc, `Evidence / Property (${evidence.length})`, y); y = sec.sectionY + 3.8;
     if (evidence.length > 0) {
       const colPositions = [lx, mx + 36, mx + 60, mx + 130];
       const tableHeaders = [
