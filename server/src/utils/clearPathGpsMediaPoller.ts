@@ -485,7 +485,7 @@ async function downloadAndStore(
     const lng = media.location?.lng ?? media.gps?.[0]?.longitude ?? null;
 
     // Extract speed from GPS array (v2.0 provides timestamped GPS points with speed)
-    // Speed in GPS data is typically in km/h — convert to mph
+    // Speed in GPS data is in km/h from the device — convert to mph for display
     let speedMph: number | null = null;
     if (media.gps?.length) {
       // Use the first GPS point's speed (event trigger moment)
