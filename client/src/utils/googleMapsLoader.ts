@@ -442,7 +442,7 @@ export const MAP_STYLE_TRANSITION_DURATION = 300;
 /** Dark blue streets style — Google dark mode aesthetic with visible features */
 export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { elementType: 'geometry', stylers: [{ color: '#171717' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0d1b2a' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#111111' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#aaaaaa' }] },
   // Administrative boundaries — slightly brighter with dash-like weight for visibility (#7)
   { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#444444' }, { weight: 1.2 }] },
@@ -456,10 +456,10 @@ export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   // POI — simplified with very dim labels so landmarks are findable but not distracting (#6)
   { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1a1a1a' }, { visibility: 'simplified' }] },
   { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
-  { featureType: 'poi', elementType: 'labels.text.stroke', stylers: [{ color: '#0d1b2a' }] },
+  { featureType: 'poi', elementType: 'labels.text.stroke', stylers: [{ color: '#111111' }] },
   { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
   // Parks — dark green tint instead of pure gray (#3)
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#142e1f' }, { visibility: 'simplified' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0f1a0f' }, { visibility: 'simplified' }] },
   { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#4a8a6a' }] },
   // Roads — improved label readability (#1) and highway/arterial distinction (#5)
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#262626' }] },
@@ -474,7 +474,7 @@ export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#222222' }] },
   { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#999999' }] },
   // Water — navy blue tint instead of pure gray (#2)
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0c1a30' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a0a0a' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#666666' }] },
   // Building footprints — subtle outlines when zoomed in (#8)
   { featureType: 'landscape.man_made', elementType: 'geometry.stroke', stylers: [{ color: '#242424' }, { weight: 0.5 }] },
@@ -482,7 +482,7 @@ export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
 
 /** Night Navigation style — high-contrast roads on near-black, optimized for driving */
 export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0a0e14' }] },
+  { elementType: 'geometry', stylers: [{ color: '#0a0a0a' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#777777' }] },
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
@@ -490,10 +490,10 @@ export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#1a1a1a' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0c1018' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0e1420' }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0a0a0a' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0a1a0a' }, { visibility: 'simplified' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0a0f0a' }, { visibility: 'simplified' }] },
   // Night nav roads — brighter for safer driving (#9), improved label visibility (#10)
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#242424' }] },
   { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#303030' }] },
