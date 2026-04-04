@@ -444,7 +444,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         ?, ?
       )
     `).run(
-      callNumber, 'PSO Client Request', 'P4', 'pending',
+      callNumber, 'pso_client_request', 'P4', 'pending',
       'ICU Investigations, LLC', '(435) 986-1200', 'client', clientAddress || null,
       address || 'Unknown', propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null,
@@ -467,7 +467,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, null, { person_id: personId, property_id: propertyId, job_number: jobNumber });
 
-    broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'PSO Client Request' } });
+    broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 
     res.json({
       success: true,
