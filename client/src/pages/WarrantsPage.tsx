@@ -1364,7 +1364,7 @@ export default function WarrantsPage() {
                                 {(pw.offense_level || pw.type || 'WARRANT').toUpperCase()}
                               </span>
                             </div>
-                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{pw.charge_description}</div>
+                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{chargesFromJson(pw.charge_description)}</div>
                             <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
                               {pw.bail_amount != null && pw.bail_amount > 0 && (
                                 <span className="text-green-400 font-mono font-bold">{formatCurrency(pw.bail_amount)}</span>
@@ -1509,7 +1509,7 @@ export default function WarrantsPage() {
                         </div>
                       </div>
                       <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
-                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{w.charge_description}</div>
+                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{chargesFromJson(w.charge_description)}</div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
                         {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
@@ -1584,7 +1584,7 @@ export default function WarrantsPage() {
                             {w.type.toUpperCase()}
                           </span>
                         </td>
-                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
+                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{chargesFromJson(w.charge_description)}</td>
                         <td>
                           {w.offense_level ? (
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
@@ -1708,7 +1708,7 @@ export default function WarrantsPage() {
                   )}
                   <div className="mb-3">
                     <span className="text-[10px] text-[#d4a017] uppercase font-bold tracking-wider">Charge Description</span>
-                    <p className="text-sm text-white mt-0.5">{selectedWarrant.charge_description}</p>
+                    <p className="text-sm text-white mt-0.5">{chargesFromJson(selectedWarrant.charge_description)}</p>
                   </div>
 
                   {/* Dates row */}
@@ -1957,7 +1957,7 @@ export default function WarrantsPage() {
                                 {w.age && <span className="text-[10px] text-rmpg-400">Age: {w.age}</span>}
                                 {w.city && <span className="text-[10px] text-rmpg-400">{w.city}</span>}
                               </div>
-                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || 'No charge description'}</div>
+                              <div className="text-xs text-rmpg-300 mt-1">{chargesFromJson(w.charges || w.charge_description || '')}</div>
                               <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
                                 {w.court_name && <span>Court: {w.court_name}</span>}
                                 {w.case_id && <span>Case: {w.case_id}</span>}
@@ -2009,7 +2009,7 @@ export default function WarrantsPage() {
                               TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
                             }`}>{(w.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                           </div>
-                          <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
+                          <div className="text-xs text-rmpg-300 mt-1">{chargesFromJson(w.charge_description)}</div>
                           <div className="text-[10px] text-rmpg-400 mt-1">
                             {w.issuing_court && <span>Court: {w.issuing_court} • </span>}
                             Created {formatDateTime(w.created_at)}
@@ -2640,7 +2640,7 @@ export default function WarrantsPage() {
                               {w.type.toUpperCase()}
                             </span>
                           </div>
-                          <div className="text-xs text-rmpg-300">{w.charge_description}</div>
+                          <div className="text-xs text-rmpg-300">{chargesFromJson(w.charge_description)}</div>
                           <div className="text-[10px] text-rmpg-500 mt-1">
                             {formatDate(w.created_at)}
                             {w.issuing_court && ` \u2022 ${w.issuing_court}`}
