@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { broadcastDispatchUpdate } from '../utils/websocket';
+import { geocodeAddress } from '../utils/geocode';
 
 const router = Router();
 router.use(authenticateToken);
@@ -107,6 +108,51 @@ function extractFee(text: string): string {
   return extractField(text, 'Fee') || '';
 }
 
+// ── PDF Text Extraction ──────────────────────────────────────
+
+router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
+  try {
+    // Accept raw PDF binary from multipart form
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', async () => {
+      const body = Buffer.concat(chunks);
+      // Extract text from PDF using simple regex on binary
+      const text = body.toString('latin1');
+      const matches: string[] = [];
+      // Extract text between BT...ET blocks (PDF text objects)
+      const btEt = text.match(/BT[\s\S]*?ET/g) || [];
+      for (const block of btEt) {
+        const strings = block.match(/\(([^)]*)\)/g) || [];
+        for (const s of strings) {
+          const clean = s.slice(1, -1).replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/\\\(/g, '(').replace(/\\\)/g, ')');
+          if (clean.trim().length > 1) matches.push(clean.trim());
+        }
+        // Also extract hex strings
+        const hexStrings = block.match(/<([0-9a-fA-F]+)>/g) || [];
+        for (const h of hexStrings) {
+          const hex = h.slice(1, -1);
+          let decoded = '';
+          for (let i = 0; i < hex.length; i += 2) {
+            const code = parseInt(hex.substring(i, i + 2), 16);
+            if (code >= 32 && code < 127) decoded += String.fromCharCode(code);
+          }
+          if (decoded.trim().length > 1) matches.push(decoded.trim());
+        }
+      }
+      // Also try Tj/TJ operators
+      const tjMatches = text.match(/\(([^)]+)\)\s*Tj/g) || [];
+      for (const m of tjMatches) {
+        const inner = m.match(/\(([^)]+)\)/)?.[1];
+        if (inner && inner.trim().length > 1 && !matches.includes(inner.trim())) matches.push(inner.trim());
+      }
+      res.json({ text: matches.join('\n'), length: matches.length });
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Text extraction failed', text: '' });
+  }
+});
+
 // ── Main Intake Endpoint ─────────────────────────────────────
 
 router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
@@ -181,7 +227,22 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       } catch { /* already linked */ }
     }
 
-    // 3. Create CFS dispatch call
+    // 3. Geocode the address for map display
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    if (address) {
+      try {
+        const geo = await geocodeAddress(address);
+        if (geo) { latitude = geo.lat; longitude = geo.lng; }
+      } catch { /* geocode failed — continue without coords */ }
+    }
+
+    // Update property with coordinates if we got them
+    if (propertyId && latitude && longitude) {
+      db.prepare('UPDATE properties SET latitude = ?, longitude = ? WHERE id = ? AND latitude IS NULL').run(latitude, longitude, propertyId);
+    }
+
+    // 4. Create CFS dispatch call
     const descParts = [
       `SERVE: ${name.first} ${name.middle ? name.middle + ' ' : ''}${name.last}`,
       dob ? `DOB ${dob}` : '',
@@ -208,20 +269,20 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       INSERT INTO calls_for_service (
         call_number, incident_type, priority, status,
         caller_name, caller_phone, caller_relationship,
-        location_address, property_id,
+        location_address, property_id, latitude, longitude,
         description, source, dispatcher_id,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
         process_service_type, process_served_to, process_served_address,
         process_attempts, client_id,
         created_at, updated_at
-      ) VALUES (?, 'PSO Client Request', 'P4', 'pending', ?, ?, 'client', ?, ?, ?, 'phone', ?,
+      ) VALUES (?, 'PSO Client Request', 'P4', 'pending', ?, ?, 'client', ?, ?, ?, ?, ?, 'phone', ?,
         ?, ?, ?, 'process_service', ?, ?,
         'summons', ?, ?, 0, ?, ?, ?)
     `).run(
       callNumber,
       'ICU Investigations, LLC', '(435) 986-1200',
-      address || 'Unknown', propertyId,
+      address || 'Unknown', propertyId, latitude, longitude,
       descParts, userId,
       attorney.name || null, attorney.phone || null, attorney.email || null,
       fee || null, `${jobNumber}-${caseNumber}`,
@@ -245,6 +306,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       property_id: propertyId,
       call_id: callId,
       call_number: callNumber,
+      latitude, longitude,
       extracted: { name, dob, address, plaintiff, court, docs, instructions, jobNumber, caseNumber, dueDate, attorney, fee },
     });
   } catch (err: any) {

@@ -693,6 +693,7 @@ export default function MenuBar({
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
           { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
+          { type: 'action', label: 'Serve Intake Upload', icon: Upload, action: () => navigate('/serve-intake') },
         ],
       },
       {
