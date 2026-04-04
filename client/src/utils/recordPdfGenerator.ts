@@ -1521,39 +1521,20 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
   // ── 1. Subject Identification ─────────────────────────────
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
-    const hasPhoto = !!data.id_photo;
-    const photoW = 28;
-    const photoH = 35;
-    const photoGap = 4;
-    // Text fields use reduced width when photo present
-    const tw = hasPhoto ? ffw - photoW - photoGap : ffw;
-
-    // Draw photo — right-aligned, spanning full section height
-    const photoStartY = y;
-    if (hasPhoto) {
-      const photoX = lx + tw + photoGap;
-      try {
-        addImageToPage(doc, data.id_photo!, photoX, photoStartY, photoW, photoH);
-      } catch { /* skip */ }
-      doc.setDrawColor(80, 80, 80);
-      doc.setLineWidth(0.4);
-      doc.rect(photoX, photoStartY, photoW, photoH);
-    }
-
-    // Row 1: Last, First, Middle
-    const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, tw / 3);
-    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + tw / 3, y, tw / 3);
-    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + tw * 2 / 3, y, tw / 3);
-    y = Math.max(fy1, fy2, fy3);
-    // Row 2: Alias, DOB, Gender, Race
-    const fy4 = addFieldPair(doc, 'Alias / Nickname', data.alias_nickname || '', lx, y, tw * 0.35);
-    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), lx + tw * 0.35, y, tw * 0.25);
-    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', lx + tw * 0.6, y, tw * 0.2);
-    const fy7 = addFieldPair(doc, 'Race', data.race || '', lx + tw * 0.8, y, tw * 0.2);
-    y = Math.max(fy4, fy5, fy6, fy7);
-    // Row 3: Marital, Citizenship, POB, Language, ID — always below photo
-    if (hasPhoto) { y = Math.max(y, photoStartY + photoH + 1); }
     const fifthW = ffw / 5;
+
+    // Row 1: Last Name, First Name, Middle Name — full width, normal layout
+    const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, ffw * 0.4);
+    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.4, y, ffw * 0.35);
+    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.75, y, ffw * 0.25);
+    y = Math.max(fy1, fy2, fy3);
+    // Row 2: Alias, DOB, Gender, Race — full width
+    const fy4 = addFieldPair(doc, 'Alias / Nickname', data.alias_nickname || '', lx, y, hfw);
+    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), rx, y, ffw * 0.2);
+    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', rx + ffw * 0.2, y, ffw * 0.15);
+    const fy7 = addFieldPair(doc, 'Race', data.race || '', rx + ffw * 0.35, y, ffw * 0.15);
+    y = Math.max(fy4, fy5, fy6, fy7);
+    // Row 3: Marital Status, Citizenship, Place of Birth, Language, Record ID
     const fy8 = addFieldPair(doc, 'Marital Status', data.marital_status || '', lx, y, fifthW);
     const fy9 = addFieldPair(doc, 'Citizenship', data.citizenship || '', lx + fifthW, y, fifthW);
     const fy10 = addFieldPair(doc, 'Place of Birth', data.place_of_birth || '', lx + 2 * fifthW, y, fifthW);
@@ -1561,6 +1542,20 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const fy12 = addFieldPair(doc, 'Record ID', String(data.id || ''), lx + 4 * fifthW, y, fifthW);
     y = Math.max(fy8, fy9, fy10, fy11, fy12);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+
+    // Photo overlay — drawn AFTER section so it sits on top in the corner
+    if (data.id_photo) {
+      const photoW = 24;
+      const photoH = 30;
+      const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 1;
+      const photoY = sec.contentY;
+      try {
+        addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH);
+      } catch { /* skip */ }
+      doc.setDrawColor(80, 80, 80);
+      doc.setLineWidth(0.3);
+      doc.rect(photoX, photoY, photoW, photoH);
+    }
   }
 
   // ── 2. Physical Description ───────────────────────────────
