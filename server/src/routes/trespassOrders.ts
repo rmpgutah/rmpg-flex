@@ -239,6 +239,9 @@ router.put('/:id', (req: Request, res: Response) => {
       'order_type', 'status', 'reason', 'conditions',
       'duration_days', 'effective_date', 'expiration_date',
       'authorized_by', 'notes',
+      'served_at', 'served_by',
+      'originating_call_id', 'originating_incident_id',
+      'issued_by', 'issued_by_name',
     ];
 
     const setClauses: string[] = ['updated_at = ?'];

@@ -262,6 +262,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       pso_attempt_number: createAttemptNumber,
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
+      process_attempts, process_served_at, process_service_result,
       client_id: requestClientId,
       // Historical entry fields (optional)
       created_at: customCreatedAt,
@@ -555,6 +556,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         process_service_type: process_service_type || null,
         process_served_to: process_served_to || null,
         process_served_address: process_served_address || null,
+        process_attempts: process_attempts || null,
+        process_served_at: process_served_at || null,
+        process_service_result: process_service_result || null,
         contract_id: contract_id || null,
         client_id: resolvedClientId,
         priority_score: priorityScore,

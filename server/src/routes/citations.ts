@@ -276,7 +276,7 @@ router.post('/', (req: Request, res: Response) => {
       vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
       speed_recorded, speed_limit, radar_type, bac_level,
       bond_amount, bond_type,
-      is_warning, is_equipment_violation,
+      is_warning, is_equipment_violation, weather_conditions, road_conditions,
       school_zone, construction_zone, accident_related, dui_related, commercial_vehicle, hazmat,
       court_time, court_room, appearance_required,
       case_id,
@@ -348,7 +348,7 @@ router.post('/', (req: Request, res: Response) => {
         vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
         speed_recorded, speed_limit, radar_type, bac_level,
         bond_amount, bond_type,
-        is_warning, is_equipment_violation,
+        is_warning, is_equipment_violation, weather_conditions, road_conditions,
         school_zone, construction_zone, accident_related, dui_related, commercial_vehicle, hazmat,
         court_time, court_room, appearance_required, case_id
       ) VALUES (
@@ -383,7 +383,7 @@ router.post('/', (req: Request, res: Response) => {
       vehicle_vin || null, vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
       speed_recorded ?? null, speed_limit ?? null, radar_type || null, bac_level ?? null,
       bond_amount ?? null, bond_type || null,
-      is_warning ? 1 : 0, is_equipment_violation ? 1 : 0,
+      is_warning ? 1 : 0, is_equipment_violation ? 1 : 0, weather_conditions || null, road_conditions || null,
       school_zone ? 1 : 0, construction_zone ? 1 : 0, accident_related ? 1 : 0, dui_related ? 1 : 0, commercial_vehicle ? 1 : 0, hazmat ? 1 : 0,
       court_time || null, court_room || null, appearance_required ? 1 : 0, case_id || null
     );
@@ -479,6 +479,8 @@ router.put('/:id', (req: Request, res: Response) => {
       bond_type: v => v ?? null,
       is_warning: v => v ? 1 : 0,
       is_equipment_violation: v => v ? 1 : 0,
+      weather_conditions: v => v ?? null,
+      road_conditions: v => v ?? null,
       school_zone: v => v ? 1 : 0,
       construction_zone: v => v ? 1 : 0,
       accident_related: v => v ? 1 : 0,
