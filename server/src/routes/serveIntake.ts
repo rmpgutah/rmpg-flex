@@ -23,6 +23,18 @@ const execFileAsync = promisify(execFile);
 const router = Router();
 router.use(authenticateToken);
 
+// ── Auto-Detect Document Type by Content ─────────────────────
+
+function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_page' | 'unknown' {
+  // Court Docket: contains SUMMONS, Plaintiff/Defendant, Attorney for Plaintiff
+  if (/SUMMONS|COMPLAINT|Attorney for Plaintiff|JUDICIAL DISTRICT COURT/i.test(text)) return 'court_docket';
+  // Field Sheet: contains Party to Serve, Instructions, Address + city/state/zip on separate line
+  if (/Party to Serve|Instructions\s*\n.*Sub-serve|Date & Time.*Description of Service/i.test(text)) return 'field_sheet';
+  // Info Page: contains JOB number header, CLIENT/SERVER columns, Service Attempts, Recipient
+  if (/^JOB\b|Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/im.test(text)) return 'info_page';
+  return 'unknown';
+}
+
 // ── Text Extraction Helpers ──────────────────────────────────
 
 function extractBetween(text: string, before: string, after: string): string {
@@ -222,22 +234,50 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       return;
     }
 
-    // Merge all document text
-    const allText = documents.map((d: any) => d.text || '').join('\n\n');
+    // Auto-detect document types by scanning content
+    let fieldSheetText = '';
+    let courtDocketText = '';
+    let infoPageText = '';
+    for (const d of documents) {
+      const txt = d.text || '';
+      const detected = d.type !== 'unknown' ? d.type : detectDocType(txt);
+      if (detected === 'field_sheet' || (!fieldSheetText && detectDocType(txt) === 'field_sheet')) fieldSheetText = txt;
+      else if (detected === 'court_docket' || (!courtDocketText && detectDocType(txt) === 'court_docket')) courtDocketText = txt;
+      else if (detected === 'info_page' || (!infoPageText && detectDocType(txt) === 'info_page')) infoPageText = txt;
+      else {
+        // Unknown doc — merge into whichever is empty
+        if (!fieldSheetText) fieldSheetText = txt;
+        else if (!courtDocketText) courtDocketText = txt;
+        else if (!infoPageText) infoPageText = txt;
+      }
+    }
+    const allText = [fieldSheetText, courtDocketText, infoPageText].filter(Boolean).join('\n\n');
 
-    // Extract structured data from all documents
-    const name = extractName(allText);
-    const dob = extractDOB(allText);
-    const address = extractAddress(allText);
-    const plaintiff = extractPlaintiff(allText);
-    const court = extractCourt(allText);
-    const docs = extractDocuments(allText);
-    const instructions = extractServeInstructions(allText) || extractInstructions(allText);
-    const jobNumber = extractJobNumber(allText);
-    const caseNumber = extractCaseNumber(allText);
-    const dueDate = extractDueDate(allText);
-    const attorney = extractAttorney(allText);
-    const fee = extractFee(allText);
+    // Extract from specific document sources with fallback to allText
+    // Name: Field Sheet (Party to Serve) > Info Page (Recipient) > Court Docket (Defendant)
+    const name = extractName(fieldSheetText) || extractName(infoPageText) || extractName(courtDocketText) || extractName(allText);
+    // DOB: Field Sheet (Other: DOB) > Info Page (DOB:)
+    const dob = extractDOB(fieldSheetText) || extractDOB(infoPageText) || extractDOB(allText);
+    // Address: Field Sheet (Address line below label) — primary source
+    const address = extractAddress(fieldSheetText) || extractAddress(infoPageText) || extractAddress(allText);
+    // Plaintiff: Court Docket (before "Plaintiff,") > Field Sheet (Plaintiff field)
+    const plaintiff = extractPlaintiff(courtDocketText) || extractPlaintiff(fieldSheetText) || extractPlaintiff(allText);
+    // Court: Court Docket (JUDICIAL DISTRICT COURT) > Field Sheet (Court field)
+    const court = extractCourt(courtDocketText) || extractCourt(fieldSheetText) || extractCourt(allText);
+    // Documents: Field Sheet (Documents field) > Info Page
+    const docs = extractDocuments(fieldSheetText) || extractDocuments(infoPageText) || extractDocuments(allText);
+    // Instructions: Field Sheet (Instructions section)
+    const instructions = extractServeInstructions(fieldSheetText) || extractInstructions(fieldSheetText) || extractServeInstructions(allText);
+    // Job#: Field Sheet header > Info Page JOB
+    const jobNumber = extractJobNumber(fieldSheetText) || extractJobNumber(infoPageText) || extractJobNumber(allText);
+    // Case#: Court Docket (parenthetical) > Info Page
+    const caseNumber = extractCaseNumber(courtDocketText) || extractCaseNumber(infoPageText) || extractCaseNumber(allText);
+    // Due date: Field Sheet (Due:) > Info Page
+    const dueDate = extractDueDate(fieldSheetText) || extractDueDate(infoPageText) || extractDueDate(allText);
+    // Attorney: Court Docket header (name, phone, email, bar#)
+    const attorney = extractAttorney(courtDocketText) || extractAttorney(allText);
+    // Fee: Field Sheet
+    const fee = extractFee(fieldSheetText) || extractFee(infoPageText) || extractFee(allText);
 
     if (!name.last) {
       res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
@@ -352,8 +392,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     // 5. Build separated description (instructions only) and notes (case details)
     const serviceWindows = extractServiceWindows(allText);
-    const caseNotes = extractCaseNotes(allText);
-    const clientAddress = extractClientAddress(allText);
+    const caseNotes = extractCaseNotes(courtDocketText || allText);
+    const clientAddress = extractClientAddress(fieldSheetText || allText);
     const fullName = `${name.first}${name.middle ? ' ' + name.middle : ''} ${name.last}`;
     const subjectDesc = `${fullName}${dob ? ', DOB ' + dob : ''}`;
 
