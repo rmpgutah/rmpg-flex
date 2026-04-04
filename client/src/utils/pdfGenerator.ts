@@ -1508,12 +1508,13 @@ export function addTableWithShading(
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Dark table header (police report style)
+      // Medium gray table header — no outer border box
       doc.setFillColor(...COLOR.BG_TABLE_HDR);
       doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_OUTER);
-      doc.setLineWidth(BORDER.TABLE_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      // Bottom line only, no full box outline
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(0.3);
+      doc.line(LAYOUT.PAGE_MARGIN + 1, atY + headerRowH, LAYOUT.PAGE_MARGIN + cw - 1, atY + headerRowH);
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_INVERTED);
@@ -1574,15 +1575,15 @@ export function addTableWithShading(
     }
 
     // y = top of this data row rect
-    // Zebra shading — rect starts at y, full rowH
-    if (i % 2 === 0) {
+    // Zebra shading — odd rows get light gray, even rows stay white
+    if (i % 2 === 1) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
       doc.rect(LAYOUT.PAGE_MARGIN + 1, y, cw - 2, rowH, 'F');
     }
 
-    // Row separator at bottom of row
+    // Light row separator line at bottom
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.setLineWidth(0.2);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH);
 
     // Render cell text — vertically centered within row
@@ -1604,28 +1605,19 @@ export function addTableWithShading(
   // Update final segment bottom
   colSegments[colSegments.length - 1].bottom = y - 1;
 
-  // Draw column borders and outer border per segment (page-aware)
+  // Draw light column dividers only (no outer border box)
   const currentPage = doc.getNumberOfPages();
   for (const seg of colSegments) {
     const segH = seg.bottom - seg.top + 1;
     if (segH < 2) continue;
-
     doc.setPage(seg.page);
-
-    // Vertical column dividers
-    doc.setDrawColor(...COLOR.BORDER_COLUMN);
-    doc.setLineWidth(BORDER.TABLE_COLUMN);
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(0.15);
     for (let c = 1; c < colPositions.length; c++) {
       const sepX = colPositions[c] - 2;
       doc.line(sepX, seg.top, sepX, seg.bottom);
     }
-
-    // Outer border enclosing this segment
-    doc.setDrawColor(...COLOR.BORDER_OUTER);
-    doc.setLineWidth(BORDER.TABLE_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, segH);
   }
-  // Restore to current (last) page
   doc.setPage(currentPage);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);

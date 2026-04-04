@@ -18,17 +18,17 @@ export const COLOR = {
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
-  // Borders — clean, professional lines
-  BORDER_FIELD:    [113, 128, 150]  as const,  // Field box borders (#718096)
-  BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
-  BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
-  BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
-  BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
+  // Borders — thin, clean lines
+  BORDER_FIELD:    [190, 190, 190]  as const,  // Field box borders (light gray)
+  BORDER_TABLE:    [200, 200, 200]  as const,  // Row separator lines (very light)
+  BORDER_COLUMN:   [200, 200, 200]  as const,  // Vertical column separators
+  BORDER_OUTER:    [180, 180, 180]  as const,  // Table outer border
+  BORDER_SECTION:  [100, 100, 100]  as const,  // Section outline
 
-  // Backgrounds — lighter, modern government-form style
-  BG_ZEBRA:        [235, 235, 235]  as const,  // Even-row table shading (light gray)
-  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#2d3748 dark blue-gray)
-  BG_TABLE_HDR:    [140, 140, 140]   as const,  // Table column header (medium gray)
+  // Backgrounds
+  BG_ZEBRA:        [245, 245, 245]  as const,  // Even-row shading (very light gray)
+  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (dark)
+  BG_TABLE_HDR:    [160, 160, 160]  as const,  // Table column header (medium gray)
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
