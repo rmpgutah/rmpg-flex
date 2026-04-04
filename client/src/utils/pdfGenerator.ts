@@ -1329,10 +1329,12 @@ export async function convertToGrayscale(dataUrl: string): Promise<string> {
       const d = imageData.data;
       for (let i = 0; i < d.length; i += 4) {
         const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-        // Very dark rendering: anything below 180 luminance → black
-        // Only the brightest areas (white paper, bright backgrounds) stay white
-        const bw = lum > 180 ? 255 : 0;
-        d[i] = d[i + 1] = d[i + 2] = bw;
+        // Three-tone: black / dark gray / white (photocopy with depth)
+        let val: number;
+        if (lum < 80) val = 0;          // shadows + dark detail → black
+        else if (lum < 170) val = 90;   // mid-tones → dark gray
+        else val = 255;                  // highlights → white
+        d[i] = d[i + 1] = d[i + 2] = val;
       }
       ctx.putImageData(imageData, 0, 0);
       resolve(canvas.toDataURL('image/png'));
