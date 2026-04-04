@@ -957,7 +957,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   const lineH = fontSize * 0.35 + 0.05;
-  const paragraphGap = SPACING.MD;
+  const paragraphGap = 3; // 3mm between paragraphs for readability
 
   const paragraphs = text.split(/\n\n+/);
 
@@ -1007,8 +1007,8 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
   const text = sanitizePdfText(rawText);
-  const lineH = fontSize * 0.35 + 0.05; // Consistent line spacing across all text renderers
-  const paragraphGap = SPACING.MD;
+  const lineH = fontSize * 0.35 + 0.05;
+  const paragraphGap = 3; // 3mm between paragraphs
   // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
   const safeMaxWidth = maxWidth - 2;
   // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
@@ -2049,17 +2049,16 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 42, data.priority);
   { const sec = openAutoSection(doc, 'Operational Flags', y); y = sec.contentY;
-    y += 1;
     const flagW = ffw / 6;
+    const rowStep = 3.5; // tight row spacing for checkboxes
     // Row 1
-    let fx = lx;
-    fx = addCheckboxField(doc, 'Injuries', !!data.injuries_reported, fx, y);
-    fx = lx + flagW; fx = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, fx, y);
-    fx = lx + flagW * 2; fx = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, fx, y);
-    fx = lx + flagW * 3; fx = addCheckboxField(doc, 'DV', !!data.domestic_violence, fx, y);
-    fx = lx + flagW * 4; fx = addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, fx, y);
+    addCheckboxField(doc, 'Injuries', !!data.injuries_reported, lx, y);
+    addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, lx + flagW, y);
+    addCheckboxField(doc, 'Drugs', !!data.drugs_involved, lx + flagW * 2, y);
+    addCheckboxField(doc, 'DV', !!data.domestic_violence, lx + flagW * 3, y);
+    addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, lx + flagW * 4, y);
     addCheckboxField(doc, 'Juvenile', !!data.juvenile_involved, lx + flagW * 5, y);
-    y += SPACING.LG;
+    y += rowStep;
     // Row 2
     addCheckboxField(doc, 'Felony I/P', !!data.felony_in_progress, lx, y);
     addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, lx + flagW, y);
@@ -2067,7 +2066,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     addCheckboxField(doc, 'Hazmat', !!data.hazmat, lx + flagW * 3, y);
     addCheckboxField(doc, 'Weapons', !!data.weapons_involved, lx + flagW * 4, y);
     addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, lx + flagW * 5, y);
-    y += SPACING.LG;
+    y += rowStep;
     // Row 3
     addCheckboxField(doc, 'K9 Req', !!data.k9_requested, lx, y);
     addCheckboxField(doc, 'EMS Req', !!data.ems_requested, lx + flagW, y);
@@ -2075,13 +2074,13 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, lx + flagW * 3, y);
     addCheckboxField(doc, 'Evidence', !!data.evidence_collected, lx + flagW * 4, y);
     addCheckboxField(doc, 'Photos', !!data.photos_taken, lx + flagW * 5, y);
-    y += SPACING.LG;
+    y += rowStep;
     // Row 4
     addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, lx, y);
     addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW, y);
     addCheckboxField(doc, 'Trespass', !!data.trespass_issued, lx + flagW * 2, y);
     addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, lx + flagW * 3, y);
-    y += SPACING.XL;
+    y += rowStep;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
