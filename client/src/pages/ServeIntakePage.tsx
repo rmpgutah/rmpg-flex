@@ -53,35 +53,23 @@ export default function ServeIntakePage() {
 
   // Extract text from PDF using canvas-based approach
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
-    // Use the server-side pdftotext or client-side pdf.js
-    // For now, read as array buffer and send to a text extraction endpoint
-    const formData = new FormData();
-    formData.append('file', file);
+    // Send raw PDF binary to server for pdftotext extraction
     try {
+      const arrayBuffer = await file.arrayBuffer();
       const resp = await fetch('/api/serve-intake/extract-text', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('rmpg_token')}` },
-        body: formData,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('rmpg_token')}`,
+          'Content-Type': 'application/octet-stream',
+        },
+        body: arrayBuffer,
       });
       if (resp.ok) {
         const data = await resp.json();
         return data.text || '';
       }
-    } catch { /* fallback below */ }
-
-    // Fallback: read file as text (works for some PDFs)
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const text = reader.result as string;
-        // Extract readable text from PDF binary
-        const matches = text.match(/\(([^)]+)\)/g);
-        if (matches) resolve(matches.map(m => m.slice(1, -1)).join(' '));
-        else resolve('');
-      };
-      reader.onerror = () => resolve('');
-      reader.readAsText(file);
-    });
+    } catch { /* fallback */ }
+    return '';
   }, []);
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {

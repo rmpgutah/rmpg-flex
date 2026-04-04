@@ -12,6 +12,12 @@ import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { broadcastDispatchUpdate } from '../utils/websocket';
 import { geocodeAddress } from '../utils/geocode';
+import { execFile } from 'child_process';
+import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { promisify } from 'util';
+const execFileAsync = promisify(execFile);
 
 const router = Router();
 router.use(authenticateToken);
@@ -110,47 +116,39 @@ function extractFee(text: string): string {
 
 // ── PDF Text Extraction ──────────────────────────────────────
 
-router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
-  try {
-    // Accept raw PDF binary from multipart form
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', async () => {
+router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  // Collect raw body (PDF binary from multipart/form-data or raw)
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk: Buffer) => chunks.push(chunk));
+  req.on('end', async () => {
+    try {
       const body = Buffer.concat(chunks);
-      // Extract text from PDF using simple regex on binary
-      const text = body.toString('latin1');
-      const matches: string[] = [];
-      // Extract text between BT...ET blocks (PDF text objects)
-      const btEt = text.match(/BT[\s\S]*?ET/g) || [];
-      for (const block of btEt) {
-        const strings = block.match(/\(([^)]*)\)/g) || [];
-        for (const s of strings) {
-          const clean = s.slice(1, -1).replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/\\\(/g, '(').replace(/\\\)/g, ')');
-          if (clean.trim().length > 1) matches.push(clean.trim());
+      if (body.length < 100) { res.json({ text: '', length: 0 }); return; }
+
+      // Save to temp file and run pdftotext
+      const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
+      const tmpPdf = join(tmpDir, 'input.pdf');
+      writeFileSync(tmpPdf, body);
+
+      try {
+        const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
+        res.json({ text: stdout, length: stdout.length });
+      } catch {
+        // Fallback: try without -layout
+        try {
+          const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
+          res.json({ text: stdout, length: stdout.length });
+        } catch {
+          res.json({ text: '', length: 0 });
         }
-        // Also extract hex strings
-        const hexStrings = block.match(/<([0-9a-fA-F]+)>/g) || [];
-        for (const h of hexStrings) {
-          const hex = h.slice(1, -1);
-          let decoded = '';
-          for (let i = 0; i < hex.length; i += 2) {
-            const code = parseInt(hex.substring(i, i + 2), 16);
-            if (code >= 32 && code < 127) decoded += String.fromCharCode(code);
-          }
-          if (decoded.trim().length > 1) matches.push(decoded.trim());
-        }
+      } finally {
+        try { unlinkSync(tmpPdf); } catch {}
+        try { unlinkSync(tmpDir); } catch {}
       }
-      // Also try Tj/TJ operators
-      const tjMatches = text.match(/\(([^)]+)\)\s*Tj/g) || [];
-      for (const m of tjMatches) {
-        const inner = m.match(/\(([^)]+)\)/)?.[1];
-        if (inner && inner.trim().length > 1 && !matches.includes(inner.trim())) matches.push(inner.trim());
-      }
-      res.json({ text: matches.join('\n'), length: matches.length });
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Text extraction failed', text: '' });
-  }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Text extraction failed', text: '' });
+    }
+  });
 });
 
 // ── Main Intake Endpoint ─────────────────────────────────────
