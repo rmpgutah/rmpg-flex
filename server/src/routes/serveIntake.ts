@@ -12,6 +12,7 @@ import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { broadcastDispatchUpdate } from '../utils/websocket';
 import { geocodeAddress } from '../utils/geocode';
+import { identifyBeat } from '../utils/geofence';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -66,6 +67,12 @@ function extractDOB(text: string): string {
 }
 
 function extractAddress(text: string): string {
+  // Field Sheet format: "Address" on one line, actual address on next line
+  const m = text.match(/^Address\s*\n\s*(.+(?:,\s*[A-Z]{2}\s*\d{5}).*)$/im);
+  if (m) return m[1].trim();
+  // Also try: line containing street number + city + state + zip
+  const addrLine = text.match(/(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}[^)\n]*)/);
+  if (addrLine) return addrLine[1].trim();
   return extractField(text, 'Address') || '';
 }
 
@@ -235,9 +242,29 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       } catch { /* geocode failed — continue without coords */ }
     }
 
-    // Update property with coordinates if we got them
+    // Update property with coordinates
     if (propertyId && latitude && longitude) {
       db.prepare('UPDATE properties SET latitude = ?, longitude = ? WHERE id = ? AND latitude IS NULL').run(latitude, longitude, propertyId);
+    }
+
+    // 3b. Auto-resolve Section/Zone/Beat from coordinates
+    let sectionId = '', zoneId = '', beatId = '', zoneBeat = '', dispatchCode = '';
+    if (latitude && longitude) {
+      try {
+        const beat = identifyBeat(latitude, longitude);
+        if (beat) {
+          beatId = beat.beat_id || beat.district_letter || '';
+          zoneId = beat.city_code || '';
+          sectionId = beat.district_letter || '';
+          zoneBeat = beat.beat_code || '';
+          // Lookup dispatch district for full names
+          const district = db.prepare('SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ? LIMIT 1').get(zoneId, beatId) as any;
+          if (district) {
+            sectionId = district.section_id || sectionId;
+            dispatchCode = district.dispatch_code || '';
+          }
+        }
+      } catch { /* geofence not configured */ }
     }
 
     // 4. Fetch current weather for service location
@@ -303,13 +330,14 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         caller_name, caller_phone, caller_relationship,
         location_address, property_id, latitude, longitude,
         weather_conditions, lighting_conditions,
+        section_id, zone_id, beat_id, zone_beat, dispatch_code,
         description, source, dispatcher_id,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
         process_service_type, process_served_to, process_served_address,
         process_attempts, client_id,
         created_at, updated_at
-      ) VALUES (?, 'PSO Client Request', 'P4', 'pending', ?, ?, 'client', ?, ?, ?, ?, ?, ?, ?, 'phone', ?,
+      ) VALUES (?, 'PSO Client Request', 'P4', 'pending', ?, ?, 'client', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'phone', ?,
         ?, ?, ?, 'process_service', ?, ?,
         'summons', ?, ?, 0, ?, ?, ?)
     `).run(
@@ -317,9 +345,10 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       'ICU Investigations, LLC', '(435) 986-1200',
       address || 'Unknown', propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null,
+      sectionId || null, zoneId || null, beatId || null, zoneBeat || null, dispatchCode || null,
       descParts, userId,
       attorney.name || null, attorney.phone || null, attorney.email || null,
-      fee || null, `${jobNumber}-${caseNumber}`,
+      fee || null, jobNumber || null,
       `${name.first} ${name.middle ? name.middle + ' ' : ''}${name.last}`, address || null,
       client_id || 1, now, now
     );
