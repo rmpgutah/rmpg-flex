@@ -121,6 +121,55 @@ function extractFee(text: string): string {
   return extractField(text, 'Fee') || '';
 }
 
+function extractServiceWindows(text: string): string {
+  const windows: string[] = [];
+  if (/6AM-9AM|6am.*9am/i.test(text)) windows.push('6AM-9AM');
+  if (/9AM-6PM|9am.*6pm/i.test(text)) windows.push('9AM-6PM');
+  if (/6PM-9PM|6pm.*9pm/i.test(text)) windows.push('6PM-9PM');
+  if (/weekend/i.test(text)) windows.push('Weekend required');
+  return windows.join(', ');
+}
+
+function extractServeInstructions(text: string): string {
+  // Get ONLY the serve instructions — not the case details
+  const m = text.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
+  if (m) return m[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+  // Fallback: look for Sub-serve pattern
+  const sub = text.match(/(Sub-serve[\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
+  if (sub) return sub[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+  return '';
+}
+
+function extractCaseNotes(text: string): string {
+  const parts: string[] = [];
+  const plaintiff = extractPlaintiff(text);
+  if (plaintiff) parts.push(`Plaintiff: ${plaintiff.replace(/\n/g, ' ').trim()}`);
+  const court = extractCourt(text);
+  if (court) parts.push(`Court: ${court}`);
+  const docs = extractDocuments(text);
+  if (docs) parts.push(`Documents: ${docs}`);
+  const caseNum = extractCaseNumber(text);
+  if (caseNum) parts.push(`Case #${caseNum}`);
+  const attorney = extractAttorney(text);
+  if (attorney.name) parts.push(`Attorney: ${attorney.name}${attorney.bar ? ` Bar#${attorney.bar}` : ''}`);
+  if (attorney.phone) parts.push(`Attorney Tel: ${attorney.phone}`);
+  if (attorney.email) parts.push(`Attorney Email: ${attorney.email}`);
+  // Court clerk info
+  const clerk = text.match(/call the clerk.*?at\s*\((\d{3})\)\s*(\d{3}[-.]?\d{4})/i);
+  if (clerk) parts.push(`Court Clerk: (${clerk[1]}) ${clerk[2]}`);
+  // Court address
+  const courtAddr = text.match(/(\d+ South State St.*?\d{5})/i);
+  if (courtAddr) parts.push(`Court Address: ${courtAddr[1]}`);
+  return parts.join('. ');
+}
+
+function extractClientAddress(text: string): string {
+  // ICU Investigations address from Field Sheet header
+  const m = text.match(/ICU Investigations.*?\n([\d]+ .*?\n.*?\d{5})/i);
+  if (m) return m[1].replace(/\n/g, ', ').trim();
+  return '';
+}
+
 // ── PDF Text Extraction ──────────────────────────────────────
 
 router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
@@ -176,14 +225,14 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     // Merge all document text
     const allText = documents.map((d: any) => d.text || '').join('\n\n');
 
-    // Extract structured data
+    // Extract structured data from all documents
     const name = extractName(allText);
     const dob = extractDOB(allText);
     const address = extractAddress(allText);
     const plaintiff = extractPlaintiff(allText);
     const court = extractCourt(allText);
     const docs = extractDocuments(allText);
-    const instructions = extractInstructions(allText);
+    const instructions = extractServeInstructions(allText) || extractInstructions(allText);
     const jobNumber = extractJobNumber(allText);
     const caseNumber = extractCaseNumber(allText);
     const dueDate = extractDueDate(allText);
@@ -301,18 +350,18 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       else lightingConditions = 'Dark';
     }
 
-    // 5. Create CFS dispatch call
-    const descParts = [
-      `SERVE: ${name.first} ${name.middle ? name.middle + ' ' : ''}${name.last}`,
-      dob ? `DOB ${dob}` : '',
-      instructions || '',
-      plaintiff ? `CASE: ${plaintiff.replace(/\n/g, ' ').trim()} v. ${name.last}` : '',
-      court ? `COURT: ${court}` : '',
-      docs ? `DOCS: ${docs}` : '',
-      jobNumber ? `JOB #${jobNumber}${caseNumber ? ` (${caseNumber})` : ''}` : '',
-      attorney.name ? `ATT: ${attorney.name}${attorney.bar ? ` Bar#${attorney.bar}` : ''}${attorney.phone ? `, ${attorney.phone}` : ''}` : '',
-      dueDate ? `DUE: ${dueDate}` : '',
-    ].filter(Boolean).join('. ');
+    // 5. Build separated description (instructions only) and notes (case details)
+    const serviceWindows = extractServiceWindows(allText);
+    const caseNotes = extractCaseNotes(allText);
+    const clientAddress = extractClientAddress(allText);
+    const fullName = `${name.first}${name.middle ? ' ' + name.middle : ''} ${name.last}`;
+    const subjectDesc = `${fullName}${dob ? ', DOB ' + dob : ''}`;
+
+    // description = serve instructions ONLY (what the officer needs to do)
+    const descParts = instructions || 'Serve documents to subject at listed address.';
+
+    // notes = case reference details (court, plaintiff, attorney, documents)
+    const notesParts = caseNotes || '';
 
     // Auto-generate call number
     const year = new Date().getFullYear().toString().slice(-2);
@@ -327,39 +376,45 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const callResult = db.prepare(`
       INSERT INTO calls_for_service (
         call_number, incident_type, priority, status,
-        caller_name, caller_phone, caller_relationship,
+        caller_name, caller_phone, caller_relationship, caller_address,
         location_address, property_id, latitude, longitude,
         weather_conditions, lighting_conditions,
         section_id, zone_id, beat_id, zone_beat, dispatch_code,
-        description, source, dispatcher_id,
+        description, notes, source, dispatcher_id,
+        subject_description,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
+        pso_attempt_number, pso_service_windows,
         process_service_type, process_served_to, process_served_address,
         process_attempts, client_id, contract_id,
         created_at, updated_at
       ) VALUES (
         ?, ?, ?, ?,
-        ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
         ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?,
         ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?,
+        ?, ?,
         ?, ?, ?,
         ?, ?, ?,
         ?, ?
       )
     `).run(
       callNumber, 'PSO Client Request', 'P4', 'pending',
-      'ICU Investigations, LLC', '(435) 986-1200', 'client',
+      'ICU Investigations, LLC', '(435) 986-1200', 'client', clientAddress || null,
       address || 'Unknown', propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null,
       sectionId || null, zoneId || null, beatId || null, zoneBeat || null, dispatchCode || null,
-      descParts, 'phone', userId,
+      descParts, notesParts || null, 'phone', userId,
+      subjectDesc,
       attorney.name || null, attorney.phone || null, attorney.email || null,
       'process_service', fee || null, jobNumber || null,
-      'summons', `${name.first} ${name.middle ? name.middle + ' ' : ''}${name.last}`, address || null,
+      1, serviceWindows || null,
+      'summons', fullName, address || null,
       0, client_id || 1, jobNumber || null,
       now, now
     );
