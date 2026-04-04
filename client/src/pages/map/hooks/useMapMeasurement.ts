@@ -97,8 +97,8 @@ function formatDistance(meters: number): { value: number; unit: string; display:
 }
 
 function formatDistanceMetric(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(2)} km`;
+  if (meters < 1609) return `${Math.round(meters)} m`;
+  return `${(meters / 1609.34).toFixed(2)} mi`;
 }
 
 function formatAreaMetric(sqMeters: number): string {
