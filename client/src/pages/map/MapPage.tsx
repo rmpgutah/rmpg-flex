@@ -307,6 +307,11 @@ export default function MapPage() {
     comparisonDays: advHeatmapComparisonDays,
   }), [advancedHeatmapEnabled, showHeatmap, heatmapDays, advHeatmapMode, advHeatmapTypes, advHeatmapHourRange, advHeatmapDayFilter, advHeatmapResolution, advHeatmapColorScheme, advHeatmapOpacity, advHeatmapRadius, advHeatmapShowClusters, advHeatmapComparisonDays]);
 
+  // Beat call density heat map state
+  const [beatHeatMap, setBeatHeatMap] = useState(false);
+  const [heatMapRange, setHeatMapRange] = useState<'24h' | '7d' | '30d'>('24h');
+  const [heatMapData, setHeatMapData] = useState<Map<string, number>>(new Map());
+
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
@@ -432,6 +437,7 @@ export default function MapPage() {
     beatDistrictMap,
     unitsPerBeat,
     callsPerBeat,
+    heatMapData: beatHeatMap ? heatMapData : undefined,
   });
 
   // Keep beatCentroids ref in sync
@@ -485,6 +491,23 @@ export default function MapPage() {
     }
     setCallsPerBeat(result);
   }, [calls, beatCentroids]);
+
+  // Beat call density heat map: fetch from call-density endpoint when toggled on
+  useEffect(() => {
+    if (!beatHeatMap) { setHeatMapData(new Map()); return; }
+    let cancelled = false;
+    apiFetch<{ zone_beat: string; call_count: number }[]>(`/dispatch/districts/call-density?range=${heatMapRange}`)
+      .then(rows => {
+        if (cancelled) return;
+        const m = new Map<string, number>();
+        if (Array.isArray(rows)) {
+          for (const r of rows) m.set(r.zone_beat, r.call_count);
+        }
+        setHeatMapData(m);
+      })
+      .catch(() => { if (!cancelled) setHeatMapData(new Map()); });
+    return () => { cancelled = true; };
+  }, [beatHeatMap, heatMapRange]);
 
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
@@ -2919,6 +2942,47 @@ export default function MapPage() {
                 </div>
               )}
 
+              {/* ── Beat Call Density Heat Map ── */}
+              <button
+                onClick={() => setBeatHeatMap(prev => !prev)}
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
+                  beatHeatMap ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
+                }`}
+              >
+                {beatHeatMap ? <Eye className="w-3 h-3 text-red-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                <Thermometer className="w-3 h-3 text-orange-400" />
+                <span className="text-[10px] text-rmpg-200 flex-1">Beat Density</span>
+                {beatHeatMap && heatMapData.size > 0 && (
+                  <span className="text-[8px] text-orange-400 font-mono font-bold">
+                    {heatMapData.size} beats
+                  </span>
+                )}
+              </button>
+              {beatHeatMap && (
+                <div className="px-3 py-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    {(['24h', '7d', '30d'] as const).map(r => (
+                      <button key={r}
+                        onClick={() => setHeatMapRange(r)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          heatMapRange === r
+                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >{r}</button>
+                    ))}
+                  </div>
+                  {/* Color legend */}
+                  <div className="flex items-center gap-1 mt-1">
+                    <div className="flex-1 h-1.5 rounded-sm" style={{ background: 'linear-gradient(to right, rgb(30,100,200), rgb(240,200,0), rgb(220,40,40))' }} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[7px] text-rmpg-500 font-mono">Low</span>
+                    <span className="text-[7px] text-rmpg-500 font-mono">High</span>
+                  </div>
+                </div>
+              )}
+
               {/* ── Tracking Lines ── */}
               <button
                 onClick={() => setShowTrackingLines(!showTrackingLines)}
@@ -5217,6 +5281,37 @@ export default function MapPage() {
                   <Thermometer style={{ width: 16, height: 16 }} className="text-red-400" />
                   <span className="text-sm text-rmpg-200 flex-1">Heat Map</span>
                 </button>
+
+                {/* Beat Density toggle */}
+                <button
+                  onClick={() => setBeatHeatMap(prev => !prev)}
+                  className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                  style={{
+                    background: beatHeatMap ? 'rgba(249,115,22,0.08)' : '#141e2b',
+                    border: '1px solid #1e3048',
+                    minHeight: 44,
+                  }}
+                >
+                  {beatHeatMap ? <Eye className="w-4 h-4 text-orange-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                  <Thermometer style={{ width: 16, height: 16 }} className="text-orange-400" />
+                  <span className="text-sm text-rmpg-200 flex-1">Beat Density</span>
+                </button>
+                {beatHeatMap && (
+                  <div className="px-3 py-2 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                    <div className="flex gap-1">
+                      {(['24h', '7d', '30d'] as const).map(r => (
+                        <button key={r}
+                          onClick={() => setHeatMapRange(r)}
+                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
+                            heatMapRange === r
+                              ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                              : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
+                          }`}
+                        >{r}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Breadcrumbs toggle */}
                 <button

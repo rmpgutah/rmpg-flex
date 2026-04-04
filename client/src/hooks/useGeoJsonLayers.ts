@@ -196,6 +196,8 @@ interface UseGeoJsonLayersOptions {
   unitsPerBeat?: Map<string, BeatUnitInfo[]>;
   /** Active call count per beat, keyed by beat_code (zone_beat) */
   callsPerBeat?: Map<string, number>;
+  /** Heat map data: call density per beat (zone_beat → count) from /api/dispatch/districts/call-density */
+  heatMapData?: Map<string, number>;
 }
 
 export interface GeoLayerState {
@@ -243,6 +245,7 @@ export function useGeoJsonLayers({
   beatDistrictMap,
   unitsPerBeat,
   callsPerBeat,
+  heatMapData,
 }: UseGeoJsonLayersOptions) {
   // Per-layer visibility state
   const [layerStates, setLayerStates] = useState<Record<string, GeoLayerState>>(() => {
@@ -282,6 +285,10 @@ export function useGeoJsonLayers({
   useEffect(() => { unitsPerBeatRef.current = unitsPerBeat; }, [unitsPerBeat]);
   const callsPerBeatRef = useRef(callsPerBeat);
   useEffect(() => { callsPerBeatRef.current = callsPerBeat; }, [callsPerBeat]);
+
+  // Heat map density ref
+  const heatMapDataRef = useRef(heatMapData);
+  useEffect(() => { heatMapDataRef.current = heatMapData; }, [heatMapData]);
 
   // Beat centroids — computed once when beat layer loads, exposed for unit-beat matching
   const [beatCentroids, setBeatCentroids] = useState<Map<string, { lat: number; lng: number }>>(new Map());
@@ -353,19 +360,54 @@ export function useGeoJsonLayers({
 
         // For beat layer: use pre-computed section-based style (O(1) lookup, no object spread)
         let baseStyle = cfg.style;
-        if (cfg.id === 'beat' && beatStyleLookupRef.current && !isSelected && !isAssigned) {
-          const cityCode = feature.getProperty('city_code') as string;
-          const distLetter = feature.getProperty('district_letter') as string;
-          if (cityCode && distLetter) {
-            const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
-            if (cached) baseStyle = cached.style;
-          }
-          // Coverage dimming: reduce opacity for beats with no units
+        if (cfg.id === 'beat' && !isSelected && !isAssigned) {
           const beatCode = feature.getProperty('beat_code') as string;
-          if (beatCode && unitsPerBeatRef.current) {
-            const beatUnits = unitsPerBeatRef.current.get(beatCode);
-            if (!beatUnits || beatUnits.length === 0) {
-              baseStyle = { ...baseStyle, fillOpacity: 0.04, strokeOpacity: 0.25 };
+
+          // Heat map density coloring — overrides section colors when active
+          if (heatMapDataRef.current && heatMapDataRef.current.size > 0) {
+            const count = beatCode ? (heatMapDataRef.current.get(beatCode) ?? 0) : 0;
+            if (count === 0) {
+              // Beats with no calls: very dim gray
+              baseStyle = { ...cfg.style, fillColor: '#444444', fillOpacity: 0.02, strokeColor: '#444444', strokeOpacity: 0.15, strokeWeight: 0.5 };
+            } else {
+              // Find max count across all beats for normalization
+              let maxCount = 1;
+              for (const c of heatMapDataRef.current.values()) {
+                if (c > maxCount) maxCount = c;
+              }
+              const ratio = count / maxCount;
+              // Interpolate: blue (0) → yellow (0.5) → red (1.0)
+              let r: number, g: number, b: number;
+              if (ratio <= 0.5) {
+                const t = ratio / 0.5;
+                r = Math.round(30 + (240 - 30) * t);
+                g = Math.round(100 + (200 - 100) * t);
+                b = Math.round(200 + (0 - 200) * t);
+              } else {
+                const t = (ratio - 0.5) / 0.5;
+                r = Math.round(240 + (220 - 240) * t);
+                g = Math.round(200 + (40 - 200) * t);
+                b = Math.round(0 + (40 - 0) * t);
+              }
+              const heatColor = `rgb(${r},${g},${b})`;
+              // Fill opacity scales with density: low = 0.10, high = 0.25
+              const fillOp = 0.10 + ratio * 0.15;
+              baseStyle = { ...cfg.style, fillColor: heatColor, fillOpacity: fillOp, strokeColor: heatColor, strokeOpacity: 0.6, strokeWeight: 1 };
+            }
+          } else if (beatStyleLookupRef.current) {
+            // Normal section-based coloring
+            const cityCode = feature.getProperty('city_code') as string;
+            const distLetter = feature.getProperty('district_letter') as string;
+            if (cityCode && distLetter) {
+              const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
+              if (cached) baseStyle = cached.style;
+            }
+            // Coverage dimming: reduce opacity for beats with no units
+            if (beatCode && unitsPerBeatRef.current) {
+              const beatUnits = unitsPerBeatRef.current.get(beatCode);
+              if (!beatUnits || beatUnits.length === 0) {
+                baseStyle = { ...baseStyle, fillOpacity: 0.04, strokeOpacity: 0.25 };
+              }
             }
           }
         }
@@ -400,6 +442,11 @@ export function useGeoJsonLayers({
   useEffect(() => {
     if (unitsPerBeat) restyleLayers();
   }, [unitsPerBeat, restyleLayers]);
+
+  // Re-style when heat map density data changes
+  useEffect(() => {
+    restyleLayers();
+  }, [heatMapData, restyleLayers]);
 
   // ── Beat label overlay helpers ─────────────────────────────
 
