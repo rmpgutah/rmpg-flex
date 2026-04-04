@@ -84,6 +84,8 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     ssn_last4: row.ssn_last4 ? String(row.ssn_last4) : undefined,
     ssn_full: row.ssn_full ? String(row.ssn_full) : undefined,
     id_image_url: row.id_image_url ? String(row.id_image_url) : undefined,
+    photo_url: row.photo_url ? String(row.photo_url) : undefined,
+    photo: row.photo ? String(row.photo) : undefined,
     id_type: row.id_type ? String(row.id_type) : undefined,
     id_number: row.id_number ? String(row.id_number) : undefined,
     id_state: row.id_state ? String(row.id_state) : undefined,
@@ -465,7 +467,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           >
             <div className="flex items-center gap-3">
               {person.id_image_url ? (
-                <img src={person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-full object-cover border border-rmpg-600" />
+                <img src={(person as any).photo || person.photo_url || person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+              ) : (person as any).photo || person.photo_url ? (
+                <img src={(person as any).photo || person.photo_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
               ) : (
                 <div
                   className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white select-none"
