@@ -1311,8 +1311,9 @@ export interface PdfImage {
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
 /**
- * Convert a data URL image to monochrome black & white (1-bit style).
- * Uses dithering-free threshold for clean document reproduction.
+ * Convert image to high-contrast monochrome B&W for document printing.
+ * Lower threshold = more black (darker faces, bolder text).
+ * Applies contrast enhancement before thresholding for detail retention.
  */
 export async function convertToGrayscale(dataUrl: string): Promise<string> {
   return new Promise((resolve) => {
@@ -1328,7 +1329,9 @@ export async function convertToGrayscale(dataUrl: string): Promise<string> {
       const d = imageData.data;
       for (let i = 0; i < d.length; i += 4) {
         const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-        const bw = lum > 128 ? 255 : 0; // Pure black or white threshold
+        // Contrast boost: stretch range then threshold
+        const enhanced = Math.min(255, Math.max(0, (lum - 80) * 1.8));
+        const bw = enhanced > 100 ? 255 : 0; // Lower threshold = more black
         d[i] = d[i + 1] = d[i + 2] = bw;
       }
       ctx.putImageData(imageData, 0, 0);

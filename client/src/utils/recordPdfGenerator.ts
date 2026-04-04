@@ -1582,7 +1582,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 3. Scars / Marks / Tattoos ────────────────────────────
-  y += 0.5; // ensure gap after Physical Description
+  y += 1; // ensure clear gap after Physical Description section border
   y = addNarrativeSection(doc, 'Scars / Marks / Tattoos', data.scars_marks_tattoos || '', y, prio);
 
   // ── 4. Clothing Description ───────────────────────────────
