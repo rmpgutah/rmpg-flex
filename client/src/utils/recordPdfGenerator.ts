@@ -903,7 +903,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
       y = Math.max(yL, yR); }
     { const rel = data.caller_relationship || '';
-      const yL = addFieldPair(doc, 'Relationship', rel.charAt(0).toUpperCase() + rel.slice(1), lx, y, hfw);
+      const yL = addFieldPair(doc, 'Relationship', rel.toUpperCase(), lx, y, hfw);
       const yR = addFieldPair(doc, 'Caller Address', data.caller_address || '', rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -1135,7 +1135,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const pVals = [
         `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
-        titleCase((p.role || '').replace(/_/g, ' ')).toUpperCase() || '—',
+        (p.role || '').replace(/_/g, ' ').toUpperCase() || '—',
         (p.dob || '—').toUpperCase(),
         [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
         (p.phone || '—').toUpperCase(),
@@ -1183,7 +1183,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '';
       const vVals = [
-        titleCase((v.role || '').replace(/_/g, ' ')).toUpperCase() || '—',
+        (v.role || '').replace(/_/g, ' ').toUpperCase() || '—',
         [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
         (v.color || '—').toUpperCase(),
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
@@ -2942,10 +2942,10 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Citation Information', y); y = sec.contentY;
     const quarterW = ffw / 4;
-    // Row 1: Citation Number (half), Type (quarter), Status (quarter)
-    const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, hfw);
-    const r1b = addFieldPair(doc, 'Type', (data.type || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), rx + quarterW, y, quarterW);
+    // Row 1: Citation Number (2/4), Type (1/4), Status (1/4)
+    const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, quarterW * 2);
+    const r1b = addFieldPair(doc, 'Type', (data.type || '').replace(/_/g, ' ').toUpperCase(), lx + quarterW * 2, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + quarterW * 3, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
     const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);
@@ -2962,7 +2962,7 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     // Row 1: Statute/Code (half), Offense Level (quarter), Fine Amount (quarter)
     const r1a = addFieldPair(doc, 'Statute / Code', data.statute_citation || '', lx, y, hfw);
     const r1b = addFieldPair(doc, 'Offense Level', (data.offense_level || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
-    const r1c = addFieldPair(doc, 'Fine Amount', data.fine_amount != null ? fmtCurrency(data.fine_amount) : '', rx + quarterW, y, quarterW);
+    const r1c = addFieldPair(doc, 'Fine Amount', data.fine_amount != null ? fmtCurrency(data.fine_amount) : 'N/A', rx + quarterW, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Violation Description (full width, conditional)
     if (data.violation_description) {
