@@ -46,8 +46,8 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import EmptyState from '../components/EmptyState';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
-import { downloadRecordPdf } from '../utils/recordPdfGenerator';
-import type { WarrantPdfData } from '../utils/recordPdfGenerator';
+import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
+import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
 import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 
@@ -463,6 +463,10 @@ export default function WarrantsPage() {
   const [priorityWarrants, setPriorityWarrants] = useState<PriorityWarrant[]>([]);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [dashSearch, setDashSearch] = useState('');
+  const [summaryReportOpen, setSummaryReportOpen] = useState(false);
+  const [summaryFrom, setSummaryFrom] = useState('');
+  const [summaryTo, setSummaryTo] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   // ============================================================
   // WARRANTS TAB STATE
@@ -1380,6 +1384,72 @@ export default function WarrantsPage() {
                 <button type="button" onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
                   <X className="w-3.5 h-3.5" />
                 </button>
+              )}
+            </div>
+
+            {/* Export Report */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="toolbar-btn text-[10px]"
+                onClick={() => setSummaryReportOpen(!summaryReportOpen)}
+              >
+                <Download className="w-3 h-3" /> Export Report
+              </button>
+              {summaryReportOpen && (
+                <div className="flex items-center gap-2 bg-surface-sunken border border-surface-border rounded-sm px-2 py-1">
+                  <input
+                    type="date"
+                    className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
+                    value={summaryFrom}
+                    onChange={(e) => setSummaryFrom(e.target.value)}
+                    placeholder="From"
+                  />
+                  <span className="text-[10px] text-rmpg-500">to</span>
+                  <input
+                    type="date"
+                    className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
+                    value={summaryTo}
+                    onChange={(e) => setSummaryTo(e.target.value)}
+                    placeholder="To"
+                  />
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[9px] bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30"
+                    disabled={summaryLoading}
+                    onClick={async () => {
+                      setSummaryLoading(true);
+                      try {
+                        const params = new URLSearchParams();
+                        if (summaryFrom) params.set('from', summaryFrom);
+                        if (summaryTo) params.set('to', summaryTo);
+                        const res = await apiFetch<WarrantSummaryData>(`/warrants/summary-report?${params.toString()}`);
+                        if (!res) throw new Error('No data returned');
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
+                        const branding = await fetchPdfBranding();
+                        setActiveBranding(branding);
+                        await loadPdfAssets();
+                        const pdf = generateWarrantSummaryPdf(res);
+                        const blob = pdf.output('blob');
+                        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `Warrant_Summary_${summaryFrom || 'all'}_to_${summaryTo || 'present'}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        setSummaryReportOpen(false);
+                      } catch (err) {
+                        console.error('Summary report failed:', err);
+                      } finally {
+                        setSummaryLoading(false);
+                      }
+                    }}
+                  >
+                    {summaryLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -2479,6 +2549,55 @@ export default function WarrantsPage() {
                   <button type="button" className="toolbar-btn text-[10px]" onClick={fetchAutoPollStatus}>
                     <RotateCcw className="w-3 h-3" /> Refresh
                   </button>
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[10px] bg-red-900/20 text-red-400 border-red-700/40 hover:bg-red-900/30"
+                    disabled={!autoPollStatus?.flaggedPersons?.length}
+                    onClick={async () => {
+                      if (!autoPollStatus?.flaggedPersons?.length) return;
+                      try {
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets, setGenerationTimestamp } = await import('../utils/pdfGenerator');
+                        const branding = await fetchPdfBranding();
+                        setActiveBranding(branding);
+                        await loadPdfAssets();
+                        const subjects: BoloSubject[] = autoPollStatus.flaggedPersons.map(p => ({
+                          first_name: p.first_name,
+                          last_name: p.last_name,
+                          dob: p.dob,
+                          gender: p.gender,
+                          race: p.race,
+                          height: p.height,
+                          weight: p.weight,
+                          hair_color: p.hair_color,
+                          eye_color: p.eye_color,
+                          address: p.address,
+                          photo_url: p.photo_url,
+                          warrants: p.warrants.map(w => ({
+                            warrant_number: w.warrant_number,
+                            type: w.type,
+                            charge_description: w.charge_description,
+                            offense_level: w.offense_level,
+                            issuing_court: w.issuing_court,
+                            bail_amount: w.bail_amount,
+                          })),
+                        }));
+                        const pdf = generateBoloPdf(subjects);
+                        const blob = pdf.output('blob');
+                        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `BOLO_Packet_${new Date().toISOString().slice(0, 10)}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      } catch (err) {
+                        console.error('BOLO PDF generation failed:', err);
+                      }
+                    }}
+                  >
+                    <Printer className="w-3 h-3" /> Print BOLO
+                  </button>
                   <div className="flex items-center gap-1 ml-2 border-l border-surface-border pl-2">
                     <span className="text-[9px] text-rmpg-500 uppercase tracking-wider mr-1">Sort:</span>
                     {(['severity', 'recent', 'name'] as const).map(s => (
@@ -2672,6 +2791,7 @@ export default function WarrantsPage() {
                                     subject_hair_color: p.hair_color || null,
                                     subject_eye_color: p.eye_color || null,
                                     subject_address: p.address || null,
+                                    subject_photo_url: p.photo_url || undefined,
                                     charge_description: allWarrants[0]?.charge_description || allUtah[0]?.charges || '',
                                     offense_level: allWarrants[0]?.offense_level as any || null,
                                     bail_amount: allWarrants[0]?.bail_amount || null,
