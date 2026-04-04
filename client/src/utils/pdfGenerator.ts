@@ -1329,10 +1329,13 @@ export async function convertToGrayscale(dataUrl: string): Promise<string> {
       const d = imageData.data;
       for (let i = 0; i < d.length; i += 4) {
         const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-        // Three-tone: black / dark gray / white (photocopy with depth)
+        // Six-tone posterize: black → dark → mid-dark → mid → light → white
         let val: number;
-        if (lum < 80) val = 0;          // shadows + dark detail → black
-        else if (lum < 170) val = 90;   // mid-tones → dark gray
+        if (lum < 45) val = 0;           // deep shadows → black
+        else if (lum < 85) val = 50;     // dark detail → very dark gray
+        else if (lum < 125) val = 100;   // mid-shadows → dark gray
+        else if (lum < 170) val = 150;   // mid-tones → medium gray
+        else if (lum < 210) val = 200;   // light areas → light gray
         else val = 255;                  // highlights → white
         d[i] = d[i + 1] = d[i + 2] = val;
       }
