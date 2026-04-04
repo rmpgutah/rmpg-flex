@@ -31,7 +31,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   danger: 'bg-red-900/60 text-red-300 border-red-600/50',
   warning: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   caution: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
-  info: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  info: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -39,7 +39,7 @@ const TYPE_COLORS: Record<string, string> = {
   watch_list: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   sex_offender: 'bg-purple-900/60 text-purple-300 border-purple-600/50',
   gang_member: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
-  probation: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  probation: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   parole: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
   mental_health: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   violent_history: 'bg-red-900/70 text-red-300 border-red-600/50',
@@ -128,7 +128,7 @@ function CdocSearchPanel() {
                   <span className={`inline-block mt-1 text-[9px] px-1.5 py-0.5 font-bold border ${
                     selectedOffender.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                    'bg-blue-900/40 text-blue-400 border-blue-700/40'
+                    'bg-gray-900/40 text-gray-400 border-gray-700/40'
                   }`}>
                     {selectedOffender.status.toUpperCase()}
                   </span>
@@ -341,7 +341,7 @@ export default function OffenderRegistryPage() {
     switch (severity) {
       case 'danger': return <ShieldAlert style={{ width: 14, height: 14 }} className="text-red-400" />;
       case 'warning': return <AlertTriangle style={{ width: 14, height: 14 }} className="text-amber-400" />;
-      default: return <Shield style={{ width: 14, height: 14 }} className="text-blue-400" />;
+      default: return <Shield style={{ width: 14, height: 14 }} className="text-gray-400" />;
     }
   };
 
@@ -383,7 +383,7 @@ export default function OffenderRegistryPage() {
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">PERSONS</div>
-              <div className="text-sm font-bold text-blue-400">{stats.total_persons || 0}</div>
+              <div className="text-sm font-bold text-gray-400">{stats.total_persons || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">DANGER</div>

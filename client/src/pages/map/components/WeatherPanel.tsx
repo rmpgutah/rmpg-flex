@@ -60,7 +60,7 @@ function lightingConfig(lighting: WeatherPanelProps['lighting']) {
     case 'twilight':
       return { Icon: Sunset, label: 'TWILIGHT', color: 'text-amber-400', bg: 'bg-amber-400/10' };
     case 'darkness':
-      return { Icon: Moon, label: 'DARKNESS', color: 'text-blue-400', bg: 'bg-blue-400/10' };
+      return { Icon: Moon, label: 'DARKNESS', color: 'text-gray-400', bg: 'bg-gray-400/10' };
   }
 }
 
@@ -199,7 +199,7 @@ export default function WeatherPanel({
                 {sunriseSunset.sunrise}
               </span>
               <span>
-                <Moon size={10} className="inline mr-1 text-blue-400/60" />
+                <Moon size={10} className="inline mr-1 text-gray-400/60" />
                 {sunriseSunset.sunset}
               </span>
             </div>
@@ -218,7 +218,7 @@ export default function WeatherPanel({
             <div className="flex flex-wrap gap-1.5">
               {/* #44: Hazard badges with rounded-sm for consistency */}
               {weatherHazards.freezing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-gray-300 border border-gray-500/30">
                   <Snowflake size={10} className="animate-[spin_4s_linear_infinite]" />
                   FREEZING
                 </span>
@@ -230,7 +230,7 @@ export default function WeatherPanel({
                 </span>
               )}
               {weatherHazards.rain && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-gray-300 border border-gray-500/30">
                   <CloudRain size={10} />
                   RAIN
                 </span>
@@ -334,13 +334,13 @@ export default function WeatherPanel({
             <div className="flex flex-col gap-1.5">
               {icyRoad && (
                 <div
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[10px] font-semibold text-blue-300"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[10px] font-semibold text-gray-300"
                   style={{
                     background: 'rgba(59,130,246,0.08)',
                     borderLeft: '3px solid #888888',
                   }}
                 >
-                  <Snowflake size={12} className="text-blue-400" />
+                  <Snowflake size={12} className="text-gray-400" />
                   ICY ROADS
                 </div>
               )}

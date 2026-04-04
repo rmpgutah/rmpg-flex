@@ -77,7 +77,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
   function statusLedClass(status: string): string {
     switch (status) {
       case 'issued': return 'led-dot led-green';
-      case 'maintenance': return 'led-dot led-blue';
+      case 'maintenance': return 'led-dot led-gray';
       case 'damaged': return 'led-dot led-amber';
       case 'lost': return 'led-dot led-red';
       case 'returned': return 'led-dot led-off';
@@ -91,7 +91,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
     { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-gray-400', bgClass: 'bg-[#0a0f1a]', border: 'border-gray-700/30', topBorder: 'border-t-blue-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
   ];
 
@@ -164,7 +164,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             {checkoutLog.slice(0, 20).map((log: any) => (
               <div key={log.id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[9px]">
                 <span className="text-rmpg-300">{log.officer_name || '-'}</span>
-                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-blue-400' : 'text-amber-400'}`}>
+                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-gray-400' : 'text-amber-400'}`}>
                   {log.action?.toUpperCase()}
                 </span>
                 <span className="text-rmpg-200">{log.equipment_name}</span>

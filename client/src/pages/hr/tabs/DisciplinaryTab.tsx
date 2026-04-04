@@ -43,7 +43,7 @@ function typeBadgeStyle(type: DisciplinaryType) {
     case 'termination':
       return 'bg-red-900/30 text-red-300 border-red-500/40';
     case 'counseling':
-      return 'bg-blue-900/20 text-blue-400 border-blue-600/30';
+      return 'bg-gray-900/20 text-gray-400 border-gray-600/30';
     default:
       return 'bg-rmpg-800/50 text-rmpg-300 border-rmpg-700/30';
   }
@@ -56,7 +56,7 @@ function statusBadge(status: DisciplinaryStatus) {
     case 'closed':
       return { bg: 'bg-green-900/20 text-green-400 border-green-600/30', label: 'Closed' };
     case 'appealed':
-      return { bg: 'bg-blue-900/20 text-blue-400 border-blue-600/30', label: 'Appealed' };
+      return { bg: 'bg-gray-900/20 text-gray-400 border-gray-600/30', label: 'Appealed' };
     default:
       return { bg: 'bg-rmpg-800 text-rmpg-400', label: status };
   }

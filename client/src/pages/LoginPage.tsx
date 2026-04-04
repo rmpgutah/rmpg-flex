@@ -369,7 +369,7 @@ export default function LoginPage() {
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="drop-shadow-[0_0_15px_rgba(26,90,158,0.25)]"
+              className="drop-shadow-[0_0_15px_rgba(136,136,136,0.25)]"
               style={{
                 height: 'clamp(56px, 14vw, 88px)',
                 width: 'clamp(56px, 14vw, 88px)',
@@ -429,11 +429,11 @@ export default function LoginPage() {
             )}
             {/* Max session duration message */}
             {showSessionExpired && (
-              <div className="mb-3 p-2.5 bg-blue-900/25 border border-blue-700/50 flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="mb-3 p-2.5 bg-gray-900/25 border border-gray-700/50 flex items-start gap-2" role="status" aria-live="polite">
+                <Lock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
-                  <p className="text-[10px] text-blue-300 font-semibold">Session Duration Limit</p>
-                  <p className="text-[9px] text-blue-400/80">Your session reached the maximum duration. Please sign in again.</p>
+                  <p className="text-[10px] text-gray-300 font-semibold">Session Duration Limit</p>
+                  <p className="text-[9px] text-gray-400/80">Your session reached the maximum duration. Please sign in again.</p>
                 </div>
               </div>
             )}

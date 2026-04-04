@@ -656,7 +656,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={() => setRoutePlannerOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
             title="Plan Route"
             aria-label="Plan Route"
           >
@@ -724,7 +724,7 @@ export default function ServePage() {
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#888888]/50 ${
                     statusFilter === f.value
-                      ? 'text-white bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(26,90,158,0.3)]'
+                      ? 'text-white bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(136,136,136,0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -758,7 +758,7 @@ export default function ServePage() {
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Overdue</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" /> {'<'}24h</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {'<'}3d</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> {'<'}7d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500 inline-block" /> {'<'}7d</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> 7d+</span>
               </div>
             )}
@@ -831,7 +831,7 @@ export default function ServePage() {
                   {/* Stats bar */}
                   <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#0d1520] border border-[#1e3048] rounded-[2px]" role="status" aria-label="Route statistics">
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-blue-400" />
+                      <MapPin size={12} className="text-gray-400" />
                       <span className="font-mono tabular-nums text-white">{totalStops}</span> stops
                     </div>
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
@@ -928,7 +928,7 @@ export default function ServePage() {
                   <div className="flex items-center gap-2 pt-2">
                     <button type="button"
                       onClick={() => setRoutePlannerOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                       aria-label="Open Route Planner"
                     >
                       <Route size={12} />
@@ -961,7 +961,7 @@ export default function ServePage() {
                 <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
                 <button type="button"
                   onClick={() => setRoutePlannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                   aria-label="Open Route Planner"
                 >
                   <Route size={12} />
@@ -989,7 +989,7 @@ export default function ServePage() {
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
               <button type="button"
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(26,90,158,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(136,136,136,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
               >
                 <Navigation size={16} />
                 Navigate to Next
@@ -1006,9 +1006,9 @@ export default function ServePage() {
               <StatCard
                 label="Jobs Remaining"
                 value={(stats?.pending ?? 0) + (stats?.in_progress ?? 0)}
-                color="text-blue-400"
-                bg="bg-blue-900/20"
-                border="border-blue-700/40"
+                color="text-gray-400"
+                bg="bg-gray-900/20"
+                border="border-gray-700/40"
               />
               <StatCard
                 label="Served Today"

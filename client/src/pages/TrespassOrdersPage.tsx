@@ -381,10 +381,10 @@ export default function TrespassOrdersPage() {
 
       {/* Feature 19: Bulk Create Panel */}
       {bulkMode && (
-        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs">
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-blue-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
-            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-blue-500 hover:text-blue-300"><X style={{ width: 12, height: 12 }} /></button>
+            <span className="text-gray-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
+            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-gray-500 hover:text-gray-300"><X style={{ width: 12, height: 12 }} /></button>
           </div>
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
@@ -712,7 +712,7 @@ export default function TrespassOrdersPage() {
                 <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(136,136,136,0.3)', borderColor: 'rgba(136,136,136,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>

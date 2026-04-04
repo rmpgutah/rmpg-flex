@@ -94,7 +94,7 @@ export default function PredictionsPanel({
                   </span>
                 )}
                 {lowCount > 0 && (
-                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm bg-blue-900/30 text-blue-400 border border-blue-800/30">
+                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm bg-gray-900/30 text-gray-400 border border-gray-800/30">
                     {lowCount} LOW
                   </span>
                 )}

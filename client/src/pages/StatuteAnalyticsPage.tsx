@@ -176,10 +176,10 @@ export default function StatuteAnalyticsPage() {
 
       {/* Feature 37: Top Charged Panel */}
       {topCharged.length > 0 && (
-        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs flex-shrink-0">
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs flex-shrink-0">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-blue-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
-            <button type="button" onClick={() => setTopCharged([])} className="text-blue-500 hover:text-blue-300 text-[10px]">Close</button>
+            <span className="text-gray-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
+            <button type="button" onClick={() => setTopCharged([])} className="text-gray-500 hover:text-gray-300 text-[10px]">Close</button>
           </div>
           <div className="max-h-40 overflow-y-auto space-y-0.5">
             {topCharged.map((s, i) => (

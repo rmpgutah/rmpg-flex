@@ -34,7 +34,7 @@ interface ServeJobCardProps {
 }
 
 const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
-  pending: { bg: 'bg-blue-500', glow: 'shadow-[0_0_6px_rgba(59,130,246,0.5)]' },
+  pending: { bg: 'bg-gray-500', glow: 'shadow-[0_0_6px_rgba(59,130,246,0.5)]' },
   in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]' },
   served: { bg: 'bg-green-500', glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]' },
   failed: { bg: 'bg-red-500', glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]' },
@@ -45,7 +45,7 @@ const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
 const PRIORITY_STYLES: Record<string, string> = {
   rush: 'bg-red-900/60 text-red-300 border-red-700/50',
   high: 'bg-amber-900/60 text-amber-300 border-amber-700/50',
-  normal: 'bg-blue-900/60 text-blue-300 border-blue-700/50',
+  normal: 'bg-gray-900/60 text-gray-300 border-gray-700/50',
   low: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
 };
 
@@ -216,7 +216,7 @@ export default React.memo(function ServeJobCard({
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Dispatch Link</span>
                 <button type="button"
-                  className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                  className="text-[10px] text-gray-400 hover:text-gray-300 underline"
                   onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
                 >
                   {linkedCall.call_number}
@@ -358,7 +358,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-blue-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-gray-400 hover:bg-gray-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-gray-900/20"
           title="Navigate"
           aria-label={`Navigate to ${job.recipient_name}`}
         >

@@ -125,7 +125,7 @@ function StateBadge({ state, onClickMic }: { state: string; onClickMic: () => vo
     alerting: { label: 'ALERT', bg: 'bg-red-600' },
     listening: { label: 'LISTENING', bg: 'bg-green-600', hint: 'Press V or speak', pulse: true },
     processing: { label: 'PROCESSING', bg: 'bg-yellow-600' },
-    responding: { label: 'RESPONSE', bg: 'bg-blue-600' },
+    responding: { label: 'RESPONSE', bg: 'bg-gray-600' },
   };
 
   const c = config[state];

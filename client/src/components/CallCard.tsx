@@ -450,7 +450,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           domestic: 'bg-red-900/40 text-red-300 border-red-700/50',
           weapons: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
           officer_safety: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50',
-          juvenile: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+          juvenile: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
           mental_health: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
           gang: 'bg-red-900/40 text-red-400 border-red-600/50',
           drugs: 'bg-green-900/40 text-green-300 border-green-700/50',
@@ -533,7 +533,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             <button type="button" onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch" aria-label="Dispatch call">D</button>
           )}
           {call.status === 'dispatched' && (
-            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-blue-900/60 text-blue-300 border border-blue-700/50 hover:bg-blue-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-gray-900/60 text-gray-300 border border-gray-700/50 hover:bg-gray-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
           )}
           {call.status === 'enroute' && (
             <button type="button" onClick={() => onStatusChange(call.id, 'onscene')} className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 hover:bg-purple-800/80 transition-colors" title="On Scene" aria-label="Set on scene">OS</button>

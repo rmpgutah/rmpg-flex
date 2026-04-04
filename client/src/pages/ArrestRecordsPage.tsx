@@ -101,7 +101,7 @@ interface PersonResult {
 // ── County colors ─────────────────────────────────────────
 
 const COUNTY_COLORS: Record<string, string> = {
-  weber:     'from-blue-600/20 to-blue-800/10 border-blue-500/30',
+  weber:     'from-blue-600/20 to-blue-800/10 border-gray-500/30',
   davis:     'from-emerald-600/20 to-emerald-800/10 border-emerald-500/30',
   iron:      'from-red-600/20 to-red-800/10 border-red-500/30',
   salt_lake: 'from-purple-600/20 to-purple-800/10 border-purple-500/30',
@@ -110,12 +110,12 @@ const COUNTY_COLORS: Record<string, string> = {
 };
 
 const COUNTY_ACCENTS: Record<string, string> = {
-  weber: 'text-blue-400', davis: 'text-emerald-400', iron: 'text-red-400',
+  weber: 'text-gray-400', davis: 'text-emerald-400', iron: 'text-red-400',
   salt_lake: 'text-purple-400', summit: 'text-cyan-400', uinta: 'text-amber-400',
 };
 
 const COUNTY_BAR_COLORS: Record<string, string> = {
-  weber: 'bg-blue-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
+  weber: 'bg-gray-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
   salt_lake: 'bg-purple-500', summit: 'bg-cyan-500', uinta: 'bg-amber-500',
 };
 
@@ -159,7 +159,7 @@ function statusBadge(status: string) {
   if (status === 'active') return { bg: 'bg-red-900/40 text-red-400', label: 'IN CUSTODY' };
   if (status === 'released') return { bg: 'bg-green-900/40 text-green-400', label: 'RELEASED' };
   if (status === 'transferred') return { bg: 'bg-amber-900/40 text-amber-400', label: 'TRANSFERRED' };
-  if (status === 'bonded') return { bg: 'bg-blue-900/40 text-blue-400', label: 'BONDED' };
+  if (status === 'bonded') return { bg: 'bg-gray-900/40 text-gray-400', label: 'BONDED' };
   return { bg: 'bg-rmpg-700 text-rmpg-400', label: status?.toUpperCase() || '—' };
 }
 

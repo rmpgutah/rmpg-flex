@@ -660,7 +660,7 @@ export default function DashboardPage() {
         {[
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-gray', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
           { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#555555' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
@@ -769,11 +769,11 @@ export default function DashboardPage() {
                   )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
-                    <div className="flex items-center gap-2 p-2.5 bg-blue-900/20 border border-blue-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-blue-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
                       <div>
-                        <div className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Road Conditions Warning</div>
-                        <div className="text-[10px] text-blue-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
                       </div>
                     </div>
                   )}
@@ -1261,7 +1261,7 @@ export default function DashboardPage() {
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Calls</span>
-                          <span className="text-xs font-bold font-mono text-blue-400 tabular-nums">{s.calls}</span>
+                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Incidents</span>
@@ -1351,10 +1351,10 @@ export default function DashboardPage() {
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-blue-500">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3 h-3 text-blue-400" />
+                    <Phone className="w-3 h-3 text-gray-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-blue-400 tabular-nums">{psoStats.todayCalls}</div>
+                  <div className="text-lg font-bold font-mono text-gray-400 tabular-nums">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">

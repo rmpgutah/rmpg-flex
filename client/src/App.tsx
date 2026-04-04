@@ -90,7 +90,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         <img
           src="/rmpg flex.png"
           alt="RMPG Flex"
-          className="drop-shadow-[0_0_20px_rgba(26,90,158,0.3)]"
+          className="drop-shadow-[0_0_20px_rgba(136,136,136,0.3)]"
           style={{ height: 88, width: 88, objectFit: 'contain' }}
           draggable={false}
         />
@@ -104,7 +104,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
             className="h-full"
             style={{
               width: 48,
-              background: 'linear-gradient(90deg, transparent, #1a5a9e, transparent)',
+              background: 'linear-gradient(90deg, transparent, #888888, transparent)',
               animation: 'scanLine 1.6s ease-in-out infinite',
             }}
           />
@@ -123,7 +123,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
           <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #1e3048)' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
-            style={{ color: 'rgba(26,90,158,0.4)' }}
+            style={{ color: 'rgba(136,136,136,0.4)' }}
           >
             CAD / RMS
           </span>

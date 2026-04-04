@@ -196,7 +196,7 @@ const CITATION_STATUSES: { value: CitationStatus; label: string }[] = [
 ];
 
 const STATUS_BADGE: Record<string, string> = {
-  issued: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
+  issued: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   payment_plan: 'bg-cyan-900/50 text-cyan-300 border-cyan-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
@@ -728,7 +728,7 @@ export default function CitationsPage() {
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-brand-900/30 text-brand-300 border-brand-700/50">
           <Hash size={10} /> {stats.total} Total
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-blue-900/30 text-blue-300 border-blue-700/50">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-gray-900/30 text-gray-300 border-gray-700/50">
           <FileWarning size={10} /> {stats.by_status.issued || 0} Issued
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-green-900/30 text-green-300 border-green-700/50">
@@ -950,7 +950,7 @@ export default function CitationsPage() {
                   <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm border ${
                     c.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                     c.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                    'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                    'bg-gray-900/50 text-gray-400 border-gray-700/50'
                   }`}>{c.offense_level.replace(/_/g, ' ')}</span>
                 </div>
               )}
@@ -1029,9 +1029,9 @@ export default function CitationsPage() {
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-blue-900/50 text-blue-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
+                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-gray-900/50 text-gray-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
-                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-blue-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
+                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-gray-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
                   </div>
                   <span className="text-[10px] text-rmpg-400">{completeness.score}%</span>
                 </div>
@@ -1103,7 +1103,7 @@ export default function CitationsPage() {
                   {(c as any).construction_zone ? <span className="text-[8px] font-bold text-orange-400 bg-orange-900/30 px-1.5 py-0.5 border border-orange-700/30">CONSTRUCTION ZONE</span> : null}
                   {(c as any).accident_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">ACCIDENT RELATED</span> : null}
                   {(c as any).dui_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">DUI RELATED</span> : null}
-                  {(c as any).is_warning ? <span className="text-[8px] font-bold text-blue-400 bg-blue-900/30 px-1.5 py-0.5 border border-blue-700/30">WARNING ONLY</span> : null}
+                  {(c as any).is_warning ? <span className="text-[8px] font-bold text-gray-400 bg-gray-900/30 px-1.5 py-0.5 border border-gray-700/30">WARNING ONLY</span> : null}
                   {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-[#0d1520]/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
                 </div>
               </div>

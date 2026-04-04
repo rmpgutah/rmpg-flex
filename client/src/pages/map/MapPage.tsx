@@ -146,7 +146,7 @@ const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
 const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
   red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
   amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
-  blue: { active: 'bg-blue-900/40 text-blue-400 border border-blue-700/40' },
+  blue: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
   gray: { active: 'bg-[#0d1520]/40 text-gray-400 border border-gray-700/40' },
 };
 
@@ -2120,7 +2120,7 @@ export default function MapPage() {
                   }
                 }
               }}
-              className="ml-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-blue-400 hover:text-white hover:bg-brand-600 transition-colors"
+              className="ml-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-brand-600 transition-colors"
               style={{ borderRadius: 2 }}
             >
               Retry
@@ -2181,11 +2181,11 @@ export default function MapPage() {
               <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 2 }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
-                  1. Go to <span className="text-blue-400">console.cloud.google.com/apis/library</span><br/>
+                  1. Go to <span className="text-gray-400">console.cloud.google.com/apis/library</span><br/>
                   2. Enable <span className="text-amber-400">Maps JavaScript API</span><br/>
                   3. Enable <span className="text-amber-400">Places API (New)</span><br/>
-                  4. Go to <span className="text-blue-400">Billing</span> → ensure billing is active<br/>
-                  5. Go to <span className="text-blue-400">Credentials</span> → check key restrictions<br/>
+                  4. Go to <span className="text-gray-400">Billing</span> → ensure billing is active<br/>
+                  5. Go to <span className="text-gray-400">Credentials</span> → check key restrictions<br/>
                   6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
                   <span className="text-green-400 ml-2">VITE_GOOGLE_MAPS_API_KEY=your_key</span><br/>
                   7. Restart the dev server
@@ -2282,7 +2282,7 @@ export default function MapPage() {
                       className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
                       style={{ minHeight: 44 }}
                     >
-                      <MapPin className="w-4 h-4 text-blue-400 shrink-0" />
+                      <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
                       <span className="truncate">{r.description}</span>
                     </button>
                   ))}
@@ -2314,7 +2314,7 @@ export default function MapPage() {
                   aria-label="Search address"
                   className={`text-[11px] pl-8 pr-8 py-1.5 w-[240px] focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors ${
                     isLightMapStyle(mapStyle)
-                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-blue-400 focus:bg-white/90'
+                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-gray-400 focus:bg-white/90'
                       : 'bg-black/30 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/50'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -2348,7 +2348,7 @@ export default function MapPage() {
                       onClick={() => handleAddressSelect(r.place_id, r.description)}
                       className="w-full text-left px-3 py-2 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 hover:text-white transition-colors border-b border-rmpg-700 last:border-0 flex items-center gap-2"
                     >
-                      <MapPin className="w-3 h-3 text-blue-400 shrink-0" />
+                      <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
                       <span className="truncate">{r.description}</span>
                     </button>
                   ))}
@@ -2481,7 +2481,7 @@ export default function MapPage() {
                     >
                       <SlidersHorizontal className="w-2.5 h-2.5" />
                       <span className="flex-1 text-left">Advanced Mode</span>
-                      {advancedHeatmapEnabled && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
+                      {advancedHeatmapEnabled && <span className="led-dot led-gray" style={{ width: 5, height: 5 }} />}
                     </button>
                   </div>
 
@@ -2752,13 +2752,13 @@ export default function MapPage() {
                       <button
                         onClick={() => setAdvHeatmapShowClusters(!advHeatmapShowClusters)}
                         className={`flex items-center gap-1.5 w-full text-[8px] font-bold transition-colors ${
-                          advHeatmapShowClusters ? 'text-blue-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                          advHeatmapShowClusters ? 'text-gray-400' : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
                         <CircleDot className="w-2.5 h-2.5" />
                         <span className="flex-1 text-left">Hotspot Clusters</span>
                         {advHeatmapShowClusters && (
-                          <span className="text-[7px] font-mono text-blue-400">{advancedHeatmap.clusters?.length ?? 0}</span>
+                          <span className="text-[7px] font-mono text-gray-400">{advancedHeatmap.clusters?.length ?? 0}</span>
                         )}
                       </button>
 
@@ -2816,7 +2816,7 @@ export default function MapPage() {
                                 onClick={() => setAdvHeatmapComparisonDays(d)}
                                 className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                                   advHeatmapComparisonDays === d
-                                    ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                                    ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                                     : 'text-rmpg-500 hover:text-rmpg-300'
                                 }`}
                               >
@@ -2830,7 +2830,7 @@ export default function MapPage() {
                               <span className="text-[6px] text-rmpg-400 font-mono">Current</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              <div className="w-2 h-2 rounded-full bg-gray-500" />
                               <span className="text-[6px] text-rmpg-400 font-mono">Previous</span>
                             </div>
                           </div>
@@ -3381,7 +3381,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowFieldInterviews(!showFieldInterviews)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showFieldInterviews ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showFieldInterviews ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <FileSearch className="w-3 h-3" />
@@ -3398,7 +3398,7 @@ export default function MapPage() {
                       onClick={() => setFiDays(d)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         fiDays === d
-                          ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                          ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                           : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
@@ -3608,12 +3608,12 @@ export default function MapPage() {
               <button
                 onClick={() => setClusteringEnabled(!clusteringEnabled)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  clusteringEnabled ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  clusteringEnabled ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <CircleDot className="w-3 h-3" />
                 <span className="flex-1 text-left">Cluster Calls</span>
-                {clusteringEnabled && clustering.clustered && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
+                {clusteringEnabled && clustering.clustered && <span className="led-dot led-gray" style={{ width: 5, height: 5 }} />}
               </button>
 
               {/* Daylight Overlay */}
@@ -3971,7 +3971,7 @@ export default function MapPage() {
                                           key={unit.id}
                                           className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                             assignUnitIds.includes(unit.id)
-                                              ? 'bg-blue-900/30 text-blue-300'
+                                              ? 'bg-gray-900/30 text-gray-300'
                                               : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                           }`}
                                         >
@@ -4101,7 +4101,7 @@ export default function MapPage() {
                                   <span className="text-emerald-400 font-bold">{stats.assigned}</span> areas
                                 </span>
                                 <span className="text-[7px] text-rmpg-500">
-                                  <span className="text-blue-400 font-bold">{stats.officers}</span> officers
+                                  <span className="text-gray-400 font-bold">{stats.officers}</span> officers
                                 </span>
                                 <span className="text-[7px] text-rmpg-500">
                                   <span className="text-amber-400 font-bold">{stats.units}</span> units
@@ -4332,7 +4332,7 @@ export default function MapPage() {
                 <Crosshair className="w-3 h-3" /> Threat Assessment
               </button>
 
-              <button type="button" onClick={() => setShowUnitMonitoring(!showUnitMonitoring)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showUnitMonitoring ? 'bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+              <button type="button" onClick={() => setShowUnitMonitoring(!showUnitMonitoring)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showUnitMonitoring ? 'bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
                 <Target className="w-3 h-3" /> Unit Monitoring
                 {unitSafety.loneOfficers?.length > 0 && <span className="led-dot led-amber ml-auto animate-led-pulse" />}
               </button>
@@ -4951,8 +4951,8 @@ export default function MapPage() {
               }}
               className={`backdrop-blur-md shadow-xl transition-colors ${
                 isLightMapStyle(mapStyle)
-                  ? 'bg-white/90 border border-blue-300 hover:bg-blue-50'
-                  : 'bg-surface-deep/95 border border-blue-500/50 hover:bg-blue-900/30'
+                  ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
+                  : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
               }`}
               style={isMobile
                 ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -4960,7 +4960,7 @@ export default function MapPage() {
               }
               title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
             >
-              <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
+              <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
             </button>
           )}
           {/* Reset to default view */}
@@ -5071,7 +5071,7 @@ export default function MapPage() {
               <div className="w-px h-3 bg-rmpg-700" />
               {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-400">P1:{callsByPriority['P1']}</span> : null}
               {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-400">P2:{callsByPriority['P2']}</span> : null}
-              {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
+              {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-gray-400">P3:{callsByPriority['P3']}</span> : null}
             </div>
 
             <div className="tab-bar">
@@ -5124,14 +5124,14 @@ export default function MapPage() {
                           />
                           <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                           {unit.gps_source === 'clearpathgps' && (
-                            <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                            <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                           )}
                           <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                         </div>
                         <div className="ml-5 mt-0.5">
                           <span className="text-[9px] text-rmpg-400">{unit.officer_name}</span>
                           {unit.call_number && (
-                            <span className="text-[9px] text-blue-400 ml-2 font-mono">{unit.call_number}</span>
+                            <span className="text-[9px] text-gray-400 ml-2 font-mono">{unit.call_number}</span>
                           )}
                         </div>
                         {unit.current_call_type && (
@@ -5177,7 +5177,7 @@ export default function MapPage() {
                         </div>
                         <div className="ml-8 text-[8px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>
                         {call.property_name && (
-                          <div className="ml-8 text-[8px] text-blue-400 truncate mt-0.5">{call.property_name}</div>
+                          <div className="ml-8 text-[8px] text-gray-400 truncate mt-0.5">{call.property_name}</div>
                         )}
                         {/* Quick actions */}
                         <div className="ml-8 mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -5192,7 +5192,7 @@ export default function MapPage() {
                           {call.status === 'dispatched' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-blue-900/30 text-blue-400 border border-blue-700/40 hover:bg-blue-800/40 transition-colors"
+                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-gray-700/40 hover:bg-gray-800/40 transition-colors"
                             >
                               EN ROUTE
                             </button>
@@ -5431,7 +5431,7 @@ export default function MapPage() {
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                         <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                         {unit.gps_source === 'clearpathgps' && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
                         <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>

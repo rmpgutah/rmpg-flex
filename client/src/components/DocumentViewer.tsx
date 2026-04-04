@@ -132,7 +132,7 @@ export default function DocumentViewer({
           {detectedType === 'pdf' ? (
             <FileText className="w-4 h-4 text-red-400" />
           ) : (
-            <ImageIcon className="w-4 h-4 text-blue-400" />
+            <ImageIcon className="w-4 h-4 text-gray-400" />
           )}
           <span className="text-sm font-bold text-white truncate max-w-[300px]">{title}</span>
           <span className="text-[10px] text-rmpg-400 uppercase font-mono">

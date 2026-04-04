@@ -46,7 +46,7 @@ const PRIORITIES = [
 ] as const;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
-  submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-blue-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
+  submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-gray-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: '#a78bfa', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
   assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-sky-900/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: '#fbbf24', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
@@ -1567,7 +1567,7 @@ export default function ForensicLabPage() {
               {/* Link Search */}
               <div className="panel-beveled bg-surface-sunken p-3">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Link Entity to Case</div>
-                <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300 mb-2">
+                <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300 mb-2">
                   <Info size={10} className="inline mr-1" />
                   Search for persons, incidents, evidence, or cases to link to this forensic case.
                 </div>
@@ -1684,7 +1684,7 @@ export default function ForensicLabPage() {
             isDirty={exhibitForm.description.trim().length > 0}
           >
             <div className="space-y-3">
-              <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+              <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                 <Info size={10} className="inline mr-1" />
                 Each exhibit is auto-assigned a letter (A, B, C...) for chain of custody tracking.
               </div>
@@ -1812,7 +1812,7 @@ export default function ForensicLabPage() {
             isDirty={custodyForm.from_person.trim().length > 0 || custodyForm.to_person.trim().length > 0}
           >
             <div className="space-y-3">
-              <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+              <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                 <Info size={10} className="inline mr-1" />
                 Record every transfer of evidence to maintain a complete chain of custody.
               </div>
@@ -1905,7 +1905,7 @@ export default function ForensicLabPage() {
             <div className="text-[8px] text-rmpg-500 uppercase">Active</div>
           </div>
           <div className="text-center">
-            <div className="text-sm font-bold font-mono text-blue-400">{stats.by_status?.submitted || 0}</div>
+            <div className="text-sm font-bold font-mono text-gray-400">{stats.by_status?.submitted || 0}</div>
             <div className="text-[8px] text-rmpg-500 uppercase">Pending</div>
           </div>
           {!isMobile && (
@@ -1942,7 +1942,7 @@ export default function ForensicLabPage() {
             </div>
             <div className="flex items-center gap-1">
               <span className="text-rmpg-500">Avg Turnaround:</span>
-              <span className="text-blue-400 font-bold font-mono">{stats.overdue > 0 ? 'Behind schedule' : 'On track'}</span>
+              <span className="text-gray-400 font-bold font-mono">{stats.overdue > 0 ? 'Behind schedule' : 'On track'}</span>
             </div>
             {stats.overdue > 0 && (
               <div className="flex items-center gap-1 ml-auto">
@@ -2126,7 +2126,7 @@ export default function ForensicLabPage() {
                   <FileText size={16} className="text-brand-400" />
                   <h3 className="text-sm font-bold text-white">Case Information</h3>
                 </div>
-                <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+                <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                   <Info size={10} className="inline mr-1" />
                   Start by describing the case. A lab case number will be auto-generated (e.g. FL-2026-0001).
                   Choose the type of forensic examination needed and the priority level.
@@ -2230,7 +2230,7 @@ export default function ForensicLabPage() {
                   <Package size={16} className="text-brand-400" />
                   <h3 className="text-sm font-bold text-white">Evidence Intake</h3>
                 </div>
-                <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+                <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                   <Info size={10} className="inline mr-1" />
                   Add each piece of evidence as a separate exhibit. Each will be assigned a letter (A, B, C...).
                   You can skip this step and add exhibits later.

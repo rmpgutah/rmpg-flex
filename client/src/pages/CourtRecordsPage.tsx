@@ -91,7 +91,7 @@ const STATUSES = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  scheduled: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   continued: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border-green-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',

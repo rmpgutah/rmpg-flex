@@ -116,7 +116,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-              <Search className="w-5 h-5 text-blue-400" />
+              <Search className="w-5 h-5 text-gray-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
@@ -247,7 +247,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                         value={edit?.apiKey ?? ''}
                         onChange={(e) => handleApiKeyChange(source.name, e.target.value)}
                         placeholder="Enter API key"
-                        className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 pr-7 font-mono focus:border-blue-500 focus:outline-none"
+                        className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 pr-7 font-mono focus:border-gray-500 focus:outline-none"
                       />
                       <button type="button"
                         onClick={() => setShowKeys(prev => ({ ...prev, [source.name]: !prev[source.name] }))}

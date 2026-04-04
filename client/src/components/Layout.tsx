@@ -843,7 +843,7 @@ export default function Layout() {
           } as React.CSSProperties}
         >
           {/* 1: Blue accent line with subtle glow at top of brand bar */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)', zIndex: 1, boxShadow: '0 1px 4px rgba(26,90,158,0.25)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)', zIndex: 1, boxShadow: '0 1px 4px rgba(136,136,136,0.25)' }} />
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -1244,7 +1244,7 @@ export default function Layout() {
                       height: 42,
                       padding: '2px 4px',
                       background: isActive
-                        ? 'linear-gradient(180deg, rgba(26,90,158,0.45) 0%, rgba(26,90,158,0.20) 100%)'
+                        ? 'linear-gradient(180deg, rgba(136,136,136,0.45) 0%, rgba(136,136,136,0.20) 100%)'
                         : isDropdownOpen
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
@@ -1364,11 +1364,11 @@ export default function Layout() {
                             role="menuitem"
                             style={{
                               color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
+                              background: childActive ? 'rgba(136,136,136,0.15)' : 'transparent',
                             }}
                             onMouseEnter={(e) => {
                               if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(26,90,158,0.2) 0%, rgba(26,90,158,0.1) 100%)';
+                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(136,136,136,0.2) 0%, rgba(136,136,136,0.1) 100%)';
                                 (e.currentTarget as HTMLElement).style.color = '#ffffff';
                               }
                             }}

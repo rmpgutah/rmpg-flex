@@ -25,8 +25,8 @@ interface CallTimelineProps {
  */
 const ACTION_LED_CLASS: Record<string, string> = {
   call_created: 'led-green',
-  dispatched: 'led-blue',
-  unit_dispatched: 'led-blue',
+  dispatched: 'led-gray',
+  unit_dispatched: 'led-gray',
   enroute: 'led-amber',
   onscene: 'led-amber',
   cleared: 'led-green',

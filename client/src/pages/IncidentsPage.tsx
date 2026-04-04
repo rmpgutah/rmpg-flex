@@ -831,9 +831,9 @@ export default function IncidentsPage() {
             <span className="text-amber-400 font-bold">{incidentStats.draft}</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            <div className="w-2 h-2 rounded-full bg-gray-500" />
             <span className="text-rmpg-400">Submitted:</span>
-            <span className="text-blue-400 font-bold">{incidentStats.submitted}</span>
+            <span className="text-gray-400 font-bold">{incidentStats.submitted}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-purple-500" />
@@ -1253,7 +1253,7 @@ export default function IncidentsPage() {
             {inc.domestic_violence && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">DV</span>}
             {inc.felony_in_progress && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Felony IP</span>}
             {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
-            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Mental Health</span>}
+            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">Mental Health</span>}
             {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
             {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
             {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
@@ -1264,11 +1264,11 @@ export default function IncidentsPage() {
             {inc.trespass_issued && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Trespass</span>}
             {inc.vehicle_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Veh Pursuit</span>}
             {inc.foot_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Foot Pursuit</span>}
-            {inc.k9_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">K9</span>}
-            {inc.ems_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">EMS</span>}
+            {inc.k9_requested && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">K9</span>}
+            {inc.ems_requested && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">EMS</span>}
             {inc.fire_requested && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Fire</span>}
-            {inc.le_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">LE Notified</span>}
-            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Supvr</span>}
+            {inc.le_notified && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">LE Notified</span>}
+            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">Supvr</span>}
           </div>
         )}
 
@@ -1665,13 +1665,13 @@ export default function IncidentsPage() {
                         {(offense.offense_level || 'other').toUpperCase()}
                       </span>
                       {offense.attempted_completed === 'attempted' && <span className="text-[8px] text-purple-400 bg-purple-900/30 px-1 py-0.5 rounded-sm border border-purple-700/30">ATTEMPTED</span>}
-                      {offense.counts > 1 && <span className="text-[8px] text-blue-400">×{offense.counts}</span>}
+                      {offense.counts > 1 && <span className="text-[8px] text-gray-400">×{offense.counts}</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                       {offense.statute_number && <span className="font-mono">§{offense.statute_number}</span>}
                       {offense.ucr_code && <span>UCR: {offense.ucr_code}</span>}
                       {offense.suspect_first && <span className="text-red-300">Suspect: {offense.suspect_first} {offense.suspect_last}</span>}
-                      {offense.victim_first && <span className="text-blue-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
+                      {offense.victim_first && <span className="text-gray-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
                       {offense.disposition && <span className="text-green-400">Disp: {offense.disposition}</span>}
                     </div>
                   </div>
@@ -1709,7 +1709,7 @@ export default function IncidentsPage() {
               {detailOfficers.map((officer: any) => (
                 <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase ${
-                    officer.role === 'primary' ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50' :
+                    officer.role === 'primary' ? 'bg-gray-900/60 text-gray-300 border border-gray-700/50' :
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
                     officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
                     'bg-[#141e2b] text-gray-400 border border-gray-700'
@@ -1912,7 +1912,7 @@ export default function IncidentsPage() {
               <div className="flex items-center gap-4 text-[10px] text-rmpg-400 pb-1 border-b border-rmpg-700/50">
                 <span>Total: <strong className="text-white">{detailSupplements.length}</strong></span>
                 <span>Draft: <strong className="text-amber-400">{detailSupplements.filter((s: any) => s.status === 'draft').length}</strong></span>
-                <span>Submitted: <strong className="text-blue-400">{detailSupplements.filter((s: any) => s.status === 'submitted').length}</strong></span>
+                <span>Submitted: <strong className="text-gray-400">{detailSupplements.filter((s: any) => s.status === 'submitted').length}</strong></span>
                 <span>Approved: <strong className="text-green-400">{detailSupplements.filter((s: any) => s.status === 'approved').length}</strong></span>
               </div>
               {detailSupplements.map((sup: any) => {

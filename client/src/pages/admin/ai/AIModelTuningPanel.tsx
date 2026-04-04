@@ -136,7 +136,7 @@ export default function AIModelTuningPanel() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
       </div>
     );
   }
@@ -204,7 +204,7 @@ export default function AIModelTuningPanel() {
                             value={(featureParams[feature] || {})[key] ?? ''}
                             onChange={e => updateFeatureOverride(feature, key, e.target.value)}
                             placeholder="—"
-                            className="w-20 px-2 py-1 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs placeholder-gray-700 focus:outline-none focus:border-blue-500"
+                            className="w-20 px-2 py-1 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs placeholder-gray-700 focus:outline-none focus:border-gray-500"
                           />
                         </td>
                       ))}
@@ -227,15 +227,15 @@ export default function AIModelTuningPanel() {
               <div key={preset.id} className="bg-[#0d1520] border border-[#1a3550] rounded p-3 space-y-2">
                 <p className="text-sm font-medium text-white">{preset.name}</p>
                 <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500">
-                  <span>Temp: <span className="text-blue-400 font-mono">{preset.temperature}</span></span>
-                  <span>Tokens: <span className="text-blue-400 font-mono">{preset.maxTokens}</span></span>
-                  <span>Top P: <span className="text-blue-400 font-mono">{preset.topP}</span></span>
-                  <span>Repeat: <span className="text-blue-400 font-mono">{preset.repeatPenalty}</span></span>
+                  <span>Temp: <span className="text-gray-400 font-mono">{preset.temperature}</span></span>
+                  <span>Tokens: <span className="text-gray-400 font-mono">{preset.maxTokens}</span></span>
+                  <span>Top P: <span className="text-gray-400 font-mono">{preset.topP}</span></span>
+                  <span>Repeat: <span className="text-gray-400 font-mono">{preset.repeatPenalty}</span></span>
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => handleApplyPreset(preset)}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600/30 transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-gray-600/20 text-gray-400 rounded hover:bg-gray-600/30 transition-colors"
                   >
                     <Check className="w-3 h-3" /> Apply
                   </button>
@@ -276,7 +276,7 @@ export default function AIModelTuningPanel() {
             value={newPresetName}
             onChange={e => setNewPresetName(e.target.value)}
             placeholder="Preset name..."
-            className="flex-1 px-3 py-1.5 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500"
+            className="flex-1 px-3 py-1.5 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
           />
           <button
             onClick={handleSavePreset}
@@ -293,7 +293,7 @@ export default function AIModelTuningPanel() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Parameters
@@ -311,7 +311,7 @@ function Slider({ label, description, value, min, max, step, onChange }: {
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
         <label className="text-gray-300">{label}</label>
-        <span className="text-blue-400 font-mono">{value}</span>
+        <span className="text-gray-400 font-mono">{value}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}

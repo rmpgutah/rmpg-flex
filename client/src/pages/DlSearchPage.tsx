@@ -297,7 +297,7 @@ export default function DlSearchPage() {
     if (src === 'MICROBILT_API' || src === 'MICROBILT_DL') {
       return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50 inline-flex items-center gap-0.5"><Wifi className="w-2.5 h-2.5" />API</span>;
     }
-    return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>;
+    return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>;
   };
 
   const statusBadge = (status: string) => {

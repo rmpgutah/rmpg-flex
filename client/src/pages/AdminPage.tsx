@@ -743,7 +743,7 @@ export default function AdminPage() {
                 style={{
                   color: isActive ? '#ffffff' : '#888888',
                   background: isActive ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
+                  border: isActive ? '1px solid rgba(136,136,136,0.4)' : '1px solid transparent',
                   borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                 }}
               >
@@ -789,7 +789,7 @@ export default function AdminPage() {
                       id={`admin-tab-${tab.id}`}
                       aria-controls={`admin-tabpanel-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(26,90,158,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(136,136,136,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                       style={{
                         color: isActive ? '#ffffff' : '#888888',
                         background: isActive ? 'rgba(136, 136, 136, 0.14)' : undefined,

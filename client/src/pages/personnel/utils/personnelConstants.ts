@@ -71,19 +71,19 @@ export const ROLE_COLORS: Record<string, string> = {
   manager: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   supervisor: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   officer: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
-  dispatcher: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  dispatcher: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
 };
 
 export const ACTION_COLORS: Record<string, string> = {
   clock_in: 'text-green-400',
   clock_out: 'text-amber-400',
-  user_login: 'text-blue-400',
+  user_login: 'text-gray-400',
   user_logout: 'text-rmpg-400',
   incident_created: 'text-brand-400',
   incident_submitted: 'text-purple-400',
   incident_approved: 'text-green-400',
   call_created: 'text-brand-400',
-  call_dispatched: 'text-blue-400',
+  call_dispatched: 'text-gray-400',
   call_onscene: 'text-amber-400',
   call_cleared: 'text-green-400',
   note_added: 'text-rmpg-300',
@@ -95,7 +95,7 @@ export const TRAINING_CATEGORY_COLORS: Record<string, string> = {
   defensive_tactics: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   first_aid: 'bg-green-900/50 text-green-400 border border-green-700/50',
   legal: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  communication: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  communication: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   driving: 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50',
   technology: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
   leadership: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
@@ -106,7 +106,7 @@ export const TRAINING_CATEGORY_COLORS: Record<string, string> = {
 export const DEPLOYMENT_STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-900/50 text-green-400 border border-green-700/50',
   completed: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
-  scheduled: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  scheduled: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   cancelled: 'bg-red-900/50 text-red-400 border border-red-700/50',
 };
 
@@ -116,7 +116,7 @@ export const STATUS_LED: Record<string, string> = {
   clocked_in: 'led-dot led-green',
   on_break: 'led-dot led-amber',
   clocked_out: 'led-dot led-off',
-  edited: 'led-dot led-blue',
+  edited: 'led-dot led-gray',
 };
 
 export const EQUIPMENT_STATUS_COLORS: Record<string, string> = {
@@ -125,7 +125,7 @@ export const EQUIPMENT_STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-900/50 text-red-400 border border-red-700/50',
   damaged: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   retired: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600',
-  maintenance: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  maintenance: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
 };
 
 export const EQUIPMENT_CONDITION_COLORS: Record<string, string> = {
@@ -139,7 +139,7 @@ export const EQUIPMENT_CONDITION_COLORS: Record<string, string> = {
 
 export const CAMERA_STATUS_COLORS: Record<string, string> = {
   available: 'bg-green-900/50 text-green-400 border border-green-700/50',
-  assigned: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  assigned: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   maintenance: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   retired: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600',
   lost: 'bg-red-900/50 text-red-400 border border-red-700/50',
@@ -158,7 +158,7 @@ export const DASHCAM_EVENT_COLORS: Record<string, string> = {
   impact: 'bg-red-900/60 text-red-300 border border-red-600/50',
   hard_accel: 'bg-orange-900/50 text-orange-400 border border-orange-700/50',
   hard_turn: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  camera_triggered: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  camera_triggered: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   video_recorded: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
 };
 

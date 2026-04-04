@@ -321,7 +321,7 @@ export default function AdminGodModeTab() {
       {/* System Overview */}
       {systemOverview && (
         <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-          <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Activity size={14} /> System Overview</h3>
+          <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Activity size={14} /> System Overview</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
             <StatBox label="Uptime" value={systemOverview.server.uptime} />
             <StatBox label="Node" value={systemOverview.server.node_version} />
@@ -344,7 +344,7 @@ export default function AdminGodModeTab() {
       {/* Database Maintenance */}
       {dbStats && (
         <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-          <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Database size={14} /> Database Maintenance</h3>
+          <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Database size={14} /> Database Maintenance</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
             <StatBox label="DB Size" value={`${dbStats.database_size_mb} MB`} />
             <StatBox label="Reclaimable" value={`${dbStats.freelist_mb} MB (${dbStats.reclaimable_percent}%)`} />
@@ -372,7 +372,7 @@ export default function AdminGodModeTab() {
 
       {/* Backups */}
       <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Archive size={14} /> Database Backups</h3>
+        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Archive size={14} /> Database Backups</h3>
         {backups.length === 0 ? (
           <div className="text-[11px] text-gray-500 italic">No backups found</div>
         ) : (
@@ -413,7 +413,7 @@ export default function AdminGodModeTab() {
 
       {/* Notification Broadcast */}
       <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Bell size={14} /> Broadcast Notification</h3>
+        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Bell size={14} /> Broadcast Notification</h3>
         <div className="space-y-2">
           <input
             type="text"
@@ -444,7 +444,7 @@ export default function AdminGodModeTab() {
             ))}
             <span className="text-[9px] text-gray-600">(none = all users)</span>
           </div>
-          <button onClick={handleBroadcast} disabled={!broadcastTitle.trim() || !broadcastMessage.trim()} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+          <button onClick={handleBroadcast} disabled={!broadcastTitle.trim() || !broadcastMessage.trim()} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
             <Bell size={12} /> Send Broadcast
           </button>
         </div>
@@ -485,7 +485,7 @@ export default function AdminGodModeTab() {
       {/* User Presence */}
       {userPresence && (
         <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-          <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Users size={14} /> User Presence</h3>
+          <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Users size={14} /> User Presence</h3>
           <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="bg-[#0d1520] px-2 py-1.5 rounded-sm text-center">
               <div className="text-[9px] text-gray-500 uppercase">Online</div>
@@ -517,7 +517,7 @@ export default function AdminGodModeTab() {
 
       {/* WebSocket Clients */}
       <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Radio size={14} /> WebSocket Clients</h3>
+        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Radio size={14} /> WebSocket Clients</h3>
         {wsClients.length === 0 ? (
           <div className="text-[11px] text-gray-500 italic">No connected clients</div>
         ) : (
@@ -685,7 +685,7 @@ export default function AdminGodModeTab() {
 
       {/* Merge Person Records */}
       <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Merge size={14} /> Merge Person Records</h3>
+        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Merge size={14} /> Merge Person Records</h3>
         <p className="text-[9px] text-gray-500 mb-2">Merge duplicate person records. The "merge" record will be deleted and all associated records reassigned to the "keep" record.</p>
         <div className="flex items-center gap-2">
           <div className="flex-1">
@@ -708,7 +708,7 @@ export default function AdminGodModeTab() {
               className="w-full bg-[#0d1520] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
             />
           </div>
-          <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+          <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
             <Merge size={12} /> Merge
           </button>
         </div>
@@ -716,16 +716,16 @@ export default function AdminGodModeTab() {
 
       {/* Full System Export */}
       <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Download size={14} /> Full System Export</h3>
+        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Download size={14} /> Full System Export</h3>
         <p className="text-[9px] text-gray-500 mb-2">Download a complete JSON export of all system data (users, calls, reports, persons, vehicles, etc.).</p>
-        <button onClick={handleFullExport} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+        <button onClick={handleFullExport} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
           <Download size={12} /> Download Full Export
         </button>
       </div>
 
       {/* Live Activity Feed */}
       <div className="bg-[#141e2b] border border-[#1a2636] rounded-sm p-3">
-        <h3 className="text-xs font-bold text-blue-400 uppercase mb-2 flex items-center gap-1.5"><Clock size={14} /> Live Activity Feed</h3>
+        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Clock size={14} /> Live Activity Feed</h3>
         {activityFeed.length === 0 ? (
           <div className="text-[11px] text-gray-500 italic">No recent activity</div>
         ) : (
@@ -735,7 +735,7 @@ export default function AdminGodModeTab() {
                 <span className="text-gray-600 font-mono whitespace-nowrap min-w-[60px]">
                   {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—'}
                 </span>
-                <span className="text-blue-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
+                <span className="text-gray-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
                 <span className="text-yellow-400 min-w-[60px]">{a.action || '—'}</span>
                 <span className="text-gray-500">{a.entity_type || ''}</span>
                 <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : JSON.stringify(a.details).slice(0, 80)) : ''}</span>
@@ -759,7 +759,7 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
 
 function ActionButton({ icon: Icon, label, onClick, color }: { icon: any; label: string; onClick: () => void; color: string }) {
   const colorMap: Record<string, string> = {
-    blue: 'bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 border-blue-700/30',
+    blue: 'bg-gray-900/40 hover:bg-gray-800/60 text-gray-300 border-gray-700/30',
     green: 'bg-green-900/40 hover:bg-green-800/60 text-green-300 border-green-700/30',
     red: 'bg-red-900/40 hover:bg-red-800/60 text-red-300 border-red-700/30',
     yellow: 'bg-yellow-900/40 hover:bg-yellow-800/60 text-yellow-300 border-yellow-700/30',

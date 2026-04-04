@@ -147,7 +147,7 @@ export default function DashCameraTab({
   const SUMMARY_CARDS = [
     { label: 'Devices', value: stats.totalDevices, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
     { label: 'Active', value: stats.activeDevices, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Events', value: stats.totalEvents, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
+    { label: 'Events', value: stats.totalEvents, color: 'text-gray-400', bgClass: 'bg-[#0a0f1a]', border: 'border-gray-700/30', topBorder: 'border-t-blue-500' },
     { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
     { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-[#140a1a]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },

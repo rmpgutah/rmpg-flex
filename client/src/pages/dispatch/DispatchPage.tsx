@@ -2345,7 +2345,7 @@ export default function DispatchPage() {
         <div className="flex flex-col items-center gap-4">
           <div className="relative w-10 h-10 flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-[#888888] animate-spin" />
-            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(26,90,158,0.25)' }} />
+            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(136,136,136,0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
@@ -3317,7 +3317,7 @@ export default function DispatchPage() {
                   </span>
                 )}
                 <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
-                <span className="text-rmpg-400">Pending: <strong className="text-blue-400">{pendingCount}</strong></span>
+                <span className="text-rmpg-400">Pending: <strong className="text-gray-400">{pendingCount}</strong></span>
                 <span className="text-rmpg-400">Active: <strong className="text-green-400">{tabCounts.active}</strong></span>
                 {/* Stacked calls indicator */}
                 {(() => {
@@ -3911,7 +3911,7 @@ export default function DispatchPage() {
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
                         color: isActive ? '#999999' : '#666666',
-                        background: isActive ? 'rgba(26,90,158,0.1)' : 'transparent',
+                        background: isActive ? 'rgba(136,136,136,0.1)' : 'transparent',
                         borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                       }}
                       onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
@@ -4310,7 +4310,7 @@ export default function DispatchPage() {
                       {/* Inline ETA from route */}
                       {routeInfo && (
                         <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', boxShadow: '0 0 8px rgba(59,130,246,0.06)' }}>
-                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400">
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-gray-400">
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
                           <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
@@ -5205,7 +5205,7 @@ export default function DispatchPage() {
                                 </span>
                                 <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                                  : visit.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
+                                  : visit.status === 'closed' ? 'bg-gray-900/40 border border-gray-700/50 text-gray-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                                   : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
                                 }`}>

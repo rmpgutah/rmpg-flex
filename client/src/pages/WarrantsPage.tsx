@@ -273,7 +273,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   arrest: 'bg-red-900/40 text-red-300 border-red-700/50',
-  search: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  search: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
   bench: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
   civil: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -1370,7 +1370,7 @@ export default function WarrantsPage() {
                                 <span className="text-green-400 font-mono font-bold">{formatCurrency(pw.bail_amount)}</span>
                               )}
                               {pw.source && (
-                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded-sm bg-blue-900/30 text-blue-300 border border-blue-700/30">
+                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded-sm bg-gray-900/30 text-gray-300 border border-gray-700/30">
                                   {pw.source}
                                 </span>
                               )}
@@ -2475,12 +2475,12 @@ export default function WarrantsPage() {
                         <span className="font-mono text-xs text-rmpg-200 font-bold">{run.run_id}</span>
                         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${
                           run.status === 'completed' ? 'bg-green-900/50 text-green-400 border-green-700/50'
-                            : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                            : run.status === 'running' ? 'bg-gray-900/50 text-gray-400 border-gray-700/50'
                             : 'bg-red-900/50 text-red-400 border-red-700/50'
                         }`}>
                           {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />}
                           <span className={`led-dot ${
-                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-blue animate-led-pulse' : 'led-red'
+                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-gray animate-led-pulse' : 'led-red'
                           }`} />
                           {run.status.toUpperCase()}
                         </span>
@@ -2920,7 +2920,7 @@ export default function WarrantsPage() {
                 </span>
                 <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border flex-shrink-0 ${
                   utahDetailWarrant._source === 'utah' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                  utahDetailWarrant._source === 'local' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50' :
+                  utahDetailWarrant._source === 'local' ? 'bg-gray-900/50 text-gray-400 border-gray-700/50' :
                   'bg-amber-900/50 text-amber-400 border-amber-700/50'
                 }`}>
                   {utahDetailWarrant._source === 'utah' ? 'UTAH STATE' : utahDetailWarrant._source === 'local' ? 'LOCAL' : 'SCRAPED'}

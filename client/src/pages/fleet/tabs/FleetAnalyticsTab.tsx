@@ -1110,7 +1110,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               const strokeDash = (v.health_score / 100) * circumference;
               const badgeColors: Record<string, string> = {
                 Excellent: 'text-green-400 bg-green-900/20 border-green-800/40',
-                Good: 'text-blue-400 bg-blue-900/20 border-blue-800/40',
+                Good: 'text-gray-400 bg-gray-900/20 border-gray-800/40',
                 Fair: 'text-amber-400 bg-amber-900/20 border-amber-800/40',
                 Poor: 'text-orange-400 bg-orange-900/20 border-orange-800/40',
                 Critical: 'text-red-400 bg-red-900/20 border-red-800/40',
@@ -1198,7 +1198,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   const urgencyColors: Record<string, { dot: string; text: string }> = {
                     overdue: { dot: '#ef4444', text: 'text-red-400' },
                     critical: { dot: '#f59e0b', text: 'text-amber-400' },
-                    upcoming: { dot: '#888888', text: 'text-blue-400' },
+                    upcoming: { dot: '#888888', text: 'text-gray-400' },
                     ok: { dot: '#22c55e', text: 'text-green-400' },
                   };
                   const uc = urgencyColors[m.urgency] || urgencyColors.ok;
@@ -1312,7 +1312,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {serviceAlerts.slice(0, 8).map((a: any) => (
-              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-blue-900/20 border-blue-800/40 text-blue-400'}`}>
+              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-gray-900/20 border-gray-800/40 text-gray-400'}`}>
                 <span className="font-mono font-bold">{a.vehicle_number}</span>
                 <span>{(a.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                 <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>

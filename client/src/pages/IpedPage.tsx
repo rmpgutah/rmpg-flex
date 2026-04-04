@@ -72,7 +72,7 @@ interface StatusStats {
 // ── Status Badge Colors ─────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
-  queued:    'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  queued:    'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   running:   'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
   failed:    'bg-red-900/50 text-red-400 border border-red-700/50',
@@ -395,7 +395,7 @@ export default function IpedPage() {
           <StatCard label="Running" value={stats.runningJobs} icon={Activity} color="text-amber-400" pulse={stats.runningJobs > 0} />
           <StatCard label="Completed" value={stats.completedJobs} icon={CheckCircle} color="text-green-400" />
           <StatCard label="Failed" value={stats.failedJobs} icon={AlertTriangle} color="text-red-400" />
-          <StatCard label="Total Hashes" value={stats.totalHashes} icon={Hash} color="text-blue-400" />
+          <StatCard label="Total Hashes" value={stats.totalHashes} icon={Hash} color="text-gray-400" />
           <StatCard label="Flagged" value={stats.flaggedHashes} icon={Shield} color="text-red-400" />
         </div>
 

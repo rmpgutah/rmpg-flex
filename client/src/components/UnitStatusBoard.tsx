@@ -28,7 +28,7 @@ interface UnitStatusBoardProps {
 const STATUS_LED_CLASSES: Record<UnitStatus, string> = {
   available: 'led-dot led-green',
   dispatched: 'led-dot led-amber',
-  enroute: 'led-dot led-blue',
+  enroute: 'led-dot led-gray',
   onscene: 'led-dot led-purple',
   busy: 'led-dot led-red animate-led-blink',
   off_duty: 'led-dot led-off',

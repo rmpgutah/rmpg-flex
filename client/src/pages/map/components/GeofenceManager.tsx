@@ -163,7 +163,7 @@ export default function GeofenceManager({
         <button type="button"
           onClick={onDraw}
           className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center hover:shadow-md transition-all duration-150 active:scale-[0.97] ${
-            drawingMode ? 'toolbar-btn-primary ring-1 ring-blue-400/40' : ''
+            drawingMode ? 'toolbar-btn-primary ring-1 ring-gray-400/40' : ''
           }`}
           aria-label={drawingMode ? 'Stop drawing' : 'Draw geofence'}
           title={drawingMode ? 'Drawing mode active — click map to add vertices, double-click to finish' : 'Draw a new geofence zone'}
@@ -268,7 +268,7 @@ export default function GeofenceManager({
                       <span className="text-amber-500">enter alert</span>
                     ) : null}
                     {fence.alert_on_exit ? (
-                      <span className="text-blue-400">exit alert</span>
+                      <span className="text-gray-400">exit alert</span>
                     ) : null}
                   </div>
 
@@ -287,7 +287,7 @@ export default function GeofenceManager({
                           style={{ background: '#0a0a0a' }}
                         >
                           <span className="text-rmpg-300">{a.unitCallSign}</span>
-                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-blue-400'}>
+                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-gray-400'}>
                             {a.eventType}
                           </span>
                           <span className="text-rmpg-600">{timeAgo(a.timestamp)}</span>
@@ -311,7 +311,7 @@ export default function GeofenceManager({
                     {onNavigate && centroid && (
                       <button type="button"
                         onClick={() => onNavigate(centroid.lat, centroid.lng)}
-                        className="toolbar-btn p-1 text-blue-400 hover:text-blue-300"
+                        className="toolbar-btn p-1 text-gray-400 hover:text-gray-300"
                         title="Navigate to zone"
                       >
                         <Navigation size={12} />

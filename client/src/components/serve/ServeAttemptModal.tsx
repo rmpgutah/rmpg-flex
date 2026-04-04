@@ -354,7 +354,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(1)}
                 disabled={gps.loading}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(136,136,136,0.2)]"
               >
                 Confirm Location
               </button>
@@ -430,7 +430,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(2)}
                 disabled={!attemptType || (attemptType === 'failed' && !failedReason)}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(136,136,136,0.2)]"
               >
                 Next
               </button>
@@ -602,7 +602,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(3)}
                 disabled={attemptType === 'substitute' && !personServedName.trim()}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(136,136,136,0.2)]"
               >
                 Next
               </button>

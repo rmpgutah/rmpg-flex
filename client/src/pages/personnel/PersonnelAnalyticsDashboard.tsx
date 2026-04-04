@@ -333,7 +333,7 @@ function CertWarningsPanel() {
         <div className="text-center p-1 bg-red-900/20 rounded"><span className="text-xs font-bold text-red-400">{data.summary.expired}</span><div className="text-[7px] text-rmpg-500">Expired</div></div>
         <div className="text-center p-1 bg-red-900/10 rounded"><span className="text-xs font-bold text-red-300">{data.summary.within_30}</span><div className="text-[7px] text-rmpg-500">30d</div></div>
         <div className="text-center p-1 bg-amber-900/10 rounded"><span className="text-xs font-bold text-amber-400">{data.summary.within_60}</span><div className="text-[7px] text-rmpg-500">60d</div></div>
-        <div className="text-center p-1 bg-blue-900/10 rounded"><span className="text-xs font-bold text-blue-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
+        <div className="text-center p-1 bg-gray-900/10 rounded"><span className="text-xs font-bold text-gray-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
       </div>
       <div className="space-y-0.5 max-h-[100px] overflow-y-auto">
         {data.warnings.slice(0, 8).map((w: any) => (

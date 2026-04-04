@@ -176,12 +176,12 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               {court.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                    <Gavel className="w-3.5 h-3.5 text-blue-400" />
+                    <Gavel className="w-3.5 h-3.5 text-gray-400" />
                     Court / Public Records ({court.length})
                   </div>
                   <div className="space-y-1.5">
                     {court.map((r, i) => (
-                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-blue-500/50">
+                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-gray-500/50">
                         <div className="text-[11px] font-medium text-rmpg-100">{r.offense || 'Court Record'}</div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.offense_date && <div>Filed: <span className="text-rmpg-300">{r.offense_date}</span></div>}

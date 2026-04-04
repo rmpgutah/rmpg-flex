@@ -435,7 +435,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Access Instructions (conditional) ── */}
         {selectedProperty.access_instructions && (
           <CollapsibleSection title="Access Instructions" icon={MapPin}>
-            <p className="text-xs text-blue-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+            <p className="text-xs text-gray-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
           </CollapsibleSection>
         )}
 

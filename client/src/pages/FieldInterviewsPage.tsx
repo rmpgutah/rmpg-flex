@@ -53,7 +53,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const REASON_COLORS: Record<string, string> = {
   suspicious_activity: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  traffic_stop: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  traffic_stop: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   trespass: 'bg-red-900/50 text-red-400 border-red-700/50',
   welfare_check: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   investigation: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
@@ -650,7 +650,7 @@ export default function FieldInterviewsPage() {
 
               {/* Actions */}
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(136,136,136,0.3)', borderColor: 'rgba(136,136,136,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>

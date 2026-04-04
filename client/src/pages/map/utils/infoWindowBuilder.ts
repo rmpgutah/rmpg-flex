@@ -76,7 +76,7 @@ function routeButton(unitCallSign: string, callNumber: string, uLat: number, uLn
 
 function findClosestButton(callId: string): string {
   return `<button data-find-closest="${escapeHtml(callId)}"
-    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(26,90,158,0.3);">
+    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(136,136,136,0.3);">
     &#9737; FIND CLOSEST UNIT
   </button>`;
 }

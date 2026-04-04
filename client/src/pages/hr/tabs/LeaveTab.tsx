@@ -450,7 +450,7 @@ export default function LeaveTab() {
       {balances.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <CalendarDays size={14} className="text-blue-400" />
+            <CalendarDays size={14} className="text-gray-400" />
             Team Balances ({new Date().getFullYear()})
           </h3>
           <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto">

@@ -48,7 +48,7 @@ function severityClasses(severity: AlertSeverity): string {
     case 'moderate':
       return 'bg-amber-900/80 border-amber-500/50 text-amber-100 animate-pulse';
     case 'minor':
-      return 'bg-blue-900/80 border-blue-500/50 text-blue-100';
+      return 'bg-gray-900/80 border-gray-500/50 text-gray-100';
   }
 }
 

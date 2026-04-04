@@ -116,8 +116,8 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Calendar className="w-3.5 h-3.5 mx-auto text-blue-400 mb-1" />
-          <div className="text-[10px] font-bold font-mono text-blue-400">{formatMilitary(detail.last_service_date)}</div>
+          <Calendar className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
+          <div className="text-[10px] font-bold font-mono text-gray-400">{formatMilitary(detail.last_service_date)}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Service</div>
         </div>
         <div className={`panel-beveled p-2.5 text-center ${
@@ -437,7 +437,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
             <div className="space-y-2">
               {maintenance.map((m) => {
                 const typeColors: Record<string, string> = {
-                  oil_change: 'bg-blue-500', tire_rotation: 'bg-cyan-500',
+                  oil_change: 'bg-gray-500', tire_rotation: 'bg-cyan-500',
                   brake_service: 'bg-red-500', inspection: 'bg-green-500',
                   repair: 'bg-amber-500', other: 'bg-rmpg-500',
                 };

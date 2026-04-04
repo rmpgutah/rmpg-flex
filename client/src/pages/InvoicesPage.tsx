@@ -130,7 +130,7 @@ const STATUSES: { value: InvoiceStatus | ''; label: string }[] = [
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  sent: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
+  sent: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -159,7 +159,7 @@ const PAYMENT_METHODS = [
 ];
 
 const PAYMENT_METHOD_COLORS: Record<string, string> = {
-  check: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
+  check: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   ach: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
   wire: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
   credit_card: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
@@ -476,7 +476,7 @@ export default function InvoicesPage() {
     const actions: { label: string; status: string; icon: React.ElementType; cls: string }[] = [];
     const s = inv.status;
     if (s === 'draft') {
-      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-blue-600 hover:bg-blue-500' });
+      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-gray-600 hover:bg-gray-500' });
       actions.push({ label: 'Void', status: 'void', icon: Ban, cls: 'bg-red-900/60 hover:bg-red-800/60' });
     } else if (s === 'sent' || s === 'overdue') {
       actions.push({ label: 'Mark Paid', status: 'paid', icon: Check, cls: 'bg-green-700 hover:bg-green-600' });

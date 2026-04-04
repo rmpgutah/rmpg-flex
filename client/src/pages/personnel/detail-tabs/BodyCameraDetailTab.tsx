@@ -76,7 +76,7 @@ export default function BodyCameraDetailTab({
 
   const ledClass = (status: string) => {
     switch (status) {
-      case 'assigned': return 'led-dot led-blue';
+      case 'assigned': return 'led-dot led-gray';
       case 'available': return 'led-dot led-green';
       case 'maintenance': return 'led-dot led-amber';
       case 'lost': return 'led-dot led-red';
@@ -104,7 +104,7 @@ export default function BodyCameraDetailTab({
       {/* Camera Status Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500">
-          <p className="text-lg font-bold text-blue-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
+          <p className="text-lg font-bold text-gray-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
           <p className="field-label">Assigned</p>
         </div>
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">

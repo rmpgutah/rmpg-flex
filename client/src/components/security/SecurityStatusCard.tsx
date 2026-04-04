@@ -69,7 +69,7 @@ export default function SecurityStatusCard() {
       icon: <Monitor className="w-3.5 h-3.5" />,
       label: 'Trusted Devices',
       value: `${status.trustedDevices} device${status.trustedDevices !== 1 ? 's' : ''}`,
-      led: status.trustedDevices > 0 ? 'led-blue' : 'led-off',
+      led: status.trustedDevices > 0 ? 'led-gray' : 'led-off',
     },
     {
       icon: <Clock className="w-3.5 h-3.5" />,

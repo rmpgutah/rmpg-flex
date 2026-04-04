@@ -109,8 +109,8 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Active</p>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500">
-          <p className="text-lg font-bold font-mono text-blue-400">{scheduledCount}</p>
-          <p className="text-[8px] uppercase text-blue-400/70 font-bold tracking-wider">Scheduled</p>
+          <p className="text-lg font-bold font-mono text-gray-400">{scheduledCount}</p>
+          <p className="text-[8px] uppercase text-gray-400/70 font-bold tracking-wider">Scheduled</p>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500">
           <p className="text-lg font-bold font-mono text-amber-400">{unassignedCount}</p>

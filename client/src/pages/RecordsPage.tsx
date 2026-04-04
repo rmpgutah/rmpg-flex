@@ -453,7 +453,7 @@ export default function RecordsPage() {
           <span className="text-white font-bold">{persons.length}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Car className="w-2.5 h-2.5 text-blue-400" />
+          <Car className="w-2.5 h-2.5 text-gray-400" />
           <span className="text-rmpg-400">V:</span>
           <span className="text-white font-bold">{vehicles.length}</span>
         </div>

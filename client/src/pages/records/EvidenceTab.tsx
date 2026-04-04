@@ -543,7 +543,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
             </span>
           )}
           {selectedEvidence.photo_taken && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">PHOTO ON FILE</span>
+            <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">PHOTO ON FILE</span>
           )}
         </div>
       </div>
@@ -626,7 +626,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                 {evidenceCustody.map((entry: CustodyEntry, idx: number) => {
                   const actionColors: Record<string, string> = {
                     collected: 'bg-green-500',
-                    transferred: 'bg-blue-500',
+                    transferred: 'bg-gray-500',
                     checked_out: 'bg-amber-500',
                     returned: 'bg-cyan-500',
                     released: 'bg-purple-500',

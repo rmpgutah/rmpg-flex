@@ -101,7 +101,7 @@
 [class*="led-green"],
 [class*="led-red"],
 [class*="led-amber"],
-[class*="led-blue"] {
+[class*="led-gray"] {
   border: 1px solid rgba(0, 0, 0, 0.3);
   box-sizing: content-box;
 }
@@ -775,7 +775,9 @@ body.fx-noise::after {
     box-shadow: 0 0 4px #ef4444, 0 0 8px rgba(239, 68, 68, 0.4);
   }
 
-  .led-blue {
+  .led-gray {
+    background: #888888;
+    box-shadow: 0 0 4px #88888880, inset 0 -1px 1px rgba(0,0,0,0.3);
     background: #888888;
     box-shadow: 0 0 4px #888888, 0 0 8px rgba(136, 136, 136, 0.4);
   }
@@ -2211,7 +2213,7 @@ body.fx-noise::after {
   .led-green,
   .led-amber,
   .led-red,
-  .led-blue,
+  .led-gray,
   .led-purple,
   .led-off,
   .btn-primary,
@@ -2582,7 +2584,7 @@ body.fx-noise::after {
   .text-red-400,
   .text-green-400,
   .text-amber-400,
-  .text-blue-400,
+  .text-gray-400,
   .text-purple-400 {
     color: #222 !important;
   }
@@ -3149,7 +3151,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   /* Print badge styles */
   [class*="bg-red-900"],
   [class*="bg-green-900"],
-  [class*="bg-blue-900"],
+  [class*="bg-gray-900"],
   [class*="bg-amber-900"],
   [class*="bg-purple-900"] {
     background: transparent !important;
@@ -3972,7 +3974,9 @@ html, body {
     background: #f59e0b;
     box-shadow: 0 0 4px #f59e0b80, inset 0 -1px 1px rgba(0,0,0,0.3);
   }
-  .led-blue {
+  .led-gray {
+    background: #888888;
+    box-shadow: 0 0 4px #88888880, inset 0 -1px 1px rgba(0,0,0,0.3);
     background: #888888;
     box-shadow: 0 0 4px #88888880, inset 0 -1px 1px rgba(0,0,0,0.3);
   }

@@ -241,8 +241,8 @@ export default function MapOverlays({
             }}
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
-                ? 'bg-white/90 border border-blue-300 hover:bg-blue-50'
-                : 'bg-surface-deep/95 border border-blue-500/50 hover:bg-blue-900/30'
+                ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
+                : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
             }`}
             style={isMobile
               ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -250,7 +250,7 @@ export default function MapOverlays({
             }
             title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
           >
-            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
+            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
           </button>
         )}
         <MapExportMenu

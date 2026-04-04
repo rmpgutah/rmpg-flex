@@ -33,7 +33,7 @@ const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig>
   dispatch:          { icon: Radio,          ledColor: 'led-red',   iconColor: 'text-red-400' },
   warrant:           { icon: Shield,         ledColor: 'led-amber', iconColor: 'text-amber-400' },
   bolo:              { icon: AlertTriangle,  ledColor: 'led-red',   iconColor: 'text-red-400' },
-  message:           { icon: Mail,           ledColor: 'led-green', iconColor: 'text-blue-400' },
+  message:           { icon: Mail,           ledColor: 'led-green', iconColor: 'text-gray-400' },
   system:            { icon: Bell,           ledColor: 'led-green', iconColor: 'text-green-400' },
   credential_expiry: { icon: Clock,          ledColor: 'led-amber', iconColor: 'text-amber-400' },
   patrol_missed:     { icon: MapPin,         ledColor: 'led-red',   iconColor: 'text-red-400' },
@@ -338,7 +338,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               fontWeight: 700,
               lineHeight: 1,
               fontFamily: 'monospace',
-              boxShadow: '0 0 6px rgba(26,90,158,0.5)',
+              boxShadow: '0 0 6px rgba(136,136,136,0.5)',
             }}
           >
             {unreadCount > 99 ? '99+' : unreadCount}

@@ -130,7 +130,7 @@ const WARRANT_STATUS_CLASSES: Record<string, string> = {
 };
 
 const CITATION_STATUS_CLASSES: Record<string, string> = {
-  issued: 'bg-blue-900/60 text-blue-300 border-blue-600/60',
+  issued: 'bg-gray-900/60 text-gray-300 border-gray-600/60',
   paid: 'bg-green-900/50 text-green-400 border-green-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -142,7 +142,7 @@ const CITATION_TYPE_CLASSES: Record<string, string> = {
   traffic: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
   criminal: 'bg-red-900/50 text-red-300 border-red-700/50',
   parking: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
-  warning: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  warning: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
 };
 
 // ── Component ──────────────────────────────────────

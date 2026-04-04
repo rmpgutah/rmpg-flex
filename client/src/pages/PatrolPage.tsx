@@ -676,9 +676,9 @@ const PatrolPage: React.FC = () => {
             <span className="text-green-400 font-bold">{checkpoints.filter(c => c.is_active).length}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-blue-400" />
+            <Clock className="w-3 h-3 text-gray-400" />
             <span className="text-rmpg-400">Scans Today:</span>
-            <span className="text-blue-400 font-bold">
+            <span className="text-gray-400 font-bold">
               {scans.filter(s => {
                 const today = new Date().toDateString();
                 return new Date(s.scanned_at).toDateString() === today;
@@ -712,17 +712,17 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 1: Route Optimization Results */}
       {optimizedRoute && (
-        <div className="mx-3 mt-2 p-2 bg-blue-900/20 border border-blue-700/50 text-xs text-blue-300">
+        <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
           <div className="flex items-center justify-between mb-1">
             <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
-            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-blue-500 hover:text-blue-300"><X className="w-3 h-3" /></button>
+            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300"><X className="w-3 h-3" /></button>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
               <div key={cp.id} className="flex gap-2">
-                <span className="text-blue-500 w-4">{i + 1}.</span>
+                <span className="text-gray-500 w-4">{i + 1}.</span>
                 <span className="text-white">{cp.name}</span>
-                <span className="text-blue-500 ml-auto">{cp.distance_from_previous_km} km</span>
+                <span className="text-gray-500 ml-auto">{cp.distance_from_previous_km} km</span>
               </div>
             ))}
           </div>

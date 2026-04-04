@@ -5958,7 +5958,7 @@ function ExamplesPanel() {
   };
 
   const categoryColors: Record<string, string> = {
-    scraping: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+    scraping: 'bg-gray-500/10 border-gray-500/30 text-gray-400',
     search: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
     extraction: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     monitoring: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
@@ -6645,7 +6645,7 @@ function NewsPanel() {
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1">{article.title}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-blue-500/10 border border-blue-500/30 text-blue-400 shrink-0">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-gray-500/10 border border-gray-500/30 text-gray-400 shrink-0">
                   {article.source}
                 </span>
               </div>
@@ -9209,7 +9209,7 @@ function CodeAnalyzePanel() {
   const viewHistoryItem = (item: CodeAnalyzeResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   const langColors: Record<string, string> = {
-    TypeScript: 'bg-blue-400', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
+    TypeScript: 'bg-gray-400', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
     Go: 'bg-cyan-400', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
   };
 
@@ -10529,7 +10529,7 @@ function SupportBotPanel() {
 
   return (
     <div className="space-y-3">
-      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-blue-400" />
+      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-gray-400" />
 
       {/* Create Form */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
@@ -10553,7 +10553,7 @@ function SupportBotPanel() {
           {bots.map(bot => (
             <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
               <StatusLed status={bot.status || 'active'} />
-              <Bot className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <Bot className="w-3.5 h-3.5 text-gray-400 shrink-0" />
               <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
               <span className="text-[10px] text-rmpg-500">{bot.total_conversations || 0} chats</span>
               <SmallBtn onClick={() => setActiveBotId(activeBotId === bot.id ? null : bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'}>

@@ -1018,7 +1018,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                                     key={unit.id}
                                     className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                       assignUnitIds.includes(unit.id)
-                                        ? 'bg-blue-900/30 text-blue-300'
+                                        ? 'bg-gray-900/30 text-gray-300'
                                         : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                     }`}
                                   >
@@ -1144,7 +1144,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                             <span className="text-emerald-400 font-bold">{stats.assigned}</span> areas
                           </span>
                           <span className="text-[7px] text-rmpg-500">
-                            <span className="text-blue-400 font-bold">{stats.officers}</span> officers
+                            <span className="text-gray-400 font-bold">{stats.officers}</span> officers
                           </span>
                           <span className="text-[7px] text-rmpg-500">
                             <span className="text-amber-400 font-bold">{stats.units}</span> units
@@ -1518,7 +1518,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               <button type="button"
                 onClick={() => setShowFieldInterviews(!showFieldInterviews)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showFieldInterviews ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showFieldInterviews ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <FileSearch className="w-3 h-3" />
@@ -1535,7 +1535,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       onClick={() => setFiDays(d)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         fiDays === d
-                          ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                          ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                           : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >

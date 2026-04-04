@@ -140,8 +140,8 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                 <div className="text-sm font-bold font-mono text-amber-400">{in60.length}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">60 Days</div>
               </div>
-              <div className="text-center p-1.5 bg-blue-900/10 rounded border border-blue-800/20">
-                <div className="text-sm font-bold font-mono text-blue-400">{in90.length}</div>
+              <div className="text-center p-1.5 bg-gray-900/10 rounded border border-gray-800/20">
+                <div className="text-sm font-bold font-mono text-gray-400">{in90.length}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">90 Days</div>
               </div>
             </div>

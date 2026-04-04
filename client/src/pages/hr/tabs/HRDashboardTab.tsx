@@ -185,7 +185,7 @@ function ManagerDashboard({
       {/* Compliance */}
       <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
         <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-          <ShieldCheck size={14} className="text-blue-400" />
+          <ShieldCheck size={14} className="text-gray-400" />
           Compliance Overview
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -212,7 +212,7 @@ function ManagerDashboard({
       {/* Recent Activity */}
       <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
         <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-          <Activity size={14} className="text-blue-400" />
+          <Activity size={14} className="text-gray-400" />
           Recent HR Activity
         </h3>
         {data.recent_activity.length === 0 ? (

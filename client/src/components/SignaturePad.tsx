@@ -369,7 +369,7 @@ export default function SignaturePad({
                   onClick={() => setSelectedFont(i)}
                   className={`px-1.5 py-0.5 text-[9px] rounded-sm transition-colors ${
                     selectedFont === i
-                      ? 'bg-blue-100 border border-blue-400 text-blue-700'
+                      ? 'bg-gray-100 border border-gray-400 text-gray-700'
                       : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700'
                   }`}
                 >

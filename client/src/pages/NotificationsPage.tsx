@@ -209,7 +209,7 @@ export default function NotificationsPage() {
 
   const typeIcon = (type: string) => {
     if (type === 'escalation') return <AlertTriangle className="w-4 h-4 text-red-400" />;
-    if (type === 'dispatch') return <Bell className="w-4 h-4 text-blue-400" />;
+    if (type === 'dispatch') return <Bell className="w-4 h-4 text-gray-400" />;
     return <Bell className="w-4 h-4 text-rmpg-400" />;
   };
 

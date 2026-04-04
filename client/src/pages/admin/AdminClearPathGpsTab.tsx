@@ -862,7 +862,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   : /hard_brake|hard_turn|hard_accel|speeding/i.test(evt.event_type)
                   ? 'text-amber-400 bg-amber-950/30 border-amber-800/40'
                   : /video|camera|recording/i.test(evt.event_type)
-                  ? 'text-blue-400 bg-blue-950/30 border-blue-800/40'
+                  ? 'text-gray-400 bg-gray-950/30 border-gray-800/40'
                   : 'text-rmpg-300 bg-surface-sunken border-rmpg-600';
                 return (
                   <div

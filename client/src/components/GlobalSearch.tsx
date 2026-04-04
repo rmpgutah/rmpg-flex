@@ -77,7 +77,7 @@ const ENTITY_CONFIG = {
     icon: Building2,
     label: 'Properties',
     route: '/records',
-    color: 'text-blue-400',
+    color: 'text-gray-400',
   },
   personnel: {
     icon: Users,

@@ -859,7 +859,7 @@ export default function MdtPage() {
                   {selectedCall.status === 'dispatched' && (
                     <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'enroute')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
                     >
                       <Navigation style={{ width: 10, height: 10 }} /> En Route
                     </button>

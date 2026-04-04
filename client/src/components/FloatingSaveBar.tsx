@@ -51,7 +51,7 @@ export default function FloatingSaveBar({
         background: 'linear-gradient(180deg, #1e3048 0%, #141e2b 100%)',
         border: '1px solid #3a5070',
         borderTop: '2px solid #888888',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(26,90,158,0.2)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(136,136,136,0.2)',
       }}
     >
       <div className="flex items-center gap-1.5 mr-2">

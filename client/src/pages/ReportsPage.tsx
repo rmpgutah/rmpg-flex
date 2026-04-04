@@ -108,7 +108,7 @@ const CHART_TOOLTIP_STYLE = {
     fontFamily: 'monospace',
     boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   },
-  cursor: { fill: 'rgba(26,90,158,0.08)' },
+  cursor: { fill: 'rgba(136,136,136,0.08)' },
 };
 
 // ============================================================
@@ -383,7 +383,7 @@ function DailyBriefingCard() {
                 <div className="text-[8px] text-rmpg-500 uppercase">P2 Calls</div>
               </div>
               <div className="panel-beveled bg-surface-sunken p-2 text-center">
-                <div className="text-lg font-bold font-mono text-blue-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
+                <div className="text-lg font-bold font-mono text-gray-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
                 <div className="text-[8px] text-rmpg-500 uppercase">Avg Response</div>
               </div>
             </div>
@@ -675,7 +675,7 @@ function BeatActivityCard() {
                 {data.beats.map((b: any) => (
                   <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-blue-400">{b.calls}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>

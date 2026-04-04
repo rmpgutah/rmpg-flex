@@ -199,14 +199,14 @@ export default function ModuleTileBar({
                 borderRadius: 0,
                 cursor: 'pointer',
                 transition: 'all 120ms ease',
-                background: active ? 'rgba(26,90,158,0.15)' : 'transparent',
+                background: active ? 'rgba(136,136,136,0.15)' : 'transparent',
                 color: active ? '#aaaaaa' : '#666666',
                 borderBottom: active ? '2px solid #888888' : '2px solid transparent',
               }}
               onMouseEnter={(e) => {
                 if (!active) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(26,90,158,0.08)';
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 8px rgba(26,90,158,0.15)';
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(136,136,136,0.08)';
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 8px rgba(136,136,136,0.15)';
                   (e.currentTarget as HTMLButtonElement).style.color = '#999999';
                 }
               }}
@@ -297,7 +297,7 @@ export default function ModuleTileBar({
                         transition: 'all 120ms ease',
                       }}
                       onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(26,90,158,0.12)';
+                        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(136,136,136,0.12)';
                         (e.currentTarget as HTMLButtonElement).style.color = '#aaaaaa';
                       }}
                       onMouseLeave={(e) => {

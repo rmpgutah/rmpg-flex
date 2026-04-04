@@ -123,7 +123,7 @@ export default function WeatherWidget({ weather }: WeatherWidgetProps) {
               <span className="hidden group-hover:inline text-yellow-400/60 font-mono tabular-nums text-[9px]" title={`Sunrise ${sunriseStr}`}>
                 &#9728;{sunriseStr}
               </span>
-              <span className="hidden group-hover:inline text-blue-400/60 font-mono tabular-nums text-[9px]" title={`Sunset ${sunsetStr}`}>
+              <span className="hidden group-hover:inline text-gray-400/60 font-mono tabular-nums text-[9px]" title={`Sunset ${sunsetStr}`}>
                 &#9790;{sunsetStr}
               </span>
             </>

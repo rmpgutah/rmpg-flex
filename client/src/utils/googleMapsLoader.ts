@@ -362,7 +362,7 @@ export function addOfflineTileLayer(map: google.maps.Map): () => void {
         position: absolute;
         bottom: 8px;
         left: 8px;
-        background: rgba(26, 90, 158, 0.7);
+        background: rgba(136, 136, 136, 0.7);
         color: #a8d0ff;
         font-family: 'JetBrains Mono', monospace;
         font-size: 10px;

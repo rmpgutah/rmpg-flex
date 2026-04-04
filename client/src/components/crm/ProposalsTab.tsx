@@ -33,7 +33,7 @@ import type {
 // ── Stage colors ──────────────────────────────────────────
 const PROPOSAL_STAGE_CLASSES: Record<ProposalStage, string> = {
   draft: 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50',
-  sent: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
+  sent: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
   viewed: 'text-purple-400 bg-purple-900/30 border-purple-700/50',
   accepted: 'text-green-400 bg-green-900/30 border-green-700/50',
   rejected: 'text-red-400 bg-red-900/30 border-red-700/50',
@@ -354,7 +354,7 @@ export default function ProposalsTab() {
               {/* Stage action buttons */}
               <div className="flex gap-1.5 flex-wrap">
                 {selectedProposal.stage === 'draft' && (
-                  <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'sent')} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-bold px-2 py-1 rounded-sm border border-blue-700/50 flex items-center gap-1">
+                  <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'sent')} className="bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-bold px-2 py-1 rounded-sm border border-gray-700/50 flex items-center gap-1">
                     <Send className="w-3 h-3" /> Send
                   </button>
                 )}

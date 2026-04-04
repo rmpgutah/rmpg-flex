@@ -24,7 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
-  { value: 'open', label: 'Open', color: 'bg-blue-900/50 text-blue-400 border-blue-700/50' },
+  { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
   { value: 'assigned', label: 'Assigned', color: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50' },
   { value: 'active', label: 'Active', color: 'bg-green-900/50 text-green-400 border-green-700/50' },
   { value: 'suspended', label: 'Suspended', color: 'bg-amber-900/50 text-amber-400 border-amber-700/50' },
@@ -49,7 +49,7 @@ const TYPE_OPTIONS: { value: CaseType; label: string }[] = [
 
 const PRIORITY_OPTIONS: { value: CasePriority; label: string; color: string }[] = [
   { value: 'low', label: 'Low', color: 'text-rmpg-400' },
-  { value: 'normal', label: 'Normal', color: 'text-blue-400' },
+  { value: 'normal', label: 'Normal', color: 'text-gray-400' },
   { value: 'high', label: 'High', color: 'text-amber-400' },
   { value: 'critical', label: 'Critical', color: 'text-red-400' },
 ];

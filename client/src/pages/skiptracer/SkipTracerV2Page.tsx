@@ -1473,7 +1473,7 @@ export default function SkipTracerV2Page() {
                     <td className="px-2 py-1.5"><SourceBadge source={c.source} /></td>
                     <td className="px-2 py-1.5">
                       {c.sourceUrl && (
-                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[#999999] hover:text-blue-300">
+                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[#999999] hover:text-gray-300">
                           <ExternalLink size={11} />
                         </a>
                       )}

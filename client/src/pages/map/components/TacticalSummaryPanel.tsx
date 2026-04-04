@@ -109,12 +109,12 @@ export default function TacticalSummaryPanel({
       {/* ── Header ─────────────────────────────────── */}
       <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #1a2636, #2a3f5a, #1a2636) 1' }}>
         <div className="flex items-center gap-1.5">
-          <Layers size={11} className="text-blue-400" />
+          <Layers size={11} className="text-gray-400" />
           <span className="text-[10px] font-bold tracking-wider text-slate-200 uppercase">
             Tactical Layers
           </span>
           {activeCount > 0 && (
-            <span className="text-[8px] bg-blue-500/20 text-blue-300 px-1 rounded-[2px] font-bold">
+            <span className="text-[8px] bg-gray-500/20 text-gray-300 px-1 rounded-[2px] font-bold">
               {activeCount}
             </span>
           )}

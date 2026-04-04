@@ -23,7 +23,7 @@ import { useToast } from '../components/ToastProvider';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  submitted: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  submitted: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   approved: 'bg-green-900/50 text-green-400 border-green-700/50',
   returned: 'bg-red-900/50 text-red-400 border-red-700/50',
   archived: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
@@ -348,7 +348,7 @@ export default function DailyActivityReportsPage() {
               {/* Auto-populated counts */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  ['Calls', parseJson(selected.calls_handled).length, 'text-blue-400'],
+                  ['Calls', parseJson(selected.calls_handled).length, 'text-gray-400'],
                   ['Incidents', parseJson(selected.incidents_created).length, 'text-red-400'],
                   ['Citations', parseJson(selected.citations_issued).length, 'text-amber-400'],
                   ['Patrols', parseJson(selected.patrols_completed).length, 'text-green-400'],
@@ -482,7 +482,7 @@ export default function DailyActivityReportsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { label: 'Calls Handled', data: autoPopulateData.calls || [], color: 'text-blue-400' },
+                      { label: 'Calls Handled', data: autoPopulateData.calls || [], color: 'text-gray-400' },
                       { label: 'Incidents Created', data: autoPopulateData.incidents || [], color: 'text-red-400' },
                       { label: 'Citations Issued', data: autoPopulateData.citations || [], color: 'text-amber-400' },
                       { label: 'Patrols Completed', data: autoPopulateData.patrols || [], color: 'text-green-400' },

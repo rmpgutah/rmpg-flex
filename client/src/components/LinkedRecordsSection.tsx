@@ -31,9 +31,9 @@ export function getRecordTypeIcon(type: string): LucideIcon {
 
 const TYPE_COLOR_MAP: Record<string, { text: string; bg: string; border: string }> = {
   person: {
-    text: 'text-blue-400',
-    bg: 'bg-blue-900/30',
-    border: 'border-blue-700/50',
+    text: 'text-gray-400',
+    bg: 'bg-gray-900/30',
+    border: 'border-gray-700/50',
   },
   vehicle: {
     text: 'text-cyan-400',

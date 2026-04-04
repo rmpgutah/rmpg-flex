@@ -183,7 +183,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
         {/* Sync Queue */}
         <div className="panel-beveled p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Database className="w-4 h-4 text-blue-400" />
+            <Database className="w-4 h-4 text-gray-400" />
             <span className="text-xs font-bold text-white">Sync Queue</span>
           </div>
           <div className="text-[10px] text-rmpg-400 space-y-1">
@@ -191,7 +191,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               Pending items: <span className="text-white font-bold">{syncQueueDepth}</span>
             </div>
             {isSyncing && (
-              <div className="flex items-center gap-1 text-blue-400">
+              <div className="flex items-center gap-1 text-gray-400">
                 <RefreshCw className="w-3 h-3 animate-spin" />
                 {syncStatus.phase === 'push' ? 'Pushing' : 'Pulling'} {syncStatus.table}
                 ({syncStatus.current}/{syncStatus.total})
