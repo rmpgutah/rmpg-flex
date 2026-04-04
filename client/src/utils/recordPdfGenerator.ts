@@ -1056,7 +1056,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const unitCount2 = unitDetail2?.length || data.assigned_units?.length || 0;
     if (unitCount2 > 0) {
       y = checkPageBreak(doc, y, 18, prio); // header + at least 1 unit row
-      const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.sectionY + 3.8;
+      const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.sectionY + SPACING.SECTION_HEADER_H;
       if (unitDetail2 && unitDetail2.length > 0) {
         const UNIT_ROLES2 = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
         const uqw = ffw / 4;
@@ -1109,7 +1109,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Linked Persons — clean table: section header + column headers + data rows
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + 3.8;
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
     const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
     const rowH = 4.5;
@@ -1157,7 +1157,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Linked Vehicles — clean table: section header + column headers + data rows
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.sectionY + 3.8;
+    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
     const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
     const rowH = 4.5;
@@ -1708,7 +1708,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 10. Active Warrants ───────────────────────────────────
   if (data.warrants && data.warrants.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + 3.8; }
+    { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const warrantRows = data.warrants.map(w => [
       w.warrant_number || 'N/A',
       titleCase(w.type || ''),
@@ -1736,7 +1736,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 11. Incident History ──────────────────────────────────
   if (data.incidents && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + 3.8; }
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incidentRows = data.incidents.map(inc => [
       inc.incident_number || 'N/A',
       titleCase((inc.incident_type || '').replace(/_/g, ' ')),
@@ -1762,7 +1762,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 12. Citation History ──────────────────────────────────
   if (data.citations && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + 3.8; }
+    { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citationRows = data.citations.map(c => [
       c.citation_number || 'N/A',
       titleCase(c.type || ''),
@@ -1788,7 +1788,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 13. Dispatch Call History ──────────────────────────────
   if (data.calls && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + 3.8; }
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
@@ -1816,7 +1816,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     doc.addPage();
     addConfidentialWatermark(doc);
     y = 12; // start near top of new page
-    { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.sectionY + 3.8; }
+    { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
 
     // Summary table — quick reference overview
     const crCw = getContentWidth(doc);
