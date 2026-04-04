@@ -5,7 +5,7 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '..
 import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
-import { identifyBeat } from '../../utils/geofence';
+import { identifyBeat, reloadGeofence } from '../../utils/geofence';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -1143,6 +1143,166 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
   } catch (error: any) {
     console.error('[Dispatch] district identify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_IDENTIFY_ERROR' });
+  }
+});
+
+// POST /api/dispatch/districts - Create a new district row
+router.post('/districts', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
+
+    if (!section_id || !zone_id || !beat_id || !section_name || !zone_name || !beat_name) {
+      res.status(400).json({ error: 'section_id, zone_id, beat_id, section_name, zone_name, and beat_name are required', code: 'MISSING_FIELDS' });
+      return;
+    }
+
+    // Auto-generate dispatch_code if not provided
+    const code = dispatch_code || `${section_id}-${zone_id}/${beat_id}`;
+
+    // Check for duplicate dispatch_code
+    const existing = db.prepare('SELECT id FROM dispatch_districts WHERE dispatch_code = ?').get(code);
+    if (existing) {
+      res.status(409).json({ error: `Duplicate dispatch_code: ${code}`, code: 'DUPLICATE_DISPATCH_CODE' });
+      return;
+    }
+
+    const result = db.prepare(
+      `INSERT INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(section_id, zone_id, beat_id, code, section_name, zone_name, beat_name, beat_descriptor || null);
+
+    const id = result.lastInsertRowid;
+    auditLog(req, 'CREATE', 'dispatch_districts', id, `Created district ${code}`);
+
+    res.status(201).json({ success: true, id, dispatch_code: code });
+  } catch (error: any) {
+    console.error('[Dispatch] district create error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_CREATE_ERROR' });
+  }
+});
+
+// PUT /api/dispatch/districts/:id - Update an existing district row
+router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id < 1) {
+      res.status(400).json({ error: 'Invalid district ID', code: 'INVALID_ID' });
+      return;
+    }
+
+    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id);
+    if (!existing) {
+      res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' });
+      return;
+    }
+
+    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
+
+    // If dispatch_code is being changed, check for duplicates
+    if (dispatch_code && dispatch_code !== (existing as any).dispatch_code) {
+      const dup = db.prepare('SELECT id FROM dispatch_districts WHERE dispatch_code = ? AND id != ?').get(dispatch_code, id);
+      if (dup) {
+        res.status(409).json({ error: `Duplicate dispatch_code: ${dispatch_code}`, code: 'DUPLICATE_DISPATCH_CODE' });
+        return;
+      }
+    }
+
+    db.prepare(
+      `UPDATE dispatch_districts SET
+        section_id = COALESCE(?, section_id),
+        zone_id = COALESCE(?, zone_id),
+        beat_id = COALESCE(?, beat_id),
+        dispatch_code = COALESCE(?, dispatch_code),
+        section_name = COALESCE(?, section_name),
+        zone_name = COALESCE(?, zone_name),
+        beat_name = COALESCE(?, beat_name),
+        beat_descriptor = COALESCE(?, beat_descriptor)
+      WHERE id = ?`
+    ).run(
+      section_id || null, zone_id || null, beat_id || null, dispatch_code || null,
+      section_name || null, zone_name || null, beat_name || null, beat_descriptor ?? null,
+      id
+    );
+
+    auditLog(req, 'UPDATE', 'dispatch_districts', id, `Updated district ${id}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Dispatch] district update error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_UPDATE_ERROR' });
+  }
+});
+
+// DELETE /api/dispatch/districts/:id - Delete a district row
+router.delete('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id < 1) {
+      res.status(400).json({ error: 'Invalid district ID', code: 'INVALID_ID' });
+      return;
+    }
+
+    const existing = db.prepare('SELECT id FROM dispatch_districts WHERE id = ?').get(id);
+    if (!existing) {
+      res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' });
+      return;
+    }
+
+    db.prepare('DELETE FROM dispatch_districts WHERE id = ?').run(id);
+    auditLog(req, 'DELETE', 'dispatch_districts', id, `Deleted district ${id}`);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Dispatch] district delete error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_DELETE_ERROR' });
+  }
+});
+
+// GET /api/dispatch/districts/call-density - Call counts per beat within a time range
+router.get('/districts/call-density', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const range = (req.query.range as string) || '24h';
+    const rangeMap: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 };
+    const hours = rangeMap[range];
+    if (!hours) {
+      res.status(400).json({ error: 'range must be 24h, 7d, or 30d', code: 'INVALID_RANGE' });
+      return;
+    }
+
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+    const rows = db.prepare(
+      `SELECT zone_beat, COUNT(*) as call_count
+       FROM calls_for_service
+       WHERE zone_beat IS NOT NULL AND zone_beat != '' AND created_at >= ?
+       GROUP BY zone_beat
+       ORDER BY call_count DESC`
+    ).all(cutoff);
+
+    setCacheHeaders(res, 60);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('[Dispatch] call density error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'CALL_DENSITY_ERROR' });
+  }
+});
+
+// POST /api/dispatch/districts/reload-geofence - Hot-reload geofence data from disk
+router.post('/districts/reload-geofence', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    reloadGeofence();
+    auditLog(req, 'RELOAD', 'geofence', 0, 'Hot-reloaded geofence data');
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Dispatch] geofence reload error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'GEOFENCE_RELOAD_ERROR' });
   }
 });
 

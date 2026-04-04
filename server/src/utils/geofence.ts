@@ -150,6 +150,15 @@ function pointInFeature(lng: number, lat: number, subPolygons: number[][][][]): 
  * Identify which beat zone a GPS coordinate falls within.
  * Returns the matching beat properties or null if outside all zones.
  */
+/**
+ * Hot-reload geofence data by clearing the cached features
+ * and re-reading beat.geojson from disk.
+ */
+export function reloadGeofence(): void {
+  beatFeatures = null;
+  loadBeats();
+}
+
 export function identifyBeat(lat: number, lng: number): BeatMatch | null {
   const features = loadBeats();
 
