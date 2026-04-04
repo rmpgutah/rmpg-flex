@@ -126,7 +126,7 @@ export default function LoginHistoryTable() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5"
-          style={{ borderTop: '1px solid #1e3048', background: '#050505' }}
+          style={{ borderTop: '1px solid #222222', background: '#050505' }}
         >
           <span className="text-[10px] font-mono" style={{ color: '#666666' }}>
             Page {page} of {totalPages} ({total} entries)

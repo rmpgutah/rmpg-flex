@@ -121,7 +121,7 @@ export default function CallHistoryPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="toolbar-btn p-1 hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close call history panel"
           title="Close"
         >
@@ -232,7 +232,7 @@ export default function CallHistoryPanel({
                 Recent Calls
               </div>
               <div
-                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
+                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
               >
                 {stats.recent.map((call) => {
                   const pColor =
@@ -241,7 +241,7 @@ export default function CallHistoryPanel({
                   return (
                     <div
                       key={call.id}
-                      className="rounded-sm px-2 py-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100"
+                      className="rounded-sm px-2 py-1.5 hover:bg-[#141414]/50 transition-colors duration-100"
                       style={{ borderLeft: `2px solid ${pColor}` }}
                     >
                       <div className="flex items-center justify-between mb-0.5">

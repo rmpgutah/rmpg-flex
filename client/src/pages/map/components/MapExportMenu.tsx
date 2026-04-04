@@ -43,7 +43,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
   const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)';
   const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)';
   const textColor = light ? 'text-gray-700' : 'text-rmpg-200';
-  const hoverBg = light ? 'hover:bg-[#1a2636]' : 'hover:bg-[#1a2636]';
+  const hoverBg = light ? 'hover:bg-[#141414]' : 'hover:bg-[#141414]';
 
   const handleScreenshot = async () => {
     setBusy(true);
@@ -70,7 +70,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
         disabled={busy}
         className={`backdrop-blur-md shadow-xl transition-colors ${
           light
-            ? 'bg-white/90 border border-gray-300 hover:bg-[#1a2636]'
+            ? 'bg-white/90 border border-gray-300 hover:bg-[#141414]'
             : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
         }`}
         style={isMobile
@@ -96,7 +96,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
       <div
         role="menu"
         className={`absolute bottom-full mb-2 right-0 z-[1100] backdrop-blur-md shadow-xl overflow-hidden transition-all duration-150 origin-bottom-right border ${
-          light ? 'border-gray-300' : 'border-[#1e3048]'
+          light ? 'border-gray-300' : 'border-[#222222]'
         } ${
           open
             ? 'scale-100 opacity-100 pointer-events-auto'

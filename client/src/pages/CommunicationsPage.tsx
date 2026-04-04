@@ -955,7 +955,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Messages in thread */}
-                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent px-4 py-3 space-y-3">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent px-4 py-3 space-y-3">
                       {selectedThread.messages.map((msg, idx) => {
                         const isOwnMessage = msg.from_user_id === currentUserId;
 
@@ -1086,7 +1086,7 @@ export default function CommunicationsPage() {
 
         {/* BOLOs Panel */}
         {activePanel === 'bolos' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
             {/* New BOLO Form */}
             {showNewBOLO && (
               <form onSubmit={handleCreateBOLO} className="bg-surface-base border border-red-700/40 p-4 animate-fade-in">
@@ -1306,7 +1306,7 @@ export default function CommunicationsPage() {
                   <span className="text-xs text-rmpg-400">({activities.length} of {activitiesTotal} entries)</span>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                 {activitiesLoading ? (
                   <Spinner label="Loading activity..." />
                 ) : (

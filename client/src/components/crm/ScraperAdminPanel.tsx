@@ -242,14 +242,14 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
 
   if (loading) {
     return (
-      <div className="px-3 py-4 bg-[#0d1520] border-b border-rmpg-700 flex items-center justify-center">
+      <div className="px-3 py-4 bg-[#050505] border-b border-rmpg-700 flex items-center justify-center">
         <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="bg-[#0d1520] border-b border-rmpg-700 max-h-[350px] overflow-y-auto">
+    <div className="bg-[#050505] border-b border-rmpg-700 max-h-[350px] overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-rmpg-700/50">
         <div className="flex items-center gap-1.5">
@@ -289,7 +289,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
           <tbody>
             {sources.map(src => (
               <React.Fragment key={src.id}>
-                <tr className="border-b border-rmpg-700/30 hover:bg-[#141e2b]">
+                <tr className="border-b border-rmpg-700/30 hover:bg-[#0a0a0a]">
                   <td className="px-2 py-1.5">
                     <div className="text-xs text-white font-medium">{src.display_name}</div>
                     {src.base_url && (

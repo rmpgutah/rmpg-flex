@@ -155,7 +155,7 @@ export default function ExportButton({
             right: 0,
             minWidth: '160px',
             background: '#141414',
-            border: '1px solid #3a5070',
+            border: '1px solid #383838',
             borderRadius: 0,
             boxShadow: '0 6px 20px rgba(0, 0, 0, 0.6)',
           }}
@@ -165,7 +165,7 @@ export default function ExportButton({
             type="button"
             onClick={handleExportCSV}
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2a3e58] hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-white transition-colors"
           >
             <Download className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
             <span className="font-bold uppercase tracking-wider text-[10px]">
@@ -181,7 +181,7 @@ export default function ExportButton({
             type="button"
             onClick={handlePrint}
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2a3e58] hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-white transition-colors"
           >
             <Printer className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
             <span className="font-bold uppercase tracking-wider text-[10px]">

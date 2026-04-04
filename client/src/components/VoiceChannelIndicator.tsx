@@ -36,7 +36,7 @@ export default function VoiceChannelIndicator() {
       <div className="fixed right-4 z-[9999]" style={{ bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}>
         <button
           onClick={activateManualListen}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#141414] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
           title="Voice channel — press V"
         >
           <MicIcon />
@@ -62,7 +62,7 @@ export default function VoiceChannelIndicator() {
       {isIdle && hasOverlay && (
         <button
           onClick={activateManualListen}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#141414] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
           title="Voice channel — press V"
         >
           <MicIcon />
@@ -72,7 +72,7 @@ export default function VoiceChannelIndicator() {
 
       {/* Transcript */}
       {transcript && (
-        <div className="bg-[#1a2636] border border-[#2a3a4e] rounded px-3 py-2 text-xs font-mono text-green-400 max-w-xs break-words">
+        <div className="bg-[#141414] border border-[#2a3a4e] rounded px-3 py-2 text-xs font-mono text-green-400 max-w-xs break-words">
           {transcript}
         </div>
       )}
@@ -80,7 +80,7 @@ export default function VoiceChannelIndicator() {
       {/* Command result */}
       {lastCommand && (
         <div
-          className={`bg-[#1a2636] rounded px-3 py-2 text-xs font-mono max-w-xs break-words border ${
+          className={`bg-[#141414] rounded px-3 py-2 text-xs font-mono max-w-xs break-words border ${
             lastCommand.success ? 'border-green-600 text-green-400' : 'border-red-600 text-red-400'
           }`}
         >
@@ -110,7 +110,7 @@ export default function VoiceChannelIndicator() {
 
       {/* Error */}
       {error && (
-        <div className="bg-[#1a2636] border border-red-600 rounded px-3 py-2 text-xs font-mono text-red-400 max-w-xs break-words">
+        <div className="bg-[#141414] border border-red-600 rounded px-3 py-2 text-xs font-mono text-red-400 max-w-xs break-words">
           {error}
         </div>
       )}
@@ -136,7 +136,7 @@ function StateBadge({ state, onClickMic }: { state: string; onClickMic: () => vo
       {state === 'listening' && (
         <button
           onClick={onClickMic}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a2636] border border-green-600 rounded text-green-400 hover:text-white transition-colors text-xs font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#141414] border border-green-600 rounded text-green-400 hover:text-white transition-colors text-xs font-mono"
           title="Extend listen window"
         >
           <MicIcon />

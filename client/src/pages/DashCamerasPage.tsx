@@ -285,7 +285,7 @@ export default function DashCamerasPage() {
                     className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex items-center justify-center h-full"
-                    style={{ background: 'linear-gradient(135deg, #0d1520 0%, #141e2b 100%)' }}>
+                    style={{ background: 'linear-gradient(135deg, #050505 0%, #0a0a0a 100%)' }}>
                     <Film className="w-8 h-8 text-rmpg-600" />
                   </div>
                 )}
@@ -429,10 +429,10 @@ export default function DashCamerasPage() {
 
   // ── Detail Panel (Right Panel) ───────────
   const detailPanel = selectedVideo ? (
-    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ background: '#050505' }}>
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ background: '#050505' }}>
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
-        style={{ background: 'linear-gradient(180deg, #1e3048, #1a2636)', borderBottom: '1px solid #141e2b' }}>
+        style={{ background: 'linear-gradient(180deg, #222222, #141414)', borderBottom: '1px solid #0a0a0a' }}>
         <Video className="w-3 h-3 text-cyan-400 flex-shrink-0" />
         <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
         <button type="button" onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
@@ -691,7 +691,7 @@ export default function DashCamerasPage() {
 
       {/* ── Stats Strip ──────────────────── */}
       <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0" role="group" aria-label="Video statistics"
-        style={{ borderBottom: '1px solid #141e2b' }}>
+        style={{ borderBottom: '1px solid #0a0a0a' }}>
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
           <Film className="w-3 h-3 text-cyan-400" />
           <span className="text-[10px] font-mono font-bold text-cyan-400">{stats.total}</span>
@@ -741,7 +741,7 @@ export default function DashCamerasPage() {
 
       {/* ── Filter Bar ───────────────────── */}
       <div className="panel-inset p-1.5 flex items-center gap-2 flex-wrap flex-shrink-0"
-        style={{ borderBottom: '1px solid #141e2b' }}>
+        style={{ borderBottom: '1px solid #0a0a0a' }}>
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -828,7 +828,7 @@ export default function DashCamerasPage() {
       {/* ── Pagination ───────────────────── */}
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between px-3 py-1 flex-shrink-0"
-          style={{ borderTop: '1px solid #141e2b', background: '#050505' }}>
+          style={{ borderTop: '1px solid #0a0a0a', background: '#050505' }}>
           <span className="text-[10px] text-rmpg-500">
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>

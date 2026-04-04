@@ -382,7 +382,7 @@ export default function OfflineMapFallback({
               "></div>
               <div style="
                 background:rgba(6,12,20,0.92);
-                border:1px solid #1e3048;
+                border:1px solid #222222;
                 padding:1px 4px;
                 display:flex;align-items:center;gap:3px;
                 border-radius:2px;
@@ -588,7 +588,7 @@ export default function OfflineMapFallback({
           className="absolute bottom-20 right-3 z-[1000] p-2 transition-colors hover:border-gray-500"
           style={{
             background: 'rgba(6, 12, 20, 0.95)',
-            border: '1px solid #2a3e58',
+            border: '1px solid #2e2e2e',
             borderRadius: 2,
           }}
           title="Center on your position"
@@ -602,7 +602,7 @@ export default function OfflineMapFallback({
         className="absolute bottom-3 left-3 z-[1000] flex flex-col gap-1"
         style={{
           background: 'rgba(6, 12, 20, 0.92)',
-          border: '1px solid #1e3048',
+          border: '1px solid #222222',
           borderRadius: 2,
           padding: compact ? '3px 6px' : '4px 8px',
         }}
@@ -652,7 +652,7 @@ export default function OfflineMapFallback({
       <style>{`
         .leaflet-tooltip-dark {
           background: rgba(6, 12, 20, 0.95) !important;
-          border: 1px solid #2a3e58 !important;
+          border: 1px solid #2e2e2e !important;
           color: #fff !important;
           font-family: 'JetBrains Mono', monospace !important;
           font-size: 9px !important;
@@ -677,7 +677,7 @@ export default function OfflineMapFallback({
         /* Dark theme for Leaflet zoom controls */
         .leaflet-control-zoom a {
           background: rgba(6, 12, 20, 0.95) !important;
-          border-color: #2a3e58 !important;
+          border-color: #2e2e2e !important;
           color: #b0bcc8 !important;
           width: 30px !important;
           height: 30px !important;
@@ -685,7 +685,7 @@ export default function OfflineMapFallback({
           font-size: 16px !important;
         }
         .leaflet-control-zoom a:hover {
-          background: #1e3048 !important;
+          background: #222222 !important;
           color: #fff !important;
         }
         /* Hide Leaflet's default tile error styling */

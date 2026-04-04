@@ -57,7 +57,7 @@ export default function PredictionsPanel({
           )}
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close predictions panel">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#141414] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close predictions panel">
             <X size={12} className="text-rmpg-400" />
           </button>
         )}
@@ -105,7 +105,7 @@ export default function PredictionsPanel({
             </div>
 
             {/* ── Hotspot list ────────────────────────────── */}
-            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
+            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
               {hotspots.map((hs, idx) => {
                 const color = confidenceColor(hs.score);
                 const label = confidenceLabel(hs.score);

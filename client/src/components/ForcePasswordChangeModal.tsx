@@ -102,7 +102,7 @@ export default function ForcePasswordChangeModal() {
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
           background: '#0a0a0a',
-          border: '1px solid #1e3048',
+          border: '1px solid #222222',
           borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}

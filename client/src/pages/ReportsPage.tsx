@@ -101,7 +101,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
     backgroundColor: '#050505',
-    border: '1px solid #1e3048',
+    border: '1px solid #222222',
     borderRadius: '2px',
     color: '#e0e0e0',
     fontSize: '11px',
@@ -556,7 +556,7 @@ function CrimeTrendCard() {
         {data.trends?.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#0d1520]">
+              <thead className="sticky top-0 z-10 bg-[#050505]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
@@ -661,7 +661,7 @@ function BeatActivityCard() {
         {data.beats?.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#0d1520]">
+              <thead className="sticky top-0 z-10 bg-[#050505]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Beat</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>

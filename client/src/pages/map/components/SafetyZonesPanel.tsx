@@ -72,7 +72,7 @@ export default function SafetyZonesPanel({
         <div className="flex items-center gap-1">
           <button type="button"
             onClick={onRefresh}
-            className="toolbar-btn p-1 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
+            className="toolbar-btn p-1 hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] rounded-sm"
             title="Refresh"
             aria-label="Refresh safety zones"
           >
@@ -80,7 +80,7 @@ export default function SafetyZonesPanel({
           </button>
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm"
+            className="toolbar-btn p-1 hover:bg-[#141414] transition-colors duration-150 rounded-sm"
             title="Close"
             aria-label="Close safety zones panel"
           >
@@ -115,7 +115,7 @@ export default function SafetyZonesPanel({
             <span className="text-[9px] font-mono text-rmpg-500">Analyzing zones…</span>
           </div>
         ) : zones.length === 0 ? (
-          <div className="py-4 text-center text-[9px] font-mono text-rmpg-500 border border-dashed border-[#1e3048] rounded-sm mx-1">
+          <div className="py-4 text-center text-[9px] font-mono text-rmpg-500 border border-dashed border-[#222222] rounded-sm mx-1">
             <div className="text-rmpg-600 mb-1">No flagged zones found</div>
             <div className="text-[8px] text-rmpg-600">Try expanding the date range or refreshing</div>
           </div>
@@ -163,7 +163,7 @@ export default function SafetyZonesPanel({
 
             {/* ── Zone list ───────────────────────────────── */}
             <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold px-1">Zones</div>
-            <div className="max-h-52 space-y-1 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
+            <div className="max-h-52 space-y-1 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
               {zones.map((zone, idx) => {
                 const isHigh = zone.risk_level === 'high';
                 const color = isHigh ? '#ef4444' : '#f59e0b';

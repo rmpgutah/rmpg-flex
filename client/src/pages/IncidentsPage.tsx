@@ -859,7 +859,7 @@ export default function IncidentsPage() {
       )}
 
       {/* Table / Loading / Error */}
-      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <table className="table-dark">
             <thead className="sticky top-0 z-10">
@@ -1217,7 +1217,7 @@ export default function IncidentsPage() {
         const currentIdx = steps.indexOf(selectedIncident.status as any);
         const idx = currentIdx >= 0 ? currentIdx : selectedIncident.status === 'returned' ? 1 : 0;
         return (
-          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#1e3048]" style={{ background: '#050505' }}>
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#222222]" style={{ background: '#050505' }}>
             {labels.map((label, i) => (
               <div key={label} className="flex items-center flex-1">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px #22c55e' } : {}} />
@@ -1230,7 +1230,7 @@ export default function IncidentsPage() {
       })()}
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">
@@ -1654,14 +1654,14 @@ export default function IncidentsPage() {
           {detailOffenses.length > 0 ? (
             <div className="space-y-1.5">
               {detailOffenses.map((offense: any) => (
-                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
+                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #222222' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#666666' }}>
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-white font-medium truncate">{offense.description}</span>
-                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-[#141e2b] text-gray-400 border border-gray-700'}`}>
+                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-[#0a0a0a] text-gray-400 border border-gray-700'}`}>
                         {(offense.offense_level || 'other').toUpperCase()}
                       </span>
                       {offense.attempted_completed === 'attempted' && <span className="text-[8px] text-purple-400 bg-purple-900/30 px-1 py-0.5 rounded-sm border border-purple-700/30">ATTEMPTED</span>}
@@ -1707,12 +1707,12 @@ export default function IncidentsPage() {
           {detailOfficers.length > 0 ? (
             <div className="space-y-1">
               {detailOfficers.map((officer: any) => (
-                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
+                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #222222' }}>
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase ${
                     officer.role === 'primary' ? 'bg-gray-900/60 text-gray-300 border border-gray-700/50' :
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
                     officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
-                    'bg-[#141e2b] text-gray-400 border border-gray-700'
+                    'bg-[#0a0a0a] text-gray-400 border border-gray-700'
                   }`}>{officer.role}</span>
                   <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
@@ -1756,7 +1756,7 @@ export default function IncidentsPage() {
                 const typeColors: Record<string, string> = { incident: '#888888', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
-                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
+                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #222222' }}>
                     <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#666666', background: (typeColors[link.linked_type] || '#666666') + '20', border: `1px solid ${typeColors[link.linked_type] || '#666666'}40` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
@@ -1962,7 +1962,7 @@ export default function IncidentsPage() {
                         <summary className="text-[10px] text-brand-400 cursor-pointer hover:text-brand-300 select-none">
                           View narrative ({sup.narrative.length} chars)
                         </summary>
-                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                           {sup.narrative}
                         </div>
                       </details>
@@ -2011,7 +2011,7 @@ export default function IncidentsPage() {
       {/* Sticky Action Bar */}
       <div
         className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
-        style={{ background: 'linear-gradient(180deg, #141e2b 0%, #0d1520 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #0a0a0a 0%, #050505 100%)' }}
       >
         {!isEditing ? (
           <>

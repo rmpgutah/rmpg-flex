@@ -719,7 +719,7 @@ export default function ArrestRecordsPage() {
     return (
       <div className="h-full overflow-y-auto scrollbar-dark bg-surface-base">
         {/* Header */}
-        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
+        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}>
           <div className="flex items-start justify-between gap-2">
             <div>
               <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
@@ -992,7 +992,7 @@ export default function ArrestRecordsPage() {
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-fade-in">
             <div
               className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
             >
               <AlertTriangle className="w-4 h-4 text-red-400" />
               <h2 className="text-xs font-bold text-white uppercase tracking-wider">Delete Booking</h2>

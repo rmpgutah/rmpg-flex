@@ -149,7 +149,7 @@ export default function GeofenceManager({
         {onClose && (
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm"
+            className="toolbar-btn p-1 hover:bg-[#141414] transition-colors duration-150 rounded-sm"
             aria-label="Close"
             title="Close"
           >
@@ -183,7 +183,7 @@ export default function GeofenceManager({
       </div>
 
       {/* Geofence list */}
-      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048]" style={{ scrollbarWidth: 'thin' }}>
+      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222]" style={{ scrollbarWidth: 'thin' }}>
         {loading && (
           <div className="flex items-center justify-center py-6 text-rmpg-500 animate-pulse">
             <Loader2 size={16} className="animate-spin" />
@@ -211,7 +211,7 @@ export default function GeofenceManager({
           return (
             <div
               key={fence.id}
-              className="rounded-sm hover:bg-[#1a2636]/50 transition-colors duration-100 cursor-pointer"
+              className="rounded-sm hover:bg-[#141414]/50 transition-colors duration-100 cursor-pointer"
               style={{
                 background: '#050505',
                 border: '1px solid #1e2a3a',
@@ -275,7 +275,7 @@ export default function GeofenceManager({
                   {/* Alert history */}
                   {alerts && alertCount > 0 && (
                     <div className="space-y-0.5">
-                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase border-b border-[#1e3048]/50 pb-0.5 mb-1">
+                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase border-b border-[#222222]/50 pb-0.5 mb-1">
                         <Bell size={8} />
                         <span className="flex-1">Recent alerts</span>
                         <span className="text-[8px] font-bold text-amber-400 bg-amber-900/30 px-1 py-0.5 rounded-sm">{alertCount}</span>

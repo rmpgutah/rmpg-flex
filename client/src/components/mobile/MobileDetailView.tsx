@@ -162,8 +162,8 @@ export default function MobileDetailView({
             height: 48,
             paddingLeft: 4,
             paddingRight: 8,
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-            borderBottom: '1px solid #1e3048',
+            background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
+            borderBottom: '1px solid #222222',
           }}
         >
           {/* Blue accent */}
@@ -222,7 +222,7 @@ export default function MobileDetailView({
                     className="absolute right-0 top-full mt-1 z-50 py-1 min-w-[180px]"
                     style={{
                       background: '#141414',
-                      border: '1px solid #2a3e58',
+                      border: '1px solid #2e2e2e',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}
                   >
@@ -266,7 +266,7 @@ export default function MobileDetailView({
           <div
             className="flex-shrink-0"
             style={{
-              borderTop: '1px solid #1e3048',
+              borderTop: '1px solid #222222',
               background: '#0a0a0a',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}

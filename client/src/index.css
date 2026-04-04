@@ -3198,7 +3198,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--grid-header-bg, #0f1a28);
+  background: var(--grid-header-bg, #080808);
   box-shadow: 0 1px 0 0 var(--border-default, #222222);
 }
 .table-sticky-header thead th::after {

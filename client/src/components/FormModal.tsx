@@ -130,7 +130,7 @@ export default function FormModal({
         </div>
         <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
           {children}
-          <div className="flex items-center justify-end gap-3 pt-4 mt-2" style={{ borderTop: '1px solid #1e3048' }}>
+          <div className="flex items-center justify-end gap-3 pt-4 mt-2" style={{ borderTop: '1px solid #222222' }}>
             <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting} style={{ padding: '4px 12px' }}>
               Cancel
             </button>
@@ -149,7 +149,7 @@ export default function FormModal({
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />

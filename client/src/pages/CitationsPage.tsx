@@ -801,7 +801,7 @@ export default function CitationsPage() {
       </div>
 
       {/* List body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             <Loader2 size={20} className="animate-spin text-brand-400" role="status" aria-label="Loading" />
@@ -931,7 +931,7 @@ export default function CitationsPage() {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
           {/* Violation */}
           <section>
             <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
@@ -1104,7 +1104,7 @@ export default function CitationsPage() {
                   {(c as any).accident_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">ACCIDENT RELATED</span> : null}
                   {(c as any).dui_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">DUI RELATED</span> : null}
                   {(c as any).is_warning ? <span className="text-[8px] font-bold text-gray-400 bg-gray-900/30 px-1.5 py-0.5 border border-gray-700/30">WARNING ONLY</span> : null}
-                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-[#0d1520]/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
+                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-[#050505]/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
                 </div>
               </div>
             </section>
@@ -1231,7 +1231,7 @@ export default function CitationsPage() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-5">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-5">
         {saveError && (
           <div className="bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300 flex items-center gap-2">
             <AlertTriangle size={14} /> {saveError}
@@ -1355,7 +1355,7 @@ export default function CitationsPage() {
                 )}
               </div>
               {showPersonDropdown && personResults.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+                <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                   {personResults.map((p: any) => (
                     <button type="button"
                       key={p.id}
@@ -1466,7 +1466,7 @@ export default function CitationsPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -1474,7 +1474,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -1482,7 +1482,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
                   {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}

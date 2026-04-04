@@ -151,7 +151,7 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   const tooltip = document.createElement('div');
   tooltip.style.cssText =
     'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);' +
-    "background:#0d1520;color:#e5e7eb;padding:8px 12px;border:1px solid #88888850;border-radius:2px;" +
+    "background:#050505;color:#e5e7eb;padding:8px 12px;border:1px solid #88888850;border-radius:2px;" +
     "font-family:'JetBrains Mono',monospace;white-space:nowrap;pointer-events:none;" +
     'opacity:0;transition:opacity 0.15s ease;z-index:9999;min-width:120px;max-width:220px;' +
     'box-shadow:0 4px 12px rgba(0,0,0,0.5);backdrop-filter:blur(8px);';
@@ -179,7 +179,7 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   const tooltipCaret = document.createElement('div');
   tooltipCaret.style.cssText =
     'position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);' +
-    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:5px solid #0d1520;';
+    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:5px solid #050505;';
   tooltip.appendChild(tooltipCaret);
 
   // Hover events — enlarge dot + show tooltip
@@ -223,7 +223,7 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
   const badge = document.createElement('div');
   badge.style.cssText =
     'position:absolute;top:-6px;right:-6px;width:12px;height:12px;border-radius:2px;' +
-    'background:#0d1520;border:1px solid ' + color + ';display:flex;align-items:center;justify-content:center;' +
+    'background:#050505;border:1px solid ' + color + ';display:flex;align-items:center;justify-content:center;' +
     'font-size:7px;color:' + color + ';font-weight:900;line-height:1;backdrop-filter:blur(4px);';
   badge.textContent = '\u23F1';
   tag.appendChild(badge);
@@ -431,13 +431,13 @@ export function injectKeyframes() {
     .rmpg-marker-hover { transform:scale(1.08); transition:transform 0.2s ease; }
     .rmpg-marker-selected { animation:marker-selected 1.5s ease-in-out infinite; }
     .rmpg-marker-enter { animation:marker-enter 0.3s ease-out forwards; }
-    .gm-style-iw { background:#0d1520 !important; border:1px solid #1e3048 !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; }
-    .gm-style-iw-d { overflow:auto !important; scrollbar-width:thin; scrollbar-color:#1e3048 transparent; }
+    .gm-style-iw { background:#050505 !important; border:1px solid #222222 !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; }
+    .gm-style-iw-d { overflow:auto !important; scrollbar-width:thin; scrollbar-color:#222222 transparent; }
     .gm-style-iw-d::-webkit-scrollbar { width:4px; }
-    .gm-style-iw-d::-webkit-scrollbar-thumb { background:#1e3048; border-radius:2px; }
+    .gm-style-iw-d::-webkit-scrollbar-thumb { background:#222222; border-radius:2px; }
     .gm-style-iw-d::-webkit-scrollbar-track { background:transparent; }
     .gm-style-iw button[aria-label="Close"] { filter: invert(1) !important; }
-    .gm-style .gm-style-iw-tc::after { background:#0d1520 !important; }
+    .gm-style .gm-style-iw-tc::after { background:#050505 !important; }
     @media (prefers-reduced-motion: reduce) { .rmpg-marker-enter, .rmpg-marker-selected, [style*=animation] { animation:none !important; } }
   `;
   document.head.appendChild(style);

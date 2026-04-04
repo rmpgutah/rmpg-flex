@@ -104,7 +104,7 @@ export default function TacticalToolsPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100dvh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
+      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100dvh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
       style={{ top: 8, right: 8 }}
     >
       {/* Header */}
@@ -114,7 +114,7 @@ export default function TacticalToolsPanel({
         </span>
         <button type="button"
           onClick={onClose}
-          className="text-rmpg-400 hover:text-white hover:bg-[#1a2636] transition-colors duration-150 rounded-sm p-0.5"
+          className="text-rmpg-400 hover:text-white hover:bg-[#141414] transition-colors duration-150 rounded-sm p-0.5"
           title="Close"
           aria-label="Close tactical tools"
         >

@@ -94,7 +94,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <div className={`w-2 h-2 rounded-full ${info?.available ? 'bg-green-500' : 'bg-[#2a3e58]'}`} />
+                  <div className={`w-2 h-2 rounded-full ${info?.available ? 'bg-green-500' : 'bg-[#2e2e2e]'}`} />
                   <span className="text-xs font-medium text-white">{PROVIDER_LABELS[name] || name}</span>
                 </div>
                 <div className="text-[10px] text-rmpg-500 font-mono truncate">{info?.model || 'Not configured'}</div>

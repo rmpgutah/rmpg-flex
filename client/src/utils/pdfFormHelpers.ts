@@ -434,7 +434,7 @@ export function drawFormSection(
 
   if (useBanner) {
     // ── Draw horizontal banner (matches openAutoSection header style) ──
-    // Dark fill (#2a3e58 equivalent) matching CFS section headers
+    // Dark fill (#2e2e2e equivalent) matching CFS section headers
     const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
     doc.setFillColor(...bgColor);
     doc.rect(gridX, curY, gridW, bannerH, 'F');

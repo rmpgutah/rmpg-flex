@@ -50,8 +50,8 @@ export default function ForgotPasswordPage() {
             <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
             <span>PASSWORD RESET</span>
             <div className="ml-auto flex items-center gap-1">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838' }}>&#9633;</div>
             </div>
           </div>
 
@@ -133,7 +133,7 @@ export default function ForgotPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #1e3048' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #222222' }}>
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors"

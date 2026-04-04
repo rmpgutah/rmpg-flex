@@ -85,7 +85,7 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
     <div
       role="img"
       aria-label={`Map scale: ${label}`}
-      className="backdrop-blur-md shadow-lg transition-all duration-200 border border-[#1e3048]/50 rounded-sm"
+      className="backdrop-blur-md shadow-lg transition-all duration-200 border border-[#222222]/50 rounded-sm"
       style={{
         borderRadius: 2,
         background: 'rgba(13, 21, 32, 0.9)',

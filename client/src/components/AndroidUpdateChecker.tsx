@@ -154,8 +154,8 @@ export default function AndroidUpdateChecker() {
       <div
         className="mx-4 w-full max-w-sm"
         style={{
-          background: 'linear-gradient(180deg, #1a2636 0%, #0d1520 100%)',
-          border: '1px solid #1e3048',
+          background: 'linear-gradient(180deg, #141414 0%, #050505 100%)',
+          border: '1px solid #222222',
           borderTop: '3px solid #888888',
           boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
         }}
@@ -214,7 +214,7 @@ export default function AndroidUpdateChecker() {
             className="w-full flex items-center justify-center gap-2 py-3 px-4 font-bold text-sm uppercase tracking-wider transition-all"
             style={{
               background: downloading
-                ? 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)'
+                ? 'linear-gradient(180deg, #222222 0%, #141414 100%)'
                 : 'linear-gradient(180deg, #888888 0%, #333333 100%)',
               color: downloading ? '#888888' : '#fff',
               border: '1px solid',

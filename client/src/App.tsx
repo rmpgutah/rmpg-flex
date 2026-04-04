@@ -120,14 +120,14 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
         {/* Subtle system label */}
         <div className="flex items-center gap-2 mt-3">
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #1e3048)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #222222)' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
             style={{ color: 'rgba(136,136,136,0.4)' }}
           >
             CAD / RMS
           </span>
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #1e3048, transparent)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #222222, transparent)' }} />
         </div>
       </div>
 

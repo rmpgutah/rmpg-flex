@@ -279,7 +279,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit announcement' : 'New announcement'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto scrollbar-dark" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#162236] sticky top-0 bg-surface-base z-10">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#181818] sticky top-0 bg-surface-base z-10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Announcement' : 'New Announcement'}
               </h3>

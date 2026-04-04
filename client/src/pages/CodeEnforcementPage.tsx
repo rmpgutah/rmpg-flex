@@ -404,7 +404,7 @@ export default function CodeEnforcementPage() {
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
           {activeTab === 'violations' ? (
             vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
             violations.length === 0 ? <EmptyState icon={Construction} title="No violations found" description="Try adjusting your filters or create a new one." /> :
@@ -483,7 +483,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedViolation.violation_number} icon={Construction}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${VIOLATION_STATUS_COLORS[selectedViolation.status] || ''}`}>
                   {selectedViolation.status.replace(/_/g, ' ').toUpperCase()}
@@ -587,7 +587,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedTow.tow_number} icon={Truck}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${TOW_STATUS_COLORS[selectedTow.status] || ''}`}>
                   {selectedTow.status.replace(/_/g, ' ').toUpperCase()}

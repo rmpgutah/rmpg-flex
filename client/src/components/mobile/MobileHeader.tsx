@@ -52,8 +52,8 @@ export default function MobileHeader({
         paddingLeft: 8,
         paddingRight: 8,
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-        borderBottom: '1px solid #1e3048',
+        background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
+        borderBottom: '1px solid #222222',
         flexShrink: 0,
         WebkitBackdropFilter: 'blur(8px)',
         backdropFilter: 'blur(8px)',
@@ -127,7 +127,7 @@ export default function MobileHeader({
               src={user.profile_image}
               alt={user.first_name}
               className="w-7 h-7 sm:w-8 sm:h-8 object-cover"
-              style={{ border: '2px solid #3a5070' }}
+              style={{ border: '2px solid #383838' }}
             />
           ) : (
             <div

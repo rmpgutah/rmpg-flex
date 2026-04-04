@@ -137,7 +137,7 @@ export default function ModuleTileBar({
       className="flex items-center gap-1 px-3 shrink-0 relative"
       style={{
         height: 58,
-        background: 'linear-gradient(180deg, #0f1722 0%, #0d1520 100%)',
+        background: 'linear-gradient(180deg, #0f1722 0%, #050505 100%)',
         borderBottom: '1px solid #1c2d44',
         zIndex: 40,
       }}
@@ -267,7 +267,7 @@ export default function ModuleTileBar({
                   left: 0,
                   zIndex: 50,
                   minWidth: 180,
-                  background: 'var(--surface-raised, #141e2b)',
+                  background: 'var(--surface-raised, #0a0a0a)',
                   border: '1px solid var(--border-default, #1c2d44)',
                   borderTop: '2px solid #888888',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.6)',

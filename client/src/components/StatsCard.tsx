@@ -73,7 +73,7 @@ export default function StatsCard({
         ${onClick ? 'cursor-pointer hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.99]' : ''}
         ${className}
       `}
-      style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
+      style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
     >
       {/* Top accent glow line */}
       <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${glowHex}40, transparent)` }} />
@@ -96,7 +96,7 @@ export default function StatsCard({
 
         {(trend != null || (trendValue != null && trendValue !== '')) && (
           <div className={`flex items-center gap-1.5 mt-2.5 pt-1.5 ${TREND_COLOR_MAP[trendColor]}`}
-            style={{ borderTop: '1px solid #1e304840' }}>
+            style={{ borderTop: '1px solid #22222240' }}>
             <span className="text-[9px]">&mdash;</span>
             {trendValue && <span className="text-[10px] font-medium tabular-nums">{trendValue}</span>}
           </div>
