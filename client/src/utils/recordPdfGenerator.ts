@@ -1115,11 +1115,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const rowH = 4.5;
     // Column header — matches addTableWithShading style exactly
     const cw = getContentWidth(doc);
-    doc.setFillColor(200, 200, 200);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
     doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
     let hx = lx;
     for (let i = 0; i < pHeaders.length; i++) {
       const capH = FONT.SIZE_TABLE_HEADER * 0.35;
@@ -1163,11 +1163,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const rowH = 4.5;
     // Column header — matches addTableWithShading style
     const vcw = getContentWidth(doc);
-    doc.setFillColor(200, 200, 200);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
     doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
     let vhx = lx;
     for (let i = 0; i < vHeaders.length; i++) {
       const capH = FONT.SIZE_TABLE_HEADER * 0.35;
@@ -1492,7 +1492,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
 // ── Person Record ────────────────────────────────────────────
 
-function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
+async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -1538,15 +1538,20 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = Math.max(fy8, fy9, fy10, fy11, fy12);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
 
-    // Photo — small ID photo, top-right corner, covers only rows 1-2
+    // Photo — B&W photocopy style, top-right corner, rows 1-2 only
     if (data.id_photo) {
       const photoW = 14;
       const photoH = 17;
       const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 1;
       const photoY = sec.contentY + 0.5;
       try {
-        addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH);
-      } catch { /* skip */ }
+        // Convert to grayscale for document legibility
+        const grayUrl = await convertToGrayscale(data.id_photo!.dataUrl);
+        const grayPhoto = { ...data.id_photo!, dataUrl: grayUrl };
+        addImageToPage(doc, grayPhoto, photoX, photoY, photoW, photoH);
+      } catch {
+        try { addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH); } catch { /* skip */ }
+      }
       doc.setDrawColor(120, 120, 120);
       doc.setLineWidth(0.2);
       doc.rect(photoX, photoY, photoW, photoH);
@@ -3046,10 +3051,10 @@ type RecordDataMap = {
   citation: CitationPdfData;
 };
 
-export function generateRecordPdf<T extends RecordPdfType>(
+export async function generateRecordPdf<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
-): jsPDF {
+): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
 
   // Set form key for footer form numbers
@@ -3071,7 +3076,7 @@ export function generateRecordPdf<T extends RecordPdfType>(
       generateCallReport(doc, data as CallPdfData);
       break;
     case 'person':
-      generatePersonReport(doc, data as PersonPdfData);
+      await generatePersonReport(doc, data as PersonPdfData);
       break;
     case 'vehicle':
       generateVehicleReport(doc, data as VehiclePdfData);

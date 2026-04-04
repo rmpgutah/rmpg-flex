@@ -1310,6 +1310,35 @@ export interface PdfImage {
 }
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
+/**
+ * Convert a data URL image to monochrome black & white (1-bit style).
+ * Uses dithering-free threshold for clean document reproduction.
+ */
+export async function convertToGrayscale(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+        const bw = lum > 128 ? 255 : 0; // Pure black or white threshold
+        d[i] = d[i + 1] = d[i + 2] = bw;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 export function addImageToPage(
   doc: jsPDF,
   image: PdfImage,
@@ -1505,12 +1534,12 @@ export function addTableWithShading(
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Light gray table header — flush with section header above
-      doc.setFillColor(200, 200, 200);
+      // Medium dark gray table header with white text
+      doc.setFillColor(...COLOR.BG_TABLE_HDR);
       doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 30, 30);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
     }
 
     // Text vertically centered: baseline = top + half height + half cap-height
