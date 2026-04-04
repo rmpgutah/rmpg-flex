@@ -173,6 +173,12 @@ export interface GeoFeatureInfo {
 
 // ── Hook ─────────────────────────────────────────────────────
 
+/** Unit presence info for a beat */
+export interface BeatUnitInfo {
+  call_sign: string;
+  status: string;
+}
+
 interface UseGeoJsonLayersOptions {
   map: google.maps.Map | null;
   infoWindow: google.maps.InfoWindow | null;
@@ -186,6 +192,10 @@ interface UseGeoJsonLayersOptions {
   assignedFeatures?: Set<string>;
   /** Beat-district enrichment: Map<city_code, Map<district_letter, BeatDistrictEntry>> */
   beatDistrictMap?: Map<string, Map<string, BeatDistrictEntry>>;
+  /** Units currently in each beat, keyed by beat_code */
+  unitsPerBeat?: Map<string, BeatUnitInfo[]>;
+  /** Active call count per beat, keyed by beat_code (zone_beat) */
+  callsPerBeat?: Map<string, number>;
 }
 
 export interface GeoLayerState {
@@ -231,6 +241,8 @@ export function useGeoJsonLayers({
   selectedFeatures,
   assignedFeatures,
   beatDistrictMap,
+  unitsPerBeat,
+  callsPerBeat,
 }: UseGeoJsonLayersOptions) {
   // Per-layer visibility state
   const [layerStates, setLayerStates] = useState<Record<string, GeoLayerState>>(() => {
@@ -264,6 +276,15 @@ export function useGeoJsonLayers({
   // Beat-district enrichment ref
   const beatDistrictMapRef = useRef(beatDistrictMap);
   useEffect(() => { beatDistrictMapRef.current = beatDistrictMap; }, [beatDistrictMap]);
+
+  // Unit/call overlay refs
+  const unitsPerBeatRef = useRef(unitsPerBeat);
+  useEffect(() => { unitsPerBeatRef.current = unitsPerBeat; }, [unitsPerBeat]);
+  const callsPerBeatRef = useRef(callsPerBeat);
+  useEffect(() => { callsPerBeatRef.current = callsPerBeat; }, [callsPerBeat]);
+
+  // Beat centroids — computed once when beat layer loads, exposed for unit-beat matching
+  const [beatCentroids, setBeatCentroids] = useState<Map<string, { lat: number; lng: number }>>(new Map());
 
   // Pre-compute flat beat style lookup: "city_code::district_letter" → BeatStyleEntry
   // This avoids per-feature Map traversal + object spread in the hot-path setStyle callback
@@ -339,6 +360,14 @@ export function useGeoJsonLayers({
             const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
             if (cached) baseStyle = cached.style;
           }
+          // Coverage dimming: reduce opacity for beats with no units
+          const beatCode = feature.getProperty('beat_code') as string;
+          if (beatCode && unitsPerBeatRef.current) {
+            const beatUnits = unitsPerBeatRef.current.get(beatCode);
+            if (!beatUnits || beatUnits.length === 0) {
+              baseStyle = { ...baseStyle, fillOpacity: 0.04, strokeOpacity: 0.25 };
+            }
+          }
         }
 
         const activeStyle = isSelected ? SELECTION_STYLE : isAssigned ? ASSIGNED_STYLE : baseStyle;
@@ -366,6 +395,11 @@ export function useGeoJsonLayers({
   useEffect(() => {
     if (beatStyleLookup) restyleLayers();
   }, [beatStyleLookup, restyleLayers]);
+
+  // Re-style when unit coverage changes (for coverage dimming)
+  useEffect(() => {
+    if (unitsPerBeat) restyleLayers();
+  }, [unitsPerBeat, restyleLayers]);
 
   // ── Beat label overlay helpers ─────────────────────────────
 
@@ -556,6 +590,22 @@ export function useGeoJsonLayers({
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
+
+        // Units and calls overlay
+        const beatCode = props.beat_code as string | undefined;
+        if (beatCode) {
+          html += `<div style="border-top:1px solid #333;padding-top:6px;margin-top:6px;font-size:10px;">`;
+          const beatUnits = unitsPerBeatRef.current?.get(beatCode);
+          if (beatUnits && beatUnits.length > 0) {
+            const unitList = beatUnits.map(u => `<span style="color:#22c55e;">${escapeForHtml(u.call_sign)}</span> <span style="color:#666;">(${escapeForHtml(u.status)})</span>`).join(', ');
+            html += `<div style="color:#bbb;"><b>Units:</b> ${unitList}</div>`;
+          } else {
+            html += `<div style="color:#666;"><b>Units:</b> None</div>`;
+          }
+          const callCount = callsPerBeatRef.current?.get(beatCode) ?? 0;
+          html += `<div style="color:#bbb;margin-top:2px;"><b>Active Calls:</b> <span style="color:${callCount > 0 ? '#f59e0b' : '#666'};">${callCount}</span></div>`;
+          html += `</div>`;
+        }
       } else {
         html += buildDefaultInfoHtml(name, cfg, props);
       }
@@ -589,6 +639,36 @@ export function useGeoJsonLayers({
     // Create beat labels if the beat layer just loaded and is visible
     if (cfg.id === 'beat' && layerStates['beat']?.visible) {
       createBeatLabels();
+    }
+
+    // Compute beat centroids when beat layer loads
+    if (cfg.id === 'beat') {
+      const centroids = new Map<string, { lat: number; lng: number }>();
+      dataLayer.forEach((feature) => {
+        const beatCode = feature.getProperty('beat_code') as string | undefined;
+        if (!beatCode) return;
+        const geom = feature.getGeometry();
+        if (!geom) return;
+        let coords: google.maps.LatLng[] = [];
+        const gType = geom.getType();
+        if (gType === 'Polygon') {
+          const poly = geom as google.maps.Data.Polygon;
+          const ring = poly.getAt(0);
+          for (let i = 0; i < ring.getLength(); i++) coords.push(ring.getAt(i));
+        } else if (gType === 'MultiPolygon') {
+          const mp = geom as google.maps.Data.MultiPolygon;
+          if (mp.getLength() > 0) {
+            const firstPoly = mp.getAt(0);
+            const ring = firstPoly.getAt(0);
+            for (let i = 0; i < ring.getLength(); i++) coords.push(ring.getAt(i));
+          }
+        }
+        if (coords.length === 0) return;
+        let latSum = 0, lngSum = 0;
+        for (const c of coords) { latSum += c.lat(); lngSum += c.lng(); }
+        centroids.set(beatCode, { lat: latSum / coords.length, lng: lngSum / coords.length });
+      });
+      setBeatCentroids(centroids);
     }
   }, [map, infoWindow, getFeatureKey, restyleLayers, layerStates, createBeatLabels]);
 
@@ -698,6 +778,8 @@ export function useGeoJsonLayers({
     toggleGeoLayer,
     ensureLayerLoaded,
     configs: GEO_LAYER_CONFIGS,
+    /** Beat centroids keyed by beat_code — available after beat layer loads */
+    beatCentroids,
   };
 }
 

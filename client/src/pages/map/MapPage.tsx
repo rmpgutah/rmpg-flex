@@ -72,7 +72,7 @@ import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerato
 import { escapeHtml } from '../../utils/sanitize';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
-import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
+import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry, type BeatUnitInfo } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -412,8 +412,17 @@ export default function MapPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // ── Units-per-beat + calls-per-beat overlays ───────────────
+  // Computed from units/calls + beat centroids (available after beat layer loads).
+  // Passed into useGeoJsonLayers for coverage dimming and info windows.
+
+  const [unitsPerBeat, setUnitsPerBeat] = useState<Map<string, BeatUnitInfo[]> | undefined>(undefined);
+  const [callsPerBeat, setCallsPerBeat] = useState<Map<string, number> | undefined>(undefined);
+  // beatCentroids ref — set by useGeoJsonLayers hook, used in effect below
+  const beatCentroidsRef = useRef<Map<string, { lat: number; lng: number }>>(new Map());
+
   // GeoJSON spatial layers (with shift planning selection integration)
-  const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs } = useGeoJsonLayers({
+  const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs, beatCentroids } = useGeoJsonLayers({
     map: mapInstanceRef.current,
     infoWindow: infoWindowRef.current,
     selectionMode: shiftPlanning.selectionMode,
@@ -421,7 +430,62 @@ export default function MapPage() {
     selectedFeatures: shiftPlanning.selectedAreas,
     assignedFeatures: shiftPlanning.assignedFeatures,
     beatDistrictMap,
+    unitsPerBeat,
+    callsPerBeat,
   });
+
+  // Keep beatCentroids ref in sync
+  useEffect(() => { beatCentroidsRef.current = beatCentroids; }, [beatCentroids]);
+
+  // Compute unitsPerBeat: match each unit to its nearest beat centroid
+  useEffect(() => {
+    if (!beatCentroids || beatCentroids.size === 0) {
+      setUnitsPerBeat(undefined);
+      return;
+    }
+    const result = new Map<string, BeatUnitInfo[]>();
+    // Initialize all beats with empty arrays
+    for (const beatCode of beatCentroids.keys()) {
+      result.set(beatCode, []);
+    }
+    // For each unit with GPS, find nearest beat centroid
+    for (const unit of units) {
+      if (unit.latitude == null || unit.longitude == null) continue;
+      if (unit.status === 'off_duty') continue;
+      let bestBeat = '';
+      let bestDist = Infinity;
+      for (const [beatCode, centroid] of beatCentroids) {
+        const dlat = unit.latitude - centroid.lat;
+        const dlng = unit.longitude - centroid.lng;
+        const dist = dlat * dlat + dlng * dlng; // squared distance is fine for comparison
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestBeat = beatCode;
+        }
+      }
+      if (bestBeat) {
+        result.get(bestBeat)!.push({ call_sign: unit.call_sign, status: unit.status });
+      }
+    }
+    setUnitsPerBeat(result);
+  }, [units, beatCentroids]);
+
+  // Compute callsPerBeat: count active calls by zone_beat
+  useEffect(() => {
+    if (!beatCentroids || beatCentroids.size === 0) {
+      setCallsPerBeat(undefined);
+      return;
+    }
+    const result = new Map<string, number>();
+    for (const call of calls) {
+      const zb = (call as any).zone_beat as string | undefined;
+      if (zb) {
+        result.set(zb, (result.get(zb) || 0) + 1);
+      }
+    }
+    setCallsPerBeat(result);
+  }, [calls, beatCentroids]);
+
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
   // Event planning overlays

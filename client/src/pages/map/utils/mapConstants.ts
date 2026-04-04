@@ -35,6 +35,7 @@ export interface ActiveCall {
   latitude: number | null;
   longitude: number | null;
   property_name: string | null;
+  zone_beat?: string | null;
 }
 
 export interface MapProperty {
