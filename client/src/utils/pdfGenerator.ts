@@ -579,6 +579,12 @@ export function addFlagBadges(
   priority?: string,
 ): number {
   if (!flags || flags.length === 0) return y;
+  // Normalize: flags may be strings or objects with a name/label/flag property
+  const normalized: string[] = flags.map((f: any) => {
+    if (typeof f === 'string') return f;
+    if (typeof f === 'object' && f !== null) return f.name || f.label || f.flag || f.title || JSON.stringify(f);
+    return String(f);
+  }).filter(Boolean);
 
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -614,7 +620,7 @@ export function addFlagBadges(
   let curX = x;
   let curY = y;
 
-  for (const flag of flags) {
+  for (const flag of normalized) {
     if (!flag) continue;
     const text = String(flag).toUpperCase();
     const tw = doc.getTextWidth(text);

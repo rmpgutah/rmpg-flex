@@ -26,9 +26,9 @@ export const COLOR = {
   BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
 
   // Backgrounds — lighter, modern government-form style
-  BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
+  BG_ZEBRA:        [235, 235, 235]  as const,  // Even-row table shading (light gray)
   BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#2d3748 dark blue-gray)
-  BG_TABLE_HDR:    [70, 75, 88]     as const,  // Table column header (slate)
+  BG_TABLE_HDR:    [140, 140, 140]   as const,  // Table column header (medium gray)
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,

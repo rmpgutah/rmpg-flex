@@ -1543,16 +1543,16 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = Math.max(fy8, fy9, fy10, fy11, fy12);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
 
-    // Photo overlay — drawn AFTER section so it sits on top in the corner
+    // Photo overlay — small passport photo in top-right of Subject ID only
     if (data.id_photo) {
-      const photoW = 24;
-      const photoH = 30;
-      const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 1;
-      const photoY = sec.contentY;
+      const photoW = 18;
+      const photoH = 22;
+      const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 2;
+      const photoY = sec.contentY + 1;
       try {
         addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH);
       } catch { /* skip */ }
-      doc.setDrawColor(80, 80, 80);
+      doc.setDrawColor(120, 120, 120);
       doc.setLineWidth(0.3);
       doc.rect(photoX, photoY, photoW, photoH);
     }
