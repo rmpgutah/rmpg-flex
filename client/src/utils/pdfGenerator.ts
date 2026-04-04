@@ -1480,10 +1480,10 @@ export function addTableWithShading(
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
-  const minRowH = 6;
-  const cellLineH = 3.8;      // Line height within table cells
-  const cellPad = 2;           // Padding inside cells
-  const maxCellLines = 50;    // Show full note text without truncation
+  const minRowH = 4.5;
+  const cellLineH = 3.2;      // Line height within table cells
+  const cellPad = 1.5;         // Padding inside cells
+  const maxCellLines = 1;      // No wrapping — single line, truncate if needed
 
   // Pre-compute column widths from position deltas
   const colWidths: number[] = [];
@@ -1495,25 +1495,21 @@ export function addTableWithShading(
   // Helper to draw header row — dark blocky style (or light field-pair style)
   // atY = top of header rect; text is vertically centered within
   const lightHdr = opts?.lightHeader === true;
-  const headerRowH = 5;
+  const headerRowH = 4;
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
-      // Light header: white background, thin bottom border only
-      doc.setFillColor(255, 255, 255);
+      doc.setFillColor(240, 240, 240);
       doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(0.2);
-      doc.line(LAYOUT.PAGE_MARGIN, atY + headerRowH, LAYOUT.PAGE_MARGIN + cw, atY + headerRowH);
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Medium gray table header — full width matching section headers
-      doc.setFillColor(...COLOR.BG_TABLE_HDR);
+      // Light gray table header — flush with section header above
+      doc.setFillColor(200, 200, 200);
       doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.setTextColor(30, 30, 30);
     }
 
     // Text vertically centered: baseline = top + half height + half cap-height
