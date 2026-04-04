@@ -1117,8 +1117,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setFillColor(200, 200, 200);
     doc.rect(lx, y, ffw, rowH, 'F');
     doc.setFont('courier', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     let hx = lx;
     for (let i = 0; i < pHeaders.length; i++) {
       doc.text(pHeaders[i], hx + 1.5, y + rowH * 0.65);
@@ -1167,8 +1167,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setFillColor(200, 200, 200);
     doc.rect(lx, y, ffw, rowH, 'F');
     doc.setFont('courier', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     let vhx = lx;
     for (let i = 0; i < vHeaders.length; i++) {
       doc.text(vHeaders[i], vhx + 1.5, y + rowH * 0.65);
@@ -1212,8 +1212,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
     y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text('DESCRIPTION', lx, y);
     y += 2;
     doc.setFont('helvetica', 'normal');
@@ -1297,8 +1297,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(statusText, lx + visitLabelW, y);
 
       // Units on the right
@@ -1306,7 +1306,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
         const unitsW = doc.getTextWidth(unitsText);
@@ -1324,7 +1324,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       if (timeFields.length > 0) {
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
@@ -1341,7 +1341,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       if (mileageFields.length > 0) {
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
@@ -1350,8 +1350,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Disposition
       if (visit.disposition) {
         doc.setFont('helvetica', 'italic');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
         y += SPACING.SM;
       }
@@ -1439,7 +1439,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
 
     if (step > 1) {
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1460,7 +1460,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Date/time on far left, author on far right — same line
       doc.setFont('courier', 'bold');
       doc.setFontSize(6);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const tsText = fmtTimestamp(n.created_at).toUpperCase();
       doc.text(tsText, lx, y);
       const authorName = (n.author || 'System').toUpperCase();
@@ -1684,8 +1684,8 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     flagList = flagList.map(f => f.replace(/_/g, ' '));
     if (flagList.length > 0) {
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text('ACTIVE FLAGS', lx + 1.5, y + 1.5);
       y += 2.5;
       y = addFlagBadges(doc, flagList, lx, y, ffw, prio);
