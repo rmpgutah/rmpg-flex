@@ -49,6 +49,7 @@ import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData } from '../utils/recordPdfGenerator';
 import { useNavigate } from 'react-router-dom';
+import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 
 // ============================================================
 // Types
@@ -213,9 +214,29 @@ interface AutoPollStatus {
   syncStatus: { lastSync: string | null; warrantCount: number; status: string; lastError: string | null };
   blocked: boolean;
   runs: WatchRun[];
-  flaggedPersons: { id: number; first_name: string; last_name: string; dob?: string; warrant_status: string; warrant_severity: string | null; local_warrant_count: number; utah_hit_count: number }[];
+  flaggedPersons: WatchPerson[];
   recentHits: { id: number; person_id: number; person_name: string; event: string; charges?: string; court_name?: string; created_at: string }[];
   totalPersons: number;
+}
+
+interface WatchPerson {
+  id: number;
+  first_name: string;
+  last_name: string;
+  dob?: string;
+  gender?: string;
+  race?: string;
+  height?: string;
+  weight?: string;
+  hair_color?: string;
+  eye_color?: string;
+  address?: string;
+  photo_url?: string | null;
+  warrant_severity: string | null;
+  local_warrant_count: number;
+  utah_hit_count: number;
+  warrants: { id: number; warrant_number: string; type: string; status: string; charge_description: string; offense_level: string | null; bail_amount: number | null; issuing_court: string | null; source: string | null; created_at: string }[];
+  utahWarrants: { utah_warrant_id: string; charges: string; court_name: string; issue_date: string }[];
 }
 
 // Coverage / Sources
@@ -581,6 +602,11 @@ export default function WarrantsPage() {
   // ============================================================
   const [autoPollStatus, setAutoPollStatus] = useState<AutoPollStatus | null>(null);
   const [autoPollLoading, setAutoPollLoading] = useState(false);
+  const [watchSort, setWatchSort] = useState<'severity' | 'recent' | 'name'>('severity');
+  const [watchMapOpen, setWatchMapOpen] = useState(false);
+  const [expandedWatchPersons, setExpandedWatchPersons] = useState<Set<number>>(new Set());
+  const watchMapRef = useRef<HTMLDivElement>(null);
+  const watchMapInstance = useRef<any>(null);
 
   // ============================================================
   // SOURCES TAB STATE
@@ -920,6 +946,62 @@ export default function WarrantsPage() {
     if (activeTab !== 'watch') return;
     fetchAutoPollStatus();
   }, [activeTab, fetchAutoPollStatus]);
+
+  // Watch Map initialization
+  useEffect(() => {
+    if (!watchMapOpen || !watchMapRef.current) return;
+    if (watchMapInstance.current) return; // already initialized
+
+    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string || '';
+    if (!apiKey) return;
+
+    let cancelled = false;
+    loadGoogleMaps(apiKey).then(() => {
+      if (cancelled || !watchMapRef.current) return;
+      const map = new google.maps.Map(watchMapRef.current, {
+        center: { lat: 40.76, lng: -111.89 },
+        zoom: 11,
+        styles: DARK_MAP_STYLE,
+        disableDefaultUI: true,
+        zoomControl: true,
+      });
+      watchMapInstance.current = map;
+
+      // Add markers for flagged persons with addresses
+      if (autoPollStatus?.flaggedPersons) {
+        const geocoder = new google.maps.Geocoder();
+        autoPollStatus.flaggedPersons.forEach((p) => {
+          if (!p.address) return;
+          geocoder.geocode({ address: p.address }, (results, status) => {
+            if (cancelled) return;
+            if (status === 'OK' && results && results[0]) {
+              const marker = new google.maps.Marker({
+                position: results[0].geometry.location,
+                map,
+                title: `${p.last_name}, ${p.first_name}`,
+                icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  fillColor: p.warrant_severity === 'felony' ? '#ef4444' : p.warrant_severity === 'misdemeanor' ? '#f59e0b' : '#6b7280',
+                  fillOpacity: 0.9,
+                  strokeColor: '#fff',
+                  strokeWeight: 1,
+                  scale: 8,
+                },
+              });
+              marker.addListener('click', () => {
+                document.getElementById('watch-person-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              });
+            }
+          });
+        });
+      }
+    }).catch(() => { /* Google Maps load failed silently */ });
+
+    return () => {
+      cancelled = true;
+      watchMapInstance.current = null;
+    };
+  }, [watchMapOpen, autoPollStatus?.flaggedPersons]);
 
   const fetchCoverage = useCallback(async () => {
     setCoverageLoading(true);
@@ -2377,8 +2459,8 @@ export default function WarrantsPage() {
                   </div>
                 </div>
 
-                {/* Trigger Scan Button */}
-                <div className="flex items-center gap-2">
+                {/* Trigger Scan + Sort + Map Controls */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     className="toolbar-btn text-xs bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30"
@@ -2397,67 +2479,227 @@ export default function WarrantsPage() {
                   <button type="button" className="toolbar-btn text-[10px]" onClick={fetchAutoPollStatus}>
                     <RotateCcw className="w-3 h-3" /> Refresh
                   </button>
+                  <div className="flex items-center gap-1 ml-2 border-l border-surface-border pl-2">
+                    <span className="text-[9px] text-rmpg-500 uppercase tracking-wider mr-1">Sort:</span>
+                    {(['severity', 'recent', 'name'] as const).map(s => (
+                      <button key={s} type="button"
+                        className={`toolbar-btn text-[9px] ${watchSort === s ? 'bg-brand-blue/20 text-brand-blue border-brand-blue/40' : ''}`}
+                        onClick={() => setWatchSort(s)}
+                      >{s === 'severity' ? 'Severity' : s === 'recent' ? 'Recent' : 'Name'}</button>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => setWatchMapOpen(prev => !prev)}
+                    className={`toolbar-btn text-[9px] ${watchMapOpen ? 'bg-brand-blue/20 text-brand-blue border-brand-blue/40' : ''}`}
+                  >
+                    <MapPin className="w-3 h-3" /> {watchMapOpen ? 'Hide Map' : 'Show Map'}
+                  </button>
                   <span className="text-[10px] text-rmpg-500 ml-auto">Auto-scans every 4 hours</span>
                 </div>
 
-                {/* Flagged Persons */}
+                {/* Embedded Watch Map */}
+                {watchMapOpen && (
+                  <div className="panel-inset bg-surface-sunken rounded-sm overflow-hidden" style={{ height: 280 }}>
+                    <div ref={watchMapRef} className="w-full h-full" />
+                  </div>
+                )}
+
+                {/* Flagged Persons — Rich Cards */}
                 {autoPollStatus.flaggedPersons.length > 0 && (
-                  <div className="panel-raised">
-                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
                       <span className="text-xs font-bold text-white">Persons with Active Warrants</span>
                       <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono font-bold">
                         {autoPollStatus.flaggedPersons.length}
                       </span>
                     </div>
-                    <div className="divide-y divide-surface-border max-h-[400px] overflow-auto">
-                      {autoPollStatus.flaggedPersons.map((p) => (
-                        <div key={p.id} className="p-3 hover:bg-surface-raised/50 transition-colors flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-900/40 border border-red-700/50 flex items-center justify-center">
-                            <User className="w-4 h-4 text-red-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-white">{p.last_name}, {p.first_name}</span>
-                              {p.dob && <span className="text-[10px] text-rmpg-400">DOB: {p.dob}</span>}
+                    <div className="space-y-2">
+                      {[...autoPollStatus.flaggedPersons].sort((a, b) => {
+                        if (watchSort === 'severity') {
+                          const order: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
+                          const aO = order[a.warrant_severity || ''] ?? 4;
+                          const bO = order[b.warrant_severity || ''] ?? 4;
+                          return aO - bO;
+                        }
+                        if (watchSort === 'recent') {
+                          const aDate = [...(a.warrants || [])].sort((x, y) => y.created_at.localeCompare(x.created_at))[0]?.created_at || '';
+                          const bDate = [...(b.warrants || [])].sort((x, y) => y.created_at.localeCompare(x.created_at))[0]?.created_at || '';
+                          return bDate.localeCompare(aDate);
+                        }
+                        return (a.last_name || '').localeCompare(b.last_name || '');
+                      }).map((p) => {
+                        const isExpanded = expandedWatchPersons.has(p.id);
+                        const severityColor = p.warrant_severity === 'felony' ? 'border-l-red-500' :
+                          p.warrant_severity === 'misdemeanor' ? 'border-l-amber-500' :
+                          'border-l-rmpg-500';
+                        const severityBg = p.warrant_severity === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                          p.warrant_severity === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                          'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50';
+                        const allWarrants = [...(p.warrants || [])];
+                        const allUtah = [...(p.utahWarrants || [])];
+                        return (
+                          <div key={p.id} id={`watch-person-${p.id}`} className={`panel-raised border-l-4 ${severityColor}`}>
+                            {/* Card Header */}
+                            <div className="p-3 flex items-start gap-3">
+                              {/* Photo */}
+                              <div className="flex-shrink-0">
+                                {p.photo_url ? (
+                                  <img src={p.photo_url} alt="" className="w-12 h-12 rounded-sm object-cover border border-rmpg-600" />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-sm bg-rmpg-700/60 border border-rmpg-600 flex items-center justify-center">
+                                    <User className="w-6 h-6 text-rmpg-400" />
+                                  </div>
+                                )}
+                              </div>
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-bold text-white">{p.last_name}, {p.first_name}</span>
+                                  {p.warrant_severity && (
+                                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${severityBg}`}>
+                                      {p.warrant_severity}
+                                    </span>
+                                  )}
+                                  {p.local_warrant_count > 0 && (
+                                    <span className="text-[9px] bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-1.5 py-0.5 rounded">
+                                      {p.local_warrant_count} local
+                                    </span>
+                                  )}
+                                  {p.utah_hit_count > 0 && (
+                                    <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">
+                                      {p.utah_hit_count} Utah
+                                    </span>
+                                  )}
+                                </div>
+                                {p.dob && <div className="text-[10px] text-rmpg-400 mt-0.5">DOB: {p.dob}</div>}
+                                {(() => {
+                                  const descs = [p.gender, p.race, p.height, p.weight, p.hair_color ? `${p.hair_color} hair` : null, p.eye_color ? `${p.eye_color} eyes` : null].filter(Boolean);
+                                  return descs.length > 0 ? (
+                                    <div className="text-[10px] text-rmpg-400 mt-0.5">{descs.join(' / ')}</div>
+                                  ) : null;
+                                })()}
+                                {p.address && (
+                                  <div className="flex items-center gap-1 mt-0.5 text-[10px] text-rmpg-400">
+                                    <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {p.address}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Expand toggle */}
+                              <button type="button" className="flex-shrink-0 toolbar-btn text-[9px]"
+                                onClick={() => setExpandedWatchPersons(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                                  return next;
+                                })}
+                              >
+                                <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                {isExpanded ? 'Less' : 'Warrants'}
+                              </button>
                             </div>
-                            <div className="flex items-center gap-2 mt-1 text-[10px] text-rmpg-400">
-                              {p.local_warrant_count > 0 && (
-                                <span className="bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-1.5 py-0.5 rounded">
-                                  {p.local_warrant_count} local
-                                </span>
-                              )}
-                              {p.utah_hit_count > 0 && (
-                                <span className="bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">
-                                  {p.utah_hit_count} Utah
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex-shrink-0">
-                            {p.warrant_severity && (
-                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                                p.warrant_severity === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                                p.warrant_severity === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                                'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                              }`}>{p.warrant_severity}</span>
+
+                            {/* Expanded warrants list */}
+                            {isExpanded && (allWarrants.length > 0 || allUtah.length > 0) && (
+                              <div className="border-t border-surface-border">
+                                {allWarrants.length > 0 && (
+                                  <div className="panel-beveled m-2 p-2">
+                                    <div className="text-[9px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Local Warrants</div>
+                                    <div className="space-y-1">
+                                      {allWarrants.map(w => (
+                                        <div key={w.id} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-surface-sunken/50">
+                                          <span className="font-mono text-rmpg-200">{w.warrant_number}</span>
+                                          <span className="text-rmpg-400">{w.type}</span>
+                                          <span className="text-rmpg-200 flex-1 truncate">{w.charge_description}</span>
+                                          {w.issuing_court && <span className="text-rmpg-400 truncate">{w.issuing_court}</span>}
+                                          {w.bail_amount != null && w.bail_amount > 0 && (
+                                            <span className="text-amber-400 font-mono">${w.bail_amount.toLocaleString()}</span>
+                                          )}
+                                          {w.offense_level && (
+                                            <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded border ${
+                                              w.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                                              w.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                                              'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                                            }`}>{w.offense_level}</span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {allUtah.length > 0 && (
+                                  <div className="panel-beveled m-2 p-2">
+                                    <div className="text-[9px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Utah State Warrants</div>
+                                    <div className="space-y-1">
+                                      {allUtah.map((uw, i) => (
+                                        <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-surface-sunken/50">
+                                          <span className="font-mono text-rmpg-200">{uw.utah_warrant_id}</span>
+                                          <span className="text-rmpg-200 flex-1 truncate">{uw.charges}</span>
+                                          <span className="text-rmpg-400 truncate">{uw.court_name}</span>
+                                          <span className="text-rmpg-500">{uw.issue_date}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             )}
+
+                            {/* Action buttons */}
+                            <div className="p-2 border-t border-surface-border flex items-center gap-1 flex-wrap">
+                              <button type="button" className="toolbar-btn text-[9px]" title="Search All"
+                                onClick={() => {
+                                  setUniSearchFirst(p.first_name);
+                                  setUniSearchLast(p.last_name);
+                                  setActiveTab('search-all');
+                                  setTimeout(() => runUnifiedSearch(), 100);
+                                }}
+                              >
+                                <Search className="w-3 h-3" /> Search All
+                              </button>
+                              <button type="button" className="toolbar-btn text-[9px]" title="Print Sheet"
+                                onClick={() => {
+                                  const pdfData: WarrantPdfData = {
+                                    warrant_number: allWarrants[0]?.warrant_number || 'N/A',
+                                    type: allWarrants[0]?.type || 'arrest',
+                                    status: allWarrants[0]?.status || 'active',
+                                    subject_first_name: p.first_name,
+                                    subject_last_name: p.last_name,
+                                    subject_dob: p.dob || null,
+                                    subject_gender: p.gender || null,
+                                    subject_race: p.race || null,
+                                    subject_height: p.height || null,
+                                    subject_weight: p.weight || null,
+                                    subject_hair_color: p.hair_color || null,
+                                    subject_eye_color: p.eye_color || null,
+                                    subject_address: p.address || null,
+                                    charge_description: allWarrants[0]?.charge_description || allUtah[0]?.charges || '',
+                                    offense_level: allWarrants[0]?.offense_level as any || null,
+                                    bail_amount: allWarrants[0]?.bail_amount || null,
+                                    issuing_court: allWarrants[0]?.issuing_court || allUtah[0]?.court_name || null,
+                                    issuing_judge: null,
+                                    entered_by_name: null,
+                                    created_at: allWarrants[0]?.created_at || new Date().toISOString(),
+                                    notes: null,
+                                  };
+                                  downloadRecordPdf('warrant', pdfData, pdfData.warrant_number);
+                                }}
+                              >
+                                <Printer className="w-3 h-3" /> Print Sheet
+                              </button>
+                              <button type="button" className="toolbar-btn text-[9px]" title="View Record"
+                                onClick={() => navigate(`/records?tab=persons&personId=${p.id}`)}
+                              >
+                                <FileText className="w-3 h-3" /> View Record
+                              </button>
+                              <button type="button" className="toolbar-btn text-[9px]" title="View Calls"
+                                onClick={() => navigate(`/dispatch?personId=${p.id}`)}
+                              >
+                                <Gavel className="w-3 h-3" /> View Calls
+                              </button>
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            className="flex-shrink-0 text-[10px] text-rmpg-400 hover:text-white"
-                            title="Search all warrants"
-                            onClick={() => {
-                              setUniSearchFirst(p.first_name);
-                              setUniSearchLast(p.last_name);
-                              setActiveTab('search-all');
-                              setTimeout(() => runUnifiedSearch(), 100);
-                            }}
-                          >
-                            <Search className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
