@@ -1498,23 +1498,19 @@ export function addTableWithShading(
   const headerRowH = 5;
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
-      // Light header: white background, thin border, uppercase label (field-pair style)
+      // Light header: white background, thin bottom border only
       doc.setFillColor(255, 255, 255);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_FIELD);
-      doc.setLineWidth(BORDER.FIELD);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(0.2);
+      doc.line(LAYOUT.PAGE_MARGIN, atY + headerRowH, LAYOUT.PAGE_MARGIN + cw, atY + headerRowH);
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Medium gray table header — no outer border box
+      // Medium gray table header — full width matching section headers
       doc.setFillColor(...COLOR.BG_TABLE_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
-      // Bottom line only, no full box outline
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(0.3);
-      doc.line(LAYOUT.PAGE_MARGIN + 1, atY + headerRowH, LAYOUT.PAGE_MARGIN + cw - 1, atY + headerRowH);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_INVERTED);
@@ -1574,17 +1570,16 @@ export function addTableWithShading(
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
     }
 
-    // y = top of this data row rect
-    // Zebra shading — odd rows get light gray, even rows stay white
+    // Zebra shading — first row white, second light gray, alternating
     if (i % 2 === 1) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, y, cw - 2, rowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
     }
 
-    // Light row separator line at bottom
+    // Light row separator
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(0.2);
-    doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH);
+    doc.setLineWidth(0.15);
+    doc.line(LAYOUT.PAGE_MARGIN, y + rowH, LAYOUT.PAGE_MARGIN + cw, y + rowH);
 
     // Render cell text — vertically centered within row
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
