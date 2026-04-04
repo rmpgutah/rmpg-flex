@@ -334,7 +334,7 @@ export default function SafetyAlertModal({
                     color: radius === r ? '#60a5fa' : '#64748b',
                   }}
                 >
-                  {r >= 1000 ? `${r / 1000}km` : `${r}m`}
+                  {r >= 1609 ? `${(r / 1609.34).toFixed(1)}mi` : `${r}m`}
                 </button>
               ))}
             </div>

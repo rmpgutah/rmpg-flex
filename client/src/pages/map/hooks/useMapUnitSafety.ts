@@ -18,7 +18,7 @@ export interface UnitExposureData {
   total_minutes_on_duty: number;
   current_zone_risk: 'low' | 'moderate' | 'high' | 'critical';
   heading: number;
-  speed_kmh: number;
+  speed_mph: number;
   shift_start: string;
 }
 
@@ -58,19 +58,19 @@ interface UseMapUnitSafetyReturn {
 // ─── Constants ──────────────────────────────────────────────
 
 const POLL_INTERVAL_MS = 60_000;
-const LONE_OFFICER_RADIUS_KM = 2;
-const BACKUP_RADIUS_KM = 3;
+const LONE_OFFICER_RADIUS_MI = 1.24;
+const BACKUP_RADIUS_MI = 1.86;
 const CLUSTER_RADIUS_M = 200;
 const EXPOSURE_THRESHOLD_MIN = 30;
 const STATIONARY_THRESHOLD_MS = 20 * 60 * 1000; // 20 min
-const SPEED_ANOMALY_KMH = 128; // ~80 mph
+const SPEED_ANOMALY_MPH = 80;
 const SHIFT_FATIGUE_HOURS = 10;
 const DEG_TO_RAD = Math.PI / 180;
-const EARTH_RADIUS_KM = 6371;
+const EARTH_RADIUS_MI = 3958.8;
 
 // ─── Haversine helper ───────────────────────────────────────
 
-function haversineKm(
+function haversineMi(
   lat1: number, lng1: number,
   lat2: number, lng2: number,
 ): number {
@@ -82,7 +82,7 @@ function haversineKm(
     Math.cos(lat1 * DEG_TO_RAD) *
       Math.cos(lat2 * DEG_TO_RAD) *
       Math.sin(dLng / 2) ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return EARTH_RADIUS_MI * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // ─── Hook ───────────────────────────────────────────────────
@@ -130,13 +130,13 @@ export function useMapUnitSafety(
       const entries = Array.from(exposureMap.values());
       if (entries.length === 0) return;
 
-      // Lone officers: no other unit within LONE_OFFICER_RADIUS_KM
+      // Lone officers: no other unit within LONE_OFFICER_RADIUS_MI
       const lone: string[] = [];
       entries.forEach((u) => {
         const nearby = entries.filter(
           (o) =>
             o.call_sign !== u.call_sign &&
-            haversineKm(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_KM,
+            haversineMi(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_MI,
         );
         if (nearby.length === 0) lone.push(u.call_sign);
       });
@@ -150,8 +150,8 @@ export function useMapUnitSafety(
 
       // Speed anomalies
       const speedFlags = entries
-        .filter((u) => u.speed_kmh > SPEED_ANOMALY_KMH)
-        .map((u) => ({ callSign: u.call_sign, speed: u.speed_kmh }));
+        .filter((u) => u.speed_mph > SPEED_ANOMALY_MPH)
+        .map((u) => ({ callSign: u.call_sign, speed: u.speed_mph }));
       setSpeedAnomalies(speedFlags);
 
       // Stationary detection
@@ -161,7 +161,7 @@ export function useMapUnitSafety(
       entries.forEach((u) => {
         const prev = history.get(u.call_sign);
         if (prev) {
-          const moved = haversineKm(prev.lat, prev.lng, u.lat, u.lng) > 0.02; // ~20m
+          const moved = haversineMi(prev.lat, prev.lng, u.lat, u.lng) > 0.012; // ~20m
           if (moved) {
             history.set(u.call_sign, { lat: u.lat, lng: u.lng, since: now });
           } else if (now - prev.since > STATIONARY_THRESHOLD_MS) {
@@ -179,7 +179,7 @@ export function useMapUnitSafety(
         const count = entries.filter(
           (o) =>
             o.call_sign !== u.call_sign &&
-            haversineKm(u.lat, u.lng, o.lat, o.lng) < BACKUP_RADIUS_KM,
+            haversineMi(u.lat, u.lng, o.lat, o.lng) < BACKUP_RADIUS_MI,
         ).length;
         backup.set(u.call_sign, count);
       });
@@ -196,7 +196,7 @@ export function useMapUnitSafety(
         const nearby = entries.filter(
           (o) =>
             o.call_sign !== u.call_sign &&
-            haversineKm(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M,
+            haversineMi(u.lat, u.lng, o.lat, o.lng) * 1609.34 < CLUSTER_RADIUS_M,
         );
         if (nearby.length >= 2) {
           const clusterUnits = [u.call_sign, ...nearby.map((n) => n.call_sign)];
@@ -364,7 +364,7 @@ export function useMapUnitSafety(
           const others = Array.from(newExposure.values()).filter(
             (o) =>
               o.call_sign !== u.call_sign &&
-              haversineKm(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_KM,
+              haversineMi(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_MI,
           );
           return others.length === 0;
         })
@@ -378,7 +378,7 @@ export function useMapUnitSafety(
         const nearby = entries.filter(
           (o) =>
             o.call_sign !== u.call_sign &&
-            haversineKm(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M,
+            haversineMi(u.lat, u.lng, o.lat, o.lng) * 1609.34 < CLUSTER_RADIUS_M,
         );
         if (nearby.length >= 2) {
           const cUnits = [u.call_sign, ...nearby.map((n) => n.call_sign)];
