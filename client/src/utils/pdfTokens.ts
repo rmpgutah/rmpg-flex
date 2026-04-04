@@ -28,7 +28,7 @@ export const COLOR = {
   // Backgrounds
   BG_ZEBRA:        [245, 245, 245]  as const,  // Even-row shading (very light gray)
   BG_SECTION_HDR:  [60, 60, 60]     as const,  // Section header bar (dark gray)
-  BG_TABLE_HDR:    [70, 70, 70]     as const,  // Table column header (medium dark gray)
+  BG_TABLE_HDR:    [100, 100, 100]   as const,  // Table column header (medium gray)
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -118,7 +118,7 @@ export const SPACING = {
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   3.8,   // Section header bar height (compact)
-  SECTION_GAP:        0.3,   // Gap between sections (0.2-0.5mm)
+  SECTION_GAP:        0.5,   // Gap between sections
   SECTION_CONTENT_PAD: 0.8,  // Gap from header bar to first content
   SECTION_BOTTOM_PAD:  0.3,  // Padding inside section before bottom border
 
