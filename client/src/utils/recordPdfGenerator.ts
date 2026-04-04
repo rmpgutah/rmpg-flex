@@ -1111,25 +1111,23 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + 3.8;
     const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
-    const pColW = [ffw * 0.28, ffw * 0.17, ffw * 0.15, ffw * 0.17, ffw * 0.23];
+    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
     const rowH = 4.5;
-    // Column header row — light gray background, dark text
+    // Column header — matches addTableWithShading style exactly
+    const cw = getContentWidth(doc);
     doc.setFillColor(200, 200, 200);
-    doc.rect(lx, y, ffw, rowH, 'F');
-    doc.setFont('courier', 'bold');
+    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setTextColor(0, 0, 0);
     let hx = lx;
     for (let i = 0; i < pHeaders.length; i++) {
-      doc.text(pHeaders[i], hx + 1.5, y + rowH * 0.65);
+      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
+      doc.text(pHeaders[i], hx + 1, y + (rowH + capH) / 2);
       hx += pColW[i];
     }
-    // Bottom line under header
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(lx, y + rowH, lx + ffw, y + rowH);
     y += rowH;
-    // Data rows — just bottom separator lines, no box rects
+    // Data rows
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const p of data.linked_persons) {
@@ -1163,23 +1161,21 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
     const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
     const rowH = 4.5;
-    // Column header row — light gray background, dark text
+    // Column header — matches addTableWithShading style
+    const vcw = getContentWidth(doc);
     doc.setFillColor(200, 200, 200);
-    doc.rect(lx, y, ffw, rowH, 'F');
-    doc.setFont('courier', 'bold');
+    doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH, 'F');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setTextColor(0, 0, 0);
     let vhx = lx;
     for (let i = 0; i < vHeaders.length; i++) {
-      doc.text(vHeaders[i], vhx + 1.5, y + rowH * 0.65);
+      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
+      doc.text(vHeaders[i], vhx + 1, y + (rowH + capH) / 2);
       vhx += vColW[i];
     }
-    // Bottom line under header
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(lx, y + rowH, lx + ffw, y + rowH);
     y += rowH;
-    // Data rows — just bottom separator lines
+    // Data rows
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const v of data.linked_vehicles) {
