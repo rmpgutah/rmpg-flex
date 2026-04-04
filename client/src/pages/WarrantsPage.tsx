@@ -48,6 +48,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData } from '../utils/recordPdfGenerator';
+import { useNavigate } from 'react-router-dom';
 
 // ============================================================
 // Types
@@ -404,6 +405,7 @@ const timeAgo = (date: string): string => {
 };
 
 export default function WarrantsPage() {
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const warrantFormTitleId = useId();
@@ -1739,7 +1741,13 @@ export default function WarrantsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
                         <span className="text-rmpg-400">Name</span>
-                        <div className="text-white font-bold">{selectedWarrant.subject_name}</div>
+                        {selectedWarrant.subject_person_id ? (
+                          <button type="button" onClick={() => navigate(`/records?tab=persons&personId=${selectedWarrant.subject_person_id}`)} className="text-white font-bold hover:text-brand-400 underline underline-offset-2 decoration-rmpg-500 hover:decoration-brand-400 transition-colors text-left">
+                            {selectedWarrant.subject_name}
+                          </button>
+                        ) : (
+                          <div className="text-white font-bold">{selectedWarrant.subject_name}</div>
+                        )}
                       </div>
                       {selectedWarrant.subject_dob && (
                         <div>
@@ -1790,6 +1798,16 @@ export default function WarrantsPage() {
                         </div>
                       )}
                     </div>
+                    {selectedWarrant.subject_person_id && (
+                      <div className="flex gap-2 flex-wrap mt-3">
+                        <button type="button" onClick={() => navigate(`/records?tab=persons&personId=${selectedWarrant.subject_person_id}`)}
+                          className="toolbar-btn text-[9px]"><User className="w-3 h-3" /> View Record</button>
+                        <button type="button" onClick={() => navigate(`/dispatch?personId=${selectedWarrant.subject_person_id}`)}
+                          className="toolbar-btn text-[9px]"><Activity className="w-3 h-3" /> View Calls</button>
+                        <button type="button" onClick={() => navigate(`/records?tab=arrests&personId=${selectedWarrant.subject_person_id}`)}
+                          className="toolbar-btn text-[9px]"><Shield className="w-3 h-3" /> View Arrests</button>
+                      </div>
+                    )}
                   </div>
                 )}
 
