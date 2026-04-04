@@ -1661,10 +1661,11 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // Active Flags — parse and display as pill badges
-  if (data.flags && (Array.isArray(data.flags) ? data.flags.length > 0 : typeof data.flags === 'string' && data.flags.length > 2)) {
+  const rawFlags = data.flags as any;
+  if (rawFlags && (Array.isArray(rawFlags) ? rawFlags.length > 0 : typeof rawFlags === 'string' && rawFlags.length > 2)) {
     let flagList: string[] = [];
     try {
-      const raw = typeof data.flags === 'string' ? JSON.parse(data.flags) : data.flags;
+      const raw = typeof rawFlags === 'string' ? JSON.parse(rawFlags) : rawFlags;
       if (Array.isArray(raw)) {
         flagList = raw.map((f: any) => {
           if (typeof f === 'string') return f;
@@ -1673,7 +1674,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
         }).filter(Boolean);
       }
     } catch { /* not valid JSON — try as comma-separated string */
-      if (typeof data.flags === 'string') flagList = data.flags.split(',').map((s: string) => s.trim()).filter(Boolean);
+      if (typeof rawFlags === 'string') flagList = rawFlags.split(',').map((s: string) => s.trim()).filter(Boolean);
     }
     if (flagList.length > 0) {
       doc.setFont('helvetica', 'bold');
