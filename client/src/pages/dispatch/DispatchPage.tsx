@@ -3210,6 +3210,10 @@ export default function DispatchPage() {
             <Plus style={{ width: 10, height: 10 }} />
             New Call
           </button>
+          <button type="button" onClick={() => window.open('/serve-intake', '_blank', 'width=800,height=700')} className="toolbar-btn" title="Upload serve documents to create dispatch call">
+            <FileText style={{ width: 10, height: 10 }} />
+            Upload Serve
+          </button>
           {/* Quick Dispatch dropdown */}
           <div className="relative" ref={templateDropdownRef} style={{ display: 'inline-block' }}>
             <button type="button"
