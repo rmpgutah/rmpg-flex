@@ -821,6 +821,163 @@ function createTables(): void {
       UNIQUE(incident_id, linked_type, linked_id)
     );
 
+    -- Serve Queue (process service job tracking)
+    CREATE TABLE IF NOT EXISTS serve_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER,
+      incident_id INTEGER,
+      person_id INTEGER,
+      status TEXT DEFAULT 'pending',
+      attempt_count INTEGER DEFAULT 0,
+      max_attempts INTEGER DEFAULT 3,
+      priority TEXT DEFAULT 'normal',
+      assigned_officer_id INTEGER,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
+      FOREIGN KEY (person_id) REFERENCES persons(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS serve_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      queue_id INTEGER NOT NULL,
+      call_id INTEGER,
+      attempt_number INTEGER DEFAULT 1,
+      attempt_date TEXT,
+      attempt_time TEXT,
+      result TEXT,
+      notes TEXT,
+      officer_id INTEGER,
+      latitude REAL,
+      longitude REAL,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (queue_id) REFERENCES serve_queue(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS serve_routes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      route_date TEXT NOT NULL,
+      route_name TEXT,
+      status TEXT DEFAULT 'planned',
+      stops TEXT DEFAULT '[]',
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    );
+
+    -- Call junction tables (vehicles, units, visit history)
+    CREATE TABLE IF NOT EXISTS call_vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      vehicle_id INTEGER NOT NULL,
+      role TEXT DEFAULT 'involved',
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE,
+      UNIQUE(call_id, vehicle_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS call_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      assigned_at TEXT DEFAULT (datetime('now','localtime')),
+      cleared_at TEXT,
+      role TEXT DEFAULT 'primary',
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS call_visit_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      parent_call_id INTEGER,
+      visit_number INTEGER DEFAULT 1,
+      dispatched_at TEXT,
+      enroute_at TEXT,
+      onscene_at TEXT,
+      cleared_at TEXT,
+      closed_at TEXT,
+      disposition TEXT,
+      assigned_units TEXT DEFAULT '[]',
+      note TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE
+    );
+
+    -- Geofences
+    CREATE TABLE IF NOT EXISTS geofences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT DEFAULT 'patrol',
+      geometry TEXT NOT NULL,
+      color TEXT DEFAULT '#22c55e',
+      alert_on_enter INTEGER DEFAULT 0,
+      alert_on_exit INTEGER DEFAULT 0,
+      assigned_units TEXT DEFAULT '[]',
+      active INTEGER DEFAULT 1,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- Body camera recordings
+    CREATE TABLE IF NOT EXISTS body_camera_recordings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      camera_id TEXT,
+      start_time TEXT,
+      end_time TEXT,
+      duration_seconds INTEGER,
+      file_path TEXT,
+      file_size INTEGER,
+      incident_id INTEGER,
+      call_id INTEGER,
+      status TEXT DEFAULT 'active',
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    );
+
+    -- Dashcam video links
+    CREATE TABLE IF NOT EXISTS dashcam_video_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      video_id INTEGER NOT NULL,
+      linked_type TEXT NOT NULL,
+      linked_id INTEGER NOT NULL,
+      timestamp_start TEXT,
+      timestamp_end TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (video_id) REFERENCES dashcam_videos(id) ON DELETE CASCADE
+    );
+
+    -- Alarm responses
+    CREATE TABLE IF NOT EXISTS alarm_responses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER,
+      alarm_type TEXT,
+      alarm_zone TEXT,
+      response_time TEXT,
+      result TEXT,
+      false_alarm INTEGER DEFAULT 0,
+      call_id INTEGER,
+      officer_id INTEGER,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (property_id) REFERENCES properties(id),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id)
+    );
+
     -- Training Records
     CREATE TABLE IF NOT EXISTS training_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
