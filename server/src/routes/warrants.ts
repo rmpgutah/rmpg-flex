@@ -1307,6 +1307,7 @@ router.get('/utah-search/auto-poll-status', (req: Request, res: Response) => {
     // Get persons who have active warrants (local or Utah hits)
     const flaggedPersons = db.prepare(`
       SELECT p.id, p.first_name, p.last_name, p.dob,
+        p.gender, p.race, p.height, p.weight, p.hair_color, p.eye_color, p.address, p.photo_url,
         (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') as local_warrant_count,
         (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) as utah_hit_count,
         (SELECT w2.offense_level FROM warrants w2 WHERE w2.subject_person_id = p.id AND w2.status = 'active'
@@ -1317,6 +1318,23 @@ router.get('/utah-search/auto-poll-status', (req: Request, res: Response) => {
       ORDER BY warrant_severity NULLS LAST, p.last_name
       LIMIT 200
     `).all() as any[];
+
+    // Fetch full warrant details per flagged person
+    const flaggedWithWarrants = flaggedPersons.map((p: any) => {
+      const warrants = db.prepare(`
+        SELECT w.id, w.warrant_number, w.type, w.status, w.charge_description,
+          w.offense_level, w.bail_amount, w.issuing_court, w.source, w.created_at
+        FROM warrants w WHERE w.subject_person_id = ? AND w.status = 'active'
+        ORDER BY w.created_at DESC
+      `).all(p.id);
+      const utahWarrants = db.prepare(`
+        SELECT utah_warrant_id, charges, court_name, issue_date
+        FROM utah_warrants
+        WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+        ORDER BY fetched_at DESC LIMIT 20
+      `).all(p.first_name, p.last_name);
+      return { ...p, warrants, utahWarrants };
+    });
 
     // Get recent warrant watch log entries
     const recentHits = db.prepare(`
@@ -1332,7 +1350,7 @@ router.get('/utah-search/auto-poll-status', (req: Request, res: Response) => {
       syncStatus,
       blocked,
       runs,
-      flaggedPersons,
+      flaggedPersons: flaggedWithWarrants,
       recentHits,
       totalPersons,
     });
@@ -1518,6 +1536,209 @@ router.post('/auto-expire', requireRole('admin', 'manager', 'supervisor'), (req:
     broadcast('alerts', 'warrants_auto_expired', { count: expired.length });
     res.json({ data: { expired_count: expired.length, expired_warrants: expired.map((w: any) => w.warrant_number) } });
   } catch (error: any) { console.error('Auto-expire error:', error); res.status(500).json({ error: 'Failed to auto-expire warrants', code: 'AUTO_EXPIRE_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// POST /api/warrants/search-all — Unified search across local warrants, Utah API/cache, and scraped warrants
+// ════════════════════════════════════════════════════════════
+router.post('/search-all', (req: Request, res: Response) => {
+  (async () => {
+    try {
+      const startTime = Date.now();
+      const db = getDb();
+      const {
+        firstName, lastName, dob, warrantNumber, court, source,
+        offenseLevel, status, type, chargeKeyword, dateFrom, dateTo
+      } = req.body;
+
+      // --- Local warrants ---
+      let localWhere = 'WHERE 1=1';
+      const localParams: any[] = [];
+
+      if (firstName) { localWhere += ' AND LOWER(p.first_name) LIKE LOWER(?)'; localParams.push(`%${firstName}%`); }
+      if (lastName) { localWhere += ' AND LOWER(p.last_name) LIKE LOWER(?)'; localParams.push(`%${lastName}%`); }
+      if (dob) { localWhere += ' AND p.dob = ?'; localParams.push(dob); }
+      if (warrantNumber) { localWhere += ' AND w.warrant_number LIKE ?'; localParams.push(`%${warrantNumber}%`); }
+      if (court) { localWhere += ' AND LOWER(w.issuing_court) LIKE LOWER(?)'; localParams.push(`%${court}%`); }
+      if (source) { localWhere += ' AND w.source = ?'; localParams.push(source); }
+      if (offenseLevel) { localWhere += ' AND w.offense_level = ?'; localParams.push(offenseLevel); }
+      if (status) { localWhere += ' AND w.status = ?'; localParams.push(status); }
+      if (type) { localWhere += ' AND w.type = ?'; localParams.push(type); }
+      if (chargeKeyword) { localWhere += ' AND LOWER(w.charge_description) LIKE LOWER(?)'; localParams.push(`%${chargeKeyword}%`); }
+      if (dateFrom) { localWhere += ' AND w.created_at >= ?'; localParams.push(dateFrom); }
+      if (dateTo) { localWhere += ' AND w.created_at <= ?'; localParams.push(dateTo); }
+
+      const localWarrants = db.prepare(`
+        SELECT w.*, p.first_name, p.last_name, p.dob as person_dob,
+          u.display_name as entered_by_name
+        FROM warrants w
+        LEFT JOIN persons p ON w.subject_person_id = p.id
+        LEFT JOIN users u ON w.entered_by = u.id
+        ${localWhere}
+        ORDER BY w.created_at DESC
+        LIMIT 500
+      `).all(...localParams) as any[];
+
+      // --- Utah API / cache ---
+      let utahResults: any[] = [];
+      let utahBlocked = false;
+      const sources: string[] = ['local'];
+
+      if (firstName?.trim() && lastName?.trim()) {
+        try {
+          if (isUtahApiBlocked()) {
+            utahBlocked = true;
+            throw new Error('Utah API blocked');
+          }
+          utahResults = (await searchUtahWarrantsLive(String(firstName).trim(), String(lastName).trim())) || [];
+          sources.push('utah_live');
+        } catch {
+          // Fallback to cache
+          const cached = db.prepare(`
+            SELECT * FROM utah_warrants
+            WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+            ORDER BY fetched_at DESC LIMIT 100
+          `).all(String(firstName).trim(), String(lastName).trim()) as any[];
+          utahResults = cached;
+          sources.push('utah_cache');
+        }
+      }
+
+      // --- Scraped warrants ---
+      let scrapedWhere = 'WHERE 1=1';
+      const scrapedParams: any[] = [];
+
+      if (firstName) { scrapedWhere += ' AND LOWER(first_name) LIKE LOWER(?)'; scrapedParams.push(`%${firstName}%`); }
+      if (lastName) { scrapedWhere += ' AND LOWER(last_name) LIKE LOWER(?)'; scrapedParams.push(`%${lastName}%`); }
+      if (chargeKeyword) { scrapedWhere += ' AND LOWER(charges) LIKE LOWER(?)'; scrapedParams.push(`%${chargeKeyword}%`); }
+      if (offenseLevel) { scrapedWhere += ' AND LOWER(offense_level) = LOWER(?)'; scrapedParams.push(offenseLevel); }
+
+      const scrapedWarrants = db.prepare(`
+        SELECT * FROM scraped_warrants
+        ${scrapedWhere}
+        ORDER BY scraped_at DESC
+        LIMIT 500
+      `).all(...scrapedParams) as any[];
+      sources.push('scraped');
+
+      const duration = Date.now() - startTime;
+      const totalHits = localWarrants.length + utahResults.length + scrapedWarrants.length;
+
+      auditLog(req, 'SEARCH' as any, 'warrant' as any, 0, `Unified search: ${firstName || ''} ${lastName || ''} — ${totalHits} results (${duration}ms)`);
+
+      res.json({
+        local: localWarrants,
+        utah: utahResults,
+        scraped: scrapedWarrants,
+        meta: {
+          duration,
+          sources,
+          utahBlocked,
+          searchedAt: new Date().toISOString(),
+          totalHits,
+        },
+      });
+    } catch (error: any) {
+      console.error('Unified search error:', error);
+      res.status(500).json({ error: 'Unified search failed', code: 'SEARCH_ALL_ERROR' });
+    }
+  })();
+});
+
+// ════════════════════════════════════════════════════════════
+// GET /api/warrants/summary-report — Warrant summary/breakdown report
+// ════════════════════════════════════════════════════════════
+router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { from, to } = req.query;
+
+    let dateFilter = '';
+    const dateParams: any[] = [];
+    if (from) { dateFilter += ' AND w.created_at >= ?'; dateParams.push(from); }
+    if (to) { dateFilter += ' AND w.created_at <= ?'; dateParams.push(to); }
+
+    // By status
+    const byStatusRows = db.prepare(`
+      SELECT w.status, COUNT(*) as count FROM warrants w WHERE 1=1 ${dateFilter} GROUP BY w.status
+    `).all(...dateParams) as any[];
+    const byStatus: Record<string, number> = {};
+    for (const r of byStatusRows) byStatus[r.status || 'unknown'] = r.count;
+
+    // By type
+    const byTypeRows = db.prepare(`
+      SELECT w.type, COUNT(*) as count FROM warrants w WHERE 1=1 ${dateFilter} GROUP BY w.type
+    `).all(...dateParams) as any[];
+    const byType: Record<string, number> = {};
+    for (const r of byTypeRows) byType[r.type || 'unknown'] = r.count;
+
+    // By severity (offense_level)
+    const bySeverityRows = db.prepare(`
+      SELECT w.offense_level, COUNT(*) as count FROM warrants w WHERE 1=1 ${dateFilter} GROUP BY w.offense_level
+    `).all(...dateParams) as any[];
+    const bySeverity: Record<string, number> = {};
+    for (const r of bySeverityRows) bySeverity[r.offense_level || 'unknown'] = r.count;
+
+    // By source
+    const bySourceRows = db.prepare(`
+      SELECT w.source, COUNT(*) as count FROM warrants w WHERE 1=1 ${dateFilter} GROUP BY w.source
+    `).all(...dateParams) as any[];
+    const bySource: Record<string, number> = {};
+    for (const r of bySourceRows) bySource[r.source || 'unknown'] = r.count;
+
+    // Top courts
+    const topCourts = db.prepare(`
+      SELECT w.issuing_court as court, COUNT(*) as count FROM warrants w
+      WHERE w.issuing_court IS NOT NULL ${dateFilter}
+      GROUP BY w.issuing_court ORDER BY count DESC LIMIT 10
+    `).all(...dateParams) as any[];
+
+    // New this period
+    const newThisPeriod = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM warrants w WHERE 1=1 ${dateFilter}
+    `).get(...dateParams) as any)?.cnt || 0;
+
+    // Cleared this period
+    const clearedThisPeriod = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM warrants w WHERE w.status = 'cleared' ${dateFilter}
+    `).get(...dateParams) as any)?.cnt || 0;
+
+    // Scan activity from warrant_watch_runs
+    let scanFilter = '';
+    const scanParams: any[] = [];
+    if (from) { scanFilter += ' AND created_at >= ?'; scanParams.push(from); }
+    if (to) { scanFilter += ' AND created_at <= ?'; scanParams.push(to); }
+
+    const scanActivity = db.prepare(`
+      SELECT
+        COUNT(*) as totalScans,
+        COALESCE(SUM(warrants_found), 0) as totalFound,
+        COALESCE(SUM(warrants_cleared), 0) as totalCleared
+      FROM warrant_watch_runs WHERE 1=1 ${scanFilter}
+    `).get(...scanParams) as any;
+
+    res.json({
+      byStatus,
+      byType,
+      bySeverity,
+      bySource,
+      topCourts,
+      newThisPeriod,
+      clearedThisPeriod,
+      scanActivity: {
+        totalScans: scanActivity?.totalScans || 0,
+        totalFound: scanActivity?.totalFound || 0,
+        totalCleared: scanActivity?.totalCleared || 0,
+      },
+      period: {
+        from: from || null,
+        to: to || null,
+      },
+    });
+  } catch (error: any) {
+    console.error('Summary report error:', error);
+    res.status(500).json({ error: 'Failed to generate summary report', code: 'SUMMARY_REPORT_ERROR' });
+  }
 });
 
 export default router;
