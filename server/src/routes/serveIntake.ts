@@ -335,22 +335,33 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
         process_service_type, process_served_to, process_served_address,
-        process_attempts, client_id,
+        process_attempts, client_id, contract_id,
         created_at, updated_at
-      ) VALUES (?, 'PSO Client Request', 'P4', 'pending', ?, ?, 'client', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'phone', ?,
-        ?, ?, ?, 'process_service', ?, ?,
-        'summons', ?, ?, 0, ?, ?, ?)
+      ) VALUES (
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?
+      )
     `).run(
-      callNumber,
-      'ICU Investigations, LLC', '(435) 986-1200',
+      callNumber, 'PSO Client Request', 'P4', 'pending',
+      'ICU Investigations, LLC', '(435) 986-1200', 'client',
       address || 'Unknown', propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null,
       sectionId || null, zoneId || null, beatId || null, zoneBeat || null, dispatchCode || null,
-      descParts, userId,
+      descParts, 'phone', userId,
       attorney.name || null, attorney.phone || null, attorney.email || null,
-      fee || null, jobNumber || null,
-      `${name.first} ${name.middle ? name.middle + ' ' : ''}${name.last}`, address || null,
-      client_id || 1, now, now
+      'process_service', fee || null, jobNumber || null,
+      'summons', `${name.first} ${name.middle ? name.middle + ' ' : ''}${name.last}`, address || null,
+      0, client_id || 1, jobNumber || null,
+      now, now
     );
     const callId = callResult.lastInsertRowid as number;
 
