@@ -1660,15 +1660,30 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Active Flags — colored pill badges (kept as-is)
-  if (data.flags && data.flags.length > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('ACTIVE FLAGS', lx + 1.5, y + 1.5);
-    y += 2.5;
-    y = addFlagBadges(doc, data.flags, lx, y, ffw, prio);
-    y += 0.5;
+  // Active Flags — parse and display as pill badges
+  if (data.flags && (Array.isArray(data.flags) ? data.flags.length > 0 : typeof data.flags === 'string' && data.flags.length > 2)) {
+    let flagList: string[] = [];
+    try {
+      const raw = typeof data.flags === 'string' ? JSON.parse(data.flags) : data.flags;
+      if (Array.isArray(raw)) {
+        flagList = raw.map((f: any) => {
+          if (typeof f === 'string') return f;
+          if (typeof f === 'object' && f) return f.type || f.name || f.label || f.flag || '';
+          return '';
+        }).filter(Boolean);
+      }
+    } catch { /* not valid JSON — try as comma-separated string */
+      if (typeof data.flags === 'string') flagList = data.flags.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+    if (flagList.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text('ACTIVE FLAGS', lx + 1.5, y + 1.5);
+      y += 2.5;
+      y = addFlagBadges(doc, flagList, lx, y, ffw, prio);
+      y += 0.5;
+    }
   }
 
   // Caution block — amber warning styling for officer safety (kept as-is)
