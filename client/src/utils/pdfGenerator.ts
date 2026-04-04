@@ -544,21 +544,21 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x: number, y: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const boxSize = 3;
+  const boxSize = 3.5;
 
   if (checked) {
     // Filled dark square with white checkmark
     doc.setFillColor(40, 40, 40);
-    doc.rect(x, y - 1.5, boxSize, boxSize, 'F');
+    doc.rect(x, y - 1.8, boxSize, boxSize, 'F');
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(BORDER.CHECK_MARK);
-    doc.line(x + 0.5, y + 0.0, x + 1.2, y + 1.0);
-    doc.line(x + 1.2, y + 1.0, x + 2.5, y - 1.0);
+    doc.line(x + 0.6, y + 0.0, x + 1.4, y + 1.2);
+    doc.line(x + 1.4, y + 1.2, x + 2.9, y - 1.2);
   } else {
     // Empty box with border
     doc.setDrawColor(...COLOR.TEXT_SECONDARY);
     doc.setLineWidth(BORDER.CHECKBOX);
-    doc.rect(x, y - 1.5, boxSize, boxSize);
+    doc.rect(x, y - 1.8, boxSize, boxSize);
   }
 
   doc.setFont('courier', 'normal');
@@ -1435,9 +1435,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     const pageWidth = doc.internal.pageSize.getWidth();
     const cw = getContentWidth(doc);
 
-    const contY = 4;
-    const contH = SPACING.SECTION_HEADER_H; // Compact continuation header
-    // Dark gray continuation bar (full width, no accent edge)
+    const contY = 6;
+    const contH = 6; // Taller continuation header for readability
+    // Dark gray continuation bar (full width)
     doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
     // Bottom border for definition
@@ -1445,15 +1445,16 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setLineWidth(BORDER.SECTION_OUTER);
     doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
 
-    // Text vertically centered in continuation header
-    const contCapH = FONT.SIZE_FIELD_LABEL * 0.35;
+    // Agency name — left, vertically centered
+    const contFontSize = 7;
+    const contCapH = contFontSize * 0.35;
     const contTextY = contY + (contH + contCapH) / 2;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setFontSize(contFontSize);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
-    // Form number + case number on right (also vertically centered)
+    // Form number + case number on right
     const rightParts: string[] = [];
     const formNum = FORM_NUMBERS[activeFormKey] || '';
     if (formNum) rightParts.push(formNum);
@@ -1466,8 +1467,8 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header — tight, matching section gap
-    return contY + contH + SPACING.SECTION_GAP;
+    // Content starts below continuation header with breathing room
+    return contY + contH + SPACING.LG;
   }
   return y;
 }

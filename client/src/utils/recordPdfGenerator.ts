@@ -1005,10 +1005,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Operational Checklist (flags)
   y = checkPageBreak(doc, y, 15, prio);
   { const flagSec = openAutoSection(doc, 'Operational Checklist', y); y = flagSec.contentY;
-    y += 0.5;
+    y += 1;
     const flagCols = 6;
     const flagColW = ffw / flagCols;
-    const flagRowH = 3.5;
+    const flagRowH = 5;
     const flagGrid2: { label: string; checked: boolean }[][] = [
       [
         { label: 'Injuries', checked: !!data.injuries_reported },
