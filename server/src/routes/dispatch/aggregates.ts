@@ -1823,4 +1823,183 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// DISPATCH QUEUE — Officer assignment queue with priority sorting
+// Shows pending/unassigned calls sorted by priority + age
+// ════════════════════════════════════════════════════════════
+
+router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Pending calls needing assignment (no units or status=pending)
+    const pending = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status,
+        c.location_address, c.caller_name, c.description,
+        c.section_id, c.zone_id, c.beat_id, c.dispatch_code,
+        c.latitude, c.longitude, c.created_at,
+        c.assigned_unit_ids,
+        ROUND((julianday('now') - julianday(c.created_at)) * 1440) as wait_minutes
+      FROM calls_for_service c
+      WHERE c.status IN ('pending', 'dispatched')
+      ORDER BY
+        CASE c.priority WHEN 'P1' THEN 0 WHEN 'P2' THEN 1 WHEN 'P3' THEN 2 WHEN 'P4' THEN 3 ELSE 4 END,
+        c.created_at ASC
+      LIMIT 100
+    `).all() as any[];
+
+    // Available units for assignment
+    const availableUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
+        u.current_call_id, u.last_status_change,
+        usr.first_name, usr.last_name, usr.badge_number
+      FROM units u
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      WHERE u.status = 'available'
+      ORDER BY u.call_sign
+    `).all() as any[];
+
+    // Units currently dispatched (for workload view)
+    const busyUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.current_call_id,
+        c.call_number as current_call_number, c.incident_type as current_call_type,
+        c.priority as current_call_priority,
+        usr.first_name, usr.last_name
+      FROM units u
+      LEFT JOIN calls_for_service c ON c.id = u.current_call_id
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      WHERE u.status IN ('dispatched', 'enroute', 'onscene')
+      ORDER BY CASE u.status WHEN 'onscene' THEN 0 WHEN 'enroute' THEN 1 WHEN 'dispatched' THEN 2 ELSE 3 END
+    `).all() as any[];
+
+    // Nearest unit recommendations for each pending call
+    const recommendations: Record<string, any[]> = {};
+    for (const call of pending) {
+      if (call.latitude && call.longitude && availableUnits.length > 0) {
+        const nearest = availableUnits
+          .filter((u: any) => u.latitude && u.longitude)
+          .map((u: any) => {
+            const dlat = (call.latitude - u.latitude) * 111;
+            const dlng = (call.longitude - u.longitude) * 85;
+            return { ...u, distance_km: Math.sqrt(dlat * dlat + dlng * dlng) };
+          })
+          .sort((a: any, b: any) => a.distance_km - b.distance_km)
+          .slice(0, 3);
+        recommendations[call.id] = nearest;
+      }
+    }
+
+    // Stats
+    const p1Count = pending.filter((c: any) => c.priority === 'P1').length;
+    const p2Count = pending.filter((c: any) => c.priority === 'P2').length;
+    const avgWait = pending.length > 0 ? Math.round(pending.reduce((sum: number, c: any) => sum + (c.wait_minutes || 0), 0) / pending.length) : 0;
+
+    res.json({
+      pending,
+      available_units: availableUnits,
+      busy_units: busyUnits,
+      recommendations,
+      stats: {
+        pending_count: pending.length,
+        p1_count: p1Count,
+        p2_count: p2Count,
+        available_unit_count: availableUnits.length,
+        busy_unit_count: busyUnits.length,
+        avg_wait_minutes: avgWait,
+      },
+    });
+  } catch (err: any) {
+    console.error('[Dispatch] queue error:', err?.message);
+    res.status(500).json({ error: 'Failed to load dispatch queue' });
+  }
+});
+
+// POST /api/dispatch/queue/assign — Quick-assign unit to call from queue
+router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id, unit_id } = req.body;
+    if (!call_id || !unit_id) {
+      res.status(400).json({ error: 'call_id and unit_id required' });
+      return;
+    }
+
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call_id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
+
+    const now = localNow();
+
+    // Update unit status to dispatched
+    db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('dispatched', call_id, now, now, unit_id);
+
+    // Add unit to call's assigned_unit_ids
+    let unitIds: string[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { unitIds = []; }
+    if (!unitIds.includes(String(unit_id))) unitIds.push(String(unit_id));
+    db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, status = ?, dispatched_at = COALESCE(dispatched_at, ?), updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
+
+    // Log
+    auditLog(req, 'DISPATCH_ASSIGN', 'calls_for_service', call_id, null, { unit_id, call_sign: unit.call_sign });
+
+    // Broadcast
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: call.status === 'pending' ? 'dispatched' : call.status } });
+    broadcastUnitUpdate({ action: 'unit_status', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
+
+    res.json({ success: true, call_number: call.call_number, unit_call_sign: unit.call_sign });
+  } catch (err: any) {
+    console.error('[Dispatch] queue assign error:', err?.message);
+    res.status(500).json({ error: 'Failed to assign unit' });
+  }
+});
+
+// POST /api/dispatch/queue/auto-assign — Auto-assign nearest available unit
+router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id } = req.body;
+    if (!call_id) { res.status(400).json({ error: 'call_id required' }); return; }
+
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call_id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call.latitude || !call.longitude) { res.status(400).json({ error: 'Call has no GPS coordinates for auto-assign' }); return; }
+
+    // Find nearest available unit with GPS
+    const units = db.prepare("SELECT * FROM units WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL").all() as any[];
+    if (units.length === 0) { res.status(404).json({ error: 'No available units with GPS' }); return; }
+
+    let nearest = units[0];
+    let minDist = Infinity;
+    for (const u of units) {
+      const dlat = (call.latitude - u.latitude) * 111;
+      const dlng = (call.longitude - u.longitude) * 85;
+      const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+      if (dist < minDist) { minDist = dist; nearest = u; }
+    }
+
+    const now = localNow();
+    db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('dispatched', call_id, now, now, nearest.id);
+
+    let unitIds: string[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { unitIds = []; }
+    if (!unitIds.includes(String(nearest.id))) unitIds.push(String(nearest.id));
+    db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, status = ?, dispatched_at = COALESCE(dispatched_at, ?), updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
+
+    auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, null, { unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) });
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: 'dispatched' } });
+    broadcastUnitUpdate({ action: 'unit_status', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
+
+    res.json({ success: true, call_number: call.call_number, unit_call_sign: nearest.call_sign, distance_km: parseFloat(minDist.toFixed(2)) });
+  } catch (err: any) {
+    console.error('[Dispatch] auto-assign error:', err?.message);
+    res.status(500).json({ error: 'Failed to auto-assign' });
+  }
+});
+
 export default router;

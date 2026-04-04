@@ -1921,6 +1921,43 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
+  // ── Expand record_links to support incident/call/case/warrant types ──
+  try {
+    const rlInfo = db.prepare("PRAGMA table_info(record_links)").all() as any[];
+    const checkCol = rlInfo.find((c: any) => c.name === 'source_type');
+    // If the CHECK constraint is the old 4-type version, recreate with expanded types
+    if (checkCol) {
+      // Test if new types work — if INSERT fails, we need to recreate
+      try {
+        db.prepare("INSERT INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES ('incident', -999, 'person', -999, 'test', 1)").run();
+        db.prepare("DELETE FROM record_links WHERE source_id = -999").run();
+      } catch {
+        // CHECK constraint blocks new types — recreate table
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS record_links_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_type TEXT NOT NULL,
+            source_id INTEGER NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id INTEGER NOT NULL,
+            relationship TEXT NOT NULL DEFAULT 'associated',
+            notes TEXT,
+            created_by INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            UNIQUE(source_type, source_id, target_type, target_id)
+          );
+          INSERT INTO record_links_new SELECT * FROM record_links;
+          DROP TABLE record_links;
+          ALTER TABLE record_links_new RENAME TO record_links;
+        `);
+        console.log('[migrate] Expanded record_links to support incident/call/case/warrant types');
+      }
+    }
+  } catch (err) {
+    console.log('[migrate] record_links expansion:', (err as Error).message);
+  }
+
   // ── CREDENTIALS — issuing authority ───────────────────
   addCol('credentials', 'issuing_authority', 'TEXT');
 

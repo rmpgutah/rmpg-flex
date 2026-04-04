@@ -2187,6 +2187,30 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const e = db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;
         return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() : `Evidence #${id}`;
       }
+      case 'incident': {
+        const i = db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
+        return i ? `${i.incident_number} — ${i.incident_type || ''}`.trim() : `Incident #${id}`;
+      }
+      case 'call': {
+        const c = db.prepare('SELECT call_number, incident_type FROM calls_for_service WHERE id = ?').get(id) as any;
+        return c ? `${c.call_number} — ${c.incident_type || ''}`.trim() : `Call #${id}`;
+      }
+      case 'case': {
+        const cs = db.prepare('SELECT case_number, case_type FROM cases WHERE id = ?').get(id) as any;
+        return cs ? `${cs.case_number} — ${cs.case_type || ''}`.trim() : `Case #${id}`;
+      }
+      case 'warrant': {
+        const w = db.prepare('SELECT warrant_number, charge_description FROM warrants WHERE id = ?').get(id) as any;
+        return w ? `${w.warrant_number} — ${(w.charge_description || '').substring(0, 40)}`.trim() : `Warrant #${id}`;
+      }
+      case 'citation': {
+        const ct = db.prepare('SELECT citation_number, violation_description FROM citations WHERE id = ?').get(id) as any;
+        return ct ? `${ct.citation_number} — ${(ct.violation_description || '').substring(0, 40)}`.trim() : `Citation #${id}`;
+      }
+      case 'arrest': {
+        const ar = db.prepare('SELECT booking_number, charges FROM arrest_records WHERE id = ?').get(id) as any;
+        return ar ? `${ar.booking_number || `Arrest #${id}`}`.trim() : `Arrest #${id}`;
+      }
       default:
         return `${type} #${id}`;
     }
@@ -2305,6 +2329,62 @@ router.delete('/links/:id', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Delete record link error:', error);
     res.status(500).json({ error: 'Failed to delete record link', code: 'DELETE_RECORD_LINK_ERROR' });
+  }
+});
+
+// ─── CONNECTIONS HUB — All records connected to an entity ────
+router.get('/connections/:type/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { type, id } = req.params;
+
+    // Direct record links (bidirectional)
+    let links: any[] = [];
+    try {
+      links = db.prepare(`
+        SELECT rl.*, u.full_name as created_by_name
+        FROM record_links rl LEFT JOIN users u ON rl.created_by = u.id
+        WHERE (rl.source_type = ? AND rl.source_id = ?) OR (rl.target_type = ? AND rl.target_id = ?)
+        ORDER BY rl.created_at DESC
+      `).all(type, id, type, id) as any[];
+    } catch { /* table may not exist */ }
+
+    const enrichedLinks = links.map((link: any) => {
+      const isSource = link.source_type === type && String(link.source_id) === String(id);
+      const linkedType = isSource ? link.target_type : link.source_type;
+      const linkedId = isSource ? link.target_id : link.source_id;
+      return { ...link, linked_type: linkedType, linked_id: linkedId, linked_label: getRecordLabel(db, linkedType, linkedId) };
+    });
+
+    // Person-specific: incidents, calls, warrants, citations, arrests
+    let incidents: any[] = [], calls: any[] = [], warrants: any[] = [], citations: any[] = [], arrests: any[] = [], associates: any[] = [];
+    if (type === 'person') {
+      try { incidents = db.prepare('SELECT i.id, i.incident_number, i.incident_type, i.status, ip.role, i.created_at FROM incident_persons ip JOIN incidents i ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50').all(id); } catch {}
+      try { calls = db.prepare('SELECT c.id, c.call_number, c.incident_type, c.status, cp.role, c.created_at FROM call_persons cp JOIN calls_for_service c ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50').all(id); } catch {}
+      try { warrants = db.prepare('SELECT id, warrant_number, type, status, charge_description, created_at FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
+      try { citations = db.prepare('SELECT id, citation_number, type, status, violation_description, created_at FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
+      try { arrests = db.prepare('SELECT id, booking_number, charges, arrest_date FROM arrest_records WHERE person_id = ? ORDER BY arrest_date DESC LIMIT 20').all(id); } catch {}
+      try {
+        associates = db.prepare(`
+          SELECT pa.*, p.first_name, p.last_name, p.photo_url
+          FROM person_associates pa LEFT JOIN persons p ON pa.associate_person_id = p.id
+          WHERE pa.person_id = ?
+          UNION
+          SELECT pa.*, p.first_name, p.last_name, p.photo_url
+          FROM person_associates pa LEFT JOIN persons p ON pa.person_id = p.id
+          WHERE pa.associate_person_id = ?
+          ORDER BY created_at DESC
+        `).all(id, id);
+      } catch {}
+    }
+
+    res.json({
+      links: enrichedLinks,
+      incidents, calls, warrants, citations, arrests, associates,
+      total: enrichedLinks.length + incidents.length + calls.length + warrants.length + citations.length + arrests.length + associates.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load connections' });
   }
 });
 
