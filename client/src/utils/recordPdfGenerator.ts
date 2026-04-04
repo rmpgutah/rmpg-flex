@@ -789,7 +789,7 @@ function titleCase(str: string): string {
 
 // ── Call for Service Report ──────────────────────────────────
 
-function generateCallReport(doc: jsPDF, data: CallPdfData) {
+async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -1483,7 +1483,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signatures — full-width stacked (one on top of the other)
@@ -1815,14 +1815,10 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     );
   }
 
-  // ── 14. Criminal History (Full Detail) — force new page ─
+  // ── 14. Criminal History — condensed single table ──────────
   if (data.criminal_records && data.criminal_records.length > 0) {
-    doc.addPage();
-    addConfidentialWatermark(doc);
-    y = 12; // start near top of new page
+    y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-
-    // Summary table — quick reference overview
     const crCw = getContentWidth(doc);
     const crRows = data.criminal_records.map(r => [
       (r.record_type || '').replace(/_/g, ' ').toUpperCase(),
@@ -1846,84 +1842,6 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
       [lx, lx + crCw * 0.13, lx + crCw * 0.45, lx + crCw * 0.55, lx + crCw * 0.70, lx + crCw * 0.87],
     );
-    y += SPACING.MD;
-
-    // Detailed per-record cards — 3 per page, evenly spaced, never split
-    const pageH = doc.internal.pageSize.getHeight();
-    const recordsPerPage = 3;
-    const pageTopY = 14;  // top margin for detail pages
-    const pageBottomY = pageH - LAYOUT.FOOTER_HEIGHT - 4; // safe bottom (matches checkPageBreak)
-    const usableH = pageBottomY - pageTopY;
-    const slotH = usableH / recordsPerPage; // each record gets this vertical slot
-
-    // Helper to render one record card at a given Y position
-    const renderRecordCard = (r: PersonCriminalHistoryRecord, ri: number, startY: number) => {
-      let cy = startY;
-
-      // Record sub-header bar
-      doc.setFillColor(30, 55, 90);
-      doc.rect(lx, cy, ffw, 5, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      doc.text(sanitizePdfText(`RECORD ${ri + 1} — ${(r.record_type || 'UNKNOWN').replace(/_/g, ' ').toUpperCase()}`), lx + 2, cy + 3.2);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      cy += 7;
-
-      // Row 1: Offense + Level
-      { const yL = addFieldPair(doc, 'Offense', r.offense || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Offense Level', (r.offense_level || 'N/A').toUpperCase(), rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 2: Statute + Case Number
-      { const yL = addFieldPair(doc, 'Statute', r.statute || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Case Number', r.case_number || 'N/A', rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 3: Agency + Jurisdiction
-      { const yL = addFieldPair(doc, 'Agency', r.agency || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Jurisdiction', r.jurisdiction || 'N/A', rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 4: Offense Date + Disposition Date
-      { const yL = addFieldPair(doc, 'Offense Date', fmtDate(r.offense_date), lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Disposition Date', fmtDate(r.disposition_date), rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 5: Disposition + Sentence
-      { const yL = addFieldPair(doc, 'Disposition', r.disposition || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Sentence', r.sentence || 'N/A', rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      return cy;
-    };
-
-    for (let ri = 0; ri < data.criminal_records.length; ri++) {
-      const slotIndex = ri % recordsPerPage; // 0, 1, or 2 within current page
-
-      // New page for every batch of 3 (including the first batch — summary table stays on its own page)
-      if (slotIndex === 0) {
-        doc.addPage();
-        addConfidentialWatermark(doc);
-      }
-
-      // Position this record in its evenly-distributed slot
-      const slotY = pageTopY + slotIndex * slotH;
-      const cardEndY = renderRecordCard(data.criminal_records[ri], ri, slotY);
-
-      // Draw subtle divider between records on same page
-      if (slotIndex < recordsPerPage - 1 && ri < data.criminal_records.length - 1) {
-        const dividerY = pageTopY + (slotIndex + 1) * slotH - 2;
-        doc.setDrawColor(...COLOR.BORDER_TABLE);
-        doc.setLineWidth(BORDER.TABLE_ROW);
-        doc.line(lx, dividerY, lx + ffw, dividerY);
-      }
-
-      // Track y for last record position
-      if (ri === data.criminal_records.length - 1) {
-        y = cardEndY;
-      }
-    }
   }
 
   // ── 15. Notes ─────────────────────────────────────────────
@@ -1945,7 +1863,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
   // ── 17. Attachments ───────────────────────────────────────
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
   // ── 18. Signature Block — full-width stacked ──────────────
@@ -1954,7 +1872,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
 // ── Vehicle Record ───────────────────────────────────────────
 
-function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
+async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2062,7 +1980,7 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig());
@@ -2070,7 +1988,7 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
 // ── Warrant ──────────────────────────────────────────────────
 
-function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
+async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2194,7 +2112,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
 
 // ── Evidence / Property Custody Report ───────────────────────
 
-function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
+async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2317,7 +2235,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signature Block — full-width stacked
@@ -2836,7 +2754,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signature Block — full-width stacked
@@ -2909,7 +2827,7 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signature Block — officer + company seal
@@ -3073,19 +2991,19 @@ export async function generateRecordPdf<T extends RecordPdfType>(
 
   switch (recordType) {
     case 'call':
-      generateCallReport(doc, data as CallPdfData);
+      await generateCallReport(doc, data as CallPdfData);
       break;
     case 'person':
       await generatePersonReport(doc, data as PersonPdfData);
       break;
     case 'vehicle':
-      generateVehicleReport(doc, data as VehiclePdfData);
+      await generateVehicleReport(doc, data as VehiclePdfData);
       break;
     case 'warrant':
-      generateWarrantReport(doc, data as WarrantPdfData);
+      await generateWarrantReport(doc, data as WarrantPdfData);
       break;
     case 'evidence':
-      generateEvidenceReport(doc, data as EvidencePdfData);
+      await generateEvidenceReport(doc, data as EvidencePdfData);
       break;
     case 'fleet':
       generateFleetReport(doc, data as FleetPdfData);

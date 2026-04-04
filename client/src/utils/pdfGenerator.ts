@@ -1374,12 +1374,12 @@ export function addImageToPage(
 }
 
 /** Render a 2-per-row image grid with captions. Returns final Y. */
-export function addImageGrid(
+export async function addImageGrid(
   doc: jsPDF,
   images: PdfImage[],
   startY: number,
   priority?: string,
-): number {
+): Promise<number> {
   const cw = getContentWidth(doc);
   const lx = getLeftX();
   const gap = SPACING.MD;
@@ -1398,7 +1398,14 @@ export function addImageGrid(
       const img = rowImages[j];
       const x = lx + j * (imgMaxW + gap);
 
-      const { w, h } = addImageToPage(doc, img, x, y, imgMaxW, imgMaxH);
+      // Convert to monochrome B&W for ink savings
+      let bwImg = img;
+      try {
+        const bwUrl = await convertToGrayscale(img.dataUrl);
+        bwImg = { ...img, dataUrl: bwUrl };
+      } catch { /* use original */ }
+
+      const { w, h } = addImageToPage(doc, bwImg, x, y, imgMaxW, imgMaxH);
       doc.setDrawColor(...COLOR.BORDER_FIELD);
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(x, y, w, h);
@@ -1421,19 +1428,19 @@ export function addImageGrid(
 }
 
 /** Complete attachments section with auto-sized border. */
-export function addAttachmentsSection(
+export async function addAttachmentsSection(
   doc: jsPDF,
   images: PdfImage[],
   y: number,
   title = 'ATTACHMENTS / EVIDENCE PHOTOS',
   priority?: string,
-): number {
+): Promise<number> {
   if (!images || images.length === 0) return y;
 
   y = checkPageBreak(doc, y, 40, priority);
   const sec = openAutoSection(doc, title, y);
   y = sec.contentY;
-  y = addImageGrid(doc, images, y, priority);
+  y = await addImageGrid(doc, images, y, priority);
   y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   return y;
 }
