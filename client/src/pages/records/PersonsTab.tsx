@@ -27,6 +27,7 @@ import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CriminalHistorySection from '../../components/CriminalHistorySection';
+import { useNavigate } from 'react-router-dom';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
 import PersonHistoryPanel from '../../components/PersonHistoryPanel';
 import CollapsibleSection from '../../components/CollapsibleSection';
@@ -186,6 +187,9 @@ export interface PersonsTabState {
   closeModal: () => void;
   // Alerts
   personAlerts: RecordAlert[];
+  // Warrants
+  warrantCount: number;
+  navigate: ReturnType<typeof useNavigate>;
   // SSN
   ssnRevealed: boolean;
   setSSNRevealed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -227,6 +231,10 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   // Alerts for selected person
   const [personAlerts, setPersonAlerts] = useState<RecordAlert[]>([]);
+
+  // Warrant count for selected person
+  const [warrantCount, setWarrantCount] = useState(0);
+  const navigate = useNavigate();
 
   // SSN reveal state
   const [ssnRevealed, setSSNRevealed] = useState(false);
@@ -287,6 +295,14 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     }
     setPersonAlerts(alerts);
   }, [selectedPerson]);
+
+  // Fetch warrant count for selected person
+  useEffect(() => {
+    if (!selectedPerson?.id) { setWarrantCount(0); return; }
+    apiFetch<{ has_warrants: boolean; count: number }>(`/warrants/check/${selectedPerson.id}`)
+      .then(res => setWarrantCount(res?.count ?? 0))
+      .catch(() => setWarrantCount(0));
+  }, [selectedPerson?.id]);
 
   // ── Person CRUD ──────────────────────────────────
 
@@ -363,7 +379,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     selectedPerson, setSelectedPerson,
     personModalOpen, editingPerson, personSubmitting, personSubmitError,
     openNewPerson, openEditPerson, handlePersonSubmit, closeModal,
-    personAlerts, ssnRevealed, setSSNRevealed,
+    personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
     filteredPersons, handleArchive, handleUnarchive,
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
@@ -572,7 +588,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 
 export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
-    selectedPerson, personAlerts, ssnRevealed, setSSNRevealed,
+    selectedPerson, personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
     linkRefreshKey, openLinkModal,
   } = state;
 
@@ -584,7 +600,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />
         {/* Special Flags */}
-        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
+        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None') || warrantCount > 0) && (
           <div className="flex flex-wrap gap-2 mt-1">
             {selectedPerson.flags.map((flag, i) => {
               const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
@@ -599,6 +615,11 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
             {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
             {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
+            {warrantCount > 0 && (
+              <button type="button" onClick={() => navigate(`/warrants?personId=${selectedPerson.id}`)} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 hover:bg-red-800/50 cursor-pointer transition-colors animate-pulse">
+                <AlertTriangle className="w-3 h-3" /> {warrantCount} ACTIVE WARRANT{warrantCount > 1 ? 'S' : ''}
+              </button>
+            )}
           </div>
         )}
         {/* Compact person ID line */}

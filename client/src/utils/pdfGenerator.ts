@@ -130,20 +130,25 @@ export function sanitizePdfText(text: string): string {
  * mid-word with Courier, this respects word boundaries.
  */
 export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
-  const words = text.split(/(\s+)/);
-  const lines: string[] = [];
-  let currentLine = '';
-  for (const word of words) {
-    const testLine = currentLine + word;
-    if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
-      lines.push(currentLine.trimEnd());
-      currentLine = word.trimStart();
-    } else {
-      currentLine = testLine;
+  // Split on hard line breaks first, then wrap each paragraph
+  const paragraphs = text.split(/\n/);
+  const allLines: string[] = [];
+  for (const para of paragraphs) {
+    if (!para.trim()) { allLines.push(''); continue; }
+    const words = para.split(/(\s+)/);
+    let currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine + word;
+      if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
+        allLines.push(currentLine.trimEnd());
+        currentLine = word.trimStart();
+      } else {
+        currentLine = testLine;
+      }
     }
+    if (currentLine.trim()) allLines.push(currentLine.trimEnd());
   }
-  if (currentLine.trim()) lines.push(currentLine.trimEnd());
-  return lines.length ? lines : [''];
+  return allLines.length ? allLines : [''];
 }
 
 // Cached images (loaded once per session)
@@ -483,13 +488,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
 
-  // Floating label above the box
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x + innerPad, y + 2);
-
-  // Determine value text and line count — Courier for values
+  // Determine value text and line count FIRST (before page break check)
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
 
@@ -505,11 +504,19 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const extraLines = Math.max(0, lines.length - 1);
   const boxH = baseBoxH + extraLines * lineStep;
 
-  // Page break if field won't fit on current page
+  // Page break if field won't fit on current page — BEFORE drawing anything
   const totalFieldH = labelH + boxH + 1;
   y = checkPageBreak(doc, y, totalFieldH);
 
+  // Floating label above the box (drawn AFTER page break check to prevent orphaning)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(label.toUpperCase(), x + innerPad, y + 2);
+
   // Value area (no box border — clean label-over-value style)
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const boxY = y + labelH;
 
   // Value text — vertically centered in box
@@ -608,7 +615,7 @@ export function addFlagBadges(
   };
   const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(fontSize);
 
   let curX = x;
@@ -690,8 +697,8 @@ export function addCautionBlock(
   doc.setLineWidth(0.3);
   doc.rect(x, y, width, boxH);
 
-  // Label
-  doc.setFont('helvetica', 'bold');
+  // Label — Courier Bold for body consistency
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(180, 60, 0);
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
@@ -1342,10 +1349,10 @@ export function addImageToPage(
     doc.setDrawColor(...COLOR.BORDER_FIELD);
     doc.setLineWidth(BORDER.FIELD);
     doc.rect(x, y, renderW, renderH);
-    doc.setFont('helvetica', 'italic');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('[Image unavailable]', x + renderW / 2, y + renderH / 2, { align: 'center' });
+    doc.text('[IMAGE UNAVAILABLE]', x + renderW / 2, y + renderH / 2, { align: 'center' });
   }
 
   return { w: renderW, h: renderH };
@@ -1381,7 +1388,7 @@ export function addImageGrid(
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(x, y, w, h);
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
@@ -2288,8 +2295,6 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
 
   // Warning Text
   { const sec = openAutoSection(doc, 'Notice', y); y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     const warningText = 'You are hereby notified that you are PROHIBITED from entering, remaining upon, or returning to the above-described property. Any violation of this warning may result in your arrest for Criminal Trespass pursuant to applicable state law. This warning is effective for the period indicated above.';
     y = addWrappedText(doc, warningText, lx, y, ffw, 9);
     y += SPACING.MD;
@@ -2344,6 +2349,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = drawFormSection(doc, {
     sideTab: { label: 'ADMINISTRATIVE' },
+    topBanner: true,
     onPageBreak: formSectionPageBreak,
     rows: [
       { cells: [
@@ -2365,27 +2371,6 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     y,
   });
 
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = addThreeColumnFields(doc, [
-      { label: 'Date', value: data.occurred_date || '' },
-      { label: 'Time', value: data.occurred_time || '' },
-      { label: 'Officer', value: data.officer_name },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Road Conditions
-  { const sec = openAutoSection(doc, 'Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Road Conditions', value: data.road_conditions || '' },
-      { label: 'Traffic Control', value: data.traffic_control || '' },
-      { label: 'Weather', value: data.weather_conditions || '' },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
   // Flags
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
     let flagX = lx;
@@ -2397,7 +2382,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     } else {
       addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
     }
-    y += SPACING.LG; flagX = lx;
+    y += SPACING.LG + SPACING.MD; flagX = lx;
     flagX = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX, y);
     flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
     flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX + SPACING.SM, y);

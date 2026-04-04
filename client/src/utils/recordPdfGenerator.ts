@@ -456,6 +456,9 @@ export interface WarrantPdfData {
   search_date?: string;
   verified_by?: string;
   verification_date?: string;
+  // Enhanced fields
+  subject_photo_url?: string;
+  service_attempts?: { attempted_at: string; location: string; method: string; result: string; notes: string }[];
 }
 
 export interface EvidencePdfData {
@@ -865,6 +868,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = barY + barH + 1.5;
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // GROUP 1 — CLASSIFICATION
+  // ═══════════════════════════════════════════════════════════
+
   // Classification
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
@@ -881,9 +888,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
+  // Date / Time
   y = checkPageBreak(doc, y, 15, prio);
-  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Response Timeline', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: fmtTimestamp(data.created_at || '') },
       { label: 'Dispatched', value: fmtTimestamp(data.dispatched_at || '') },
@@ -895,73 +902,67 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Caller Information
-  y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    { const rel = data.caller_relationship || '';
-      const yL = addFieldPair(doc, 'Relationship', rel.charAt(0).toUpperCase() + rel.slice(1), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Caller Address', data.caller_address || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
+  // ═══════════════════════════════════════════════════════════
+  // GROUP 2 — WHAT HAPPENED
+  // ═══════════════════════════════════════════════════════════
+
+  // Incident Details (description — the core of the report)
+  y = checkPageBreak(doc, y, 25, prio);
+  { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
+    y += SPACING.MD;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('DESCRIPTION', lx, y);
+    y += 2;
+    const descPageBreak = (newY: number): number => {
+      const cw = getContentWidth(doc);
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
+      doc.setDrawColor(...COLOR.BORDER_SECTION);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+    };
+    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
+    y += SPACING.SM;
+    y = checkPageBreak(doc, y, 10, prio);
+    y = addThreeColumnFields(doc, [
+      { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
+      { label: '# Victims', value: data.num_victims != null ? String(data.num_victims) : '' },
+      { label: 'Direction of Travel', value: data.direction_of_travel || '' },
+    ], y);
+    const hasSubjDesc = data.subject_description && data.subject_description.trim() && data.subject_description.trim() !== '--';
+    const hasVehDesc = data.vehicle_description && data.vehicle_description.trim() && data.vehicle_description.trim() !== '--';
+    if (hasSubjDesc || hasVehDesc) {
+      y = checkPageBreak(doc, y, 8, prio);
+      const yL = addFieldPair(doc, 'Subject Description', hasSubjDesc ? data.subject_description!.trim() : 'N/A', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Vehicle Description', hasVehDesc ? data.vehicle_description!.trim() : 'N/A', rx, y, hfw);
+      y = Math.max(yL, yR);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // PSO Client Request Details — right after Caller Information
-  if (data.incident_type === 'pso_client_request') {
-    y = checkPageBreak(doc, y, 18, prio);
-    const attemptNum = data.pso_attempt_number || 1;
-    const attemptLabel = attemptNum > 1
-      ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
-      : '';
-    const psoSec = openAutoSection(doc, `PSO Client Request Details${attemptLabel}`, y); y = psoSec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
-      { label: 'Authorization / PO#', value: data.pso_authorization || '' },
-      { label: 'Billing Code', value: data.pso_billing_code || '' },
-    ], y);
-    y = addThreeColumnFields(doc, [
-      { label: 'Requestor Name', value: data.pso_requestor_name || '' },
-      { label: 'Requestor Phone', value: data.pso_requestor_phone || '' },
-      { label: 'Requestor Email', value: data.pso_requestor_email || '' },
-    ], y);
-    y = closeAutoSection(doc, psoSec.sectionY, y, undefined, psoSec.sectionPage);
-
-    // Process Service sub-section
-    if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
-      y = checkPageBreak(doc, y, 18, prio);
-      const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
-      y = addThreeColumnFields(doc, [
-        { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
-        { label: 'Serve To', value: data.process_served_to || '' },
-        { label: 'Attempts', value: String(data.process_attempts || 0) },
-      ], y);
-      y = addThreeColumnFields(doc, [
-        { label: 'Service Address', value: data.process_served_address || '' },
-        { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
-        { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
-      ], y);
-      y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
-    }
-  }
-
-  // Location
+  // Incident Location
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
-    // Row 1: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
-    // Row 2: Latitude | Longitude | Dispatch Code (3 columns)
     y = addThreeColumnFields(doc, [
       { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
       { label: 'Longitude', value: data.longitude != null ? String(data.longitude) : '' },
       { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '' },
     ], y);
-    // Row 3: Cross Street | Property (2 columns)
     { const yL = addFieldPair(doc, 'Cross Street', data.cross_street || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Property', data.property_name || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    // Row 4: Building | Floor | Suite/Room | Section ID | Zone ID | Beat ID (6 columns)
     { const sixW = ffw / 6;
       const r4Fields = [
         { label: 'Building', value: data.location_building || '' },
@@ -981,9 +982,32 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Flags — before Scene Conditions
+  // Scene Conditions
+  y = checkPageBreak(doc, y, 18, prio);
+  { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
+    const scW = ffw / 4;
+    const scFields = [
+      { label: 'Weather', value: data.weather_conditions || '' },
+      { label: 'Lighting', value: data.lighting_conditions || '' },
+      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'None' : data.weapons_involved },
+      { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
+    ];
+    let maxScY = y + SPACING.FIELD_ROW_ADVANCE;
+    for (let i = 0; i < 4; i++) {
+      const fy = addFieldPair(doc, scFields[i].label, scFields[i].value, lx + i * scW, y, scW);
+      if (fy > maxScY) maxScY = fy;
+    }
+    y = maxScY;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GROUP 3 — OPERATIONAL CONTEXT
+  // ═══════════════════════════════════════════════════════════
+
+  // Operational Checklist (flags)
   y = checkPageBreak(doc, y, 15, prio);
-  { const flagSec = openAutoSection(doc, 'Flags', y); y = flagSec.contentY;
+  { const flagSec = openAutoSection(doc, 'Operational Checklist', y); y = flagSec.contentY;
     y += 0.5;
     const flagCols = 6;
     const flagColW = ffw / flagCols;
@@ -1029,31 +1053,96 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, flagSec.sectionY, y, undefined, flagSec.sectionPage);
   }
 
-  // Scene Conditions (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
-  y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
-    // All 4 fields in one row
-    const scW = ffw / 4;
-    const scFields = [
-      { label: 'Weather', value: data.weather_conditions || '' },
-      { label: 'Lighting', value: data.lighting_conditions || '' },
-      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'None' : data.weapons_involved },
-      { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
-    ];
-    let maxScY = y + SPACING.FIELD_ROW_ADVANCE;
-    for (let i = 0; i < 4; i++) {
-      const fy = addFieldPair(doc, scFields[i].label, scFields[i].value, lx + i * scW, y, scW);
-      if (fy > maxScY) maxScY = fy;
-    }
-    y = maxScY;
+  // Damage Assessment (conditional)
+  if (data.damage_estimate || data.damage_description) {
+    y = checkPageBreak(doc, y, 18, prio);
+    const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
+    { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Description', data.damage_description || 'UNDETERMINED', rx, y, hfw);
+      y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Assigned Units — after Scene Conditions
+  // ═══════════════════════════════════════════════════════════
+  // GROUP 4 — PEOPLE & VEHICLES
+  // ═══════════════════════════════════════════════════════════
+
+  // Reporting Party (caller)
+  y = checkPageBreak(doc, y, 18, prio);
+  { const sec = openAutoSection(doc, 'Reporting Party', y); y = sec.contentY;
+    { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
+      y = Math.max(yL, yR); }
+    { const rel = data.caller_relationship || '';
+      const yL = addFieldPair(doc, 'Relationship', rel.charAt(0).toUpperCase() + rel.slice(1), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Caller Address', data.caller_address || '', rx, y, hfw);
+      y = Math.max(yL, yR); }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Linked Persons
+  if (data.linked_persons && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 18, prio);
+    const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
+    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.15, ffw * 0.22, ffw * 0.23];
+    for (const p of data.linked_persons) {
+      y = checkPageBreak(doc, y, 12);
+      const np = 'Not Provided';
+      const pFields = [
+        { label: 'Name', value: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || np },
+        { label: 'Role', value: titleCase((p.role || '').replace(/_/g, ' ')) || np },
+        { label: 'DOB', value: p.dob || np },
+        { label: 'Race/Sex', value: [p.race, p.gender].filter(Boolean).join('/') || np },
+        { label: 'Phone', value: p.phone || np },
+      ];
+      let maxPY = y + SPACING.FIELD_ROW_ADVANCE;
+      let pX = lx;
+      for (let i = 0; i < 5; i++) {
+        const fy = addFieldPair(doc, pFields[i].label, pFields[i].value, pX, y, pColW[i]);
+        if (fy > maxPY) maxPY = fy;
+        pX += pColW[i];
+      }
+      y = maxPY;
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Linked Vehicles
+  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+    y = checkPageBreak(doc, y, 18, prio);
+    const sec = openAutoSection(doc, `Linked Vehicles (${data.linked_vehicles.length})`, y); y = sec.contentY;
+    const vColW = [ffw * 0.15, ffw * 0.25, ffw * 0.12, ffw * 0.18, ffw * 0.30];
+    const nv = 'Not Provided';
+    for (const v of data.linked_vehicles) {
+      y = checkPageBreak(doc, y, 12);
+      const vFields = [
+        { label: 'Role', value: titleCase((v.role || '').replace(/_/g, ' ')) || nv },
+        { label: 'Year/Make/Model', value: [v.year, v.make, v.model].filter(Boolean).join(' ') || nv },
+        { label: 'Color', value: v.color || nv },
+        { label: 'Plate', value: (v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '') || nv },
+        { label: 'Owner', value: [v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + (v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '') || nv },
+      ];
+      let maxVY = y + SPACING.FIELD_ROW_ADVANCE;
+      let vX = lx;
+      for (let i = 0; i < 5; i++) {
+        const fy = addFieldPair(doc, vFields[i].label, vFields[i].value, vX, y, vColW[i]);
+        if (fy > maxVY) maxVY = fy;
+        vX += vColW[i];
+      }
+      y = maxVY;
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GROUP 5 — RESPONSE
+  // ═══════════════════════════════════════════════════════════
+
+  // Assigned Units
   { const unitDetail2 = data.assigned_units_detail;
     const unitCount2 = unitDetail2?.length || data.assigned_units?.length || 0;
     if (unitCount2 > 0) {
-      y = checkPageBreak(doc, y, 18, prio); // header + at least 1 unit row
+      y = checkPageBreak(doc, y, 18, prio);
       const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.contentY;
       if (unitDetail2 && unitDetail2.length > 0) {
         const UNIT_ROLES2 = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
@@ -1081,9 +1170,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
   }
 
-  // Mileage — single row: Vehicle ID | Starting | Ending | Total (keep on current page if possible)
+  // Mileage
   if (data.starting_mileage != null || data.ending_mileage != null || data.responding_vehicle_id) {
-    y = checkPageBreak(doc, y, 16, prio); // header + 1 mileage row
+    y = checkPageBreak(doc, y, 16, prio);
     const sec = openAutoSection(doc, 'Mileage', y); y = sec.contentY;
     const totalMiles = (data.starting_mileage != null && data.ending_mileage != null)
       ? (Number(data.ending_mileage) - Number(data.starting_mileage)).toFixed(1)
@@ -1104,113 +1193,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Persons — field-pair box rows (matches Assigned Units style)
-  if (data.linked_persons && data.linked_persons.length > 0) {
-    y = checkPageBreak(doc, y, 18, prio); // header + at least 1 person row
-    const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
-    // 5 columns using ffw (inside section borders): Name | Role | DOB | Race/Sex | Phone
-    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.15, ffw * 0.22, ffw * 0.23];
-    for (const p of data.linked_persons) {
-      y = checkPageBreak(doc, y, 12);
-      const np = 'Not Provided';
-      const pFields = [
-        { label: 'Name', value: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || np },
-        { label: 'Role', value: titleCase((p.role || '').replace(/_/g, ' ')) || np },
-        { label: 'DOB', value: p.dob || np },
-        { label: 'Race/Sex', value: [p.race, p.gender].filter(Boolean).join('/') || np },
-        { label: 'Phone', value: p.phone || np },
-      ];
-      let maxPY = y + SPACING.FIELD_ROW_ADVANCE;
-      let pX = lx;
-      for (let i = 0; i < 5; i++) {
-        const fy = addFieldPair(doc, pFields[i].label, pFields[i].value, pX, y, pColW[i]);
-        if (fy > maxPY) maxPY = fy;
-        pX += pColW[i];
-      }
-      y = maxPY;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Linked Vehicles — field-pair box rows (matches Linked Persons style)
-  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
-    y = checkPageBreak(doc, y, 18, prio); // header + at least 1 vehicle row
-    const sec = openAutoSection(doc, `Linked Vehicles (${data.linked_vehicles.length})`, y); y = sec.contentY;
-    const vColW = [ffw * 0.15, ffw * 0.25, ffw * 0.12, ffw * 0.18, ffw * 0.30];
-    const nv = 'Not Provided';
-    for (const v of data.linked_vehicles) {
-      y = checkPageBreak(doc, y, 12);
-      const vFields = [
-        { label: 'Role', value: titleCase((v.role || '').replace(/_/g, ' ')) || nv },
-        { label: 'Year/Make/Model', value: [v.year, v.make, v.model].filter(Boolean).join(' ') || nv },
-        { label: 'Color', value: v.color || nv },
-        { label: 'Plate', value: (v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '') || nv },
-        { label: 'Owner', value: [v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + (v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '') || nv },
-      ];
-      let maxVY = y + SPACING.FIELD_ROW_ADVANCE;
-      let vX = lx;
-      for (let i = 0; i < 5; i++) {
-        const fy = addFieldPair(doc, vFields[i].label, vFields[i].value, vX, y, vColW[i]);
-        if (fy > maxVY) maxVY = fy;
-        vX += vColW[i];
-      }
-      y = maxVY;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // ── Incident Details — dynamic page break ──
-  y = checkPageBreak(doc, y, 25, prio);
-  { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
-    y += SPACING.MD;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('DESCRIPTION', lx, y);
-    y += 2;
-    doc.setFont('helvetica', 'normal');
-    // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
-    const descPageBreak = (newY: number): number => {
-      const cw = getContentWidth(doc);
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
-      doc.setFont('courier', 'normal');
-      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
-    };
-    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
-    y += SPACING.SM;
-    // Pack remaining fields tightly — check page break before each group
-    y = checkPageBreak(doc, y, 10, prio);
-    y = addThreeColumnFields(doc, [
-      { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
-      { label: '# Victims', value: data.num_victims != null ? String(data.num_victims) : '' },
-      { label: 'Direction of Travel', value: data.direction_of_travel || '' },
-    ], y);
-    // Subject + Vehicle on same line — only show if non-empty
-    const hasSubjDesc = data.subject_description && data.subject_description.trim() && data.subject_description.trim() !== '--';
-    const hasVehDesc = data.vehicle_description && data.vehicle_description.trim() && data.vehicle_description.trim() !== '--';
-    if (hasSubjDesc || hasVehDesc) {
-      y = checkPageBreak(doc, y, 8, prio);
-      const yL = addFieldPair(doc, 'Subject Description', hasSubjDesc ? data.subject_description!.trim() : 'N/A', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Vehicle Description', hasVehDesc ? data.vehicle_description!.trim() : 'N/A', rx, y, hfw);
-      y = Math.max(yL, yR);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Flags — already rendered above (before Scene Conditions)
-
-  // LE Coordination
+  // External Agency Coordination
   if (data.le_agency || data.le_case_number) {
     y = checkPageBreak(doc, y, 18, prio);
     const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
@@ -1220,9 +1203,49 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // PSO Client Request Details — already rendered after Caller Information above
+  // ═══════════════════════════════════════════════════════════
+  // GROUP 6 — SPECIALIZED / CONDITIONAL
+  // ═══════════════════════════════════════════════════════════
 
-  // Visit History Timeline (PSO calls with return visits)
+  // PSO Client Request Details
+  if (data.incident_type === 'pso_client_request') {
+    y = checkPageBreak(doc, y, 18, prio);
+    const attemptNum = data.pso_attempt_number || 1;
+    const attemptLabel = attemptNum > 1
+      ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
+      : '';
+    const psoSec = openAutoSection(doc, `PSO Client Request Details${attemptLabel}`, y); y = psoSec.contentY;
+    y = addThreeColumnFields(doc, [
+      { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
+      { label: 'Authorization / PO#', value: data.pso_authorization || '' },
+      { label: 'Billing Code', value: data.pso_billing_code || '' },
+    ], y);
+    y = addThreeColumnFields(doc, [
+      { label: 'Requestor Name', value: data.pso_requestor_name || '' },
+      { label: 'Requestor Phone', value: data.pso_requestor_phone || '' },
+      { label: 'Requestor Email', value: data.pso_requestor_email || '' },
+    ], y);
+    y = closeAutoSection(doc, psoSec.sectionY, y, undefined, psoSec.sectionPage);
+
+    // Process Service sub-section
+    if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
+      y = checkPageBreak(doc, y, 18, prio);
+      const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
+      y = addThreeColumnFields(doc, [
+        { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
+        { label: 'Serve To', value: data.process_served_to || '' },
+        { label: 'Attempts', value: String(data.process_attempts || 0) },
+      ], y);
+      y = addThreeColumnFields(doc, [
+        { label: 'Service Address', value: data.process_served_address || '' },
+        { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
+        { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
+      ], y);
+      y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
+    }
+  }
+
+  // Visit History Timeline (PSO return visits)
   if (data.incident_type === 'pso_client_request' && data.visit_history && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
@@ -1238,8 +1261,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         y += 0.3;
       }
 
-      // Visit header line
-      doc.setFont('helvetica', 'bold');
+      // Visit header line — Courier for all body text
+      doc.setFont('courier', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(`Visit #${visit.visit_number}`, lx, y);
@@ -1247,7 +1270,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Status badge
       const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(statusText, lx + visitLabelW, y);
@@ -1256,7 +1279,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
@@ -1265,7 +1288,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
       y += SPACING.SM;
 
-      // Timestamps row
+      // Timestamps row — Courier
       const timeFields: string[] = [];
       if (visit.dispatched_at) timeFields.push(`Disp: ${fmtDateTime(visit.dispatched_at)}`);
       if (visit.enroute_at) timeFields.push(`EnRt: ${fmtDateTime(visit.enroute_at)}`);
@@ -1274,14 +1297,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
 
       if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
       }
 
-      // Mileage row (if present)
+      // Mileage row — Courier
       const mileageFields: string[] = [];
       if (visit.responding_vehicle_id) mileageFields.push(`Vehicle: ${visit.responding_vehicle_id}`);
       if (visit.starting_mileage != null) mileageFields.push(`Start: ${visit.starting_mileage.toLocaleString()} mi`);
@@ -1291,16 +1314,16 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
       }
 
-      // Disposition
+      // Disposition — Courier
       if (visit.disposition) {
-        doc.setFont('helvetica', 'italic');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
@@ -1310,20 +1333,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Assigned Units — already rendered above (after Scene Conditions)
+  // ═══════════════════════════════════════════════════════════
+  // GROUP 7 — CLOSURE & DOCUMENTATION
+  // ═══════════════════════════════════════════════════════════
 
-  // Damage Assessment (conditional)
-  if (data.damage_estimate || data.damage_description) {
-    y = checkPageBreak(doc, y, 18, prio);
-    const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Description', data.damage_description || 'UNDETERMINED', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // ── Resolution Details — dynamic page break (stays on current page if room) ──
-  // Needs header (5) + officer/disp row (7) + action taken row (7+) + pad (1) ≈ 20mm min
+  // Resolution Details
   y = checkPageBreak(doc, y, 20, prio);
 
   { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
@@ -1333,10 +1347,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addFieldPair(doc, 'Action Taken', data.action_taken || 'N/A', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
-
-  // ═══════════════════════════════════════════════════════════
-  // FREE-FORM — GPS, Notes, Narrative, Attachments, Signatures
-  // ═══════════════════════════════════════════════════════════
 
   // GPS Activity Log — only render when breadcrumb data exists
   const trail = data.breadcrumb_trail;
@@ -2117,6 +2127,23 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     y,
   });
 
+  // Subject photo (upper-right area, if provided)
+  if (data.subject_photo_url) {
+    try {
+      const photoW = 25;
+      const photoH = 30;
+      const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 2;
+      const photoY = y - photoH - 4; // position back into the subject section area
+      doc.addImage(data.subject_photo_url, 'JPEG', photoX, Math.max(photoY, LAYOUT.PAGE_MARGIN), photoW, photoH);
+      // Thin border around photo
+      doc.setDrawColor(...COLOR.BORDER_CELL);
+      doc.setLineWidth(BORDER.CELL);
+      doc.rect(photoX, Math.max(photoY, LAYOUT.PAGE_MARGIN), photoW, photoH, 'S');
+    } catch {
+      // Photo URL invalid or unreachable — skip silently
+    }
+  }
+
   // Court Information
   y = drawFormSection(doc, {
     sideTab: { label: 'COURT' },
@@ -2175,6 +2202,34 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
           { label: '31. VERIFICATION DATE', value: data.verification_date || '', ratio: 1 },
         ]} as FormRow] : []),
       ],
+      y,
+    });
+  }
+
+  // Service Attempts (conditional)
+  if (data.service_attempts && data.service_attempts.length > 0) {
+    const attemptRows: FormRow[] = data.service_attempts.map((a, i) => ({
+      cells: [
+        { label: `${i + 1}. DATE`, value: fmtTimestamp(a.attempted_at), ratio: 1 },
+        { label: 'METHOD', value: a.method || '', ratio: 1, align: 'center' as const },
+        { label: 'RESULT', value: a.result || '', ratio: 1, align: 'center' as const },
+        { label: 'LOCATION', value: a.location || '', ratio: 2 },
+      ],
+      height: a.notes ? 14 : undefined,
+    }));
+    // Add notes sub-rows for attempts that have them
+    const fullRows: FormRow[] = [];
+    data.service_attempts.forEach((a, i) => {
+      fullRows.push(attemptRows[i]);
+      if (a.notes) {
+        fullRows.push({ cells: [{ label: 'NOTES', value: a.notes, ratio: 1 }] });
+      }
+    });
+    y = drawFormSection(doc, {
+      sideTab: { label: 'SERVICE ATTEMPTS' },
+      topBanner: true,
+      onPageBreak: formSectionPageBreak,
+      rows: fullRows,
       y,
     });
   }
@@ -3301,4 +3356,395 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     console.error('Record PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${recordType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
+}
+
+// ── BOLO Packet PDF ─────────────────────────────────────────
+
+export interface BoloSubject {
+  first_name: string;
+  last_name: string;
+  dob?: string;
+  gender?: string;
+  race?: string;
+  height?: string;
+  weight?: string;
+  hair_color?: string;
+  eye_color?: string;
+  address?: string;
+  photo_url?: string | null;
+  warrants: { warrant_number: string; type: string; charge_description: string; offense_level: string | null; issuing_court: string | null; bail_amount: number | null }[];
+}
+
+/** Generate a multi-page BOLO (Be On The Lookout) packet PDF */
+export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const contentW = pageW - 2 * margin;
+
+  setActiveFormKey('warrant');
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  // Sort by severity: felony first
+  const severityOrder: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
+  const sorted = [...subjects].sort((a, b) => {
+    const aSev = Math.min(...a.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
+    const bSev = Math.min(...b.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
+    return aSev - bSev;
+  });
+
+  // Watermark on first page
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState — safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'BE ON THE LOOKOUT (BOLO) PACKET',
+    formNumber: 'FORM PS-204B',
+    reportDate: fmtDate(new Date().toISOString()),
+  });
+
+  y += 2;
+
+  // Subtitle with count
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLOR.TEXT_LABEL);
+  doc.text(`${sorted.length} SUBJECT${sorted.length !== 1 ? 'S' : ''} WITH ACTIVE WARRANTS`, margin, y);
+  y += 5;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const subj = sorted[i];
+
+    // Check if we need a new page
+    if (y > 240) {
+      doc.addPage();
+      addConfidentialWatermark(doc);
+      // @ts-expect-error jsPDF GState
+      doc.setGState(new doc.GState({ opacity: 1.0 }));
+      y = LAYOUT.PAGE_MARGIN + 5;
+    }
+
+    const sectionStartY = y;
+
+    // Subject header bar
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(margin, y, contentW, 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(`${subj.last_name || '?'}, ${subj.first_name || '?'}`.toUpperCase(), margin + 2, y + 5);
+
+    // Severity badge on right
+    const topSev = subj.warrants.reduce((best, w) => {
+      const o = severityOrder[w.offense_level || ''] ?? 4;
+      return o < best.o ? { o, label: w.offense_level || '' } : best;
+    }, { o: 4, label: '' });
+    if (topSev.label) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      const sevColor: [number, number, number] = topSev.label === 'felony' ? [220, 50, 50] : topSev.label === 'misdemeanor' ? [220, 160, 40] : [120, 120, 120];
+      doc.setTextColor(...sevColor);
+      doc.text(topSev.label.toUpperCase(), margin + contentW - 2, y + 5, { align: 'right' });
+    }
+
+    y += 9;
+
+    // Physical description row
+    const descParts: string[] = [];
+    if (subj.dob) descParts.push(`DOB: ${fmtDate(subj.dob)}`);
+    if (subj.gender) descParts.push(`${subj.gender}`);
+    if (subj.race) descParts.push(`${subj.race}`);
+    if (subj.height) descParts.push(`Ht: ${subj.height}`);
+    if (subj.weight) descParts.push(`Wt: ${subj.weight}`);
+    if (subj.hair_color) descParts.push(`Hair: ${subj.hair_color}`);
+    if (subj.eye_color) descParts.push(`Eyes: ${subj.eye_color}`);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COLOR.TEXT_VALUE);
+    doc.text(descParts.join('  |  '), margin + 2, y + 3);
+    y += 5;
+
+    if (subj.address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...COLOR.TEXT_LABEL);
+      doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
+      y += 5;
+    }
+
+    // Photo (if available)
+    if (subj.photo_url) {
+      try {
+        const photoW = 20;
+        const photoH = 24;
+        const photoX = margin + contentW - photoW - 2;
+        const photoY = sectionStartY + 9;
+        doc.addImage(subj.photo_url, 'JPEG', photoX, photoY, photoW, photoH);
+        doc.setDrawColor(...COLOR.BORDER_CELL);
+        doc.setLineWidth(BORDER.CELL);
+        doc.rect(photoX, photoY, photoW, photoH, 'S');
+      } catch {
+        // Photo URL invalid — skip
+      }
+    }
+
+    // Warrants table
+    if (subj.warrants.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_LABEL);
+      // Table header
+      doc.setFillColor(30, 40, 55);
+      doc.rect(margin + 2, y, contentW - 4, 5, 'F');
+      doc.text('WARRANT #', margin + 4, y + 3.5);
+      doc.text('TYPE', margin + 40, y + 3.5);
+      doc.text('CHARGE', margin + 60, y + 3.5);
+      doc.text('COURT', margin + 130, y + 3.5);
+      doc.text('BAIL', margin + contentW - 8, y + 3.5, { align: 'right' });
+      y += 6;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_VALUE);
+
+      for (const w of subj.warrants) {
+        if (y > 260) {
+          doc.addPage();
+          addConfidentialWatermark(doc);
+          // @ts-expect-error jsPDF GState
+          doc.setGState(new doc.GState({ opacity: 1.0 }));
+          y = LAYOUT.PAGE_MARGIN + 5;
+        }
+        doc.text(w.warrant_number || '', margin + 4, y + 3);
+        doc.text((w.type || '').toUpperCase(), margin + 40, y + 3);
+        // Truncate charge if too long
+        const charge = (w.charge_description || '').substring(0, 50);
+        doc.text(charge, margin + 60, y + 3);
+        doc.text((w.issuing_court || '').substring(0, 25), margin + 130, y + 3);
+        doc.text(fmtCurrency(w.bail_amount), margin + contentW - 8, y + 3, { align: 'right' });
+        y += 5;
+      }
+    }
+
+    y += 3;
+
+    // Separator line between subjects
+    if (i < sorted.length - 1) {
+      doc.setDrawColor(...COLOR.BORDER_CELL);
+      doc.setLineWidth(0.2);
+      doc.line(margin, y, margin + contentW, y);
+      y += 3;
+    }
+  }
+
+  // Add page footers and watermarks to all pages
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addPageFooter(doc, i, totalPages);
+    if (i > 1) {
+      addConfidentialWatermark(doc);
+    }
+  }
+
+  return doc;
+}
+
+// ── Warrant Summary Report PDF ──────────────────────────────
+
+export interface WarrantSummaryData {
+  period: { from: string | null; to: string | null };
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  bySeverity: Record<string, number>;
+  bySource: Record<string, number>;
+  topCourts: { issuing_court: string; count: number }[];
+  newThisPeriod: number | null;
+  clearedThisPeriod: number | null;
+  scanActivity: { totalScans: number; totalFound: number; totalCleared: number };
+}
+
+/** Generate a single-page Warrant Activity Summary Report */
+export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const contentW = pageW - 2 * margin;
+  const halfW = (contentW - 4) / 2;
+
+  setActiveFormKey('warrant');
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'WARRANT ACTIVITY SUMMARY REPORT',
+    formNumber: 'FORM PS-204S',
+    reportDate: fmtDate(new Date().toISOString()),
+  });
+
+  y += 2;
+
+  // Period display
+  const periodFrom = data.period.from ? fmtDate(data.period.from) : 'All Time';
+  const periodTo = data.period.to ? fmtDate(data.period.to) : 'Present';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLOR.TEXT_LABEL);
+  doc.text(`REPORTING PERIOD: ${periodFrom} — ${periodTo}`, margin, y + 3);
+  y += 7;
+
+  // Summary stats
+  const statusEntries = Object.entries(data.byStatus);
+  const totalWarrants = statusEntries.reduce((s, [, n]) => s + n, 0);
+
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SUMMARY' },
+    topBanner: true,
+    rows: [
+      { cells: [
+        { label: 'TOTAL WARRANTS', value: String(totalWarrants), ratio: 1, valueBold: true, align: 'center' },
+        { label: 'NEW THIS PERIOD', value: data.newThisPeriod != null ? String(data.newThisPeriod) : 'N/A', ratio: 1, align: 'center' },
+        { label: 'CLEARED THIS PERIOD', value: data.clearedThisPeriod != null ? String(data.clearedThisPeriod) : 'N/A', ratio: 1, align: 'center' },
+      ]},
+      { cells: statusEntries.map(([status, count]) => ({
+        label: status.toUpperCase(),
+        value: String(count),
+        ratio: 1,
+        align: 'center' as const,
+        valueBold: status === 'active',
+      }))},
+    ],
+    y,
+  });
+
+  y += 2;
+
+  // Helper to draw a simple breakdown table
+  function drawBreakdownTable(title: string, entries: [string, number][], startY: number, x: number, w: number): number {
+    let ty = startY;
+    // Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_LABEL);
+    doc.text(title, x, ty + 3);
+    ty += 5;
+
+    // Header row
+    doc.setFillColor(30, 40, 55);
+    doc.rect(x, ty, w, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text('CATEGORY', x + 2, ty + 3.5);
+    doc.text('COUNT', x + w - 2, ty + 3.5, { align: 'right' });
+    ty += 6;
+
+    // Data rows
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    for (const [label, count] of entries) {
+      const isEven = entries.indexOf([label, count]) % 2 === 0;
+      if (isEven) {
+        doc.setFillColor(20, 30, 43);
+        doc.rect(x, ty - 0.5, w, 5, 'F');
+      }
+      doc.setTextColor(...COLOR.TEXT_VALUE);
+      doc.text(titleCase(label.replace(/_/g, ' ')), x + 2, ty + 3);
+      doc.setTextColor(...COLOR.TEXT_LABEL);
+      doc.text(String(count), x + w - 2, ty + 3, { align: 'right' });
+      ty += 5;
+    }
+
+    return ty + 2;
+  }
+
+  // Two-column layout for breakdown tables
+  const leftX = margin;
+  const rightX = margin + halfW + 4;
+
+  const typeEntries = Object.entries(data.byType);
+  const sevEntries = Object.entries(data.bySeverity);
+  const sourceEntries = Object.entries(data.bySource);
+
+  const y1 = drawBreakdownTable('BY TYPE', typeEntries, y, leftX, halfW);
+  const y2 = drawBreakdownTable('BY SEVERITY', sevEntries, y, rightX, halfW);
+  y = Math.max(y1, y2);
+
+  y += 2;
+
+  // Source breakdown (full width)
+  if (sourceEntries.length > 0) {
+    y = drawBreakdownTable('BY SOURCE', sourceEntries, y, leftX, contentW);
+  }
+
+  // Top Courts table
+  if (data.topCourts.length > 0) {
+    y += 2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_LABEL);
+    doc.text('TOP ISSUING COURTS', margin, y + 3);
+    y += 5;
+
+    doc.setFillColor(30, 40, 55);
+    doc.rect(margin, y, contentW, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text('COURT', margin + 2, y + 3.5);
+    doc.text('WARRANTS', margin + contentW - 2, y + 3.5, { align: 'right' });
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    for (const court of data.topCourts) {
+      doc.setTextColor(...COLOR.TEXT_VALUE);
+      doc.text(court.issuing_court || 'Unknown', margin + 2, y + 3);
+      doc.setTextColor(...COLOR.TEXT_LABEL);
+      doc.text(String(court.count), margin + contentW - 2, y + 3, { align: 'right' });
+      y += 5;
+    }
+    y += 2;
+  }
+
+  // Scan Activity
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SCAN ACTIVITY' },
+    topBanner: true,
+    rows: [
+      { cells: [
+        { label: 'TOTAL SCANS', value: String(data.scanActivity.totalScans), ratio: 1, align: 'center' },
+        { label: 'WARRANTS FOUND', value: String(data.scanActivity.totalFound), ratio: 1, align: 'center', valueBold: true },
+        { label: 'WARRANTS CLEARED', value: String(data.scanActivity.totalCleared), ratio: 1, align: 'center' },
+      ]},
+    ],
+    y,
+  });
+
+  // Footer + watermark
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addPageFooter(doc, i, totalPages);
+    if (i > 1) {
+      addConfidentialWatermark(doc);
+    }
+  }
+
+  return doc;
 }

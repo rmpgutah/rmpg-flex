@@ -530,8 +530,9 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     for (const trace of data.skipTraces) {
       y = checkPageBreak(doc, y, 20);
       const rowY = y;
-      addFieldPair(doc, 'Date', trace.date, lx, rowY, hfw);
-      y = addFieldPair(doc, 'Search Type', trace.searchType, rx, rowY, hfw);
+      const yL = addFieldPair(doc, 'Date', trace.date, lx, rowY, hfw);
+      const yR = addFieldPair(doc, 'Search Type', trace.searchType, rx, rowY, hfw);
+      y = Math.max(yL, yR);
       y += SPACING.SM;
       y = addFieldPair(doc, 'Addresses Found', String(trace.addressesFound), lx, y, hfw);
       y += SPACING.SM;
@@ -730,8 +731,9 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Route Efficiency', y);
     y = sec.contentY;
     const rowY = y;
-    addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned.toFixed(1), lx, rowY, hfw);
-    y = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual.toFixed(1), rx, rowY, hfw);
+    const yL2 = addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned.toFixed(1), lx, rowY, hfw);
+    const yR2 = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual.toFixed(1), rx, rowY, hfw);
+    y = Math.max(yL2, yR2);
     y += SPACING.SM;
 
     const efficiency = data.routeEfficiency.planned > 0
