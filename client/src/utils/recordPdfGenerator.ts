@@ -1538,17 +1538,16 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = Math.max(fy8, fy9, fy10, fy11, fy12);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
 
-    // Photo — small passport size, top-right corner within section bounds
+    // Photo — small ID photo, top-right corner, covers only rows 1-2
     if (data.id_photo) {
-      const sectionH = y - sec.contentY; // actual section content height
-      const photoH = Math.min(16, sectionH - 1); // fit within section, max 16mm
-      const photoW = photoH * 0.75; // passport aspect ratio
-      const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 2;
+      const photoW = 14;
+      const photoH = 17;
+      const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 1;
       const photoY = sec.contentY + 0.5;
       try {
         addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH);
       } catch { /* skip */ }
-      doc.setDrawColor(150, 150, 150);
+      doc.setDrawColor(120, 120, 120);
       doc.setLineWidth(0.2);
       doc.rect(photoX, photoY, photoW, photoH);
     }
@@ -1637,12 +1636,13 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 8. Flags & Warnings ───────────────────────────────────
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Flags & Warnings', y); y = sec.contentY;
-    // Checkbox row
+    // Checkbox row — add breathing room below header
+    y += 1;
     let flagX = lx;
     flagX = addCheckboxField(doc, 'Sex Offender', !!data.is_sex_offender, flagX, y);
     flagX = addCheckboxField(doc, 'Veteran', !!data.is_veteran, flagX + SPACING.SM, y);
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
-    y += SPACING.SM + 1;
+    y += 4;
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
     const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;

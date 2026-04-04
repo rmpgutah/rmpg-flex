@@ -1496,7 +1496,7 @@ export function addTableWithShading(
   // Helper to draw header row — dark blocky style (or light field-pair style)
   // atY = top of header rect; text is vertically centered within
   const lightHdr = opts?.lightHeader === true;
-  const headerRowH = 4.5;
+  const headerRowH = SPACING.SECTION_HEADER_H; // Match section header bar height
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
       doc.setFillColor(240, 240, 240);
