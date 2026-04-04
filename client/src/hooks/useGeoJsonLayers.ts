@@ -247,6 +247,8 @@ export function useGeoJsonLayers({
   const geojsonCacheRef = useRef<Record<string, object>>({});
   // Track listeners for cleanup
   const listenersRef = useRef<google.maps.MapsEventListener[]>([]);
+  // Beat label markers for centroid labels
+  const beatLabelsRef = useRef<google.maps.Marker[]>([]);
 
   // Refs for latest callback/selection state (avoids re-creating data layers)
   const selectionModeRef = useRef(selectionMode);
@@ -365,6 +367,127 @@ export function useGeoJsonLayers({
     if (beatStyleLookup) restyleLayers();
   }, [beatStyleLookup, restyleLayers]);
 
+  // ── Beat label overlay helpers ─────────────────────────────
+
+  /** Remove all beat label markers from the map */
+  const clearBeatLabels = useCallback(() => {
+    for (const m of beatLabelsRef.current) m.setMap(null);
+    beatLabelsRef.current = [];
+  }, []);
+
+  /** Create beat label markers at polygon centroids for the loaded beat layer */
+  const createBeatLabels = useCallback(() => {
+    clearBeatLabels();
+    if (!map) return;
+    const dl = dataLayersRef.current['beat'];
+    if (!dl) return;
+
+    const zoom = map.getZoom() ?? 12;
+    dl.forEach((feature) => {
+      const geom = feature.getGeometry();
+      if (!geom) return;
+      // Compute centroid from outer ring of the first polygon
+      let coords: google.maps.LatLng[] = [];
+      const gType = geom.getType();
+      if (gType === 'Polygon') {
+        const poly = geom as google.maps.Data.Polygon;
+        const ring = poly.getAt(0); // outer ring
+        for (let i = 0; i < ring.getLength(); i++) coords.push(ring.getAt(i));
+      } else if (gType === 'MultiPolygon') {
+        const mp = geom as google.maps.Data.MultiPolygon;
+        if (mp.getLength() > 0) {
+          const firstPoly = mp.getAt(0);
+          const ring = firstPoly.getAt(0);
+          for (let i = 0; i < ring.getLength(); i++) coords.push(ring.getAt(i));
+        }
+      }
+      if (coords.length === 0) return;
+
+      let latSum = 0, lngSum = 0;
+      for (const c of coords) { latSum += c.lat(); lngSum += c.lng(); }
+      const centroid = { lat: latSum / coords.length, lng: lngSum / coords.length };
+
+      const beatCode = feature.getProperty('beat_code') as string | undefined;
+      const distLetter = feature.getProperty('district_letter') as string | undefined;
+      if (!beatCode && !distLetter) return;
+
+      // Zoom-adaptive label text
+      let labelText = '';
+      if (zoom >= 13) {
+        labelText = beatCode || distLetter || '';
+      } else if (zoom >= 11) {
+        labelText = distLetter || '';
+      }
+      // Below 11: no label (marker hidden)
+
+      // Determine label color from section
+      let labelColor = '#fff';
+      const cityCode = feature.getProperty('city_code') as string | undefined;
+      if (cityCode && distLetter && beatStyleLookupRef.current) {
+        const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
+        if (cached) labelColor = cached.style.strokeColor;
+      }
+
+      const marker = new google.maps.Marker({
+        position: centroid,
+        map: zoom >= 11 ? map : null,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0, fillOpacity: 0 },
+        label: labelText ? { text: labelText, color: labelColor, fontSize: '9px', fontWeight: 'bold' } : undefined,
+        clickable: false,
+        zIndex: 0,
+      });
+      beatLabelsRef.current.push(marker);
+    });
+  }, [map, clearBeatLabels]);
+
+  /** Update beat label text & visibility for the current zoom */
+  const updateBeatLabelVisibility = useCallback(() => {
+    if (!map) return;
+    const zoom = map.getZoom() ?? 12;
+    const dl = dataLayersRef.current['beat'];
+    if (!dl) return;
+    const beatVisible = layerStates['beat']?.visible;
+
+    // If beat layer is not visible or zoom too low, hide all labels
+    if (!beatVisible || zoom < 11) {
+      for (const m of beatLabelsRef.current) m.setMap(null);
+      return;
+    }
+
+    // Iterate markers in parallel with features to get property data
+    // Since markers were created in forEach order, we can re-iterate to match
+    let idx = 0;
+    dl.forEach((feature) => {
+      const marker = beatLabelsRef.current[idx];
+      if (!marker) { idx++; return; }
+
+      const beatCode = feature.getProperty('beat_code') as string | undefined;
+      const distLetter = feature.getProperty('district_letter') as string | undefined;
+
+      let labelText = '';
+      if (zoom >= 13) {
+        labelText = beatCode || distLetter || '';
+      } else if (zoom >= 11) {
+        labelText = distLetter || '';
+      }
+
+      let labelColor = '#fff';
+      const cityCode = feature.getProperty('city_code') as string | undefined;
+      if (cityCode && distLetter && beatStyleLookupRef.current) {
+        const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
+        if (cached) labelColor = cached.style.strokeColor;
+      }
+
+      if (labelText) {
+        marker.setLabel({ text: labelText, color: labelColor, fontSize: '9px', fontWeight: 'bold' });
+        marker.setMap(map);
+      } else {
+        marker.setMap(null);
+      }
+      idx++;
+    });
+  }, [map, layerStates]);
+
   // ── Load a single GeoJSON layer onto the map ───────────────
 
   const loadLayer = useCallback(async (cfg: GeoLayerConfig) => {
@@ -462,7 +585,12 @@ export function useGeoJsonLayers({
 
     // Apply current styles after load
     restyleLayers();
-  }, [map, infoWindow, getFeatureKey, restyleLayers]);
+
+    // Create beat labels if the beat layer just loaded and is visible
+    if (cfg.id === 'beat' && layerStates['beat']?.visible) {
+      createBeatLabels();
+    }
+  }, [map, infoWindow, getFeatureKey, restyleLayers, layerStates, createBeatLabels]);
 
   // ── Ensure layer is loaded (for shift planning) ────────────
 
@@ -493,9 +621,19 @@ export function useGeoJsonLayers({
         dl.setMap(nowVisible ? map : null);
       }
 
+      // Manage beat labels when toggling beat layer
+      if (layerId === 'beat') {
+        if (nowVisible && dataLayersRef.current['beat']) {
+          // Defer to after state update so layerStates reflects new visibility
+          setTimeout(() => createBeatLabels(), 0);
+        } else {
+          clearBeatLabels();
+        }
+      }
+
       return { ...prev, [layerId]: { ...curr, visible: nowVisible } };
     });
-  }, [map]);
+  }, [map, createBeatLabels, clearBeatLabels]);
 
   // ── Auto-load visible layers when map is ready ─────────────
 
@@ -528,12 +666,14 @@ export function useGeoJsonLayers({
           dl.setMap(map);
         }
       }
+      // Update beat label text/visibility based on new zoom
+      updateBeatLabelVisibility();
     });
 
     return () => {
       google.maps.event.removeListener(zoomListener);
     };
-  }, [map, layerStates]);
+  }, [map, layerStates, updateBeatLabelVisibility]);
 
   // ── Cleanup on unmount ─────────────────────────────────────
 
@@ -545,6 +685,9 @@ export function useGeoJsonLayers({
       for (const dl of Object.values(dataLayersRef.current)) {
         dl.setMap(null);
       }
+      // Clean up beat labels
+      for (const m of beatLabelsRef.current) m.setMap(null);
+      beatLabelsRef.current = [];
       dataLayersRef.current = {};
       listenersRef.current = [];
     };
