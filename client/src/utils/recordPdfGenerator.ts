@@ -1534,7 +1534,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       const photoX = lx + textAreaW + photoGap;
       const photoY = y;
       try {
-        addImageToPage(doc, data.id_photo, photoX, photoY, photoW, photoH);
+        addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH);
       } catch { /* image load failed — skip silently */ }
       doc.setDrawColor(100, 100, 100);
       doc.setLineWidth(0.3);
