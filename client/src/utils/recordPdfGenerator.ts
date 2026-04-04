@@ -1543,17 +1543,18 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = Math.max(fy8, fy9, fy10, fy11, fy12);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
 
-    // Photo overlay — small passport photo in top-right of Subject ID only
+    // Photo — small passport size, top-right corner within section bounds
     if (data.id_photo) {
-      const photoW = 18;
-      const photoH = 22;
+      const sectionH = y - sec.contentY; // actual section content height
+      const photoH = Math.min(16, sectionH - 1); // fit within section, max 16mm
+      const photoW = photoH * 0.75; // passport aspect ratio
       const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 2;
-      const photoY = sec.contentY + 1;
+      const photoY = sec.contentY + 0.5;
       try {
         addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH);
       } catch { /* skip */ }
-      doc.setDrawColor(120, 120, 120);
-      doc.setLineWidth(0.3);
+      doc.setDrawColor(150, 150, 150);
+      doc.setLineWidth(0.2);
       doc.rect(photoX, photoY, photoW, photoH);
     }
   }
@@ -1660,22 +1661,27 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Active Flags — parse and display as pill badges
-  const rawFlags = data.flags as any;
-  if (rawFlags && (Array.isArray(rawFlags) ? rawFlags.length > 0 : typeof rawFlags === 'string' && rawFlags.length > 2)) {
+  // Active Flags — parse any format into display strings
+  if (data.flags) {
     let flagList: string[] = [];
-    try {
-      const raw = typeof rawFlags === 'string' ? JSON.parse(rawFlags) : rawFlags;
-      if (Array.isArray(raw)) {
-        flagList = raw.map((f: any) => {
-          if (typeof f === 'string') return f;
-          if (typeof f === 'object' && f) return f.type || f.name || f.label || f.flag || '';
-          return '';
-        }).filter(Boolean);
+    const rf: any = data.flags;
+    // Handle: string, JSON string, array of strings, array of objects
+    if (typeof rf === 'string' && rf.length > 1) {
+      try {
+        const parsed = JSON.parse(rf);
+        if (Array.isArray(parsed)) {
+          flagList = parsed.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
+        } else if (typeof parsed === 'object') {
+          flagList = [parsed.type || parsed.name || parsed.label || ''].filter(Boolean);
+        }
+      } catch {
+        flagList = rf.split(',').map((s: string) => s.trim()).filter(Boolean);
       }
-    } catch { /* not valid JSON — try as comma-separated string */
-      if (typeof rawFlags === 'string') flagList = rawFlags.split(',').map((s: string) => s.trim()).filter(Boolean);
+    } else if (Array.isArray(rf)) {
+      flagList = rf.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
     }
+    // Clean up: replace underscores, title case
+    flagList = flagList.map(f => f.replace(/_/g, ' '));
     if (flagList.length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
