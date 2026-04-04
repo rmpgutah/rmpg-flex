@@ -93,9 +93,9 @@ function visibilityPercent(range: number): number {
 }
 
 function formatVisibility(meters: number): string {
-  if (meters >= 1000) {
-    const km = meters / 1000;
-    return `${km % 1 === 0 ? km.toFixed(0) : km.toFixed(1)} km`;
+  if (meters >= 1609) {
+    const mi = meters / 1609.34;
+    return `${mi % 1 === 0 ? mi.toFixed(0) : mi.toFixed(1)} mi`;
   }
   return `${Math.round(meters)} m`;
 }

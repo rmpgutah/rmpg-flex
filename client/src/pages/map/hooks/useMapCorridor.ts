@@ -59,11 +59,11 @@ function destinationPoint(
   lat: number,
   lng: number,
   headingDeg: number,
-  distanceKm: number,
+  distanceMi: number,
 ): { lat: number; lng: number } {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceKm)) return { lat, lng };
-  const R = 6371; // Earth radius km
-  const d = distanceKm / R;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceMi)) return { lat, lng };
+  const R = 3958.8; // Earth radius miles
+  const d = distanceMi / R;
   const brng = (headingDeg * Math.PI) / 180;
   const lat1 = (lat * Math.PI) / 180;
   const lng1 = (lng * Math.PI) / 180;
@@ -237,7 +237,7 @@ export function useMapCorridor(
     [enabled, map, clearCorridorOverlays],
   );
 
-  // ── Pursuit corridor projection (2km cone) ─────────────────
+  // ── Pursuit corridor projection (1.24mi cone) ──────────────
 
   const showPursuitProjection = useCallback(
     (lat: number, lng: number, heading: number) => {
@@ -247,9 +247,9 @@ export function useMapCorridor(
       setPursuitProjection({ lat, lng, heading });
 
       const origin = { lat, lng };
-      const leftEdge = destinationPoint(lat, lng, heading - 30, 2);
-      const rightEdge = destinationPoint(lat, lng, heading + 30, 2);
-      const tip = destinationPoint(lat, lng, heading, 2);
+      const leftEdge = destinationPoint(lat, lng, heading - 30, 1.24);
+      const rightEdge = destinationPoint(lat, lng, heading + 30, 1.24);
+      const tip = destinationPoint(lat, lng, heading, 1.24);
 
       pursuitPolyRef.current = new google.maps.Polygon({
         paths: [origin, leftEdge, tip, rightEdge],
@@ -274,7 +274,7 @@ export function useMapCorridor(
 
       clearEscapeRoutes();
 
-      const DISTANCE_KM = 1.5;
+      const DISTANCE_MI = 0.93;
       const directions = [
         { heading: 0, label: 'N' },
         { heading: 90, label: 'E' },
@@ -283,7 +283,7 @@ export function useMapCorridor(
       ];
 
       directions.forEach((dir) => {
-        const endpoint = destinationPoint(lat, lng, dir.heading, DISTANCE_KM);
+        const endpoint = destinationPoint(lat, lng, dir.heading, DISTANCE_MI);
         const line = new google.maps.Polyline({
           path: [{ lat, lng }, endpoint],
           strokeColor: '#a855f7',
