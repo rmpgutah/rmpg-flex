@@ -242,7 +242,41 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       db.prepare('UPDATE properties SET latitude = ?, longitude = ? WHERE id = ? AND latitude IS NULL').run(latitude, longitude, propertyId);
     }
 
-    // 4. Create CFS dispatch call
+    // 4. Fetch current weather for service location
+    let weatherConditions = '';
+    let lightingConditions = '';
+    if (latitude && longitude) {
+      try {
+        const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Denver`;
+        const wxResp = await fetch(wxUrl);
+        if (wxResp.ok) {
+          const wx = await wxResp.json();
+          const c = wx.current || {};
+          const wxCodes: Record<number, string> = {
+            0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+            45: 'Foggy', 48: 'Depositing rime fog', 51: 'Light drizzle', 53: 'Moderate drizzle',
+            55: 'Dense drizzle', 61: 'Slight rain', 63: 'Moderate rain', 65: 'Heavy rain',
+            66: 'Light freezing rain', 67: 'Heavy freezing rain', 71: 'Slight snow', 73: 'Moderate snow',
+            75: 'Heavy snow', 77: 'Snow grains', 80: 'Slight rain showers', 81: 'Moderate rain showers',
+            82: 'Violent rain showers', 85: 'Slight snow showers', 86: 'Heavy snow showers', 95: 'Thunderstorm',
+          };
+          const desc = wxCodes[c.weather_code] || 'Unknown';
+          const temp = c.temperature_2m ? `${Math.round(c.temperature_2m)}°F` : '';
+          const wind = c.wind_speed_10m ? `${Math.round(c.wind_speed_10m)} mph` : '';
+          const humidity = c.relative_humidity_2m ? `${c.relative_humidity_2m}%` : '';
+          weatherConditions = [desc, temp, wind ? `Wind ${wind}` : '', humidity ? `Humidity ${humidity}` : ''].filter(Boolean).join(', ');
+        }
+      } catch { /* weather fetch failed */ }
+
+      // Determine lighting based on time of day
+      const hour = new Date().getHours();
+      if (hour >= 6 && hour < 8) lightingConditions = 'Dawn';
+      else if (hour >= 8 && hour < 17) lightingConditions = 'Daylight';
+      else if (hour >= 17 && hour < 19) lightingConditions = 'Dusk';
+      else lightingConditions = 'Dark';
+    }
+
+    // 5. Create CFS dispatch call
     const descParts = [
       `SERVE: ${name.first} ${name.middle ? name.middle + ' ' : ''}${name.last}`,
       dob ? `DOB ${dob}` : '',
@@ -270,19 +304,21 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         call_number, incident_type, priority, status,
         caller_name, caller_phone, caller_relationship,
         location_address, property_id, latitude, longitude,
+        weather_conditions, lighting_conditions,
         description, source, dispatcher_id,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
         process_service_type, process_served_to, process_served_address,
         process_attempts, client_id,
         created_at, updated_at
-      ) VALUES (?, 'PSO Client Request', 'P4', 'pending', ?, ?, 'client', ?, ?, ?, ?, ?, 'phone', ?,
+      ) VALUES (?, 'PSO Client Request', 'P4', 'pending', ?, ?, 'client', ?, ?, ?, ?, ?, ?, ?, 'phone', ?,
         ?, ?, ?, 'process_service', ?, ?,
         'summons', ?, ?, 0, ?, ?, ?)
     `).run(
       callNumber,
       'ICU Investigations, LLC', '(435) 986-1200',
       address || 'Unknown', propertyId, latitude, longitude,
+      weatherConditions || null, lightingConditions || null,
       descParts, userId,
       attorney.name || null, attorney.phone || null, attorney.email || null,
       fee || null, `${jobNumber}-${caseNumber}`,
@@ -307,6 +343,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       call_id: callId,
       call_number: callNumber,
       latitude, longitude,
+      weather: weatherConditions || null,
+      lighting: lightingConditions || null,
       extracted: { name, dob, address, plaintiff, court, docs, instructions, jobNumber, caseNumber, dueDate, attorney, fee },
     });
   } catch (err: any) {
