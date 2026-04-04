@@ -714,13 +714,13 @@ router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, 
       `).all(recordedAt, recordedAt) as any[];
 
       for (const call of callsNearby) {
-        let distance_km: number | null = null;
+        let distance_mi: number | null = null;
         if (video.latitude && video.longitude && call.latitude && call.longitude) {
-          const R = 6371;
+          const R = 3958.8; // Earth radius in miles
           const dLat = (call.latitude - video.latitude) * Math.PI / 180;
           const dLng = (call.longitude - video.longitude) * Math.PI / 180;
           const a = Math.sin(dLat / 2) ** 2 + Math.cos(video.latitude * Math.PI / 180) * Math.cos(call.latitude * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-          distance_km = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 100) / 100;
+          distance_mi = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 100) / 100;
         }
 
         correlations.push({
@@ -730,8 +730,8 @@ router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, 
           type: call.incident_type,
           location: call.location_address,
           time: call.created_at,
-          distance_km,
-          confidence: distance_km !== null && distance_km < 0.5 ? 'high' : distance_km !== null && distance_km < 2 ? 'medium' : 'low',
+          distance_mi,
+          confidence: distance_mi !== null && distance_mi < 0.31 ? 'high' : distance_mi !== null && distance_mi < 1.24 ? 'medium' : 'low',
         });
       }
 
@@ -752,7 +752,7 @@ router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, 
           type: inc.incident_type,
           location: inc.location_address,
           time: inc.created_at,
-          distance_km: null,
+          distance_mi: null,
           confidence: 'medium',
         });
       }

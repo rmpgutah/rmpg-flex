@@ -217,8 +217,8 @@ function queryNearbyIncidents(lat: number | undefined, lng: number | undefined):
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const since = thirtyDaysAgo.toISOString();
 
-  // ~0.01 degrees ≈ 1 km
-  const delta = 0.01;
+  // ~0.016 degrees ≈ 1 mi
+  const delta = 0.016;
 
   return safeAll<any>(
     `SELECT id, call_type, address, created_at, had_weapon, had_injury
