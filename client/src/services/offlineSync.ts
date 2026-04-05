@@ -52,9 +52,17 @@ const PULL_INTERVALS: Record<string, number> = {
   time_entries:       120_000,  // 2 min
   persons:            600_000,  // 10 min
   vehicles_records:   600_000,  // 10 min
+  citations:          120_000,  // 2 min
+  field_interviews:   120_000,  // 2 min
+  evidence:           300_000,  // 5 min
+  criminal_history:   120_000,  // 2 min
+  patrol_scans:       300_000,  // 5 min
+  patrol_checkpoints: 300_000,  // 5 min (reference data)
+  trespass_orders:    300_000,  // 5 min
+  warrants:           600_000,  // 10 min (read-only cache)
 };
 
-const REFERENCE_TABLES = ['users', 'clients', 'properties'];
+const REFERENCE_TABLES = ['users', 'clients', 'properties', 'patrol_checkpoints'];
 
 // ─── Event System ───────────────────────────────────────────
 
