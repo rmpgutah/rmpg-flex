@@ -271,7 +271,7 @@ function generateClientId(): string {
 
 function authenticateClient(client: WSClient, token: string): boolean {
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     // Only accept access tokens — reject refresh and mfa_pending tokens
     if (decoded.type !== 'access') {

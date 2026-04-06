@@ -9,7 +9,6 @@ export interface JwtPayload {
   role: string;
   fullName: string;
   sessionId?: string;
-  tokenGeneration?: number;
   type?: 'access' | 'refresh' | 'mfa_pending';
   pendingActions?: string[];
 }
@@ -63,22 +62,10 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           // 'warn' mode: log but allow through
         }
       } catch {
-      // DB unavailable — deny request rather than silently bypassing IP binding
-      res.status(503).json({ error: 'Service temporarily unavailable' });
-      return;
-    }
-    }
-
-    // Token generation check — reject tokens issued before a privilege change
-    if (decoded.tokenGeneration != null) {
-      try {
-        const db = getDb();
-        const row = db.prepare('SELECT token_generation FROM users WHERE id = ?').get(decoded.userId) as { token_generation: number } | undefined;
-        if (row && row.token_generation > decoded.tokenGeneration) {
-          res.status(401).json({ error: 'Token revoked due to privilege change', code: 'TOKEN_REVOKED' });
-          return;
-        }
-      } catch { /* DB failure — allow through to avoid lockout */ }
+        // DB unavailable — fail closed for security
+        res.status(503).json({ error: 'Session validation unavailable', code: 'SESSION_CHECK_FAILED' });
+        return;
+      }
     }
 
     req.user = decoded;
@@ -106,7 +93,7 @@ export function requireRole(...roles: string[]) {
     }
 
     if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions' });
+      res.status(403).json({ error: 'Insufficient permissions', required: roles });
       return;
     }
 

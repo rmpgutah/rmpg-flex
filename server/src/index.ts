@@ -14,10 +14,10 @@ import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
-import { authenticateToken, requireRole } from './middleware/auth';
+import { authenticateToken } from './middleware/auth';
 import { securityHeaders } from './middleware/securityHeaders';
 import { sanitizeInput } from './middleware/sanitize';
-import { apiRateLimit, webhookRateLimit } from './middleware/rateLimiter';
+import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor, stopPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler, stopDailyReportScheduler } from './utils/dailyReportGenerator';
@@ -132,7 +132,7 @@ app.use(cors({
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
-app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+app.post('/api/webhook/github', express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
   const WEBHOOK_SECRET_FILE = path.resolve(__dirname, '../../.webhook-secret');
   let secret = '';
   try { secret = fs.readFileSync(WEBHOOK_SECRET_FILE, 'utf8').trim(); } catch { /* no secret file */ }
@@ -192,14 +192,8 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
-// Attach unique request ID for log correlation
-app.use((req, _res, next) => {
-  (req as any).requestId = crypto.randomUUID();
-  next();
-});
-
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
 // Request timeout — 30s default, skip for upload routes (large files)
@@ -213,21 +207,6 @@ app.use((req, res, next) => {
 
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
-
-// ─── CSP Violation Report Endpoint ───────────────────
-app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
-  const report = req.body?.['csp-report'];
-  if (report) {
-    console.warn('[CSP VIOLATION]', JSON.stringify({
-      blockedUri: report['blocked-uri'],
-      violatedDirective: report['violated-directive'],
-      documentUri: report['document-uri'],
-      sourceFile: report['source-file'],
-      lineNumber: report['line-number'],
-    }));
-  }
-  res.status(204).end();
-});
 
 // ─── Health Check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -245,7 +224,7 @@ app.get('/api/health', (_req, res) => {
   const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
 
-  // Only expose minimal info publicly — version, features, and internals are sensitive
+  // Public health check: minimal info only (no version, features, or internals)
   res.status(statusCode).json({
     status: overall,
     timestamp: new Date().toISOString(),
@@ -254,8 +233,8 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ─── Presence Endpoint ───────────────────────────────
-// Restricted to supervisory+ roles — exposes online officer usernames/roles
-app.get('/api/presence', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (_req, res) => {
+// Requires auth — exposes online officer usernames/roles
+app.get('/api/presence', authenticateToken, (_req, res) => {
   const users = getConnectedUsers();
   res.json({ users, count: users.length, connections: getConnectedClientCount() });
 });
@@ -548,22 +527,6 @@ try {
         console.log('[DB Maintenance] WAL checkpoint + ANALYZE completed');
       } catch (e) { console.error('[DB Maintenance] Failed:', e); }
     }, 24 * 60 * 60 * 1000).unref();
-
-    // Hourly expired session cleanup — remove inactive sessions and
-    // sessions not used for 30+ days to prevent unbounded table growth
-    setInterval(() => {
-      try {
-        const db = getDb();
-        const result = db.prepare(`
-          DELETE FROM sessions
-          WHERE is_active = 0
-             OR last_used_at < datetime('now', 'localtime', '-30 days')
-        `).run();
-        if (result.changes > 0) {
-          console.log(`[Session Cleanup] Removed ${result.changes} expired sessions`);
-        }
-      } catch (e) { console.error('[Session Cleanup] Failed:', e); }
-    }, 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
     startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes

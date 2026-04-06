@@ -323,7 +323,7 @@ router.post('/authenticate-options', async (req: Request, res: Response) => {
       // Verify the temp token from login flow
       let decoded: JwtPayload;
       try {
-        decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
+        decoded = jwt.verify(tempToken, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } catch {
         res.status(401).json({ error: 'Session expired. Please log in again.' });
         return;
@@ -393,7 +393,7 @@ router.post('/authenticate-verify', async (req: Request, res: Response) => {
     // Verify temp token
     let decoded: JwtPayload;
     try {
-      decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
+      decoded = jwt.verify(tempToken, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
     } catch {
       res.status(401).json({ error: 'Session expired. Please log in again.' });
       return;

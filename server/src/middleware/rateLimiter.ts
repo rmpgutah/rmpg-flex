@@ -94,8 +94,8 @@ export const authRateLimit = rateLimit({
 
 // Rate limiter for 2FA verification — prevent brute-forcing TOTP codes
 export const mfaRateLimit = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 8,           // 8 attempts per window
+  windowMs: 1 * 60 * 1000, // 1 minute
+  maxRequests: 3,           // 3 attempts per window
   keyGenerator: (req) => `mfa:${req.ip || 'unknown'}`,
   message: 'Too many verification attempts. Please wait before trying again.',
 });

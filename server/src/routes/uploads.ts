@@ -146,7 +146,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
     if (decoded.type === 'refresh') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
