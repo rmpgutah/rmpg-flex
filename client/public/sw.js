@@ -23,12 +23,14 @@ const STATIC_ASSETS = [
   '/tiles/manifest.json',
 ];
 
-// Evict oldest entries when cache exceeds limit
+// Evict entries when cache exceeds limit (order not guaranteed)
 async function trimCache(cacheName, maxEntries) {
   const cache = await caches.open(cacheName);
   const keys = await cache.keys();
   if (keys.length > maxEntries) {
-    const toDelete = keys.slice(0, keys.length - maxEntries);
+    const excess = keys.length - maxEntries;
+    const startIndex = Math.floor(Math.random() * (keys.length - excess + 1));
+    const toDelete = keys.slice(startIndex, startIndex + excess);
     await Promise.all(toDelete.map((key) => cache.delete(key)));
   }
 }
