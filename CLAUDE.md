@@ -252,3 +252,8 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 16. **nginx on VPS** — config at `/etc/nginx/sites-enabled/rmpg-flex`. New top-level URL paths must proxy to Node (port 3001), not serve static
 17. **Tailwind override pattern** — global Spillman enforcement at end of `index.css` uses `!important` to override utility classes (e.g., `.rounded-lg { border-radius: 2px !important; }`)
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
+19. **Worktree file paths** — when operating in a worktree, ALL edits must use the worktree path (`.claude/worktrees/<name>/`), not the main repo path. Edits to the main repo path are invisible to the worktree and will be lost
+20. **Multi-branch merges create duplicates** — when merging many branches, audit for duplicate `router.get/post/put/delete` handlers in server route files and duplicate `addCol()` calls in `database.ts`. Express only uses the first matching handler; duplicates are dead code
+21. **database.ts is the most critical shared file** — every feature branch adds migrations here. After merging multiple branches, compare line counts across worktrees to find the most complete version. The longest version typically has the most migrations
+22. **Blue is dead** — Tailwind's entire `blue` palette is overridden to grayscale in `tailwind.config.js`. Any `text-blue-*`, `bg-blue-*`, `border-blue-*` renders gray. Use CSS variables (`var(--brand-blue)`) or the custom `rmpg-*` / `brand-*` Tailwind classes instead
+23. **Merge conflict resolution** — in `git merge origin/<branch>`, `--ours` = current HEAD (main), `--theirs` = the branch being merged. For feature branch merges, `--theirs` keeps the branch's new work
