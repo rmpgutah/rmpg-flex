@@ -427,6 +427,13 @@ app.use('/assets', express.static(path.join(clientDistPath, 'assets'), {
   immutable: true,
 }));
 
+// Service worker — always fresh (no cache)
+app.get('/sw.js', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Service-Worker-Allowed', '/');
+  res.sendFile(path.join(clientDistPath, 'sw.js'));
+});
+
 // Everything else — short cache
 app.use(express.static(clientDistPath, {
   maxAge: '5m',
