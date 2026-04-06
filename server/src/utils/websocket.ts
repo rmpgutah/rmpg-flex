@@ -33,6 +33,8 @@ interface WSClient {
   ip?: string;
   /** ISO timestamp when the client connected */
   connectedAt: string;
+  /** Heartbeat tracking — set to true on pong, false on ping */
+  isAlive: boolean;
 }
 
 const clients: Map<string, WSClient> = new Map();
@@ -94,6 +96,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       privateCallPartner: null,
       ip: clientIp,
       connectedAt: new Date().toISOString(),
+      isAlive: true,
     };
     clients.set(clientId, client);
 
@@ -159,6 +162,11 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       setTimeout(() => broadcastPresence(), 100);
     });
 
+    // Heartbeat: mark alive on pong response
+    ws.on('pong', () => {
+      client.isAlive = true;
+    });
+
     // [FIX 35] Wrap welcome message send in try/catch in case connection closes during setup
     try {
       if (ws.readyState === WebSocket.OPEN) {
@@ -172,6 +180,33 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     } catch {
       // Connection may have closed between acceptance and this point
     }
+  });
+
+  // Heartbeat interval — ping all clients every 30s, terminate dead ones
+  const heartbeatInterval = setInterval(() => {
+    clients.forEach((client, clientId) => {
+      if (!client.isAlive) {
+        // Client did not respond to last ping — terminate
+        try { client.ws.terminate(); } catch { /* already closed */ }
+        handlePrivateCallDisconnect(clientId);
+        handleRadioDisconnect(clientId);
+        clients.delete(clientId);
+        return;
+      }
+      client.isAlive = false;
+      try {
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.ping();
+        }
+      } catch {
+        // Failed to ping — remove on next cycle
+      }
+    });
+  }, 30_000);
+
+  // Clean up heartbeat when server closes
+  wss.on('close', () => {
+    clearInterval(heartbeatInterval);
   });
 
   return wss;

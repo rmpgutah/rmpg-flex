@@ -171,6 +171,31 @@ router.post('/', (req: Request, res: Response) => {
 
     if (!location) return res.status(400).json({ error: 'Location is required', code: 'MISSING_LOCATION' });
 
+    // Required field checks
+    if (!subject_first_name || (typeof subject_first_name === 'string' && !subject_first_name.trim())) {
+      return res.status(400).json({ error: 'subject_first_name is required', code: 'MISSING_FIRST_NAME' });
+    }
+    if (!subject_last_name || (typeof subject_last_name === 'string' && !subject_last_name.trim())) {
+      return res.status(400).json({ error: 'subject_last_name is required', code: 'MISSING_LAST_NAME' });
+    }
+    if (!contact_reason || (typeof contact_reason === 'string' && !contact_reason.trim())) {
+      return res.status(400).json({ error: 'contact_reason is required', code: 'MISSING_CONTACT_REASON' });
+    }
+
+    // Max length validations
+    if (typeof subject_first_name === 'string' && subject_first_name.length > 100) {
+      return res.status(400).json({ error: 'subject_first_name must be 100 characters or less', code: 'FIRST_NAME_TOO_LONG' });
+    }
+    if (typeof subject_last_name === 'string' && subject_last_name.length > 100) {
+      return res.status(400).json({ error: 'subject_last_name must be 100 characters or less', code: 'LAST_NAME_TOO_LONG' });
+    }
+    if (typeof location === 'string' && location.length > 500) {
+      return res.status(400).json({ error: 'location must be 500 characters or less', code: 'LOCATION_TOO_LONG' });
+    }
+    if (narrative && typeof narrative === 'string' && narrative.length > 10000) {
+      return res.status(400).json({ error: 'narrative must be 10000 characters or less', code: 'NARRATIVE_TOO_LONG' });
+    }
+
     // Input sanitization
     const cleanLocation = typeof location === 'string' ? location.trim() : location;
     const cleanNarrative = typeof narrative === 'string' ? narrative.trim() : narrative;
