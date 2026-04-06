@@ -117,6 +117,24 @@ export function validatePositiveInt(value: unknown, fieldName = 'Value', require
 }
 
 /**
+ * Validate a value is one of a set of allowed values.
+ */
+export function validateEnum(value: any, validValues: string[], fieldName: string): string | null {
+  if (!value) return null; // optional
+  if (!validValues.includes(value)) return `${fieldName} must be one of: ${validValues.join(', ')}`;
+  return null;
+}
+
+/**
+ * Validate a value does not exceed a maximum character length.
+ */
+export function validateMaxLength(value: any, max: number, fieldName: string): string | null {
+  if (!value) return null;
+  if (String(value).length > max) return `${fieldName} must be ${max} characters or less`;
+  return null;
+}
+
+/**
  * Run multiple validators. Returns first error found, or null if all pass.
  */
 export function validateAll(...errors: (string | null)[]): string | null {

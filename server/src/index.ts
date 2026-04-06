@@ -62,6 +62,7 @@ import adminSystemsRoutes from './routes/adminSystems';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
+import serveIntakeRoutes from './routes/serveIntake';
 import microbiltRoutes from './routes/microbilt';
 import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
@@ -348,6 +349,7 @@ app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
+app.use('/api/serve-intake', serveIntakeRoutes);
 app.use('/api/microbilt', microbiltRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
@@ -430,7 +432,7 @@ app.use(express.static(clientDistPath, {
   maxAge: '5m',
 }));
 
-// SPA fallback: serve index.html for non-API, non-download routes
+// SPA fallback: serve index.html for non-API, non-download routes (always fresh)
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
@@ -438,6 +440,9 @@ app.get('*', (req, res) => {
     // Already handled by download routes — if we get here, 404
     res.status(404).json({ error: 'Not found' });
   } else {
+    // Force no-cache on SPA fallback to ensure fresh JS bundle references
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
       if (err) {
         res.status(404).json({ error: 'Not found' });
@@ -581,16 +586,32 @@ try {
     console.log('');
 
     // Start patrol monitor for missed scan alerts
-    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    try {
+      startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    } catch (err: any) {
+      console.warn('[Patrol Monitor] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start midnight daily patrol report scheduler
-    startDailyReportScheduler();
+    try {
+      startDailyReportScheduler();
+    } catch (err: any) {
+      console.warn('[Daily Report] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    scheduleOfacSync();
+    try {
+      scheduleOfacSync();
+    } catch (err: any) {
+      console.warn('[OFAC Sync] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
-    startHealthChecker();
+    try {
+      startHealthChecker();
+    } catch (err: any) {
+      console.warn('[Health Checker] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {

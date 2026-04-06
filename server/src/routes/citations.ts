@@ -271,6 +271,15 @@ router.post('/', (req: Request, res: Response) => {
       court_name,
       court_address,
       notes,
+      // Spillman Flex extended fields
+      section_id, zone_id, beat_id, zone_beat, latitude, longitude,
+      vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
+      speed_recorded, speed_limit, radar_type, bac_level,
+      bond_amount, bond_type,
+      is_warning, is_equipment_violation, weather_conditions, road_conditions,
+      school_zone, construction_zone, accident_related, dui_related, commercial_vehicle, hazmat,
+      court_time, court_room, appearance_required,
+      case_id,
     } = req.body;
 
     if (!violation_description?.trim()) {
@@ -304,6 +313,20 @@ router.post('/', (req: Request, res: Response) => {
       }
     }
 
+    // Validate field lengths
+    if (statute_citation && String(statute_citation).length > 100) {
+      res.status(400).json({ error: 'statute_citation must be 100 characters or less', code: 'STATUTE_TOO_LONG' });
+      return;
+    }
+    if (location && String(location).length > 500) {
+      res.status(400).json({ error: 'location must be 500 characters or less', code: 'LOCATION_TOO_LONG' });
+      return;
+    }
+    if (violation_description && String(violation_description).length > 5000) {
+      res.status(400).json({ error: 'violation_description must be 5000 characters or less', code: 'DESCRIPTION_TOO_LONG' });
+      return;
+    }
+
     // Auto-generate citation number: CIT-YYYY-NNNN
     const year = new Date().getFullYear();
     const lastCit = db.prepare(
@@ -334,7 +357,14 @@ router.post('/', (req: Request, res: Response) => {
         incident_id, call_id,
         issuing_officer_id, issuing_officer_name, badge_number,
         court_date, court_name, court_address,
-        notes, created_at, updated_at
+        notes, created_at, updated_at,
+        section_id, zone_id, beat_id, zone_beat, latitude, longitude,
+        vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
+        speed_recorded, speed_limit, radar_type, bac_level,
+        bond_amount, bond_type,
+        is_warning, is_equipment_violation, weather_conditions, road_conditions,
+        school_zone, construction_zone, accident_related, dui_related, commercial_vehicle, hazmat,
+        court_time, court_room, appearance_required, case_id
       ) VALUES (
         ?, ?, ?,
         ?, ?, ?, ?, ?,
@@ -344,7 +374,14 @@ router.post('/', (req: Request, res: Response) => {
         ?, ?,
         ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?
       )
     `).run(
       citation_number, type, status,
@@ -355,7 +392,14 @@ router.post('/', (req: Request, res: Response) => {
       incident_id || null, call_id || null,
       issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
       court_date || null, court_name || null, court_address || null,
-      notes || null, created_at, now
+      notes || null, created_at, now,
+      section_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
+      vehicle_vin || null, vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
+      speed_recorded ?? null, speed_limit ?? null, radar_type || null, bac_level ?? null,
+      bond_amount ?? null, bond_type || null,
+      is_warning ? 1 : 0, is_equipment_violation ? 1 : 0, weather_conditions || null, road_conditions || null,
+      school_zone ? 1 : 0, construction_zone ? 1 : 0, accident_related ? 1 : 0, dui_related ? 1 : 0, commercial_vehicle ? 1 : 0, hazmat ? 1 : 0,
+      court_time || null, court_room || null, appearance_required ? 1 : 0, case_id || null
     );
 
     // Activity log
@@ -429,6 +473,43 @@ router.put('/:id', (req: Request, res: Response) => {
       court_name: v => v ?? null,
       court_address: v => v ?? null,
       notes: v => v ?? null,
+      section_id: v => v ?? null,
+      zone_id: v => v ?? null,
+      beat_id: v => v ?? null,
+      zone_beat: v => v ?? null,
+      latitude: v => v ?? null,
+      longitude: v => v ?? null,
+      vehicle_vin: v => v ?? null,
+      vehicle_year: v => v ?? null,
+      vehicle_make: v => v ?? null,
+      vehicle_model: v => v ?? null,
+      vehicle_color: v => v ?? null,
+      vehicle_id: v => v || null,
+      speed_recorded: v => v ?? null,
+      speed_limit: v => v ?? null,
+      radar_type: v => v ?? null,
+      bac_level: v => v ?? null,
+      bond_amount: v => v ?? null,
+      bond_type: v => v ?? null,
+      is_warning: v => v ? 1 : 0,
+      is_equipment_violation: v => v ? 1 : 0,
+      weather_conditions: v => v ?? null,
+      road_conditions: v => v ?? null,
+      school_zone: v => v ? 1 : 0,
+      construction_zone: v => v ? 1 : 0,
+      accident_related: v => v ? 1 : 0,
+      dui_related: v => v ? 1 : 0,
+      commercial_vehicle: v => v ? 1 : 0,
+      hazmat: v => v ? 1 : 0,
+      voided_reason: v => v ?? null,
+      court_time: v => v ?? null,
+      court_room: v => v ?? null,
+      appearance_required: v => v ? 1 : 0,
+      plea: v => v ?? null,
+      verdict: v => v ?? null,
+      sentence: v => v ?? null,
+      disposition_date: v => v ?? null,
+      case_id: v => v || null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -750,6 +831,159 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
     const missingRecommended = recommendedFields.filter(f => !citation[f] || String(citation[f]).trim() === '');
     res.json({ data: { citation_id: citation.id, score, grade: score >= 80 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D', missing_required: missingRequired, missing_recommended: missingRecommended, filled_required: filledRequired, total_required: requiredFields.length, filled_recommended: filledRecommended, total_recommended: recommendedFields.length } });
   } catch (error: any) { console.error('Citation completeness error:', error); res.status(500).json({ error: 'Failed to get completeness', code: 'CITATION_COMPLETENESS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// CITATION VIOLATIONS — Multiple violations per citation
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const violations = db.prepare(`
+      SELECT cv.*, s.statute_number, s.title as statute_title, s.category as statute_category
+      FROM citation_violations cv
+      LEFT JOIN utah_statutes s ON s.id = cv.statute_id
+      WHERE cv.citation_id = ?
+      ORDER BY cv.violation_number
+    `).all(req.params.id);
+    res.json(violations);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load violations' });
+  }
+});
+
+router.post('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { statute_id, statute_citation, violation_description, offense_level, fine_amount, speed_recorded, speed_limit, notes } = req.body;
+    if (!violation_description) { res.status(400).json({ error: 'violation_description required' }); return; }
+    // Auto-increment violation_number
+    const maxNum = db.prepare('SELECT MAX(violation_number) as mx FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    const nextNum = (maxNum?.mx || 0) + 1;
+    const result = db.prepare(`
+      INSERT INTO citation_violations (citation_id, violation_number, statute_id, statute_citation, violation_description, offense_level, fine_amount, speed_recorded, speed_limit, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, nextNum, statute_id || null, statute_citation, violation_description, offense_level || 'infraction', fine_amount || 0, speed_recorded, speed_limit, notes);
+    // Update total fine on parent citation
+    const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    const violation = db.prepare('SELECT * FROM citation_violations WHERE id = ?').get(result.lastInsertRowid);
+    res.json(violation);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.status(500).json({ error: 'Violations table not initialized' }); return; }
+    res.status(500).json({ error: 'Failed to add violation' });
+  }
+});
+
+router.put('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fields = ['statute_id', 'statute_citation', 'violation_description', 'offense_level', 'fine_amount', 'speed_recorded', 'speed_limit', 'plea', 'verdict', 'disposition', 'disposition_date', 'notes'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    values.push(req.params.violationId, req.params.id);
+    db.prepare(`UPDATE citation_violations SET ${updates.join(', ')} WHERE id = ? AND citation_id = ?`).run(...values);
+    // Recalculate total fine
+    const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    const updated = db.prepare('SELECT * FROM citation_violations WHERE id = ?').get(req.params.violationId);
+    res.json(updated);
+  } catch { res.status(500).json({ error: 'Failed to update violation' }); }
+});
+
+router.delete('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM citation_violations WHERE id = ? AND citation_id = ?').run(req.params.violationId, req.params.id);
+    // Recalculate total fine
+    const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete violation' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// BATCH OPERATIONS — Void/status change multiple citations
+// ════════════════════════════════════════════════════════════
+
+router.post('/batch/void', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { citation_ids, reason } = req.body;
+    if (!Array.isArray(citation_ids) || citation_ids.length === 0) { res.status(400).json({ error: 'citation_ids array required' }); return; }
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    const now = new Date().toISOString();
+    const stmt = db.prepare('UPDATE citations SET status = ?, voided_reason = ?, voided_by = ?, voided_at = ?, updated_at = ? WHERE id = ?');
+    let count = 0;
+    for (const id of citation_ids.slice(0, 100)) {
+      stmt.run('voided', reason || 'Batch voided', userId, now, now, id);
+      count++;
+    }
+    res.json({ success: true, voided: count });
+  } catch { res.status(500).json({ error: 'Batch void failed' }); }
+});
+
+router.post('/batch/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { citation_ids, status } = req.body;
+    const validStatuses = ['issued', 'paid', 'payment_plan', 'contested', 'dismissed', 'warrant_issued'];
+    if (!Array.isArray(citation_ids) || !validStatuses.includes(status)) {
+      res.status(400).json({ error: 'Valid citation_ids array and status required' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const stmt = db.prepare('UPDATE citations SET status = ?, updated_at = ? WHERE id = ?');
+    let count = 0;
+    for (const id of citation_ids.slice(0, 100)) {
+      stmt.run(status, now, id);
+      count++;
+    }
+    res.json({ success: true, updated: count });
+  } catch { res.status(500).json({ error: 'Batch status change failed' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// CITATION FULL — Aggregated view with violations + payments
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
+    if (!citation) { res.status(404).json({ error: 'Citation not found' }); return; }
+
+    let violations: any[] = [];
+    let payments: any[] = [];
+    try {
+      violations = db.prepare(`
+        SELECT cv.*, s.statute_number, s.title as statute_title
+        FROM citation_violations cv LEFT JOIN utah_statutes s ON s.id = cv.statute_id
+        WHERE cv.citation_id = ? ORDER BY cv.violation_number
+      `).all(req.params.id);
+    } catch { /* table may not exist */ }
+    try {
+      payments = db.prepare('SELECT * FROM citation_payments WHERE citation_id = ? ORDER BY payment_date DESC').all(req.params.id);
+    } catch { /* table may not exist */ }
+
+    const totalFines = violations.reduce((sum: number, v: any) => sum + (v.fine_amount || 0), 0) || citation.fine_amount || 0;
+    const totalPaid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+    res.json({
+      ...citation,
+      violations,
+      payments,
+      total_fines: totalFines,
+      total_paid: totalPaid,
+      balance_due: Math.max(0, totalFines - totalPaid),
+    });
+  } catch { res.status(500).json({ error: 'Failed to load citation details' }); }
 });
 
 export default router;

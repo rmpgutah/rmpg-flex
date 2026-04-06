@@ -33,6 +33,8 @@ interface WSClient {
   ip?: string;
   /** ISO timestamp when the client connected */
   connectedAt: string;
+  /** Whether client responded to last ping (heartbeat) */
+  isAlive: boolean;
 }
 
 const clients: Map<string, WSClient> = new Map();
@@ -94,6 +96,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       privateCallPartner: null,
       ip: clientIp,
       connectedAt: new Date().toISOString(),
+      isAlive: true,
     };
     clients.set(clientId, client);
 
@@ -109,6 +112,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         // Malformed token in URL — continue, client can still authenticate via message
       }
     }
+
+    // Heartbeat: mark alive on pong
+    ws.on('pong', () => { client.isAlive = true; });
 
     // Auto-disconnect unauthenticated clients after timeout
     const authTimer = setTimeout(() => {
@@ -173,6 +179,22 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       // Connection may have closed between acceptance and this point
     }
   });
+
+  // Heartbeat interval: ping all clients every 30s, terminate unresponsive ones
+  const heartbeatInterval = setInterval(() => {
+    for (const [id, client] of clients) {
+      if (!client.isAlive) {
+        try { client.ws.terminate(); } catch { /* ignore */ }
+        clients.delete(id);
+        continue;
+      }
+      client.isAlive = false;
+      try { client.ws.ping(); } catch { clients.delete(id); }
+    }
+  }, 30000);
+
+  // Clean up heartbeat interval when the server closes
+  wss.on('close', () => { clearInterval(heartbeatInterval); });
 
   return wss;
 }
