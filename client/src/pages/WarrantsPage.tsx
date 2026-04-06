@@ -685,23 +685,12 @@ export default function WarrantsPage() {
       params.set('page', String(page));
       params.set('per_page', '50');
 
-      // Try unified endpoint first, fall back to standard
-      try {
-        const res = await apiFetch<{ warrants: UnifiedWarrant[]; total: number }>(
-          `/warrants/unified?${params.toString()}`
-        );
-        setWarrants(res.warrants || []);
-        setTotalCount(res.total || 0);
-        setTotalPages(Math.ceil((res.total || 0) / 50) || 1);
-      } catch {
-        // Fallback to standard endpoint
-        const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
-          `/warrants?${params.toString()}`
-        );
-        setWarrants(res.data || []);
-        setTotalPages(res.pagination?.totalPages || 1);
-        setTotalCount(res.pagination?.total || 0);
-      }
+      const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
+        `/warrants?${params.toString()}`
+      );
+      setWarrants(res.data || []);
+      setTotalPages(res.pagination?.totalPages || 1);
+      setTotalCount(res.pagination?.total || 0);
     } catch (err: any) {
       if (!options?.silent) setError(err?.message || 'Failed to load warrants');
     } finally {
@@ -713,8 +702,11 @@ export default function WarrantsPage() {
     if (activeTab === 'warrants') fetchWarrants();
   }, [activeTab, fetchWarrants]);
 
-  // Live sync
-  const silentRefreshWarrants = useCallback(() => fetchWarrants({ silent: true }), [fetchWarrants]);
+  // Live sync — skip while form modal is open to prevent UI freezes during person search
+  const silentRefreshWarrants = useCallback(() => {
+    if (formOpen) return; // Don't refresh list while editing
+    fetchWarrants({ silent: true });
+  }, [fetchWarrants, formOpen]);
   useLiveSync('alerts', silentRefreshWarrants);
 
   // Fetch warrant detail
@@ -725,7 +717,7 @@ export default function WarrantsPage() {
     } catch { /* keep existing */ }
   }, []);
 
-  // Person search for form
+  // Person search for form — uses the dedicated search endpoint
   useEffect(() => {
     if (!personSearch || personSearch.length < 2) {
       setPersonResults([]);
@@ -734,8 +726,8 @@ export default function WarrantsPage() {
     const timer = setTimeout(async () => {
       setPersonSearchLoading(true);
       try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&limit=10`);
-        setPersonResults(res.data || res as any || []);
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(personSearch)}`);
+        setPersonResults(Array.isArray(res) ? res.slice(0, 10) : []);
       } catch { setPersonResults([]); }
       finally { setPersonSearchLoading(false); }
     }, 300);
