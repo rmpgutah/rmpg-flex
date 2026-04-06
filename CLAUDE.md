@@ -9,7 +9,7 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 - **Service**: `systemd` unit `rmpg-flex` (HTTPS on 443, HTTP redirect on 80)
 - **Database**: SQLite via `better-sqlite3` at `server/data/rmpg-flex.db`
 - **Timezone**: America/Denver (Mountain Time)
-- **Version**: 5.7.0 (server, client, desktop)
+- **Version**: 5.5.0
 
 ## Tech Stack
 
@@ -146,7 +146,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 ### Offline-First Maps
 - Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
-- GeoJSON layers: beat.geojson (719 features), county.geojson, municipality.geojson, highway.geojson
+- GeoJSON layers: beat.geojson (719 features), county, municipality, highway, state_boundary, place
 - Service Worker (sw.js v145) pre-caches tiles for Utah operational area
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
@@ -155,28 +155,32 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 ```bash
 npm run dev              # Start both client (Vite :5173) and server (tsx :3001)
 npm run build            # Build client only (Vite → client/dist/)
-cd client && npx tsc --noEmit  # TypeScript typecheck (deploy script runs this)
+cd client && npx vite build       # Build client (used by deploy)
+cd server && npx vitest run       # Run server tests (43 tests)
+cd client && npx tsc --noEmit     # Strict typecheck (deploy gate — ~120 pre-existing errors)
 
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
 node desktop/scripts/copyToDownloads.cjs  # Copy to server/downloads/
 
 # Deploy
-bash deploy/deploy.sh             # Code only to VPS
+bash deploy/deploy.sh             # Code only to VPS (runs typecheck + tests + build + rsync)
 bash deploy/deploy.sh --all       # Code + desktop installers to VPS
 ```
+
+**Known issue**: Strict `tsc --noEmit` has ~120 pre-existing type errors (CRM types, fleet types, dispatch property access). Vite build succeeds (less strict). Deploy script blocks on typecheck — manual deploy via `rsync` bypasses this when needed.
 
 ### Google Maps API Key
 Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 
 ## Key Systems
 
-### Dispatch Geography (3-tier + areas)
-- `dispatch_areas` → `dispatch_sections` → `dispatch_zones` → `dispatch_beats`
-- `dispatch_codes` — 68 pre-seeded 10-codes + signal codes
-- `premise_alerts` — persistent location-based warnings
-- GeoJSON beat polygons with section-colored labels on map
-- API: `/api/dispatch/geography/*` (CRUD for all entities)
+### Dispatch Geography (3-tier)
+- `dispatch_districts` table — stores section_id, zone_id, beat_id, dispatch_code, names
+- Geofence: `server/src/utils/geofence.ts` — point-in-polygon beat identification from GPS
+- `findNearestBeat()` fallback within 1.25 miles when exact polygon miss
+- GeoJSON beat polygons (719 features) with section-colored labels on map
+- API: `/api/dispatch/districts` (list), `/api/dispatch/districts/identify?lat=&lng=` (GPS lookup)
 
 ### Incident RMS (Spillman Flex)
 - `incident_offenses` — UCR/NIBRS codes, statute linkage, suspect/victim mapping
@@ -226,6 +230,35 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - Dashboard with severity badges, scan feed, link-to-call
 - API: `/api/warrants/*` (dashboard/stats, dashboard/feed, unified)
 - Page: `WarrantsPage.tsx` with dashboard, warrants, watch_hits, person intel tabs
+
+### Offline Mode
+- Browser: IndexedDB (`rmpg-flex-offline`) + service worker + connectivity monitor
+- Desktop: SQLite (`rmpg-local.db`) + IPC bridge + sync manager
+- 24-hour PIN system for offline write authorization (HMAC-SHA256 deterministic PINs)
+- Sync engine: pull every 10s-10min per table, push queue batched 20 items
+- Offline-capable endpoints: calls, units, GPS, incidents, persons, vehicles, citations, evidence, time entries
+- Files: `client/src/services/offline*.ts`, `desktop/localDb.js`, `server/src/routes/offline.ts`
+
+### Email (Microsoft 365)
+- OAuth2 integration with Microsoft Graph API
+- Inbox, compose, reply, attachments, scheduled send
+- Email images: `sandbox="allow-same-origin"` on iframe, CSP allows `https:` images
+- Image proxy: `GET /api/email/image-proxy?url=` for CDNs that block iframe requests
+- Files: `server/src/routes/email.ts`, `client/src/pages/EmailPage.tsx`
+
+### National Warrant Search
+- 50-state warrant source coverage (FBI API + state/county sheriff pages)
+- 5 custom parsers: FBI JSON API, Washoe NV, Pima AZ, Denver CO, Flathead MT
+- Generic HTML fallback parser for unknown sources
+- Circuit breaker with exponential backoff (1h → 24h)
+- Page: `NationalWarrantSearchPage.tsx` with US coverage map
+- API: `/api/warrants/national-search`, `/api/warrants/national-coverage`
+
+### Process Service (Serve)
+- Intake portal for client document uploads
+- Affidavit of Service / Non-Service PDF generation
+- Route optimization for serve attempts
+- Files: `server/src/routes/serve.ts`, `server/src/routes/serveIntake.ts`
 
 ### Integration Hub
 - Integration health monitoring with WebSocket alerts
