@@ -169,6 +169,21 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
+    // Input length validation for critical text fields
+    const MAX_LENGTHS: Record<string, number> = {
+      incident_type: 100, location_address: 500, description: 5000, notes: 5000,
+      caller_name: 200, caller_phone: 50, caller_address: 500,
+      subject_description: 2000, vehicle_description: 2000, direction_of_travel: 200,
+      damage_description: 2000, action_taken: 5000, le_agency: 200, le_case_number: 100,
+    };
+    for (const [field, maxLen] of Object.entries(MAX_LENGTHS)) {
+      const val = req.body[field];
+      if (val && typeof val === 'string' && val.length > maxLen) {
+        res.status(400).json({ error: `${field} exceeds maximum length of ${maxLen} characters` });
+        return;
+      }
+    }
+
     // Normalize and validate priority against CHECK constraint (P1, P2, P3, P4)
     const normalizedPriority = String(priority).toUpperCase();
     const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];

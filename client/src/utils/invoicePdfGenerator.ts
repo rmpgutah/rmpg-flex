@@ -391,7 +391,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Invoice ${data.invoice_number}</title>
+  <title>Invoice ${escHtml(data.invoice_number)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; background: #fff; padding: 30px; max-width: 800px; margin: 0 auto; }
@@ -504,7 +504,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
   <div class="footer">
     <span class="form-num">FORM PS-301 | Rev. 2026-03</span> &mdash;
     INTERNAL USE ONLY &mdash; CONFIDENTIAL<br />
-    Generated on ${new Date().toLocaleString()} &mdash; ${data.invoice_number}
+    Generated on ${new Date().toLocaleString()} &mdash; ${escHtml(data.invoice_number)}
   </div>
 </body>
 </html>`;

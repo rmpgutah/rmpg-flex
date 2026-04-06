@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole, type JwtPayload } from '../middleware/auth';
+import { uploadRateLimit } from '../middleware/rateLimiter';
 import config from '../config';
 
 /** Sanitize a filename for safe use in Content-Disposition headers.
@@ -313,7 +314,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
 router.use(authenticateToken);
 
 // ─── POST /api/uploads ─── Upload one or more files ───
-router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
+router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
@@ -322,10 +323,27 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
     }
 
     const { entity_type, entity_id } = req.body;
+
+    // Validate entity_type against allowed values
+    const ALLOWED_ENTITY_TYPES = [
+      'call', 'incident', 'case', 'citation', 'arrest', 'warrant', 'report',
+      'vehicle', 'property', 'evidence', 'person', 'user', 'invoice', 'training',
+      'fleet', 'bodycam', 'attachment', null,
+    ];
+    if (entity_type && !ALLOWED_ENTITY_TYPES.includes(entity_type)) {
+      res.status(400).json({ error: 'Invalid entity_type' });
+      return;
+    }
+
     const db = getDb();
     const results: any[] = [];
 
     for (const file of files) {
+      // Validate filename length to prevent storage issues
+      const safeName = file.originalname.length > 255
+        ? file.originalname.substring(0, 255)
+        : file.originalname;
+
       // Store path relative to uploads dir
       const relativePath = path.relative(UPLOAD_DIR, file.path);
 
@@ -336,7 +354,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         crypto.randomUUID(),
-        file.originalname,
+        safeName,
         file.filename,
         relativePath,
         file.mimetype,
@@ -381,6 +399,17 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
 
     if (!entity_type || !entity_id) {
       res.status(400).json({ error: 'entity_type and entity_id are required' });
+      return;
+    }
+
+    // Validate entity_type against allowed values
+    const ALLOWED_ENTITY_TYPES = [
+      'call', 'incident', 'case', 'citation', 'arrest', 'warrant', 'report',
+      'vehicle', 'property', 'evidence', 'person', 'user', 'invoice', 'training',
+      'fleet', 'bodycam', 'attachment',
+    ];
+    if (!ALLOWED_ENTITY_TYPES.includes(entity_type)) {
+      res.status(400).json({ error: 'Invalid entity_type' });
       return;
     }
 

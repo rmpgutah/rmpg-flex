@@ -257,6 +257,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
       token_preview: `${token.substring(0, 8)}...`,
     });
   } catch (error: any) {
+    console.error('MicroBilt connection test error:', error.message);
     res.json({
       success: false,
       error: 'Connection test failed',

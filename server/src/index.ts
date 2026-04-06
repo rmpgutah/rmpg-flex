@@ -192,6 +192,12 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
+// Attach unique request ID for log correlation
+app.use((req, _res, next) => {
+  (req as any).requestId = crypto.randomUUID();
+  next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(sanitizeInput);
@@ -205,16 +211,23 @@ app.use((req, res, next) => {
   next();
 });
 
-// Prevent caching of API responses (sensitive data)
-app.use('/api', (_req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
-
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
+
+// ─── CSP Violation Report Endpoint ───────────────────
+app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
+  const report = req.body?.['csp-report'];
+  if (report) {
+    console.warn('[CSP VIOLATION]', JSON.stringify({
+      blockedUri: report['blocked-uri'],
+      violatedDirective: report['violated-directive'],
+      documentUri: report['document-uri'],
+      sourceFile: report['source-file'],
+      lineNumber: report['line-number'],
+    }));
+  }
+  res.status(204).end();
+});
 
 // ─── Health Check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -232,42 +245,12 @@ app.get('/api/health', (_req, res) => {
   const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
 
-  if (config.isProduction) {
-    // Production: minimal info — no version, environment, features, or connection counts
-    res.status(statusCode).json({
-      status: overall,
-      timestamp: new Date().toISOString(),
-      database: { status: dbStatus },
-    });
-  } else {
-    res.status(statusCode).json({
-      status: overall,
-      name: 'RMPG Flex CAD/RMS Server',
-      version: SERVER_VERSION,
-      environment: config.nodeEnv,
-      timestamp: new Date().toISOString(),
-      uptime: Math.floor(process.uptime()),
-      database: { status: dbStatus, ...(dbError && { error: dbError }) },
-      connections: { websocket: getConnectedClientCount() },
-      features: {
-        rateLimiting: true,
-        securityHeaders: true,
-        inputSanitization: true,
-        tokenRefresh: true,
-        sessionManagement: true,
-        accountLockout: true,
-        passwordPolicy: true,
-        fileUpload: true,
-        warrants: true,
-        fleetManagement: true,
-        notifications: true,
-        csvExport: true,
-        sslEncryption: config.ssl.enabled,
-        wsAuthentication: true,
-        liveSync: true,
-      },
-    });
-  }
+  // Only expose minimal info publicly — version, features, and internals are sensitive
+  res.status(statusCode).json({
+    status: overall,
+    timestamp: new Date().toISOString(),
+    database: { status: dbStatus },
+  });
 });
 
 // ─── Presence Endpoint ───────────────────────────────
@@ -301,7 +284,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     const now = new Date().toISOString().replace('T', ' ').split('.')[0];
     const currentAttempt = call.pso_attempt_number || 1;
     const newAttempt = currentAttempt + 1;
-    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + (s[n % 10] || s[0]); };
+    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10]||s[v]||s[0]); };
 
     // Snapshot visit history
     let assignedCallSigns: string[] = [];
@@ -311,7 +294,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
         const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(()=>'?').join(',')})`).all(...unitIds) as any[];
         assignedCallSigns = units.map((u:any) => u.call_sign).filter(Boolean);
       }
-    } catch (e) { console.warn('[dispatch] Failed to snapshot assigned call signs:', e); }
+    } catch {}
 
     db.prepare(`INSERT INTO call_visit_history (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(req.params.id, currentAttempt, call.status, call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at, JSON.stringify(assignedCallSigns), call.responding_vehicle_id||null, call.starting_mileage??null, call.ending_mileage??null, call.disposition||null, null, req.user?.fullName||'Dispatch', now);
@@ -332,7 +315,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
     res.json({ ...updated, visit_history: visitHistory });
   } catch (error: any) {
-    console.error('[REDISPATCH-TOPLEVEL] Error:', error?.message || 'Unknown error');
+    console.error('[REDISPATCH-TOPLEVEL] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -454,7 +437,7 @@ app.get('*', (req, res) => {
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
   if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err?.message || 'Internal server error' });
   }
 });
 

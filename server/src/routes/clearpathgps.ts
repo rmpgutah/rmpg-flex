@@ -74,7 +74,7 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
       last_media_sync: lastMediaSync,
     });
   } catch (error: any) {
-    console.error('ClearPathGPS status error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -101,7 +101,7 @@ router.put('/credentials', requireRole('admin'), (req: Request, res: Response) =
 
     res.json({ message: 'Credentials saved' });
   } catch (error: any) {
-    console.error('ClearPathGPS save credentials error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS save credentials error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -120,7 +120,7 @@ router.delete('/credentials', requireRole('admin'), (req: Request, res: Response
 
     res.json({ message: 'Credentials and configuration cleared' });
   } catch (error: any) {
-    console.error('ClearPathGPS clear credentials error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS clear credentials error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -133,6 +133,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
     const result = await testConnection();
     res.json(result);
   } catch (error: any) {
+    console.error('ClearPathGPS connection test error:', error.message);
     res.json({ success: false, deviceCount: 0, error: 'Connection test failed' });
   }
 });
@@ -145,6 +146,7 @@ router.post('/discover-accounts', requireRole('admin'), async (_req: Request, re
     const accounts = await discoverAccounts();
     res.json({ accounts });
   } catch (error: any) {
+    console.error('ClearPathGPS account discovery error:', error.message);
     res.json({ accounts: [], error: 'Account discovery failed' });
   }
 });
@@ -184,7 +186,7 @@ router.put('/enable', requireRole('admin'), (req: Request, res: Response) => {
 
     res.json({ message: `ClearPathGPS ${enabled ? 'enabled' : 'disabled'}` });
   } catch (error: any) {
-    console.error('ClearPathGPS enable/disable error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS enable/disable error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -202,7 +204,7 @@ router.get('/devices', requireRole('admin', 'manager'), async (_req: Request, re
     const devices = await getDevices();
     res.json({ devices });
   } catch (error: any) {
-    console.error('ClearPathGPS fetch devices error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS fetch devices error:', error);
     res.status(500).json({ error: 'Failed to fetch devices' });
   }
 });
@@ -225,7 +227,7 @@ router.get('/mappings', requireRole('admin', 'manager'), (_req: Request, res: Re
 
     res.json({ mappings });
   } catch (error: any) {
-    console.error('ClearPathGPS fetch mappings error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS fetch mappings error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -279,7 +281,7 @@ router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => 
 
     res.json({ message: 'Mapping created', unit_call_sign: unit.call_sign });
   } catch (error: any) {
-    console.error('ClearPathGPS create mapping error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS create mapping error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -313,7 +315,7 @@ router.delete('/mappings/:id', requireRole('admin'), (req: Request, res: Respons
 
     res.json({ message: 'Mapping removed' });
   } catch (error: any) {
-    console.error('ClearPathGPS remove mapping error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS remove mapping error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -328,7 +330,7 @@ router.get('/settings', requireRole('admin', 'manager'), (_req: Request, res: Re
       history_backfill: historyBackfill !== 'false', // default true
     });
   } catch (error: any) {
-    console.error('ClearPathGPS get settings error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS get settings error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -349,7 +351,7 @@ router.put('/settings', requireRole('admin'), (req: Request, res: Response) => {
 
     res.json({ message: 'Settings updated' });
   } catch (error: any) {
-    console.error('ClearPathGPS update settings error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS update settings error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -376,7 +378,7 @@ router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Re
     const events = await getDeviceHistory(deviceId, String(from), String(to));
     res.json({ events, count: events.length });
   } catch (error: any) {
-    console.error('ClearPathGPS fetch history error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS fetch history error:', error);
     res.status(500).json({ error: 'Failed to fetch device history' });
   }
 });
@@ -426,7 +428,7 @@ router.get('/dashcam-events', requireRole('admin', 'manager', 'supervisor', 'off
 
     res.json({ events, total });
   } catch (error: any) {
-    console.error('ClearPathGPS fetch dashcam events error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS fetch dashcam events error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -443,7 +445,7 @@ router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manage
     if (isNaN(officerId)) { res.status(400).json({ error: 'Invalid officer ID' }); return; }
 
     const { from, to, event_type, limit: limitStr } = req.query;
-    const limit = Math.min(parseInt(String(limitStr, 10), 10) || 100, 500);
+    const limit = Math.min(parseInt(String(limitStr), 10) || 100, 500);
 
     const units = db.prepare('SELECT id FROM units WHERE officer_id = ?').all(officerId) as { id: number }[];
     if (units.length === 0) { res.json({ events: [], total: 0 }); return; }
@@ -470,7 +472,7 @@ router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manage
     const events = db.prepare(query).all(...params);
     res.json({ events, total: events.length });
   } catch (error: any) {
-    console.error('ClearPathGPS fetch officer dashcam events error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS fetch officer dashcam events error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -496,7 +498,7 @@ router.get('/dashcam-events/:id', requireRole('admin', 'manager'), (req: Request
 
     res.json(event);
   } catch (error: any) {
-    console.error('ClearPathGPS fetch dashcam event error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS fetch dashcam event error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -546,7 +548,7 @@ router.get('/media-status', requireRole('admin', 'manager'), (_req: Request, res
       devices,
     });
   } catch (error: any) {
-    console.error('ClearPathGPS media status error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS media status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -563,7 +565,7 @@ router.put('/media-settings', requireRole('admin'), (req: Request, res: Response
     }
 
     if (media_poll_interval_seconds !== undefined) {
-      const interval = Math.max(60, Math.min(900, parseInt(String(media_poll_interval_seconds, 10), 10) || 300));
+      const interval = Math.max(60, Math.min(900, parseInt(String(media_poll_interval_seconds), 10) || 300));
       setConfigValue('clearpathgps_media_poll_interval', String(interval));
     }
 
@@ -583,7 +585,7 @@ router.put('/media-settings', requireRole('admin'), (req: Request, res: Response
 
     res.json({ success: true, media_sync_enabled: nowEnabled });
   } catch (error: any) {
-    console.error('ClearPathGPS media settings error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS media settings error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -610,7 +612,7 @@ router.post('/media-sync-now', requireRole('admin'), async (req: Request, res: R
       errors: result.errors,
     });
   } catch (error: any) {
-    console.error('ClearPathGPS media sync-now error:', error?.message || 'Unknown error');
+    console.error('ClearPathGPS media sync-now error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
