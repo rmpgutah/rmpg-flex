@@ -34,10 +34,8 @@ import {
   addImageToPage,
   formSectionPageBreak,
   sanitizePdfText,
-  displayStatus,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
-import { convertToGrayscale } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
@@ -806,7 +804,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     formTitle: 'CALL FOR SERVICE REPORT',
     formNumber: 'FORM PS-201',
     caseNumber: data.call_number,
-    caseNumberLabel: 'CALL FOR SERVICE',
+    // caseNumberLabel: 'CALL FOR SERVICE',
     reportDate: fmtTimestamp(data.created_at || ''),
   });
 
@@ -1854,7 +1852,6 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 16. Record Metadata ───────────────────────────────────
   y = drawFormSection(doc, {
     sideTab: { label: 'META' },
-    onPageBreak: formSectionPageBreak,
     rows: [
       { cells: [
         { label: '48. CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
