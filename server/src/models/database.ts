@@ -1425,7 +1425,7 @@ function migrateSchema(): void {
   const addCol = (table: string, col: string, typedef: string) => {
     try {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${typedef}`);
-    } catch {
+    } catch (e) {
       // Column already exists — safe to ignore
     }
   };
@@ -1849,7 +1849,7 @@ function migrateSchema(): void {
       `);
       console.log('[migrate] Widened notifications type constraint for login_alert/security');
     }
-  } catch { /* Already migrated or table structure compatible */ }
+  } catch (e) { /* Already migrated or table structure compatible */ }
 
   // ── CLIENTS — new contract fields ─────────────────────
   addCol('clients', 'billing_email', 'TEXT');
@@ -1971,7 +1971,7 @@ function migrateSchema(): void {
   // Backfill serve_queue_id from queue_id for existing rows
   try {
     db.exec(`UPDATE serve_attempts SET serve_queue_id = queue_id WHERE serve_queue_id IS NULL AND queue_id IS NOT NULL`);
-  } catch { /* safe — either column may not exist yet */ }
+  } catch (e) { /* safe — either column may not exist yet */ }
 
   // ── serve_routes — optimization columns ──
   addCol('serve_routes', 'optimized_order_json', 'TEXT');
@@ -2000,10 +2000,10 @@ function migrateSchema(): void {
         FOREIGN KEY (searched_by) REFERENCES users(id)
       )
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_serve_skip_traces_queue ON serve_skip_traces(serve_queue_id)`);
-  } catch { /* index exists */ }
+  } catch (e) { /* index exists */ }
 
   // ── call_visit_history — missing columns for redispatch ──────────
   addCol('call_visit_history', 'status', 'TEXT');
@@ -2017,11 +2017,11 @@ function migrateSchema(): void {
   // (SQLite can't ALTER TABLE to add FK constraints, but we can add a unique index)
   try {
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_persons_unique ON call_persons(call_id, person_id)`);
-  } catch { /* index already exists */ }
+  } catch (e) { /* index already exists */ }
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_call_persons_call_id ON call_persons(call_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_call_persons_person_id ON call_persons(person_id)`);
-  } catch { /* indexes exist */ }
+  } catch (e) { /* indexes exist */ }
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema
@@ -2099,7 +2099,7 @@ function migrateSchema(): void {
         UNIQUE(source_type, source_id, target_type, target_id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── Expand record_links to support incident/call/case/warrant types ──
   try {
@@ -2107,7 +2107,7 @@ function migrateSchema(): void {
     try {
       db.prepare("INSERT INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES ('incident', -999, 'person', -999, 'test', 1)").run();
       db.prepare("DELETE FROM record_links WHERE source_id = -999").run();
-    } catch {
+    } catch (e) {
       // CHECK constraint blocks new types — recreate table without CHECK
       try {
         db.exec(`DROP TABLE IF EXISTS record_links_new`);
@@ -2153,7 +2153,7 @@ function migrateSchema(): void {
       const num = `EV-${yr}-${String(row.id).padStart(5, '0')}`;
       db.prepare("UPDATE evidence SET evidence_number = ? WHERE id = ?").run(num, row.id);
     }
-  } catch { /* ignore */ }
+  } catch (e) { /* ignore */ }
 
   // Populate first_name / last_name from full_name for existing users
   try {
@@ -2164,14 +2164,14 @@ function migrateSchema(): void {
       const lastName = parts.slice(1).join(' ') || '';
       db.prepare("UPDATE users SET first_name = ?, last_name = ? WHERE id = ?").run(firstName, lastName, u.id);
     }
-  } catch { /* ignore */ }
+  } catch (e) { /* ignore */ }
 
   // ── INJURIES — fix INTEGER→TEXT mismatch ─────────────
   // Column was created as INTEGER but form sends TEXT values ('none','minor','major','fatal','unknown').
   // SQLite stores them fine regardless, but convert any leftover 0 values to 'none' for consistency.
   try {
     db.prepare("UPDATE incidents SET injuries = 'none' WHERE injuries = '0' OR injuries = 0 OR injuries IS NULL").run();
-  } catch { /* ignore */ }
+  } catch (e) { /* ignore */ }
 
   // Migrate existing INC-YYYY-NNNNN and RMP- incident numbers to RKY format
   migrateIncidentNumbers(db);
@@ -2234,7 +2234,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_statutes_title ON utah_statutes(title);
       CREATE INDEX IF NOT EXISTS idx_statutes_offense ON utah_statutes(offense_level);
     `);
-  } catch { /* table/indexes already exist */ }
+  } catch (e) { /* table/indexes already exist */ }
 
   // ── ENTITY_STATUTES — link statutes to warrants/incidents/calls ──
   try {
@@ -2252,7 +2252,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_entity_statutes_entity ON entity_statutes(entity_type, entity_id);
       CREATE INDEX IF NOT EXISTS idx_entity_statutes_statute ON entity_statutes(statute_id);
     `);
-  } catch { /* table/indexes already exist */ }
+  } catch (e) { /* table/indexes already exist */ }
 
   // ── UTAH STATUTES — citation fine amount for traffic/infractions ──
   addCol('utah_statutes', 'citation_fine', 'REAL');
@@ -2261,7 +2261,7 @@ function migrateSchema(): void {
   try {
     db.exec('DROP INDEX IF EXISTS idx_statutes_citation');
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_statutes_citation ON utah_statutes(citation)');
-  } catch { /* already unique */ }
+  } catch (e) { /* already unique */ }
 
   // ── INCIDENTS — statute linkage for charge/citation ──
   addCol('incidents', 'statute_id', 'INTEGER');
@@ -2429,7 +2429,7 @@ function migrateSchema(): void {
         UNIQUE(client_id, person_id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── CRIMINAL_HISTORY — criminal records for persons ──────────────
   try {
@@ -2457,7 +2457,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── Field Interview (FI) Cards ──
   try {
@@ -2505,7 +2505,7 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_officer ON field_interviews(officer_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_property ON field_interviews(property_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_created ON field_interviews(created_at)`);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── Trespass / Exclusion Orders ──
   try {
@@ -2549,7 +2549,7 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_property ON trespass_orders(property_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_status ON trespass_orders(status)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_created ON trespass_orders(created_at)`);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── FIX CORRUPTED DATA — undo HTML entity encoding of quotes/apostrophes ──
   // The old sanitize middleware was encoding ' → &#x27; and " → &quot; in stored data
@@ -2565,7 +2565,7 @@ function migrateSchema(): void {
         db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&#039;', '''') WHERE ${col.name} LIKE '%&#039;%'`);
         db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&amp;', '&') WHERE ${col.name} LIKE '%&amp;%'`);
       }
-    } catch { /* table may not exist */ }
+    } catch (e) { /* table may not exist */ }
   }
 
   // ── TIME ENTRIES — add 'on_break' to CHECK constraint (production fix) ──
@@ -2602,7 +2602,7 @@ function migrateSchema(): void {
       console.log("Migrated time_entries: status CHECK now includes 'on_break'");
     }
   } catch (err) {
-    try { db.pragma('foreign_keys = ON'); } catch {}
+    try { db.pragma('foreign_keys = ON'); } catch (e) {}
     console.log('time_entries CHECK migration skipped or already done:', (err as Error).message);
   }
 
@@ -2641,7 +2641,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   try {
     db.exec(`
@@ -2658,7 +2658,7 @@ function migrateSchema(): void {
         FOREIGN KEY (author_id) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── CODE VIOLATIONS — municipal code enforcement ──
   try {
@@ -2691,7 +2691,7 @@ function migrateSchema(): void {
         FOREIGN KEY (reporting_officer_id) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── VEHICLE TOWS — tow tracking and lifecycle ──
   try {
@@ -2736,7 +2736,7 @@ function migrateSchema(): void {
         FOREIGN KEY (officer_id) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── COURT EVENTS — court date and legal tracking ──
   try {
@@ -2774,7 +2774,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── DAILY ACTIVITY REPORTS — structured shift reports ──
   try {
@@ -2812,7 +2812,7 @@ function migrateSchema(): void {
         FOREIGN KEY (reviewed_by) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── OFFENDER ALERTS — known offender registry ──
   try {
@@ -2840,7 +2840,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch { /* table already exists */ }
+  } catch (e) { /* table already exists */ }
 
   // ── Migrate existing height text into feet/inches ──
   try {
@@ -2857,7 +2857,7 @@ function migrateSchema(): void {
         }
       }
     }
-  } catch { /* ignore parse errors */ }
+  } catch (e) { /* ignore parse errors */ }
 
   // ── gps_breadcrumbs — road name and cross-street columns ──
   addCol('gps_breadcrumbs', 'road_name', 'TEXT');
@@ -2910,7 +2910,7 @@ function migrateSchema(): void {
             );
             filled++;
           }
-        } catch { /* skip individual failures */ }
+        } catch (e) { /* skip individual failures */ }
       }
       if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} calls`);
     }
@@ -2940,7 +2940,7 @@ function migrateSchema(): void {
             );
             filled++;
           }
-        } catch { /* skip */ }
+        } catch (e) { /* skip */ }
       }
       if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} incidents`);
     }
@@ -2963,7 +2963,7 @@ function migrateSchema(): void {
         beat_descriptor TEXT
       )
     `);
-  } catch { /* already exists */ }
+  } catch (e) { /* already exists */ }
 
   // Seed dispatch_districts if empty
   try {
@@ -3318,7 +3318,7 @@ function migrateSchema(): void {
       )
     `);
     db.exec('CREATE INDEX IF NOT EXISTS idx_citation_violations_citation ON citation_violations(citation_id)');
-  } catch { /* already exists */ }
+  } catch (e) { /* already exists */ }
 
   // ── Additional operational flags for calls and incidents ──
   const flagTables = ['calls_for_service', 'incidents'] as const;
@@ -3390,7 +3390,7 @@ function migrateSchema(): void {
         console.log(`  Backfilled dispatch district data on ${callsNeedingDistrict.length} calls`);
       }
     }
-  } catch { /* safe to ignore */ }
+  } catch (e) { /* safe to ignore */ }
 
   // ── Migrate existing case numbers to YY-######-XX format ──────
   try {
@@ -3419,7 +3419,7 @@ function migrateSchema(): void {
     if (oldCases.length > 0) {
       console.log(`  Migrated ${oldCases.length} case numbers to YY-######-XX format`);
     }
-  } catch { /* safe to ignore */ }
+  } catch (e) { /* safe to ignore */ }
 
   // ── ONE-TIME DATA CLEANUP: Remove specific breadcrumb entries ──
   try {
@@ -3430,7 +3430,7 @@ function migrateSchema(): void {
          OR (recorded_at LIKE '2026-02-27 17:04:32%' AND latitude BETWEEN 40.723 AND 40.725)
          OR (recorded_at LIKE '2026-02-28 23:04:12%' AND latitude BETWEEN 40.694 AND 40.695)
     `).run();
-  } catch { /* table may not exist yet — safe to ignore */ }
+  } catch (e) { /* table may not exist yet — safe to ignore */ }
 
   // ── OFAC tables — fix column names to match Treasury CSV format ──
   try {
@@ -3446,7 +3446,7 @@ function migrateSchema(): void {
       createTables();
       console.log('[migrate] Recreated OFAC tables with corrected column names');
     }
-  } catch { /* tables may not exist yet */ }
+  } catch (e) { /* tables may not exist yet */ }
 
   addCol('ofac_sdn_addresses', 'add_num', 'INTEGER');
   addCol('ofac_sdn_addresses', 'add_remarks', 'TEXT');
@@ -3580,7 +3580,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
       CREATE INDEX IF NOT EXISTS idx_forensic_activity_case ON forensic_activity_log(forensic_case_id);
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   // ── EMAIL SYSTEM — Templates, Logs, Preferences ────────────
   try {
@@ -3642,7 +3642,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_email_logs_context ON email_logs(context_type, context_id);
       CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   // ── MESSAGES — thread + type fields ───────────────────────
   addCol('messages', 'case_id', 'INTEGER');
@@ -3728,7 +3728,7 @@ function migrateSchema(): void {
         FOREIGN KEY (changed_by) REFERENCES users(id)
       );
     `);
-  } catch { /* already exists */ }
+  } catch (e) { /* already exists */ }
 
   // ── RECORD LOCKS table ──
   try {
@@ -3744,7 +3744,7 @@ function migrateSchema(): void {
         UNIQUE(entity_type, entity_id)
       );
     `);
-  } catch { /* already exists */ }
+  } catch (e) { /* already exists */ }
 
   // ── BROADCAST TEMPLATES table ──
   try {
@@ -3761,7 +3761,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch { /* already exists */ }
+  } catch (e) { /* already exists */ }
 
   // ── SYSTEM ANNOUNCEMENTS table ──
   try {
@@ -3779,7 +3779,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch { /* already exists */ }
+  } catch (e) { /* already exists */ }
 
   // ── PERSONNEL — fitness tracking, commendations, status history ──────
   addCol('users', 'fitness_scores', "TEXT DEFAULT '[]'");
@@ -3929,7 +3929,7 @@ function migrateSchema(): void {
         FOREIGN KEY (documented_by) REFERENCES users(id)
       );
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   // ── FLEET — tire tracking, damage, recalls, fuel cards ──────────────
   try {
@@ -3999,7 +3999,7 @@ function migrateSchema(): void {
         FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
       );
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   addCol('fleet_vehicles', 'total_maintenance_cost', 'REAL DEFAULT 0');
   addCol('fleet_vehicles', 'total_fuel_cost', 'REAL DEFAULT 0');
@@ -4114,7 +4114,7 @@ function migrateSchema(): void {
       );
       CREATE INDEX IF NOT EXISTS idx_overtime_officer ON overtime_requests(officer_id);
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   // ── HR Payroll + Advanced HR tables ──────────────────────
   try {
@@ -4234,7 +4234,7 @@ function migrateSchema(): void {
       );
       CREATE INDEX IF NOT EXISTS idx_call_unit_assignments_call ON call_unit_assignments(call_id);
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   // ── Case Management junction tables ──────────────────────
   try {
@@ -4330,7 +4330,7 @@ function migrateSchema(): void {
         UNIQUE(case_id, property_id)
       );
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   // ── Shift Management tables ──────────────────────────────
   try {
@@ -4370,7 +4370,7 @@ function migrateSchema(): void {
         FOREIGN KEY (target_officer_id) REFERENCES users(id)
       );
     `);
-  } catch { /* tables already exist */ }
+  } catch (e) { /* tables already exist */ }
 
   // ── Notification Rules table ─────────────────────────────
   try {
@@ -4387,7 +4387,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch { /* table exists */ }
+  } catch (e) { /* table exists */ }
 
   // ── Use of Force reporting table ─────────────────────────
   try {
@@ -4420,7 +4420,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_uof_incident ON use_of_force(incident_id);
       CREATE INDEX IF NOT EXISTS idx_uof_officer ON use_of_force(officer_id);
     `);
-  } catch { /* table exists */ }
+  } catch (e) { /* table exists */ }
 
   // ── Trespass Violations table ────────────────────────────
   try {
@@ -4443,7 +4443,7 @@ function migrateSchema(): void {
         FOREIGN KEY (incident_id) REFERENCES incidents(id)
       );
     `);
-  } catch { /* table exists */ }
+  } catch (e) { /* table exists */ }
 
   addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
 
@@ -4470,7 +4470,7 @@ function migrateSchema(): void {
       updated_at TEXT,
       UNIQUE(officer_id, tour_date)
     )`);
-  } catch { /* already exists */ }
+  } catch (e) { /* already exists */ }
 
   // Feature 8: Weather on patrol scans
   addCol('patrol_scans', 'weather_json', 'TEXT');
@@ -4867,9 +4867,9 @@ function migrateSchema(): void {
   addCol('scraped_warrants', 'last_seen_at', 'TEXT');
   addCol('scraped_warrants', 'cleared_at', 'TEXT');
   addCol('scraped_warrants', 'dob_verified', 'INTEGER DEFAULT 0');
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)'); } catch { /* */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)'); } catch { /* */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_offense ON scraped_warrants(offense_level)'); } catch { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_offense ON scraped_warrants(offense_level)'); } catch (e) { /* */ }
 
   // ── Seed warrant scraper sources — All 50 US States + Federal ──
   {
@@ -5059,6 +5059,17 @@ function migrateSchema(): void {
     );
   `);
 
+  // ── CRM + Serve + HR Migrations ─────────────────────
+  addCol('serve_queue', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
+  try { db.prepare("CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id)").run(); } catch (e) { /* */ }
+  addCol('properties', 'risk_level', "TEXT DEFAULT 'normal'");
+  addCol('crm_proposals', 'stage_entered_at', 'TEXT');
+  addCol('crm_tasks', 'auto_created_by', 'TEXT');
+  addCol('invoices', 'recurrence_interval', 'TEXT');
+  addCol('invoices', 'recurrence_anchor', 'TEXT');
+  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_proposal_versions (id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, version_num INTEGER NOT NULL, snapshot TEXT NOT NULL, edited_by TEXT, edited_at TEXT)`).run(); } catch (e) { /* */ }
+  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_payments (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_at TEXT, method TEXT, reference TEXT, recorded_by TEXT)`).run(); } catch (e) { /* */ }
+
   console.log('Schema migration completed.');
 }
 
@@ -5120,7 +5131,7 @@ async function backfillBreadcrumbRoads(): Promise<void> {
         if (apiCalls % 10 === 0) {
           await new Promise(r => setTimeout(r, 200));
         }
-      } catch {
+      } catch (e) {
         // Skip individual failures
       }
     }
@@ -5409,7 +5420,7 @@ function createIndexes(): void {
   for (const line of indexes.split('\n')) {
     const sql = line.trim();
     if (sql.startsWith('CREATE INDEX')) {
-      try { db.prepare(sql).run(); } catch { /* table may not exist yet — skip */ }
+      try { db.prepare(sql).run(); } catch (e) { /* table may not exist yet — skip */ }
     }
   }
 
@@ -5811,19 +5822,5 @@ function seedData(): void {
     insertPreset.run('Verbose', 0.5, 2048, 0.9, 1.0, 0);
   }
 }
-
-  // ── CRM + Serve + HR Migrations (from loving-meninsky) ─────────
-  addCol('serve_queue', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
-  try { db.prepare("CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id)").run(); } catch {}
-
-  addCol('properties', 'risk_level', "TEXT DEFAULT 'normal'");
-  addCol('crm_proposals', 'stage_entered_at', 'TEXT');
-  addCol('crm_tasks', 'auto_created_by', 'TEXT');
-
-  addCol('invoices', 'recurrence_interval', 'TEXT');
-  addCol('invoices', 'recurrence_anchor', 'TEXT');
-
-  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_proposal_versions (id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, version_num INTEGER NOT NULL, snapshot TEXT NOT NULL, edited_by TEXT, edited_at TEXT)`).run(); } catch { /* */ }
-  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_payments (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_at TEXT, method TEXT, reference TEXT, recorded_by TEXT)`).run(); } catch { /* */ }
 
 export default { initDatabase, getDb };
