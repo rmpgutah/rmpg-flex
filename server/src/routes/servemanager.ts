@@ -333,9 +333,9 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
     }
 
     // Cache mode
-    const parsedPage = parseInt(String(page), 10);
+    const parsedPage = parseInt(String(page, 10), 10);
     const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
-    const parsedPerPage = parseInt(String(per_page), 10);
+    const parsedPerPage = parseInt(String(per_page, 10), 10);
     const limit = Math.min(100, Math.max(1, isNaN(parsedPerPage) ? 25 : parsedPerPage));
     const offset = (pageNum - 1) * limit;
 
@@ -773,7 +773,7 @@ router.get('/poller/status', requireRole('admin', 'manager'), (_req: Request, re
   try {
     res.json({
       enabled: getPollerConfig('servemanager_poller_enabled') === 'true',
-      poll_interval: parseInt(getPollerConfig('servemanager_poll_interval') || '300', 10),
+      poll_interval: parseInt(getPollerConfig('servemanager_poll_interval', 10) || '300', 10),
       target_client: getPollerConfig('servemanager_target_client') || 'ICU Investigations, LLC',
       auto_create_calls: getPollerConfig('servemanager_auto_create_calls') !== 'false',
       last_poll_at: getPollerConfig('servemanager_last_poll_at') || null,

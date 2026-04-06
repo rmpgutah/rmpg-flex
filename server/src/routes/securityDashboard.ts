@@ -59,8 +59,8 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
   try {
     const db = getDb();
     const userId = req.user!.userId;
-    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 200);
-    const offset = parseInt(String(req.query.offset || '0'), 10);
+    const limit = Math.min(parseInt(String(req.query.limit || '50', 10), 10), 200);
+    const offset = parseInt(String(req.query.offset || '0', 10), 10);
 
     const userRow = db.prepare('SELECT username FROM users WHERE id = ?')
       .get(userId) as { username: string } | undefined;
@@ -149,8 +149,8 @@ router.delete('/trusted-devices/:id', authenticateToken, (req: Request, res: Res
 router.get('/notifications', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 200);
-    const offset = parseInt(String(req.query.offset || '0'), 10);
+    const limit = Math.min(parseInt(String(req.query.limit || '50', 10), 10), 200);
+    const offset = parseInt(String(req.query.offset || '0', 10), 10);
 
     const rows = db.prepare(`
       SELECT id, event_type, title, details, ip_address, device_info, is_read, created_at

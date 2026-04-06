@@ -49,7 +49,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const docId = parseInt(String(req.params.id), 10);
+    const docId = parseInt(String(req.params.id, 10), 10);
     if (isNaN(docId)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const doc = db.prepare(`
       SELECT d.*, u.full_name as creator_name,
@@ -126,7 +126,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
+    const id = parseInt(String(req.params.id, 10), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const existing = db.prepare('SELECT id FROM company_documents WHERE id = ?').get(id);
     if (!existing) {
@@ -187,7 +187,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
+    const id = parseInt(String(req.params.id, 10), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const doc = db.prepare('SELECT * FROM company_documents WHERE id = ?').get(id) as any;
 

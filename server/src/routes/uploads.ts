@@ -175,7 +175,7 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
       LEFT JOIN users u ON a.uploaded_by = u.id
       WHERE a.entity_type = ? AND a.entity_id = ?
       ORDER BY a.created_at DESC
-    `).all(String(req.params.type), parseInt(String(req.params.id), 10));
+    `).all(String(req.params.type), parseInt(String(req.params.id, 10), 10));
 
     // Enrich each attachment with an HMAC-signed access token (24h TTL)
     const enriched = (attachments as any[]).map((att) => {

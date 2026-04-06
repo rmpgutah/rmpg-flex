@@ -340,7 +340,7 @@ export function getStatus(): {
     authorized: isAuthorized(),
     mailbox: getConfigValue(CONFIG_KEYS.mailbox),
     lastSync: getConfigValue(CONFIG_KEYS.lastSync),
-    pollInterval: parseInt(getConfigValue(CONFIG_KEYS.pollInterval) || '300', 10),
+    pollInterval: parseInt(getConfigValue(CONFIG_KEYS.pollInterval, 10) || '300', 10),
     smtpFallback: getConfigValue(CONFIG_KEYS.smtpFallback) === 'true',
   };
 }

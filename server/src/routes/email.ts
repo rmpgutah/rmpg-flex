@@ -829,7 +829,7 @@ router.put('/templates/:id', (req: Request, res: Response) => {
       WHERE id = ?
     `).run(name, category, subject, body, now, req.params.id);
 
-    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template: ${name}`);
+    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id, 10), 10), `Updated template: ${name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -846,7 +846,7 @@ router.delete('/templates/:id', (req: Request, res: Response) => {
     if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates' }); return; }
 
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);
+    auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id, 10), 10), `Deleted template: ${template.name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);

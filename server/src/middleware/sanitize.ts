@@ -67,7 +67,7 @@ export function validateEnum<T extends string>(
 // Coerce a value to an integer, returning null if empty or NaN.
 export function requireInt(value: unknown, fieldName: string): number | null {
   if (value === undefined || value === null || value === '') return null;
-  const n = typeof value === 'number' ? value : parseInt(String(value), 10);
+  const n = typeof value === 'number' ? value : parseInt(String(value, 10), 10);
   if (isNaN(n)) throw new Error(`${fieldName} must be a valid number`);
   return n;
 }

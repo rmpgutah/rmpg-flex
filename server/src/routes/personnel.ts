@@ -2254,7 +2254,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         }
 
         // Move chunk file into session directory
-        const idx = parseInt(String(chunkIndex), 10);
+        const idx = parseInt(String(chunkIndex, 10), 10);
         const chunkDest = path.join(sessionDir, `chunk_${String(idx).padStart(6, '0')}`);
         fs.renameSync(req.file.path, chunkDest);
 
@@ -2296,7 +2296,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-      const totalChunks = parseInt(String(meta.totalChunks), 10);
+      const totalChunks = parseInt(String(meta.totalChunks, 10), 10);
 
       // Verify all chunks are present
       for (let i = 0; i < totalChunks; i++) {

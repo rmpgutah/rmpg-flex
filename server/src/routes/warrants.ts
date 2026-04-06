@@ -852,7 +852,7 @@ router.get('/scraped/status', requireRole('admin', 'manager', 'supervisor'), (re
 // GET /api/warrants/scraped/person/:personId — Check person for active warrants
 router.get('/scraped/person/:personId', (req: Request, res: Response) => {
   try {
-    const personId = parseInt(String(req.params.personId), 10);
+    const personId = parseInt(String(req.params.personId, 10), 10);
     if (isNaN(personId)) {
       res.status(400).json({ error: 'Invalid person ID' });
       return;
@@ -932,7 +932,7 @@ router.get('/court-records/search', async (req: Request, res: Response) => {
 // GET /api/warrants/court-records/person/:personId
 router.get('/court-records/person/:personId', (req: Request, res: Response) => {
   try {
-    const personId = parseInt(String(req.params.personId), 10);
+    const personId = parseInt(String(req.params.personId, 10), 10);
     if (isNaN(personId)) {
       res.status(400).json({ error: 'Invalid person ID' });
       return;

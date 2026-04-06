@@ -443,7 +443,7 @@ router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manage
     if (isNaN(officerId)) { res.status(400).json({ error: 'Invalid officer ID' }); return; }
 
     const { from, to, event_type, limit: limitStr } = req.query;
-    const limit = Math.min(parseInt(String(limitStr), 10) || 100, 500);
+    const limit = Math.min(parseInt(String(limitStr, 10), 10) || 100, 500);
 
     const units = db.prepare('SELECT id FROM units WHERE officer_id = ?').all(officerId) as { id: number }[];
     if (units.length === 0) { res.json({ events: [], total: 0 }); return; }
@@ -563,7 +563,7 @@ router.put('/media-settings', requireRole('admin'), (req: Request, res: Response
     }
 
     if (media_poll_interval_seconds !== undefined) {
-      const interval = Math.max(60, Math.min(900, parseInt(String(media_poll_interval_seconds), 10) || 300));
+      const interval = Math.max(60, Math.min(900, parseInt(String(media_poll_interval_seconds, 10), 10) || 300));
       setConfigValue('clearpathgps_media_poll_interval', String(interval));
     }
 

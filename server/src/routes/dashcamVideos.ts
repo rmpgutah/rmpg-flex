@@ -74,8 +74,8 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { vehicle_id, unit_id, case_number, search, limit: limitStr, offset: offsetStr } = req.query;
-    const limit = Math.min(parseInt(String(limitStr), 10) || 50, 500);
-    const offset = parseInt(String(offsetStr), 10) || 0;
+    const limit = Math.min(parseInt(String(limitStr, 10), 10) || 50, 500);
+    const offset = parseInt(String(offsetStr, 10), 10) || 0;
 
     let query = `
       SELECT v.*,
@@ -191,7 +191,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       title,
       req.file.filename,
       req.file.size,
-      duration_seconds ? parseInt(String(duration_seconds), 10) : null,
+      duration_seconds ? parseInt(String(duration_seconds, 10), 10) : null,
       req.file.mimetype || 'video/mp4',
       recorded_at || null,
       case_number || null,
@@ -226,7 +226,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
 router.put('/:id', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
+    const id = parseInt(String(req.params.id, 10), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!existing) {
@@ -286,7 +286,7 @@ router.put('/:id', authenticateToken, requireRole('admin', 'manager', 'superviso
 router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
+    const id = parseInt(String(req.params.id, 10), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!video) {
@@ -391,7 +391,7 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
 router.get('/:id/links', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const videoId = parseInt(String(req.params.id), 10);
+    const videoId = parseInt(String(req.params.id, 10), 10);
     if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
 
     const links = db.prepare(`
@@ -411,7 +411,7 @@ router.get('/:id/links', authenticateToken, (req: Request, res: Response) => {
 router.post('/:id/links', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const videoId = parseInt(String(req.params.id), 10);
+    const videoId = parseInt(String(req.params.id, 10), 10);
     if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const { entity_type, entity_id, notes } = req.body;
     const user = (req as any).user;
@@ -465,7 +465,7 @@ router.post('/:id/links', authenticateToken, requireRole('admin', 'manager', 'su
 router.delete('/:id/links/:linkId', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const linkId = parseInt(String(req.params.linkId), 10);
+    const linkId = parseInt(String(req.params.linkId, 10), 10);
     if (isNaN(linkId)) { res.status(400).json({ error: 'Invalid link ID' }); return; }
 
     const link = db.prepare('SELECT * FROM dashcam_video_links WHERE id = ?').get(linkId) as any;

@@ -62,7 +62,7 @@ function getTargetClient(): string {
 }
 
 function getPollIntervalMs(): number {
-  const secs = parseInt(getSmConfig(CONFIG_KEYS.pollInterval) || String(DEFAULT_POLL_INTERVAL), 10);
+  const secs = parseInt(getSmConfig(CONFIG_KEYS.pollInterval, 10) || String(DEFAULT_POLL_INTERVAL), 10);
   return Math.max(60, Math.min(1800, secs)) * 1000;
 }
 

@@ -56,7 +56,7 @@ export function restartEmailPoller(): void {
 }
 
 function getPollIntervalMs(): number {
-  const seconds = parseInt(getConfigValue(CONFIG_KEYS.pollInterval) || '300', 10);
+  const seconds = parseInt(getConfigValue(CONFIG_KEYS.pollInterval, 10) || '300', 10);
   return Math.max(60, Math.min(600, seconds)) * 1000; // Clamp 1-10 minutes
 }
 

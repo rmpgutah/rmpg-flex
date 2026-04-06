@@ -157,7 +157,7 @@ export async function searchUtahWarrantsLive(
           first_name: person.name.first || '',
           middle_name: person.name.middle || null,
           last_name: person.name.last || '',
-          age: person.age ? parseInt(String(person.age), 10) || null : null,
+          age: person.age ? parseInt(String(person.age, 10), 10) || null : null,
           city: person.homeAddress?.city || null,
           utah_warrant_id: w.id,
           issue_date: w.issueDate || null,
