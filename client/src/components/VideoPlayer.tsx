@@ -1,56 +1,34 @@
 // ============================================================
 // RMPG Flex — Body Camera Video Player Modal
-// Police-style HUD overlay rendered as CSS over the video
-// element. Original files are never modified (no FFmpeg burn).
-// ============================================================
-// Enhanced player with police-style HUD preview, playback
-// controls, frame capture, download, and quick-classify.
 // ============================================================
 
-import React, { useRef, useState, useEffect } from 'react';
-import { X, Video, Shield, Maximize2, Minimize2, Edit2 } from 'lucide-react';
-import type { BodyCamVideo, VideoClassification } from '../types';
+import React from 'react';
+import { X, Video, Shield, FileText } from 'lucide-react';
+import type { BodyCamVideo, DashCamVideo } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
-import VideoHudOverlay from './VideoHudOverlay';
+
+type PlayableVideo = BodyCamVideo | DashCamVideo;
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  video: BodyCamVideo | null;
+  video: PlayableVideo | null;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
-  onEditVideo?: (video: BodyCamVideo) => void;
-  onClassify?: (videoId: number, classification: VideoClassification) => void;
+  /** Override the stream endpoint (default: /personnel/bodycam-videos) */
+  streamEndpoint?: string;
 }
 
-export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [hudVisible, setHudVisible] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const vid = videoRef.current;
-    if (!vid) return;
-    const onTime = () => setCurrentTime(vid.currentTime);
-    vid.addEventListener('timeupdate', onTime);
-    return () => vid.removeEventListener('timeupdate', onTime);
-  }, [isOpen, video]);
-
+export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, streamEndpoint = '/personnel/bodycam-videos' }: Props) {
   if (!isOpen || !video) return null;
 
-  const formatHudTime = (seconds: number) => {
-    const d = video.recorded_at ? new Date(video.recorded_at) : new Date();
-    const playback = new Date(d.getTime() + seconds * 1000);
-    return playback.toLocaleString('en-US', {
-      month: '2-digit', day: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).replace(',', '');
+  const formatDate = (d?: string) => {
+    if (!d) return '-';
+    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDuration = (seconds?: number) => {
-    if (seconds == null) return '-';
+    if (!seconds) return '-';
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
@@ -64,158 +42,88 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
-  const formatDate = (d?: string) => {
-    if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
+  const classLabel = (cls: string) => cls.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
-
+  // Build a stream URL with auth token in query param for <video> element
   const headers = getAuthHeaders();
   const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
-
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch((err) => { console.warn('[VideoPlayer] enter fullscreen failed:', err); });
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch((err) => { console.warn('[VideoPlayer] exit fullscreen failed:', err); });
-    }
-  };
-
-  const classColor = VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300';
-
-  const overlayInfo = video.overlay_status ? {
-    label: video.overlay_status.replace(/_/g, ' ').toUpperCase(),
-    cls: video.overlay_status === 'complete' ? 'border-green-500 text-green-400' : video.overlay_status === 'error' ? 'border-red-500 text-red-400' : 'border-amber-500 text-amber-400'
-  } : null;
+  const streamUrl = `${apiBase}${streamEndpoint}/${video.id}/stream?token=${encodeURIComponent(token)}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
-      <div
-        ref={containerRef}
-        className={`bg-black border border-rmpg-800 rounded-lg shadow-2xl overflow-hidden ${
-          isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
-        }`}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Compact header */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-surface-deep border-b border-rmpg-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onClose}>
+      <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-[760px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
           <div className="flex items-center gap-2 min-w-0">
-            <Video className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-            <span className="text-[10px] font-mono font-bold text-rmpg-200 uppercase tracking-wider truncate">
-              BWC — {video.title}
-            </span>
-            <span className={`text-[8px] px-1 py-0.5 font-bold flex-shrink-0 ${classColor}`}>
+            <Video className="w-4 h-4 text-brand-400 flex-shrink-0" />
+            <h2 className="text-sm font-bold text-rmpg-100 truncate">{video.title}</h2>
+            <span className={`text-[9px] px-1.5 py-0.5 font-bold flex-shrink-0 ${
+              VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300'
+            }`}>
               {classLabel(video.classification)}
             </span>
-            {overlayInfo && (
-              <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded flex-shrink-0 ${overlayInfo.cls}`}>
-                <Shield className={`w-2.5 h-2.5 ${video.overlay_status === 'processing' || video.overlay_status === 'pending' ? 'animate-spin' : ''}`} />
-                {overlayInfo.label}
-              </span>
-            )}
           </div>
-          <div className="flex items-center gap-1">
-            {onEditVideo && (
-              <button onClick={() => onEditVideo(video)} className="toolbar-btn p-1" title="Edit video metadata">
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-            )}
-            <button onClick={onClose} className="toolbar-btn p-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
-              HUD {hudVisible ? 'ON' : 'OFF'}
-            </button>
-            <button onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
-              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-            <button onClick={onClose} className="toolbar-btn p-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <button onClick={onClose} className="toolbar-btn p-1">
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Video + HUD Overlay */}
-        <div className="relative bg-black">
+        {/* Video Player */}
+        <div className="bg-black">
           <video
-            ref={videoRef}
             controls
             autoPlay
-            className="w-full max-h-[70vh]"
+            className="w-full max-h-[50vh]"
             src={streamUrl}
           >
             Your browser does not support the video tag.
           </video>
-
-          {/* ── Police-Style HUD Overlay ── */}
-          {hudVisible && (
-            <>
-              {/* Top-left: Agency & Officer */}
-              <div className="absolute top-2 left-3 pointer-events-none select-none">
-                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1.5 border border-white/10 rounded-sm">
-                  <p className="font-mono text-[11px] text-white font-bold tracking-wider leading-tight">
-                    ROCKY MOUNTAIN PROTECTIVE GROUP
-                  </p>
-                  <p className="font-mono text-[10px] text-cyan-400 leading-tight">
-                    BWC | {video.officer_name || 'UNKNOWN'} | CAM: {video.camera_serial || 'N/A'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Top-right: Classification badge */}
-              <div className="absolute top-2 right-3 pointer-events-none select-none">
-                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1.5 border border-white/10 rounded-sm text-right">
-                  <p className="font-mono text-[10px] text-amber-400 font-bold tracking-wider">
-                    {classLabel(video.classification)}
-                  </p>
-                  {video.case_number && (
-                    <p className="font-mono text-[10px] text-white/80 leading-tight">
-                      CASE: {video.case_number}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Bottom-left: Timestamp (updates in real-time) */}
-              <div className="absolute bottom-12 left-3 pointer-events-none select-none">
-                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1 border border-white/10 rounded-sm">
-                  <p className="font-mono text-[12px] text-white font-bold tabular-nums tracking-wide">
-                    {formatHudTime(currentTime)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Bottom-right: REC indicator */}
-              <div className="absolute bottom-12 right-3 pointer-events-none select-none">
-                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1 border border-white/10 rounded-sm flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <span className="font-mono text-[10px] text-red-400 font-bold">REC</span>
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
-        {/* Compact Metadata Bar */}
-        <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
-          <div className="flex items-center justify-between text-[10px] font-mono text-rmpg-400 gap-4">
-            <span className="flex items-center gap-1">
-              <Shield className="w-2.5 h-2.5 text-brand-400" />
-              <span className="text-rmpg-200">{video.officer_name || '-'}</span>
-            </span>
-            <span>CAM: <span className="text-rmpg-200">{video.camera_serial || '-'}</span></span>
-            <span>DUR: <span className="text-rmpg-200">{formatDuration(video.duration_seconds)}</span></span>
-            <span>SIZE: <span className="text-rmpg-200">{formatSize(video.file_size)}</span></span>
-            <span>REC: <span className="text-rmpg-200">{formatDate(video.recorded_at)}</span></span>
-            <span>RETENTION: <span className="text-rmpg-200 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</span></span>
+        {/* Metadata */}
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <p className="field-label flex items-center gap-1"><Shield className="w-2.5 h-2.5" /> {'officer_id' in video ? 'Officer' : 'Vehicle'}</p>
+              <p className="text-xs text-rmpg-100">{'officer_name' in video ? (video as BodyCamVideo).officer_name || '-' : ('vehicle_number' in video ? (video as DashCamVideo).vehicle_number || '-' : '-')}</p>
+            </div>
+            <div>
+              <p className="field-label">Camera</p>
+              <p className="text-xs text-rmpg-100 font-mono">{video.camera_serial || '-'}</p>
+            </div>
+            <div>
+              <p className="field-label">Duration</p>
+              <p className="text-xs text-rmpg-100 font-mono">{formatDuration(video.duration_seconds)}</p>
+            </div>
+            <div>
+              <p className="field-label">File Size</p>
+              <p className="text-xs text-rmpg-100 font-mono">{formatSize(video.file_size)}</p>
+            </div>
           </div>
+
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <p className="field-label">Recorded</p>
+              <p className="text-xs text-rmpg-100 font-mono">{formatDate(video.recorded_at)}</p>
+            </div>
+            <div>
+              <p className="field-label">Uploaded</p>
+              <p className="text-xs text-rmpg-100 font-mono">{formatDate(video.created_at)}</p>
+            </div>
+            <div>
+              <p className="field-label flex items-center gap-1"><FileText className="w-2.5 h-2.5" /> Case #</p>
+              <p className="text-xs text-rmpg-100 font-mono">{video.case_number || '-'}</p>
+            </div>
+            <div>
+              <p className="field-label">Retention</p>
+              <p className="text-xs text-rmpg-100 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</p>
+            </div>
+          </div>
+
           {video.notes && (
-            <p className="text-[9px] text-rmpg-500 italic mt-1 truncate">{video.notes}</p>
+            <div className="panel-inset px-3 py-2">
+              <p className="text-[10px] text-rmpg-400 italic">{video.notes}</p>
+            </div>
           )}
         </div>
       </div>

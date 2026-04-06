@@ -1,25 +1,20 @@
 // ============================================================
-// RMPG Flex — 2FA Setup Prompt Modal
-// Prompts the user to set up two-factor authentication when
-// their role requires it. Can be deferred with "Set Up Later"
-// so officers can sign in on new devices (Windows, mobile)
-// without being blocked. A reminder banner persists in Layout.
+// RMPG Flex — Force 2FA Setup Modal
+// Blocks the entire UI until the user sets up two-factor
+// authentication. Triggered when the user's role requires 2FA
+// but they haven't enabled it yet. Cannot be dismissed.
 // ============================================================
 
 import React, { useState } from 'react';
-import { ShieldCheck, AlertCircle, Check, Copy, Clock } from 'lucide-react';
+import { ShieldCheck, AlertCircle, Check, Copy } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import TotpCodeInput from './TotpCodeInput';
 
-/** Session key — tracks whether user dismissed the 2FA prompt this session */
-const DEFER_KEY = 'rmpg_2fa_deferred';
-
 export default function Force2FASetupModal() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, dismiss2FASetup } = useAuth();
 
   const [step, setStep] = useState<'intro' | 'qr' | 'backups'>('intro');
-  const [deferred, setDeferred] = useState(() => sessionStorage.getItem(DEFER_KEY) === '1');
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [setupCode, setSetupCode] = useState('');
@@ -72,12 +67,7 @@ export default function Force2FASetupModal() {
     }).catch(() => {});
   };
 
-  const handleDefer = () => {
-    sessionStorage.setItem(DEFER_KEY, '1');
-    setDeferred(true);
-  };
-
-  if (!user?.requires_2fa_setup || deferred) return null;
+  if (!user?.requires_2fa_setup) return null;
 
   return (
     <div
@@ -87,16 +77,16 @@ export default function Force2FASetupModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#141e2b',
-          border: '1px solid #1e3048',
-          borderTop: '3px solid #1a5a9e',
+          background: '#1a1a1a',
+          border: '1px solid #303030',
+          borderTop: '3px solid #bc1010',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <ShieldCheck style={{ width: 20, height: 20, color: '#1a5a9e' }} />
+            <ShieldCheck style={{ width: 20, height: 20, color: '#bc1010' }} />
             <div className="text-lg font-bold text-white">Two-Factor Authentication Required</div>
           </div>
           <div className="text-xs text-gray-400 max-w-sm mx-auto">
@@ -118,7 +108,7 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: '#0d1520', border: '1px solid #162236', color: '#8a9aaa' }}
+              style={{ background: '#111', border: '1px solid #282828', color: '#a0a0a0' }}
             >
               <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: '#e0e0e0' }}>
                 What You'll Need
@@ -139,14 +129,11 @@ export default function Force2FASetupModal() {
             </button>
 
             <button
-              onClick={handleDefer}
-              className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
-              style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#8a9aaa')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#5a6e80')}
+              onClick={dismiss2FASetup}
+              className="w-full text-center text-[10px] py-1 hover:underline"
+              style={{ color: '#606060' }}
             >
-              <Clock style={{ width: 12, height: 12 }} />
-              Set Up Later
+              Skip for now
             </button>
           </div>
         )}
@@ -154,14 +141,14 @@ export default function Force2FASetupModal() {
         {/* ── QR Code + Verify ─────────────────────────── */}
         {step === 'qr' && (
           <div className="space-y-4">
-            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
               Step 1: Scan QR Code
             </div>
-            <p className="text-[10px]" style={{ color: '#5a6e80' }}>
+            <p className="text-[10px]" style={{ color: '#707070' }}>
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
-            <div className="flex justify-center py-2" style={{ background: '#fff', borderRadius: 2 }}>
+            <div className="flex justify-center py-2" style={{ background: '#fff', borderRadius: 4 }}>
               {qrDataUrl && (
                 <img
                   src={qrDataUrl}
@@ -172,10 +159,10 @@ export default function Force2FASetupModal() {
               )}
             </div>
 
-            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#8a9aaa' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#a0a0a0' }}>
               Step 2: Enter Verification Code
             </div>
-            <p className="text-[10px]" style={{ color: '#5a6e80' }}>
+            <p className="text-[10px]" style={{ color: '#707070' }}>
               Enter the 6-digit code shown in Google Authenticator.
             </p>
 
@@ -190,7 +177,7 @@ export default function Force2FASetupModal() {
             {busy && (
               <div className="flex items-center justify-center gap-2">
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span className="text-[10px]" style={{ color: '#8a9aaa' }}>Verifying...</span>
+                <span className="text-[10px]" style={{ color: '#a0a0a0' }}>Verifying...</span>
               </div>
             )}
           </div>
@@ -206,11 +193,11 @@ export default function Force2FASetupModal() {
 
             <div
               className="p-3"
-              style={{ background: 'rgba(220,38,38,0.05)', border: '1px solid #991b1b' }}
+              style={{ background: '#0d0000', border: '1px solid #8a0c0c' }}
             >
               <div className="flex items-center gap-1 mb-2">
-                <AlertCircle style={{ width: 12, height: 12, color: '#ef4444' }} />
-                <span className="text-[9px] font-bold uppercase" style={{ color: '#ef4444' }}>
+                <AlertCircle style={{ width: 12, height: 12, color: '#d93030' }} />
+                <span className="text-[9px] font-bold uppercase" style={{ color: '#d93030' }}>
                   Save these recovery codes — they will NOT be shown again
                 </span>
               </div>
@@ -219,7 +206,7 @@ export default function Force2FASetupModal() {
                   <div
                     key={i}
                     className="text-center font-mono text-xs py-1"
-                    style={{ background: '#0d1520', border: '1px solid #162236', color: '#e0e0e0' }}
+                    style={{ background: '#141414', border: '1px solid #282828', color: '#e0e0e0' }}
                   >
                     {code}
                   </div>
@@ -227,7 +214,7 @@ export default function Force2FASetupModal() {
               </div>
             </div>
 
-            <p className="text-[9px] text-center" style={{ color: '#5a6e80' }}>
+            <p className="text-[9px] text-center" style={{ color: '#707070' }}>
               If you lose your phone, use one of these one-time codes to log in.
               Each code can only be used once.
             </p>

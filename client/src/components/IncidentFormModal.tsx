@@ -13,6 +13,7 @@ import {
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import { fetchWeather, wmoToFormValue } from '../utils/weather';
 
 interface IncidentFormModalProps {
   isOpen: boolean;
@@ -271,6 +272,12 @@ export default function IncidentFormModal({
         snapshot(initial);
       }
       setActiveSection(defaultType && USE_OF_FORCE_TYPES.includes(defaultType) ? 'use_of_force' : 'basic');
+      // Auto-fill weather for new incidents
+      if (!editingIncident) {
+        fetchWeather().then(w => {
+          if (w) setFormData(prev => prev.weather_conditions ? prev : { ...prev, weather_conditions: wmoToFormValue(w.conditionCode) });
+        });
+      }
     }
   }, [isOpen, editingIncident, defaultType]);
 

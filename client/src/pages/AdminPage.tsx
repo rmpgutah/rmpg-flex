@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
 import {
   Settings,
   Users,
@@ -22,14 +21,9 @@ import {
   DatabaseZap,
   Lock,
   Palette,
-  Navigation,
-  Fingerprint,
-  Search,
-  Mail,
-  FileText,
+  MapPin,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -56,13 +50,9 @@ import AdminTrainingTab from './admin/AdminTrainingTab';
 import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
-import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
-import AdminArrestsTab from './admin/AdminArrestsTab';
-import AdminIPEDTab from './admin/AdminIPEDTab';
-import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
-import AdminEmailTab from './admin/AdminEmailTab';
+import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -145,7 +135,7 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
   const last_name = row.last_name || (row.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
 
   // Spread all server fields through so no data is lost (profile_image, notes, etc.)
-  const { status, full_name, last_login_at, totp_enabled, totp_setup_required, password_expires_at, force_password_change, password_changed_at, ...rest } = row as PersonnelRow & Record<string, any>;
+  const { status, full_name, last_login_at, ...rest } = row;
   return {
     ...rest,
     first_name,
@@ -154,12 +144,6 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
     is_active: status === 'active',
     raw_status: status, // Preserve for admin UI (active/inactive/terminated)
     last_login: last_login_at || rest.last_login, // Map DB column to User type field
-    // Map snake_case security fields to camelCase for UI components
-    totpEnabled: totp_enabled === 1,
-    totpSetupRequired: totp_setup_required === 1,
-    passwordExpiresAt: password_expires_at || undefined,
-    forcePasswordChange: force_password_change === 1,
-    passwordChangedAt: password_changed_at || undefined,
   };
 }
 
@@ -197,7 +181,6 @@ function mapClientRowToClient(row: ClientRow & Record<string, any>): Client & { 
     account_manager: row.account_manager || undefined,
     priority_client: !!row.priority_client,
     client_since: row.client_since || undefined,
-    status: row.status || 'active',
     is_active: row.status === 'active',
     notes: row.notes,
     property_count: row.property_count,
@@ -228,7 +211,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -237,23 +220,15 @@ const LS_ADMIN_TAB = 'rmpg_admin_tab';
 // ============================================================
 
 export default function AdminPage() {
-  const { user } = useAuth();
   const isMobile = useIsMobile();
   // Ref to suppress LiveSync refresh while a client inline edit is pending save
   const clientEditPendingRef = useRef(false);
 
-  // Client-side role guard — only admins can access this page
-  if (user?.role !== 'admin') return <Navigate to="/" replace />;
-
-  // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'iped', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email'];
+  // Restore active tab from localStorage (default: 'users')
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
-      // URL ?tab= param takes priority (used by Help → Training link)
-      const urlTab = new URLSearchParams(window.location.search).get('tab');
-      if (urlTab && VALID_TABS.includes(urlTab)) return urlTab as TabId;
       const saved = localStorage.getItem(LS_ADMIN_TAB);
-      if (saved && VALID_TABS.includes(saved)) return saved as TabId;
+      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
     return 'users';
   });
@@ -513,24 +488,13 @@ export default function AdminPage() {
     setClientSubmitting(true);
     try {
       const body: Record<string, unknown> = {
-        // General
         name: data.name,
-        client_code: data.client_code || undefined,
-        industry: data.industry || undefined,
-        website: data.website || undefined,
-        address: data.address || undefined,
-        notes: data.notes || undefined,
-        // Contact & Billing
         contact_name: data.contact_name || undefined,
         contact_email: data.contact_email || undefined,
         contact_phone: data.contact_phone || undefined,
+        address: data.address || undefined,
         billing_email: data.billing_email || undefined,
         billing_address: data.billing_address || undefined,
-        tax_id: data.tax_id || undefined,
-        payment_method: data.payment_method || undefined,
-        billing_cycle: data.billing_cycle || undefined,
-        billing_day: data.billing_day ? parseInt(data.billing_day, 10) : undefined,
-        // Contract
         contract_start: data.contract_start || undefined,
         contract_end: data.contract_end || undefined,
         contract_type: data.contract_type || undefined,
@@ -538,12 +502,7 @@ export default function AdminPage() {
         payment_terms: data.payment_terms || undefined,
         auto_renew: data.auto_renew || false,
         sla_response_minutes: data.sla_response_minutes ? parseInt(data.sla_response_minutes, 10) : undefined,
-        discount_percent: data.discount_percent ? parseFloat(data.discount_percent) : undefined,
-        late_fee_percent: data.late_fee_percent ? parseFloat(data.late_fee_percent) : undefined,
-        // Account Details
-        account_manager: data.account_manager || undefined,
-        priority_client: data.priority_client || false,
-        client_since: data.client_since || undefined,
+        notes: data.notes || undefined,
       };
 
       if (editingClient) {
@@ -655,11 +614,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
-        { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
-        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
-        { id: 'iped', label: 'IPED', icon: FileText },
-        { id: 'skiptracer', label: 'Skip Tracer', icon: Search },
-        { id: 'email', label: 'Microsoft Email', icon: Mail },
+        { id: 'clearpathgps', label: 'ClearPathGPS', icon: MapPin },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
     },
@@ -677,16 +632,16 @@ export default function AdminPage() {
   // ============================================================
 
   return (
-    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
+    <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+              <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -702,7 +657,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
-          style={{ background: '#0d1520', borderBottom: '1px solid #162236' }}
+          style={{ background: '#141414', borderBottom: '1px solid #282828' }}
         >
           {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;
@@ -713,9 +668,9 @@ export default function AdminPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
                 style={{
-                  color: isActive ? '#ffffff' : '#8a9aaa',
-                  background: isActive ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
+                  color: isActive ? '#ffffff' : '#888888',
+                  background: isActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(188,16,16,0.4)' : '1px solid transparent',
                 }}
               >
                 <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
@@ -734,15 +689,15 @@ export default function AdminPage() {
             className="flex-shrink-0 overflow-y-auto py-2"
             style={{
               width: 200,
-              background: '#0d1520',
-              borderRight: '1px solid #162236',
+              background: '#141414',
+              borderRight: '1px solid #282828',
             }}
           >
             {tabGroups.map((group) => (
               <div key={group.category} className="mb-1">
                 <div
                   className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em]"
-                  style={{ color: '#5a6e80' }}
+                  style={{ color: '#585858' }}
                 >
                   {group.category}
                 </div>
@@ -755,9 +710,9 @@ export default function AdminPage() {
                       onClick={() => setActiveTab(tab.id)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"
                       style={{
-                        color: isActive ? '#ffffff' : '#8a9aaa',
-                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : 'transparent',
-                        borderLeft: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
+                        color: isActive ? '#ffffff' : '#888888',
+                        background: isActive ? 'rgba(188, 16, 16, 0.12)' : 'transparent',
+                        borderLeft: isActive ? '2px solid #bc1010' : '2px solid transparent',
                       }}
                     >
                       <Icon style={{ width: 13, height: 13 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
@@ -771,7 +726,7 @@ export default function AdminPage() {
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto card-glass">
+        <div className="flex-1 overflow-auto">
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -877,38 +832,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'clearpathgps' && (
-          <AdminClearPathGpsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'arrests' && (
-          <AdminArrestsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'iped' && (
-          <AdminIPEDTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'sessions' && (
           <AdminSessionsTab
             LoadingSpinner={LoadingSpinner}
@@ -957,8 +880,8 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'email' && (
-          <AdminEmailTab
+        {activeTab === 'clearpathgps' && (
+          <AdminClearPathGpsTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

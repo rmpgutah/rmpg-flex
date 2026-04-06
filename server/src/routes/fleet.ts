@@ -1,21 +1,33 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { execFile } from 'child_process';
+import { exec } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
 
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
+
+/** Extract video duration using ffprobe. */
+async function extractVideoDuration(filePath: string): Promise<number | null> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+      { timeout: 30000 }
+    );
+    const seconds = parseFloat(stdout.trim());
+    return isFinite(seconds) ? Math.round(seconds) : null;
+  } catch {
+    return null;
+  }
+}
+
 const __filename_f = fileURLToPath(import.meta.url);
 const __dirname_f = path.dirname(__filename_f);
-
-// ── Dash camera video storage ───────────────────────────────
 const DASHCAM_DIR = process.env.RMPG_UPLOADS_DIR
   ? path.join(process.env.RMPG_UPLOADS_DIR, 'dashcam')
   : path.resolve(__dirname_f, '../../uploads/dashcam');
@@ -24,7 +36,7 @@ if (!fs.existsSync(DASHCAM_DIR)) {
   fs.mkdirSync(DASHCAM_DIR, { recursive: true });
 }
 
-const DASHCAM_MIME_TYPES = new Set([
+const VIDEO_MIME_TYPES = new Set([
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
 ]);
 
@@ -44,7 +56,7 @@ const dashcamStorage = multer.diskStorage({
 const dashcamUpload = multer({
   storage: dashcamStorage,
   fileFilter: (_req, file, cb) => {
-    if (DASHCAM_MIME_TYPES.has(file.mimetype)) {
+    if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
@@ -52,36 +64,13 @@ const dashcamUpload = multer({
   },
 });
 
-/** Extract video duration using ffprobe */
-async function extractDashcamDuration(filePath: string): Promise<number | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      'ffprobe',
-      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
-      { timeout: 30000 },
-    );
-    const seconds = parseFloat(stdout.trim());
-    return isFinite(seconds) ? Math.round(seconds) : null;
-  } catch {
-    return null;
-  }
-}
-
 const router = Router();
-
-// Promote query-string token to Authorization header for <video> streaming only
-router.use((req: Request, _res: Response, next: NextFunction) => {
-  if (!req.headers['authorization'] && req.query.token && /\/(stream|download|thumbnail)/.test(req.path)) {
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
-  }
-  next();
-});
 
 // All fleet routes require authentication
 router.use(authenticateToken);
 
 // ─── GET /api/fleet ─ List fleet vehicles with filters ────────────
-router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -113,8 +102,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND fv.archived_at IS NULL';
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const pageNum = parseInt(page as string, 10) || 1;
+    const perPage = parseInt(per_page as string, 10) || 50;
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -143,18 +132,18 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow?.total ?? 0,
-        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
+        total: countRow.total,
+        totalPages: Math.ceil(countRow.total / perPage),
       },
     });
   } catch (error: any) {
-    console.error('Error fetching fleet vehicles:', error?.message || 'Unknown error');
+    console.error('Error fetching fleet vehicles:', error);
     res.status(500).json({ error: 'Failed to fetch fleet vehicles' });
   }
 });
 
 // ─── GET /api/fleet/analytics ─ Fleet-wide aggregate analytics ────
-router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/analytics', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { period = '90d' } = req.query;
@@ -268,31 +257,25 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
       status_breakdown: statusWithColors,
       fuel_economy_trend: fuelEconomyTrend,
       fleet_summary: {
-        total_vehicles: totalVehicles?.count || 0,
-        avg_mileage: Math.round(avgMileage?.avg || 0),
-        total_maintenance_cost: totalMaintCost?.total || 0,
-        total_fuel_cost: totalFuelCost?.total || 0,
-        vehicles_needing_service: vehiclesNeedingService?.count || 0,
-        inspections_failing: inspectionsFailing?.count || 0,
+        total_vehicles: totalVehicles.count,
+        avg_mileage: Math.round(avgMileage.avg || 0),
+        total_maintenance_cost: totalMaintCost.total || 0,
+        total_fuel_cost: totalFuelCost.total || 0,
+        vehicles_needing_service: vehiclesNeedingService.count,
+        inspections_failing: inspectionsFailing.count,
       },
     });
   } catch (error: any) {
-    console.error('Error fetching fleet analytics:', error?.message || 'Unknown error');
+    console.error('Error fetching fleet analytics:', error);
     res.status(500).json({ error: 'Failed to fetch fleet analytics' });
   }
 });
 
 // ─── GET /api/fleet/:id ─ Get single fleet vehicle ────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
-    if (['maintenance', 'analytics', 'dashcam-videos'].includes(req.params.id as string)) {
-      res.status(404).json({ error: 'Not found' });
-      return;
-    }
-
-    // Fleet IDs are numeric — reject non-numeric to prevent route collisions
-    if (!/^\d+$/.test(req.params.id as string)) {
+    if (['maintenance', 'analytics'].includes(req.params.id as string)) {
       res.status(404).json({ error: 'Not found' });
       return;
     }
@@ -331,7 +314,7 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       recent_maintenance: maintenance,
     });
   } catch (error: any) {
-    console.error('Error fetching fleet vehicle:', error?.message || 'Unknown error');
+    console.error('Error fetching fleet vehicle:', error);
     res.status(500).json({ error: 'Failed to fetch fleet vehicle' });
   }
 });
@@ -381,12 +364,12 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       vehicle_number,
       make || null,
       model || null,
-      year ?? null,
+      year || null,
       color || null,
       vin || null,
       plate_number || null,
       plate_state || null,
-      current_mileage ?? null,
+      current_mileage || null,
       insurance_expiry || null,
       registration_expiry || null,
       equipmentJson,
@@ -401,7 +384,6 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       LEFT JOIN units u ON fv.assigned_unit_id = u.id
       WHERE fv.id = ?
     `).get(result.lastInsertRowid) as any;
-    if (!created) { res.status(500).json({ error: 'Failed to retrieve created fleet vehicle' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -419,7 +401,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       equipment: safeParseJson(created.equipment, []),
     });
   } catch (error: any) {
-    console.error('Error creating fleet vehicle:', error?.message || 'Unknown error');
+    console.error('Error creating fleet vehicle:', error);
     res.status(500).json({ error: 'Failed to create fleet vehicle' });
   }
 });
@@ -518,7 +500,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       equipment: safeParseJson(updated.equipment, []),
     });
   } catch (error: any) {
-    console.error('Error updating fleet vehicle:', error?.message || 'Unknown error');
+    console.error('Error updating fleet vehicle:', error);
     res.status(500).json({ error: 'Failed to update fleet vehicle' });
   }
 });
@@ -612,7 +594,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
       equipment: safeParseJson(updated.equipment, []),
     });
   } catch (error: any) {
-    console.error('Error assigning fleet vehicle:', error?.message || 'Unknown error');
+    console.error('Error assigning fleet vehicle:', error);
     res.status(500).json({ error: 'Failed to assign fleet vehicle' });
   }
 });
@@ -644,7 +626,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     delTx();
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete fleet vehicle error:', error?.message || 'Unknown error');
+    console.error('Delete fleet vehicle error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -665,10 +647,9 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
       req.user!.userId, vehicle.id, `Archived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
-    console.error('Archive fleet vehicle error:', error?.message || 'Unknown error');
+    console.error('Archive fleet vehicle error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -688,16 +669,15 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
       req.user!.userId, vehicle.id, `Unarchived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
-    console.error('Unarchive fleet vehicle error:', error?.message || 'Unknown error');
+    console.error('Unarchive fleet vehicle error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/maintenance ─ Maintenance history ────────
-router.get('/:id/maintenance', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/maintenance', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -730,12 +710,12 @@ router.get('/:id/maintenance', requireRole('admin', 'manager', 'supervisor', 'of
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow?.total ?? 0,
-        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
+        total: countRow.total,
+        totalPages: Math.ceil(countRow.total / perPage),
       },
     });
   } catch (error: any) {
-    console.error('Error fetching maintenance history:', error?.message || 'Unknown error');
+    console.error('Error fetching maintenance history:', error);
     res.status(500).json({ error: 'Failed to fetch maintenance history' });
   }
 });
@@ -779,13 +759,13 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
       id,
       type || null,
       description,
-      mileage_at_service ?? null,
-      cost ?? null,
+      mileage_at_service || null,
+      cost || null,
       vendor || null,
       performed_by || null,
       performed_at || localNow(),
       next_due_date || null,
-      next_due_mileage ?? null,
+      next_due_mileage || null,
       localNow()
     );
 
@@ -802,13 +782,12 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     }
     if (mileage_at_service !== undefined) {
       fleetSetClauses.push(`current_mileage = ?`);
-      fleetSetValues.push(mileage_at_service ?? null);
+      fleetSetValues.push(mileage_at_service || null);
     }
     fleetSetValues.push(id);
     db.prepare(`UPDATE fleet_vehicles SET ${fleetSetClauses.join(', ')} WHERE id = ?`).run(...fleetSetValues);
 
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(result.lastInsertRowid);
-    if (!record) { res.status(500).json({ error: 'Failed to retrieve maintenance record' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -823,7 +802,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
 
     res.status(201).json(record);
   } catch (error: any) {
-    console.error('Error logging maintenance record:', error?.message || 'Unknown error');
+    console.error('Error logging maintenance record:', error);
     res.status(500).json({ error: 'Failed to log maintenance record' });
   }
 });
@@ -852,9 +831,9 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
     }
 
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id);
-    res.json(updated ?? null);
+    res.json(updated);
   } catch (error: any) {
-    console.error('Update maintenance error:', error?.message || 'Unknown error');
+    console.error('Update maintenance error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -871,7 +850,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
       req.user!.userId, record.vehicle_id, `Deleted maintenance record: ${record.description}`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete maintenance error:', error?.message || 'Unknown error');
+    console.error('Delete maintenance error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -886,9 +865,9 @@ router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: R
     const now = localNow();
     db.prepare('UPDATE fleet_maintenance SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
-    res.json(updated ?? null);
+    res.json(updated);
   } catch (error: any) {
-    console.error('Archive maintenance error:', error?.message || 'Unknown error');
+    console.error('Archive maintenance error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -902,15 +881,15 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_maintenance SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
-    res.json(updated ?? null);
+    res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive maintenance error:', error?.message || 'Unknown error');
+    console.error('Unarchive maintenance error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary ─────────────
-router.get('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/fuel', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -922,8 +901,8 @@ router.get('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer',
       return;
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const pageNum = parseInt(page as string, 10) || 1;
+    const perPage = parseInt(per_page as string, 10) || 50;
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_fuel_logs WHERE vehicle_id = ?').get(id) as any;
@@ -974,12 +953,12 @@ router.get('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer',
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow?.total ?? 0,
-        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
+        total: countRow.total,
+        totalPages: Math.ceil(countRow.total / perPage),
       },
     });
   } catch (error: any) {
-    console.error('Error fetching fuel logs:', error?.message || 'Unknown error');
+    console.error('Error fetching fuel logs:', error);
     res.status(500).json({ error: 'Failed to fetch fuel logs' });
   }
 });
@@ -1014,9 +993,9 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       id,
       fuel_date,
       gallons,
-      cost_per_gallon ?? null,
+      cost_per_gallon || null,
       computedTotal,
-      odometer_reading ?? null,
+      odometer_reading || null,
       fuel_type || 'regular',
       station || null,
       notes || null,
@@ -1032,7 +1011,6 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
     }
 
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(result.lastInsertRowid);
-    if (!record) { res.status(500).json({ error: 'Failed to retrieve fuel log' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1047,7 +1025,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     res.status(201).json(record);
   } catch (error: any) {
-    console.error('Error logging fuel entry:', error?.message || 'Unknown error');
+    console.error('Error logging fuel entry:', error);
     res.status(500).json({ error: 'Failed to log fuel entry' });
   }
 });
@@ -1076,9 +1054,9 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     }
 
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id);
-    res.json(updated ?? null);
+    res.json(updated);
   } catch (error: any) {
-    console.error('Update fuel log error:', error?.message || 'Unknown error');
+    console.error('Update fuel log error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1095,7 +1073,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
       req.user!.userId, record.vehicle_id, `Deleted fuel log: ${record.gallons} gal on ${record.fuel_date}`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete fuel log error:', error?.message || 'Unknown error');
+    console.error('Delete fuel log error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1110,9 +1088,9 @@ router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request,
     const now = localNow();
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
-    res.json(updated ?? null);
+    res.json(updated);
   } catch (error: any) {
-    console.error('Archive fuel log error:', error?.message || 'Unknown error');
+    console.error('Archive fuel log error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1126,15 +1104,15 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
-    res.json(updated ?? null);
+    res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive fuel log error:', error?.message || 'Unknown error');
+    console.error('Unarchive fuel log error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/inspections ─ Inspection history ──────────
-router.get('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/inspections', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1177,12 +1155,12 @@ router.get('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'of
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow?.total ?? 0,
-        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
+        total: countRow.total,
+        totalPages: Math.ceil(countRow.total / perPage),
       },
     });
   } catch (error: any) {
-    console.error('Error fetching inspections:', error?.message || 'Unknown error');
+    console.error('Error fetching inspections:', error);
     res.status(500).json({ error: 'Failed to fetch inspections' });
   }
 });
@@ -1224,7 +1202,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
       inspector_name,
       inspection_date,
       overall_result,
-      mileage ?? null,
+      mileage || null,
       itemsJson,
       notes || null,
       req.user!.userId,
@@ -1239,7 +1217,6 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
     }
 
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(result.lastInsertRowid) as any;
-    if (!record) { res.status(500).json({ error: 'Failed to retrieve inspection record' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1257,7 +1234,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
       items: safeParseJson(record.items, []),
     });
   } catch (error: any) {
-    console.error('Error creating inspection:', error?.message || 'Unknown error');
+    console.error('Error creating inspection:', error);
     res.status(500).json({ error: 'Failed to create inspection' });
   }
 });
@@ -1289,10 +1266,9 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
     }
 
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
-    console.error('Update inspection error:', error?.message || 'Unknown error');
+    console.error('Update inspection error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1309,7 +1285,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
       req.user!.userId, record.vehicle_id, `Deleted ${record.inspection_type} inspection`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete inspection error:', error?.message || 'Unknown error');
+    console.error('Delete inspection error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1324,10 +1300,9 @@ router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: R
     const now = localNow();
     db.prepare('UPDATE fleet_inspections SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
-    console.error('Archive inspection error:', error?.message || 'Unknown error');
+    console.error('Archive inspection error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1341,16 +1316,15 @@ router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req:
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_inspections SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
-    console.error('Unarchive inspection error:', error?.message || 'Unknown error');
+    console.error('Unarchive inspection error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/assignments ─ Assignment history ──────────
-router.get('/:id/assignments', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/assignments', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1362,8 +1336,8 @@ router.get('/:id/assignments', requireRole('admin', 'manager', 'supervisor', 'of
       return;
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const pageNum = parseInt(page as string, 10) || 1;
+    const perPage = parseInt(per_page as string, 10) || 50;
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_assignments WHERE vehicle_id = ?').get(id) as any;
@@ -1380,18 +1354,18 @@ router.get('/:id/assignments', requireRole('admin', 'manager', 'supervisor', 'of
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow?.total ?? 0,
-        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
+        total: countRow.total,
+        totalPages: Math.ceil(countRow.total / perPage),
       },
     });
   } catch (error: any) {
-    console.error('Error fetching assignment history:', error?.message || 'Unknown error');
+    console.error('Error fetching assignment history:', error);
     res.status(500).json({ error: 'Failed to fetch assignment history' });
   }
 });
 
 // ─── GET /api/fleet/:id/personnel ─ Aggregated officer data ───────
-router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/:id/personnel', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1421,7 +1395,8 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
         // Full officer profile
         officer = db.prepare(`
           SELECT id, username, full_name, first_name, last_name, middle_name, email, role, badge_number, phone, status,
-            rank, department, hire_date, shift_preference,
+            rank, department, address, city, state, zip, date_of_birth, hire_date, termination_date,
+            shift_preference, dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
             emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
             created_at, updated_at
           FROM users WHERE id = ?
@@ -1470,13 +1445,13 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
       notes,
     });
   } catch (error: any) {
-    console.error('Error fetching fleet personnel:', error?.message || 'Unknown error');
+    console.error('Error fetching fleet personnel:', error);
     res.status(500).json({ error: 'Failed to fetch fleet personnel data' });
   }
 });
 
 // ─── POST /api/fleet/:id/personnel-notes ─ Add note ──────────────
-router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/personnel-notes', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1502,17 +1477,16 @@ router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'
     `).run(id, officer_id || null, officer_name || null, note.trim(), req.user!.userId, creator?.full_name || 'Unknown', localNow());
 
     const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(result.lastInsertRowid) as any;
-    if (!created) { res.status(500).json({ error: 'Failed to retrieve created note' }); return; }
 
     res.status(201).json(created);
   } catch (error: any) {
-    console.error('Error creating personnel note:', error?.message || 'Unknown error');
+    console.error('Error creating personnel note:', error);
     res.status(500).json({ error: 'Failed to create personnel note' });
   }
 });
 
 // ─── DELETE /api/fleet/:id/personnel-notes/:noteId ─ Delete note ──
-router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/personnel-notes/:noteId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id, noteId } = req.params;
@@ -1526,7 +1500,7 @@ router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (
     db.prepare('DELETE FROM fleet_personnel_notes WHERE id = ?').run(noteId);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Error deleting personnel note:', error?.message || 'Unknown error');
+    console.error('Error deleting personnel note:', error);
     res.status(500).json({ error: 'Failed to delete personnel note' });
   }
 });
@@ -1599,13 +1573,13 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
           insertFuel.run(
             vehicle.id,
             f.date,
-            f.quantity ?? f.gallons ?? null,
-            f.total_cost ?? null,
-            f.odometer ?? null,
+            f.quantity || f.gallons || null,
+            f.total_cost || null,
+            f.odometer || null,
             f.station || null,
             f.notes || null,
-            f.distance ?? null,
-            f.efficiency ?? null,
+            f.distance || null,
+            f.efficiency || null,
             req.user!.userId,
             now,
           );
@@ -1632,10 +1606,10 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
             s.date,
             mapServiceType(taskDesc),
             taskDesc,
-            s.total_cost ?? null,
-            s.odometer ?? null,
+            s.total_cost || null,
+            s.odometer || null,
             s.station || s.vendor || null,
-            s.labor_cost ?? null,
+            s.labor_cost || null,
             s.service_task ? JSON.stringify([s.service_task]) : null,
             now,
           );
@@ -1670,411 +1644,322 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
       services: { inserted: serviceInserted, skipped: serviceSkipped },
     });
   } catch (error: any) {
-    console.error('Simply Fleet import error:', error?.message || 'Unknown error');
+    console.error('Simply Fleet import error:', error);
     res.status(500).json({ error: 'Failed to import Simply Fleet data' });
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// DASH CAMERA VIDEO MANAGEMENT
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// DASH CAMERAS
+// ═══════════════════════════════════════════════════════════════════
 
-// ── GET /api/fleet/dashcam-videos — List all dash cam videos ──
-router.get('/dashcam-videos', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+// GET /api/fleet/dash-cameras — List all dash cameras
+router.get('/dash-cameras', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { vehicle_id, unit_id, classification } = req.query;
-
-    let where = 'WHERE 1=1';
-    const params: any[] = [];
-
-    if (vehicle_id) { where += ' AND v.vehicle_id = ?'; params.push(vehicle_id); }
-    if (unit_id) { where += ' AND v.unit_id = ?'; params.push(unit_id); }
-    if (classification) { where += ' AND v.classification = ?'; params.push(classification); }
-
-    const videos = db.prepare(`
-      SELECT v.*, fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model, fv.year as vehicle_year,
-             un.call_sign as unit_call_sign
-      FROM dashcam_videos v
-      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      ${where}
-      ORDER BY v.recorded_at DESC, v.created_at DESC
-      LIMIT 200
-    `).all(...params);
-
-    res.json(videos);
+    const cameras = db.prepare(`
+      SELECT dc.*,
+        fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model,
+        fv.year AS vehicle_year
+      FROM dash_cameras dc
+      LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id
+      ORDER BY dc.created_at DESC
+    `).all();
+    res.json(cameras);
   } catch (error: any) {
-    console.error('Get dashcam videos error:', error?.message || 'Unknown error');
+    console.error('List dash cameras error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ── GET /api/fleet/:vehicleId/dashcam-videos — Videos for a vehicle ──
-router.get('/:vehicleId/dashcam-videos', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+// POST /api/fleet/dash-cameras — Create
+router.post('/dash-cameras', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const videos = db.prepare(`
-      SELECT v.*, fv.vehicle_number, un.call_sign as unit_call_sign
-      FROM dashcam_videos v
-      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      WHERE v.vehicle_id = ?
-      ORDER BY v.recorded_at DESC
-    `).all(req.params.vehicleId);
-
-    res.json(videos);
+    const { vehicle_id, camera_id, make, model, firmware_version, storage_capacity_gb, channel_count, status, condition, installed_at, removed_at, notes } = req.body;
+    if (!vehicle_id || !camera_id) {
+      res.status(400).json({ error: 'vehicle_id and camera_id are required' });
+      return;
+    }
+    const result = db.prepare(`
+      INSERT INTO dash_cameras (vehicle_id, camera_id, make, model, firmware_version, storage_capacity_gb, channel_count, status, condition, installed_at, removed_at, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      vehicle_id, camera_id, make || null, model || null, firmware_version || null,
+      storage_capacity_gb || 32, channel_count || 2,
+      status || 'available', condition || 'good',
+      installed_at || null, removed_at || null, notes || null, String(req.user!.userId)
+    );
+    const cam = db.prepare(`
+      SELECT dc.*, fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model, fv.year AS vehicle_year
+      FROM dash_cameras dc LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id WHERE dc.id = ?
+    `).get(result.lastInsertRowid);
+    res.status(201).json(cam);
   } catch (error: any) {
-    console.error('Get vehicle dashcam videos error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('UNIQUE')) {
+      res.status(409).json({ error: 'Camera ID already exists' });
+      return;
+    }
+    console.error('Create dash camera error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ── POST /api/fleet/dashcam-videos — Upload dash cam video ──
-router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+// PUT /api/fleet/dash-cameras/:id — Update
+router.put('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found' }); return; }
+    const fields = ['vehicle_id', 'camera_id', 'make', 'model', 'firmware_version', 'storage_capacity_gb', 'channel_count', 'status', 'condition', 'installed_at', 'removed_at', 'notes'];
+    const setClauses: string[] = [];
+    const vals: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) {
+        setClauses.push(`${f} = ?`);
+        vals.push(req.body[f] === '' ? null : req.body[f]);
+      }
+    }
+    if (setClauses.length > 0) {
+      setClauses.push('updated_at = ?');
+      vals.push(localNow());
+      vals.push(req.params.id);
+      db.prepare(`UPDATE dash_cameras SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
+    }
+    const cam = db.prepare(`
+      SELECT dc.*, fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model, fv.year AS vehicle_year
+      FROM dash_cameras dc LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id WHERE dc.id = ?
+    `).get(req.params.id);
+    res.json(cam);
+  } catch (error: any) {
+    console.error('Update dash camera error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/fleet/dash-cameras/:id — Delete
+router.delete('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found' }); return; }
+    db.prepare('DELETE FROM dashcam_videos WHERE camera_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM dash_cameras WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Dash camera deleted' });
+  } catch (error: any) {
+    console.error('Delete dash camera error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/fleet/dash-cameras/bulk — Bulk delete
+router.delete('/dash-cameras/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { cameraIds } = req.body;
+    if (!Array.isArray(cameraIds) || cameraIds.length === 0) {
+      res.status(400).json({ error: 'cameraIds array required' });
+      return;
+    }
+    const placeholders = cameraIds.map(() => '?').join(',');
+    db.prepare(`DELETE FROM dashcam_videos WHERE camera_id IN (${placeholders})`).run(...cameraIds);
+    const result = db.prepare(`DELETE FROM dash_cameras WHERE id IN (${placeholders})`).run(...cameraIds);
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Bulk delete dash cameras error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Dash Camera Videos ────────────────────────────────────────────
+
+// GET /api/fleet/dashcam-videos — List all videos
+router.get('/dashcam-videos', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videos = db.prepare(`
+      SELECT v.*, dc.camera_id AS camera_serial, fv.vehicle_number
+      FROM dashcam_videos v
+      LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      ORDER BY v.created_at DESC
+    `).all();
+    res.json(videos);
+  } catch (error: any) {
+    console.error('List dashcam videos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/fleet/dashcam-videos — Upload video
+router.post('/dashcam-videos', requireRole('admin'), (req: Request, res: Response) => {
   req.setTimeout(600000);
   res.setTimeout(600000);
-
   try {
     if (!fs.existsSync(DASHCAM_DIR)) fs.mkdirSync(DASHCAM_DIR, { recursive: true });
     fs.accessSync(DASHCAM_DIR, fs.constants.W_OK);
   } catch (dirErr: any) {
-    res.status(503).json({ error: `Upload storage unavailable: ${dirErr.message}` });
+    res.status(503).json({ error: `Upload storage is unavailable: ${dirErr.message}` });
     return;
   }
-
   try {
     dashcamUpload.single('video')(req, res, (multerErr: any) => {
       if (multerErr) {
         res.status(400).json({ error: multerErr.message || 'Upload failed' });
         return;
       }
-
       try {
         const db = getDb();
         const file = req.file;
-        if (!file) {
-          res.status(400).json({ error: 'No video file provided' });
-          return;
-        }
-
-        const { vehicle_id, unit_id, title, duration_seconds, recorded_at,
-                speed_mph, latitude, longitude, address,
-                case_number, classification, notes } = req.body;
-
-        if (!title) {
+        if (!file) { res.status(400).json({ error: 'No video file provided' }); return; }
+        const { camera_id, vehicle_id, title, duration_seconds, recorded_at, case_number, classification, gps_lat, gps_lon, notes } = req.body;
+        if (!camera_id || !vehicle_id || !title) {
           if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-          res.status(400).json({ error: 'title is required' });
+          res.status(400).json({ error: 'camera_id, vehicle_id, and title are required' });
           return;
         }
-
         const diskStat = fs.statSync(file.path);
         const verifiedSize = diskStat.size;
         const relativePath = path.relative(DASHCAM_DIR, file.path);
-
-        // Auto-populate speed/lat/lon/address from nearest ClearPathGPS event
-        let resolvedSpeed = speed_mph ? parseFloat(speed_mph) : null;
-        let resolvedLat = latitude ? parseFloat(latitude) : null;
-        let resolvedLon = longitude ? parseFloat(longitude) : null;
-        let resolvedAddr = address || null;
-
-        if (unit_id && recorded_at && (resolvedSpeed == null || resolvedLat == null)) {
-          try {
-            const nearestEvent = db.prepare(`
-              SELECT speed_mph, latitude, longitude, address
-              FROM dashcam_events
-              WHERE unit_id = ?
-              AND ABS(julianday(event_timestamp) - julianday(?)) < 0.007
-              ORDER BY ABS(julianday(event_timestamp) - julianday(?))
-              LIMIT 1
-            `).get(unit_id, recorded_at, recorded_at) as any;
-
-            if (nearestEvent) {
-              if (resolvedSpeed == null && nearestEvent.speed_mph != null) resolvedSpeed = nearestEvent.speed_mph;
-              if (resolvedLat == null && nearestEvent.latitude != null) resolvedLat = nearestEvent.latitude;
-              if (resolvedLon == null && nearestEvent.longitude != null) resolvedLon = nearestEvent.longitude;
-              if (!resolvedAddr && nearestEvent.address) resolvedAddr = nearestEvent.address;
-            }
-          } catch { /* ClearPathGPS lookup failed — use manual values */ }
-        }
-
         const result = db.prepare(`
-          INSERT INTO dashcam_videos (vehicle_id, unit_id, title, file_path, file_size, duration_seconds,
-            mime_type, recorded_at, speed_mph, latitude, longitude, address,
-            case_number, classification, notes, uploaded_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO dashcam_videos (camera_id, vehicle_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, gps_lat, gps_lon, notes, uploaded_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          vehicle_id || null, unit_id || null, title, relativePath, verifiedSize,
-          duration_seconds ?? null, file.mimetype,
-          recorded_at || localNow(),
-          resolvedSpeed, resolvedLat, resolvedLon, resolvedAddr,
-          case_number || null, classification || 'routine',
-          notes || null, String(req.user!.userId),
+          camera_id, vehicle_id, title, relativePath, verifiedSize,
+          duration_seconds || null, file.mimetype,
+          recorded_at || localNow(), case_number || null,
+          classification || 'routine', gps_lat || null, gps_lon || null,
+          notes || null, String(req.user!.userId)
         );
-
-        const videoId = result.lastInsertRowid;
-
         const video = db.prepare(`
-          SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,
-                 un.call_sign as unit_call_sign
+          SELECT v.*, dc.camera_id AS camera_serial, fv.vehicle_number
           FROM dashcam_videos v
+          LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
           LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-          LEFT JOIN units un ON v.unit_id = un.id
           WHERE v.id = ?
-        `).get(videoId) as any;
-
-        // Fire-and-forget: extract duration
+        `).get(result.lastInsertRowid);
+        // Fire-and-forget: extract duration with ffprobe
         const fullFilePath = path.resolve(DASHCAM_DIR, relativePath);
-        extractDashcamDuration(fullFilePath).then((dur) => {
-          if (dur != null) {
+        extractVideoDuration(fullFilePath).then((probedDuration) => {
+          if (probedDuration != null) {
             try {
               getDb().prepare('UPDATE dashcam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
-                .run(dur, localNow(), videoId);
-            } catch { /* ignore */ }
+                .run(probedDuration, localNow(), result.lastInsertRowid);
+            } catch { /* ffprobe update failed */ }
           }
-        }).catch((err) => { console.error('[Fleet] Background operation failed:', err.message || err); });
-
-        // Fire-and-forget: queue overlay burn
-        const vehDesc = [video?.vehicle_year, video?.vehicle_make, video?.vehicle_model].filter(Boolean).join(' ');
-        const overlayConfig: DashCamOverlayConfig = {
-          type: 'dashcam',
-          unitCallSign: video?.unit_call_sign || '',
-          vehicleDescription: vehDesc,
-          recordedAtUnix: Math.floor(new Date(recorded_at || Date.now()).getTime() / 1000),
-          speedMph: resolvedSpeed,
-          latitude: resolvedLat,
-          longitude: resolvedLon,
-          address: resolvedAddr || '',
-        };
-        queueOverlayProcessing(videoId, 'dashcam', fullFilePath, overlayConfig);
-
+        }).catch(() => {});
         res.status(201).json(video);
       } catch (error: any) {
-        console.error('Dashcam upload DB error:', error?.message, error?.stack);
-        res.status(500).json({ error: 'Upload processing failed' });
+        console.error('Upload dashcam video DB error:', error);
+        res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
       }
     });
   } catch (outerErr: any) {
-    console.error('Dashcam upload error:', outerErr?.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Upload failed' });
-    }
+    if (!res.headersSent) res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
   }
 });
 
-// ── GET /api/fleet/dashcam-videos/:id/stream — Stream with overlay ──
-router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
+// GET /api/fleet/dashcam-videos/:id/stream — Stream with Range support
+router.get('/dashcam-videos/:id/stream', (req: Request, res: Response, next) => {
+  if (!req.headers['authorization'] && req.query.token) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    // Serve processed (overlaid) file if available
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(DASHCAM_DIR, video.processed_file_path)
-      : path.resolve(DASHCAM_DIR, video.file_path);
-
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
-
+    if (!video) { res.status(404).json({ error: 'Video not found' }); return; }
+    const filePath = path.resolve(DASHCAM_DIR, video.file_path);
     if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
-
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
-    const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
     const range = req.headers.range;
-
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
-        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
-        res.end();
-        return;
-      }
-
       const chunkSize = end - start + 1;
-
       res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
-        'Content-Type': mimeType,
+        'Content-Type': video.mime_type || 'video/mp4',
       });
       fs.createReadStream(filePath, { start, end }).pipe(res);
     } else {
-      res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType });
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
       fs.createReadStream(filePath).pipe(res);
     }
   } catch (error: any) {
-    console.error('Stream dashcam video error:', error?.message || 'Unknown error');
+    console.error('Stream dashcam video error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ── GET /api/fleet/dashcam-videos/:id/download — Force-download with overlay ──
-router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(DASHCAM_DIR, video.processed_file_path)
-      : path.resolve(DASHCAM_DIR, video.file_path);
-
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
-
-    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
-      return;
-    }
-
-    const stat = fs.statSync(filePath);
-    const safeTitle = (video.title || `dashcam_${video.id}`).replace(/[^a-zA-Z0-9_\-. ]/g, '_');
-    res.writeHead(200, {
-      'Content-Type': 'video/mp4',
-      'Content-Length': stat.size,
-      'Content-Disposition': `attachment; filename="MVR_${safeTitle}.mp4"`,
-    });
-    fs.createReadStream(filePath).pipe(res);
-  } catch (error: any) {
-    console.error('Download dashcam video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── PUT /api/fleet/dashcam-videos/:id — Update metadata ──
-router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    const { title, classification, case_number, notes, speed_mph, latitude, longitude, address } = req.body;
-    const setClauses: string[] = [];
-    const vals: any[] = [];
-
-    if (title !== undefined) { setClauses.push('title = ?'); vals.push(title); }
-    if (classification !== undefined) { setClauses.push('classification = ?'); vals.push(classification); }
-    if (case_number !== undefined) { setClauses.push('case_number = ?'); vals.push(case_number || null); }
-    if (notes !== undefined) { setClauses.push('notes = ?'); vals.push(notes || null); }
-    if (speed_mph !== undefined) { setClauses.push('speed_mph = ?'); vals.push(speed_mph != null ? parseFloat(speed_mph) : null); }
-    if (latitude !== undefined) { setClauses.push('latitude = ?'); vals.push(latitude != null ? parseFloat(latitude) : null); }
-    if (longitude !== undefined) { setClauses.push('longitude = ?'); vals.push(longitude != null ? parseFloat(longitude) : null); }
-    if (address !== undefined) { setClauses.push('address = ?'); vals.push(address || null); }
-
-    if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
-      return;
-    }
-
-    setClauses.push('updated_at = ?');
-    vals.push(localNow());
-    vals.push(req.params.id);
-
-    db.prepare(`UPDATE dashcam_videos SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
-
-    const updated = db.prepare(`
-      SELECT v.*, fv.vehicle_number, un.call_sign as unit_call_sign
-      FROM dashcam_videos v
-      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      WHERE v.id = ?
-    `).get(req.params.id);
-
-    res.json(updated ?? null);
-  } catch (error: any) {
-    console.error('Update dashcam video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── DELETE /api/fleet/dashcam-videos/:id — Delete video + files ──
+// DELETE /api/fleet/dashcam-videos/:id — Delete video + file
 router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    // Delete original file
+    if (!existing) { res.status(404).json({ error: 'Video not found' }); return; }
     const filePath = path.resolve(DASHCAM_DIR, existing.file_path);
     if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
-    // Delete processed overlay file
-    if (existing.processed_file_path) {
-      const processedPath = path.resolve(DASHCAM_DIR, existing.processed_file_path);
-      if (processedPath.startsWith(DASHCAM_DIR) && fs.existsSync(processedPath)) {
-        fs.unlinkSync(processedPath);
-      }
-    }
-
     db.prepare('DELETE FROM dashcam_videos WHERE id = ?').run(req.params.id);
-    res.json({ message: 'Dash cam video deleted' });
+    res.json({ message: 'Video deleted' });
   } catch (error: any) {
-    console.error('Delete dashcam video error:', error?.message || 'Unknown error');
+    console.error('Delete dashcam video error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ── POST /api/fleet/dashcam-videos/:id/reprocess — Re-queue overlay ──
-router.post('/dashcam-videos/:id/reprocess', requireRole('admin'), (req: Request, res: Response) => {
+// PUT /api/fleet/dashcam-videos/bulk — Bulk classify
+router.put('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const video = db.prepare(`
-      SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,
-             un.call_sign as unit_call_sign
-      FROM dashcam_videos v
-      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      WHERE v.id = ?
-    `).get(req.params.id) as any;
-
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+    const { videoIds, classification } = req.body;
+    if (!Array.isArray(videoIds) || videoIds.length === 0 || !classification) {
+      res.status(400).json({ error: 'videoIds array and classification required' });
       return;
     }
-
-    const inputPath = path.resolve(DASHCAM_DIR, video.file_path);
-    if (!fs.existsSync(inputPath)) {
-      res.status(404).json({ error: 'Original video file not found' });
-      return;
-    }
-
-    const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
-    const recordedAt = video.recorded_at ? new Date(video.recorded_at) : new Date();
-    const config: DashCamOverlayConfig = {
-      type: 'dashcam',
-      unitCallSign: video.unit_call_sign || '',
-      vehicleDescription: vehDesc,
-      recordedAtUnix: Math.floor(recordedAt.getTime() / 1000),
-      speedMph: video.speed_mph,
-      latitude: video.latitude,
-      longitude: video.longitude,
-      address: video.address || '',
-    };
-
-    queueOverlayProcessing(video.id, 'dashcam', inputPath, config);
-    res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
+    const placeholders = videoIds.map(() => '?').join(',');
+    db.prepare(`UPDATE dashcam_videos SET classification = ?, updated_at = ? WHERE id IN (${placeholders})`)
+      .run(classification, localNow(), ...videoIds);
+    res.json({ updated: videoIds.length });
   } catch (error: any) {
-    console.error('Reprocess dashcam overlay error:', error?.message || 'Unknown error');
+    console.error('Bulk classify dashcam videos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/fleet/dashcam-videos/bulk — Bulk delete
+router.delete('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { videoIds } = req.body;
+    if (!Array.isArray(videoIds) || videoIds.length === 0) {
+      res.status(400).json({ error: 'videoIds array required' });
+      return;
+    }
+    // Delete files from disk
+    const placeholders = videoIds.map(() => '?').join(',');
+    const videos = db.prepare(`SELECT * FROM dashcam_videos WHERE id IN (${placeholders})`).all(...videoIds) as any[];
+    for (const v of videos) {
+      const fp = path.resolve(DASHCAM_DIR, v.file_path);
+      if (fp.startsWith(DASHCAM_DIR) && fs.existsSync(fp)) fs.unlinkSync(fp);
+    }
+    const result = db.prepare(`DELETE FROM dashcam_videos WHERE id IN (${placeholders})`).run(...videoIds);
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Bulk delete dashcam videos error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

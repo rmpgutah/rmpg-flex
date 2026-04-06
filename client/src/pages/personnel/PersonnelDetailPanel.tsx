@@ -3,7 +3,7 @@ import {
   X, Zap, Star, Shield, Clock, Award, Calendar, User, Activity, GraduationCap, MapPinned,
   Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown,
 } from 'lucide-react';
-import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
+import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
@@ -17,7 +17,6 @@ import ActivityDetailTab from './detail-tabs/ActivityDetailTab';
 import TrainingDetailTab from './detail-tabs/TrainingDetailTab';
 import EquipmentDetailTab from './detail-tabs/EquipmentDetailTab';
 import BodyCameraDetailTab from './detail-tabs/BodyCameraDetailTab';
-import DashCameraDetailTab from './detail-tabs/DashCameraDetailTab';
 import DeploymentDetailTab from './detail-tabs/DeploymentDetailTab';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
@@ -172,9 +171,6 @@ interface Props {
   onDeleteVideo: (videoId: number) => void;
   onEditVideo: (video: BodyCamVideo) => void;
   onPlayVideo: (video: BodyCamVideo) => void;
-  dashcamEvents: DashcamEvent[];
-  dashcamDeviceMapping: CpgDeviceMapping | null;
-  dashcamLoading: boolean;
   onAddDeployment: (officerId: string) => void;
   onEditOfficer: () => void;
   onDeleteOfficer: () => void;
@@ -201,7 +197,6 @@ export default function PersonnelDetailPanel({
   bodyCameras, bodyCamVideos, bodyCamerasLoading,
   onAddBodyCamera, onEditBodyCamera, onDeleteBodyCamera,
   onUploadVideo, onDeleteVideo, onEditVideo, onPlayVideo,
-  dashcamEvents, dashcamDeviceMapping, dashcamLoading,
   onAddDeployment,
   onEditOfficer, onDeleteOfficer,
   onArchiveOfficer, onUnarchiveOfficer, isArchived,
@@ -228,7 +223,7 @@ export default function PersonnelDetailPanel({
             <div>
               <h2 className="text-lg font-bold text-white">
                 {officer.last_name}, {officer.first_name}
-                {officer.middle_name && officer.middle_name.length > 0 ? ` ${officer.middle_name[0]}.` : ''}
+                {officer.middle_name ? ` ${officer.middle_name[0]}.` : ''}
               </h2>
               <div className="w-16 h-0.5 bg-brand-500 mt-1 mb-1.5" />
               <div className="flex items-center gap-3">
@@ -340,7 +335,7 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2 border-b border-rmpg-700">
+      <div className="grid grid-cols-5 gap-2 px-4 py-2 border-b border-rmpg-700">
         <div className={`panel-beveled p-2 text-center border-t-2 ${officer.status === 'on_duty' ? 'border-t-green-500' : 'border-t-rmpg-600'}`}>
           <p className="field-label">Status</p>
           <p className={`text-base font-bold font-mono ${officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400'}`}>
@@ -448,13 +443,6 @@ export default function PersonnelDetailPanel({
             onEditVideo={onEditVideo}
             onPlayVideo={onPlayVideo}
             loading={bodyCamerasLoading}
-          />
-        )}
-        {activeTab === 'dash_cameras' && (
-          <DashCameraDetailTab
-            events={dashcamEvents}
-            deviceMapping={dashcamDeviceMapping}
-            loading={dashcamLoading}
           />
         )}
         {activeTab === 'deployment' && (

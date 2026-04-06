@@ -1,31 +1,22 @@
-import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
-import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect, useRef, useId } from 'react';
+import { X, Phone, AlertTriangle, Clock, History, Loader2 } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
-import {
-  WEATHER_OPTIONS,
-  LIGHTING_OPTIONS,
-  WEAPONS_OPTIONS,
-  LE_AGENCY_OPTIONS,
-  SCENE_SAFETY_OPTIONS,
-  DIRECTION_OPTIONS,
-} from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
-import { useDistrictIdentify, useDistrictOptions } from '../hooks/useDistrictLookup';
-import { apiFetch } from '../hooks/useApi';
+import { useDistrictIdentify } from '../hooks/useDistrictLookup';
+import { fetchWeather, wmoToFormValue } from '../utils/weather';
 
 interface NewCallModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (call: Partial<CallForService>) => void | Promise<void>;
   properties?: { id: string; name: string }[];
-  clients?: { id: string; name: string; contact_name?: string; contact_phone?: string; address?: string }[];
+  clients?: { id: string; name: string }[];
   initialData?: Partial<Record<string, any>>;
-  defaultMode?: 'quick' | 'full';
 }
 
 const CALL_SOURCES: { value: CallSource; label: string }[] = [
@@ -46,28 +37,23 @@ export const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: stri
   { value: 'P4', label: 'P4', color: 'border-gray-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
 ];
 
-export const PSO_SERVICE_TYPES: { value: string; label: string }[] = [
-  { value: '', label: '-- Select Service Type --' },
-  { value: 'patrol', label: 'Patrol Service' },
-  { value: 'standing_guard', label: 'Standing Guard' },
-  { value: 'event_security', label: 'Event Security' },
-  { value: 'escort', label: 'Escort Service' },
+export const PSO_SERVICE_TYPES = [
+  { value: '', label: '-- Select --' },
+  { value: 'patrol', label: 'Patrol' },
+  { value: 'standing_post', label: 'Standing Post' },
+  { value: 'escort', label: 'Escort' },
   { value: 'process_service', label: 'Process Service' },
-  { value: 'investigation', label: 'Investigation' },
-  { value: 'surveillance', label: 'Surveillance' },
   { value: 'alarm_response', label: 'Alarm Response' },
-  { value: 'other', label: 'Other' },
+  { value: 'event_security', label: 'Event Security' },
 ];
 
-export const PROCESS_SERVICE_DOC_TYPES: { value: string; label: string }[] = [
-  { value: '', label: '-- Select Document Type --' },
+export const PROCESS_SERVICE_DOC_TYPES = [
+  { value: '', label: '-- Select --' },
+  { value: 'subpoena', label: 'Subpoena' },
   { value: 'summons', label: 'Summons' },
   { value: 'complaint', label: 'Complaint' },
-  { value: 'subpoena', label: 'Subpoena' },
-  { value: 'writ', label: 'Writ' },
-  { value: 'order', label: 'Court Order' },
-  { value: 'notice', label: 'Notice' },
-  { value: 'petition', label: 'Petition' },
+  { value: 'eviction', label: 'Eviction Notice' },
+  { value: 'restraining_order', label: 'Restraining Order' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -165,111 +151,30 @@ const DEFAULT_FORM_DATA = {
   historical_closed_at: '',
 };
 
-const DRAFT_KEY = 'rmpg_new_call_draft';
-
-export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [], clients = [], initialData, defaultMode = 'quick' }: NewCallModalProps) {
+export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [], clients = [], initialData }: NewCallModalProps) {
   const [formData, setFormData] = useState({ ...DEFAULT_FORM_DATA });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [mode, setMode] = useState<'quick' | 'full'>(defaultMode);
-  const [hasDraft, setHasDraft] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { identify: identifyDistrict } = useDistrictIdentify();
-  const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
 
-  // Person/vehicle record search for linking
-  const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
-  const [vehicleSearchResults, setVehicleSearchResults] = useState<any[]>([]);
-  const [showPersonDropdown, setShowPersonDropdown] = useState(false);
-  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
-  const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const personDropdownRef = useRef<HTMLDivElement>(null);
-  const vehicleDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!showPersonDropdown && !showVehicleDropdown) return;
-    const handler = (e: MouseEvent) => {
-      if (showPersonDropdown && personDropdownRef.current && !personDropdownRef.current.contains(e.target as Node)) setShowPersonDropdown(false);
-      if (showVehicleDropdown && vehicleDropdownRef.current && !vehicleDropdownRef.current.contains(e.target as Node)) setShowVehicleDropdown(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showPersonDropdown, showVehicleDropdown]);
-
-  const searchPersons = useCallback((query: string) => {
-    if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
-    if (query.length < 2) { setPersonSearchResults([]); setShowPersonDropdown(false); return; }
-    personSearchTimerRef.current = setTimeout(async () => {
-      try {
-        const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
-        setPersonSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
-        setShowPersonDropdown(true);
-      } catch { setPersonSearchResults([]); }
-    }, 300);
-  }, []);
-
-  const searchVehicles = useCallback((query: string) => {
-    if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
-    if (query.length < 2) { setVehicleSearchResults([]); setShowVehicleDropdown(false); return; }
-    vehicleSearchTimerRef.current = setTimeout(async () => {
-      try {
-        const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`);
-        setVehicleSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
-        setShowVehicleDropdown(true);
-      } catch { setVehicleSearchResults([]); }
-    }, 300);
-  }, []);
-
-  // Pre-fill form when initialData changes, or restore draft on open
+  // Pre-fill form when initialData changes (e.g. from a template)
   useEffect(() => {
     if (isOpen && initialData) {
       setFormData({ ...DEFAULT_FORM_DATA, ...initialData } as typeof DEFAULT_FORM_DATA);
-      setHasDraft(false);
     } else if (isOpen) {
-      // Check for saved draft
-      const draft = localStorage.getItem(DRAFT_KEY);
-      if (draft) {
-        try {
-          const parsed = JSON.parse(draft);
-          if (parsed._savedAt && Date.now() - parsed._savedAt < 24 * 60 * 60 * 1000) {
-            delete parsed._savedAt;
-            setFormData({ ...DEFAULT_FORM_DATA, ...parsed });
-            setHasDraft(true);
-            return;
-          }
-        } catch { /* ignore corrupt draft */ }
-        localStorage.removeItem(DRAFT_KEY);
-      }
       setFormData({ ...DEFAULT_FORM_DATA });
-      setHasDraft(false);
     }
-    if (isOpen) setMode(defaultMode);
-  }, [isOpen, initialData, defaultMode]);
-
-  // Save draft on close (if form has meaningful data)
-  const handleClose = () => {
-    const hasData = Object.entries(formData).some(([key, val]) => {
-      // Skip fields that have default dropdown values
-      if (key === 'incident_type' || key === 'priority' || key === 'source' || key === 'historical_status') return false;
-      const defaultVal = DEFAULT_FORM_DATA[key as keyof typeof DEFAULT_FORM_DATA];
-      return val !== defaultVal && val !== '' && val !== false;
-    });
-    if (hasData) {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...formData, _savedAt: Date.now() }));
+    // Auto-fill weather conditions when modal opens
+    if (isOpen) {
+      fetchWeather().then(w => {
+        if (w) setFormData(prev => prev.weather_conditions ? prev : { ...prev, weather_conditions: `${wmoToFormValue(w.conditionCode)}, ${w.temperature}°F` });
+      });
     }
-    setHasDraft(false);
-    onClose();
-  };
+  }, [isOpen, initialData]);
 
-  const discardDraft = () => {
-    localStorage.removeItem(DRAFT_KEY);
-    setFormData({ ...DEFAULT_FORM_DATA });
-    setHasDraft(false);
-  };
-
-  const onCloseRef = useRef(handleClose);
-  onCloseRef.current = handleClose;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Focus trap — only re-run on open/close transitions
   useEffect(() => {
@@ -345,8 +250,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         ...historicalFields,
       } as any);
       // Only reset form on success (parent closes the modal)
-      localStorage.removeItem(DRAFT_KEY);
-      setHasDraft(false);
       setFormData({ ...DEFAULT_FORM_DATA });
     } catch {
       // Error is handled by the parent (toast shown there) — keep form data so user can retry
@@ -362,58 +265,30 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : handleClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : onClose} />
 
       {/* Modal - Blocky */}
       <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
         {/* Header - Toolbar style */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #202020 0%, #1a1a1a 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">
               {formData.is_historical ? 'Historical Call Entry' : 'New Call for Service'}
             </h2>
-            {/* Quick / Full mode toggle */}
-            <button
-              type="button"
-              onClick={() => setMode(m => m === 'quick' ? 'full' : 'quick')}
-              className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border transition-colors flex items-center gap-1"
-              style={{
-                borderColor: mode === 'quick' ? '#d4a017' : '#3a5070',
-                color: mode === 'quick' ? '#d4a017' : '#8899aa',
-                background: mode === 'quick' ? 'rgba(212,160,23,0.1)' : 'transparent',
-              }}
-            >
-              {mode === 'quick' ? (
-                <><ChevronDown className="w-3 h-3" /> QUICK</>
-              ) : (
-                <><ChevronUp className="w-3 h-3" /> FULL</>
-              )}
-            </button>
           </div>
           <button
-            onClick={handleClose}
+            onClick={onClose}
             className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Draft restored banner */}
-        {hasDraft && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/30 border-b border-amber-700/30">
-            <History className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Restored pending draft</span>
-            <button onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
-              Discard
-            </button>
-          </div>
-        )}
-
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {/* Row 1: Type + Source */}
-          <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Incident Type</label>
               <select
@@ -431,85 +306,25 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 ))}
               </select>
             </div>
-            {mode === 'full' && (
-              <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Source</label>
-                <select
-                  className="select-dark"
-                  value={formData.source}
-                  onChange={(e) => update('source', e.target.value)}
-                >
-                  {CALL_SOURCES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Source</label>
+              <select
+                className="select-dark"
+                value={formData.source}
+                onChange={(e) => update('source', e.target.value)}
+              >
+                {CALL_SOURCES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* PSO Client Request fields — visible in both modes when PSO type is selected */}
+          {/* PSO Client Request fields */}
           {formData.incident_type === 'pso_client_request' && (
             <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#1a1525' }}>
               <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
-
-              {/* Client / Requestor dropdown — auto-fills name, phone, address */}
-              {clients.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold text-brand-gold-500 uppercase mb-1">Client / Requestor</label>
-                  <select
-                    className="select-dark w-full"
-                    value={formData.client_id || ''}
-                    onChange={(e) => {
-                      const selectedId = e.target.value;
-                      const client = clients.find((c) => c.id === selectedId);
-                      if (client) {
-                        setFormData((prev) => ({
-                          ...prev,
-                          client_id: client.id,
-                          pso_requestor_name: client.contact_name || prev.pso_requestor_name,
-                          pso_requestor_phone: client.contact_phone || prev.pso_requestor_phone,
-                          location: client.address || prev.location,
-                        }));
-                        // Track recently used client
-                        try {
-                          const recent = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]') as string[];
-                          const updated = [selectedId, ...recent.filter((id: string) => id !== selectedId)].slice(0, 5);
-                          localStorage.setItem('rmpg_recent_pso_clients', JSON.stringify(updated));
-                        } catch { /* localStorage unavailable */ }
-                      } else {
-                        update('client_id', '');
-                      }
-                    }}
-                    style={{ borderColor: '#6b21a8' }}
-                  >
-                    <option value="">-- Select Client --</option>
-                    {(() => {
-                      let recentIds: string[] = [];
-                      try { recentIds = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]'); } catch { /* ignore */ }
-                      const recentClients = recentIds.map((id: string) => clients.find((c) => c.id === id)).filter(Boolean) as typeof clients;
-                      const otherClients = clients.filter((c) => !recentIds.includes(c.id));
-                      return (
-                        <>
-                          {recentClients.length > 0 && (
-                            <optgroup label="Recent">
-                              {recentClients.map((c) => (
-                                <option key={`recent-${c.id}`} value={c.id}>{c.name}{c.contact_name ? ` (${c.contact_name})` : ''}</option>
-                              ))}
-                            </optgroup>
-                          )}
-                          <optgroup label={recentClients.length > 0 ? 'All Clients' : 'Clients'}>
-                            {otherClients.map((c) => (
-                              <option key={c.id} value={c.id}>{c.name}{c.contact_name ? ` (${c.contact_name})` : ''}</option>
-                            ))}
-                          </optgroup>
-                        </>
-                      );
-                    })()}
-                  </select>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Contract ID</label>
                   <input type="text" className="input-dark" placeholder="PSO contract #" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
@@ -527,7 +342,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   <input type="text" className="input-dark" placeholder="Auth or PO number" value={formData.pso_authorization || ''} onChange={(e) => update('pso_authorization', e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Name</label>
                   <input type="text" className="input-dark" placeholder="Client contact" value={formData.pso_requestor_name || ''} onChange={(e) => update('pso_requestor_name', e.target.value)} />
@@ -543,9 +358,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               </div>
               {/* Process Service sub-section */}
               {formData.pso_service_type === 'process_service' && (
-                <div className="panel-inset border border-amber-700/30 p-3 mt-2">
+                <div className="border-t border-purple-700/30 pt-3 mt-2">
                   <div className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-2">Process Service Details</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
                       <select className="select-dark" value={formData.process_service_type || ''} onChange={(e) => update('process_service_type', e.target.value)}>
@@ -558,10 +373,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
                       <input type="text" className="input-dark" placeholder="Person to be served" value={formData.process_served_to || ''} onChange={(e) => update('process_served_to', e.target.value)} />
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
-                    <input type="text" className="input-dark w-full" placeholder="Address for service" value={formData.process_served_address || ''} onChange={(e) => update('process_served_address', e.target.value)} />
+                    <div>
+                      <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
+                      <input type="text" className="input-dark" placeholder="Address for service" value={formData.process_served_address || ''} onChange={(e) => update('process_served_address', e.target.value)} />
+                    </div>
                   </div>
                 </div>
               )}
@@ -571,7 +386,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Priority */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-2">Priority</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {PRIORITY_OPTIONS.map((p) => (
                 <button
                   key={p.value}
@@ -592,8 +407,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           </div>
 
-          {/* Caller Info — Quick: name + phone only; Full: all 4 fields */}
-          <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2'}`}>
+          {/* Caller Info */}
+          <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Name</label>
               <input
@@ -614,44 +429,38 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 onChange={(e) => update('caller_phone', e.target.value)}
               />
             </div>
-            {mode === 'full' && (
-              <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Relationship</label>
-                <select
-                  className="select-dark"
-                  value={formData.caller_relationship}
-                  onChange={(e) => update('caller_relationship', e.target.value)}
-                >
-                  {CALLER_RELATIONSHIPS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {mode === 'full' && (
-              <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Address</label>
-                <AddressAutocomplete
-                  className="input-dark"
-                  placeholder="Caller address"
-                  value={formData.caller_address}
-                  onChange={(val) => update('caller_address', val)}
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Relationship</label>
+              <select
+                className="select-dark"
+                value={formData.caller_relationship}
+                onChange={(e) => update('caller_relationship', e.target.value)}
+              >
+                {CALLER_RELATIONSHIPS.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Address</label>
+              <AddressAutocomplete
+                className="input-dark"
+                placeholder="Caller address"
+                value={formData.caller_address}
+                onChange={(val) => update('caller_address', val)}
+              />
+            </div>
           </div>
 
-          {/* Officer Safety Auto-Screening — full mode only */}
-          {mode === 'full' && <SafetyScreening callerName={formData.caller_name} subjectDescription={formData.subject_description} />}
+          {/* Officer Safety Auto-Screening */}
+          <SafetyScreening callerName={formData.caller_name} subjectDescription={formData.subject_description} />
 
-          {/* BOLO Alert — full mode only */}
-          {mode === 'full' && (
-            <BoloAlertBanner
-              address={formData.location}
-              subject={formData.subject_description}
-              vehicle={formData.vehicle_description}
-            />
-          )}
+          {/* BOLO Alert — auto-checks vehicle/subject descriptions */}
+          <BoloAlertBanner
+            address={formData.location}
+            subject={formData.subject_description}
+            vehicle={formData.vehicle_description}
+          />
 
           {/* Location */}
           <div>
@@ -685,22 +494,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             <DuplicateCallWarning address={formData.location} />
           </div>
 
-          {/* Description — moved up for faster tab flow */}
-          <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
-            <textarea
-              className="textarea-dark"
-              rows={mode === 'quick' ? 2 : 4}
-              placeholder="Describe the situation..."
-              value={formData.description}
-              onChange={(e) => update('description', e.target.value)}
-            />
-          </div>
-
-          {/* ── Full Mode: Extended Fields ────────────────────── */}
-
-          {/* Property — full mode only */}
-          {mode === 'full' && properties.length > 0 && (
+          {/* Property */}
+          {properties.length > 0 && (
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Property</label>
               <select
@@ -716,8 +511,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           )}
 
-          {/* Client — full mode only */}
-          {mode === 'full' && clients.length > 0 && (
+          {/* Client */}
+          {clients.length > 0 && (
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Client</label>
               <select
@@ -733,8 +528,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           )}
 
-          {/* Location Details — full mode only */}
-          {mode === 'full' && <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {/* Location Details */}
+          <div className="grid grid-cols-5 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Cross Street</label>
               <input type="text" className="input-dark" placeholder="Nearest intersection" value={formData.cross_street} onChange={(e) => update('cross_street', e.target.value)} />
@@ -752,37 +547,21 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <input type="text" className="input-dark" placeholder="Suite 302" value={formData.location_room} onChange={(e) => update('location_room', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Section</label>
-              <select className="select-dark" value={formData.section_id} onChange={(e) => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
-                <option value="">— Select —</option>
-                {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
-              </select>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Section ID</label>
+              <input type="text" className="input-dark" placeholder="SEC-1" value={formData.section_id} onChange={(e) => update('section_id', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone</label>
-              <select className="select-dark" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
-                <option value="">— Select —</option>
-                {(formData.section_id
-                  ? Array.from(new Set(districts.filter(d => d.section_id === formData.section_id).map(d => d.zone_id))).sort()
-                  : zones
-                ).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
-              </select>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone ID</label>
+              <input type="text" className="input-dark" placeholder="Z-01" value={formData.zone_id} onChange={(e) => update('zone_id', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Beat</label>
-              <select className="select-dark" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
-                <option value="">— Select —</option>
-                {(formData.zone_id
-                  ? Array.from(new Set(districts.filter(d => d.zone_id === formData.zone_id).map(d => d.beat_id))).sort()
-                  : beats
-                ).map(b => <option key={b} value={b}>{beatLabels.get(b) || b}</option>)}
-              </select>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Beat ID</label>
+              <input type="text" className="input-dark" placeholder="B-01" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)} />
             </div>
-          </div>}
+          </div>
 
-          {/* Subject / Threat Info — full mode only */}
-          {mode === 'full' && <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* Subject / Threat Info */}
+          <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1"># Subjects</label>
               <input type="number" min="0" className="input-dark" placeholder="0" value={formData.num_subjects} onChange={(e) => update('num_subjects', e.target.value)} />
@@ -793,96 +572,43 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weapons</label>
-              {(() => {
-                const isCustom = formData.weapons_involved && !(WEAPONS_OPTIONS as readonly string[]).includes(formData.weapons_involved);
-                return (<>
-                  <select className="select-dark" value={isCustom ? 'Other' : (formData.weapons_involved || '')} onChange={(e) => update('weapons_involved', e.target.value)}>
-                    <option value="">— Select —</option>
-                    {WEAPONS_OPTIONS.map((w) => <option key={w} value={w}>{w}</option>)}
-                  </select>
-                  {(formData.weapons_involved === 'Other' || isCustom) && (
-                    <input type="text" className="input-dark mt-1" placeholder="Specify weapon..." value={isCustom ? formData.weapons_involved : ''} onChange={(e) => update('weapons_involved', e.target.value || 'Other')} />
-                  )}
-                </>);
-              })()}
+              <input type="text" className="input-dark" placeholder="None, knife, firearm..." value={formData.weapons_involved} onChange={(e) => update('weapons_involved', e.target.value)} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Direction of Travel</label>
-              <select className="select-dark" value={formData.direction_of_travel || ''} onChange={(e) => update('direction_of_travel', e.target.value)}>
-                <option value="">— Select —</option>
-                {DIRECTION_OPTIONS.filter(Boolean).map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+              <input type="text" className="input-dark" placeholder="NB on State St" value={formData.direction_of_travel} onChange={(e) => update('direction_of_travel', e.target.value)} />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="relative" ref={personDropdownRef}>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-rmpg-500 normal-case">(search records)</span></label>
-              <input type="text" className="input-dark" placeholder="Type name to search records..." value={formData.subject_description} onChange={(e) => { update('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
-              {showPersonDropdown && personSearchResults.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
-                  {personSearchResults.map((p: any) => (
-                    <button key={p.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
-                      const desc = `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').replace(/,\s*$/, '') + (p.dob ? ` DOB:${p.dob}` : '');
-                      update('subject_description', desc);
-                      setShowPersonDropdown(false);
-                    }}>
-                      <span className="font-semibold text-white">{p.last_name}, {p.first_name}</span>
-                      {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
-                      {p.address && <span className="text-rmpg-500 ml-1 text-[10px]">— {p.address}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject Description</label>
+              <input type="text" className="input-dark" placeholder="Male, 5'10, dark hoodie..." value={formData.subject_description} onChange={(e) => update('subject_description', e.target.value)} />
             </div>
-            <div className="relative" ref={vehicleDropdownRef}>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-rmpg-500 normal-case">(search records)</span></label>
-              <input type="text" className="input-dark" placeholder="Type plate/make/model to search..." value={formData.vehicle_description} onChange={(e) => { update('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
-              {showVehicleDropdown && vehicleSearchResults.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
-                  {vehicleSearchResults.map((v: any) => (
-                    <button key={v.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
-                      const desc = [v.color, v.year, v.make, v.model].filter(Boolean).join(' ') + (v.plate_number ? ` PLT:${v.plate_number}` : '') + (v.plate_state ? `/${v.plate_state}` : '');
-                      update('vehicle_description', desc);
-                      setShowVehicleDropdown(false);
-                    }}>
-                      <span className="font-semibold text-white">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
-                      {v.plate_number && <span className="text-brand-400 ml-1">PLT: {v.plate_number}{v.plate_state ? `/${v.plate_state}` : ''}</span>}
-                      {v.owner_first_name && <span className="text-rmpg-400 ml-1 text-[10px]">Owner: {v.owner_last_name}, {v.owner_first_name}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle Description</label>
+              <input type="text" className="input-dark" placeholder="White panel van, no plates..." value={formData.vehicle_description} onChange={(e) => update('vehicle_description', e.target.value)} />
             </div>
           </div>
 
           {/* Scene Conditions */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Scene Safety</label>
-              <select className="select-dark" value={formData.scene_safety || ''} onChange={(e) => update('scene_safety', e.target.value)}>
-                <option value="">— Select —</option>
-                {SCENE_SAFETY_OPTIONS.filter(Boolean).map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <input type="text" className="input-dark" placeholder="Secure, hazardous..." value={formData.scene_safety} onChange={(e) => update('scene_safety', e.target.value)} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weather</label>
-              <select className="select-dark" value={formData.weather_conditions || ''} onChange={(e) => update('weather_conditions', e.target.value)}>
-                <option value="">— Select —</option>
-                {WEATHER_OPTIONS.filter(Boolean).map((w) => <option key={w} value={w}>{w}</option>)}
-              </select>
+              <input type="text" className="input-dark" placeholder="Clear, rain, snow..." value={formData.weather_conditions} onChange={(e) => update('weather_conditions', e.target.value)} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Lighting</label>
-              <select className="select-dark" value={formData.lighting_conditions || ''} onChange={(e) => update('lighting_conditions', e.target.value)}>
-                <option value="">— Select —</option>
-                {LIGHTING_OPTIONS.filter(Boolean).map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
+              <input type="text" className="input-dark" placeholder="Daylight, dark, lit..." value={formData.lighting_conditions} onChange={(e) => update('lighting_conditions', e.target.value)} />
             </div>
           </div>
 
           {/* Damage Info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Damage Estimate ($)</label>
               <input type="number" min="0" step="0.01" className="input-dark" placeholder="0.00" value={formData.damage_estimate} onChange={(e) => update('damage_estimate', e.target.value)} />
@@ -989,21 +715,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* LE Details (conditional) */}
           {formData.le_notified && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Agency</label>
-                {(() => {
-                  const isCustom = formData.le_agency && !(LE_AGENCY_OPTIONS as readonly string[]).includes(formData.le_agency);
-                  return (<>
-                    <select className="select-dark" value={isCustom ? 'Other — See Notes' : (formData.le_agency || '')} onChange={(e) => update('le_agency', e.target.value)}>
-                      <option value="">— Select Agency —</option>
-                      {LE_AGENCY_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                    {(formData.le_agency === 'Other — See Notes' || isCustom) && (
-                      <input type="text" className="input-dark mt-1" placeholder="Specify agency..." value={isCustom ? formData.le_agency : ''} onChange={(e) => update('le_agency', e.target.value || 'Other — See Notes')} />
-                    )}
-                  </>);
-                })()}
+                <input type="text" className="input-dark" placeholder="SLC PD, UHP..." value={formData.le_agency} onChange={(e) => update('le_agency', e.target.value)} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Case Number</label>
@@ -1035,7 +750,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             {formData.is_historical && (
               <div className="mt-3 space-y-3 pl-5 border-l-2 border-amber-700/50">
                 {/* Date/Time of original call */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Call Date *</label>
                     <input
@@ -1089,7 +804,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 {/* Status Timestamps (optional) */}
                 <div>
                   <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Status Timestamps <span className="text-rmpg-500 normal-case">(optional)</span></label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  <div className="grid grid-cols-5 gap-2">
                     <div>
                       <label className="block text-[9px] text-rmpg-400 mb-0.5">Dispatched</label>
                       <input type="datetime-local" className="input-dark text-[10px]" value={formData.historical_dispatched_at} onChange={(e) => update('historical_dispatched_at', e.target.value)} />
@@ -1115,7 +830,19 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               </div>
             )}
           </div>
-          </>}
+
+          {/* Description */}
+          <div>
+            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
+            <textarea
+              className="textarea-dark"
+              rows={4}
+              placeholder="Describe the situation..."
+              value={formData.description}
+              onChange={(e) => update('description', e.target.value)}
+              required
+            />
+          </div>
 
           {/* Emergency Warning */}
           {formData.priority === 'P1' && (

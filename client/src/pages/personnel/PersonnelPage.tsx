@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Search, X, Clock, AlertTriangle, BarChart3, Loader2, Plus, Archive, RotateCcw,
 } from 'lucide-react';
-import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
+import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo } from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -12,11 +12,12 @@ import CredentialFormModal from '../../components/CredentialFormModal';
 import type { CredentialFormData } from '../../components/CredentialFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapEquipment, mapDeployment, mapBodyCamera, mapBodyCamVideo } from './utils/personnelMappers';
+import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment, mapBodyCamera, mapBodyCamVideo } from './utils/personnelMappers';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { MAIN_TABS, type MainTab, type DetailTab, type ModalMode } from './utils/personnelConstants';
 import { getWeekMonday } from './utils/personnelFormatters';
@@ -34,7 +35,6 @@ import TrainingTab from './tabs/TrainingTab';
 import EquipmentTab from './tabs/EquipmentTab';
 import DeploymentTab from './tabs/DeploymentTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
-import DashCameraTab from './tabs/DashCameraTab';
 import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
 import EquipmentFormModal from './modals/EquipmentFormModal';
@@ -42,9 +42,8 @@ import type { EquipmentFormData } from './modals/EquipmentFormModal';
 import BodyCameraFormModal from './modals/BodyCameraFormModal';
 import type { BodyCameraFormData } from './modals/BodyCameraFormModal';
 import VideoUploadModal from '../../components/VideoUploadModal';
-import VideoPlayer from '../../components/VideoPlayer';
 import VideoEditModal from '../../components/VideoEditModal';
-import type { BodyCamVideoEditData } from '../../components/VideoEditModal';
+import VideoPlayer from '../../components/VideoPlayer';
 import DeploymentFormModal from './modals/DeploymentFormModal';
 import type { DeploymentFormData } from './modals/DeploymentFormModal';
 import OfficerFormModal from './modals/OfficerFormModal';
@@ -70,13 +69,14 @@ interface ActivityEntry {
 
 export default function PersonnelPage() {
   const { addToast } = useToast();
+  const { user } = useAuth();
   const isMobile = useIsMobile();
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
     'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'dash_cameras', 'deployment', 'analytics'] as const,
+    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment', 'analytics'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,14 +111,6 @@ export default function PersonnelPage() {
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
   const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
 
-  // Dash camera data (ClearPathGPS)
-  const [dashcamEvents, setDashcamEvents] = useState<DashcamEvent[]>([]);
-  const [deviceMappings, setDeviceMappings] = useState<CpgDeviceMapping[]>([]);
-  const [dashcamLoading, setDashcamLoading] = useState(false);
-  const [officerDashcamEvents, setOfficerDashcamEvents] = useState<DashcamEvent[]>([]);
-  const [officerDeviceMapping, setOfficerDeviceMapping] = useState<CpgDeviceMapping | null>(null);
-  const [officerDashcamLoading, setOfficerDashcamLoading] = useState(false);
-
   // All properties from the database (for deployment/schedule dropdowns)
   const [allProperties, setAllProperties] = useState<{ id: string; name: string }[]>([]);
 
@@ -152,6 +144,12 @@ export default function PersonnelPage() {
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
 
+  // Timesheet date range
+  const [timeSheetDateRange, setTimeSheetDateRange] = useState(() => {
+    const t = new Date().toISOString().split('T')[0];
+    return { start: t, end: t };
+  });
+
   // ----------------------------------------------------------
   // Data Fetching
   // ----------------------------------------------------------
@@ -166,7 +164,7 @@ export default function PersonnelPage() {
       const [usersRes, schedulesRes, timeRes, credentialsRes, propsRes] = await Promise.allSettled([
         apiFetch<any[]>(`/personnel?archived=${showArchived}`),
         apiFetch<any[]>('/personnel/schedules'),
-        apiFetch<any[]>('/personnel/time'),
+        apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`),
         apiFetch<any[]>('/personnel/credentials'),
         apiFetch<any[]>('/records/properties'),
       ]);
@@ -196,7 +194,7 @@ export default function PersonnelPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [showArchived]);
+  }, [showArchived, timeSheetDateRange]);
 
   useEffect(() => { fetchCoreData(); }, [fetchCoreData]);
 
@@ -234,22 +232,9 @@ export default function PersonnelPage() {
     if (activeTab === 'equipment' && equipment.length === 0 && !equipmentLoading) {
       setEquipmentLoading(true);
       apiFetch<any[]>('/personnel/equipment')
-        .then(raw => setEquipment((Array.isArray(raw) ? raw : []).map(mapEquipment)))
+        .then(raw => setEquipment(Array.isArray(raw) ? raw : []))
         .catch(() => addToast('Failed to load equipment data', 'error'))
         .finally(() => setEquipmentLoading(false));
-    }
-    if (activeTab === 'dash_cameras' && dashcamEvents.length === 0 && !dashcamLoading) {
-      setDashcamLoading(true);
-      Promise.all([
-        apiFetch<any[]>('/clearpathgps/dashcam-events'),
-        apiFetch<any[]>('/clearpathgps/mappings'),
-      ])
-        .then(([events, mappings]) => {
-          setDashcamEvents(Array.isArray(events) ? events : []);
-          setDeviceMappings(Array.isArray(mappings) ? mappings : []);
-        })
-        .catch(() => addToast('Failed to load dash camera data', 'error'))
-        .finally(() => setDashcamLoading(false));
     }
     if (activeTab === 'analytics' && !analytics && !analyticsLoading) {
       setAnalyticsLoading(true);
@@ -278,7 +263,7 @@ export default function PersonnelPage() {
     if (detailTab === 'equipment' && equipment.length === 0 && !equipmentLoading) {
       setEquipmentLoading(true);
       apiFetch<any[]>('/personnel/equipment')
-        .then(raw => setEquipment((Array.isArray(raw) ? raw : []).map(mapEquipment)))
+        .then(raw => setEquipment(Array.isArray(raw) ? raw : []))
         .catch(() => addToast('Failed to load equipment', 'error'))
         .finally(() => setEquipmentLoading(false));
     }
@@ -294,24 +279,6 @@ export default function PersonnelPage() {
         })
         .catch(() => addToast('Failed to load body cameras', 'error'))
         .finally(() => setBodyCamerasLoading(false));
-    }
-    if (detailTab === 'dash_cameras') {
-      setOfficerDashcamLoading(true);
-      // Fetch per-officer dashcam events and find their device mapping
-      Promise.all([
-        apiFetch<any[]>(`/clearpathgps/dashcam-events/by-officer/${selectedOfficer.id}`),
-        apiFetch<any[]>('/clearpathgps/mappings'),
-      ])
-        .then(([events, mappings]) => {
-          setOfficerDashcamEvents(Array.isArray(events) ? events : []);
-          // Find the mapping for this officer's unit
-          const allMappings: CpgDeviceMapping[] = Array.isArray(mappings) ? mappings : [];
-          const match = allMappings.find(m => m.officer_name && selectedOfficer &&
-            m.officer_name === `${selectedOfficer.first_name} ${selectedOfficer.last_name}`);
-          setOfficerDeviceMapping(match || null);
-        })
-        .catch(() => addToast('Failed to load dash camera data', 'error'))
-        .finally(() => setOfficerDashcamLoading(false));
     }
     if (detailTab === 'deployment' && deployments.length === 0 && !deploymentsLoading) {
       setDeploymentsLoading(true);
@@ -534,26 +501,10 @@ export default function PersonnelPage() {
     setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
   };
 
-  const refreshDashcamData = async () => {
-    setDashcamLoading(true);
-    try {
-      const [events, mappings] = await Promise.all([
-        apiFetch<any[]>('/clearpathgps/dashcam-events'),
-        apiFetch<any[]>('/clearpathgps/mappings'),
-      ]);
-      setDashcamEvents(Array.isArray(events) ? events : []);
-      setDeviceMappings(Array.isArray(mappings) ? mappings : []);
-    } catch {
-      addToast('Failed to refresh dash camera data', 'error');
-    } finally {
-      setDashcamLoading(false);
-    }
-  };
-
   const handleBodyCameraSubmit = async (data: BodyCameraFormData) => {
     setIsSubmitting(true);
     try {
-      const payload = { ...data, storage_capacity_gb: parseInt(data.storage_capacity_gb, 10) || 32 };
+      const payload = { ...data, storage_capacity_gb: parseInt(data.storage_capacity_gb) || 32 };
       if (bodyCameraModalMode === 'edit' && bodyCameraEditData?.id) {
         await apiFetch(`/personnel/body-cameras/${bodyCameraEditData.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {
@@ -608,34 +559,17 @@ export default function PersonnelPage() {
     }
   };
 
-  const handleVideoEdit = async (videoId: number, data: BodyCamVideoEditData) => {
+  const handleVideoEdit = async (videoId: number, data: Record<string, any>) => {
     setIsSubmitting(true);
     try {
-      // Capture original values to detect overlay-relevant changes
-      const original = editingVideo;
       await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
       await refreshBodyCameras();
       setEditingVideo(null);
-      addToast('Video updated', 'success');
-      // Auto-reprocess overlay if overlay-affecting fields changed
-      if (original && original.overlay_status === 'complete') {
-        const overlayChanged =
-          original.classification !== data.classification ||
-          (original.case_number || '') !== data.case_number ||
-          (original.recorded_at ? original.recorded_at.slice(0, 16) : '') !== data.recorded_at;
-        if (overlayChanged) {
-          try {
-            await apiFetch(`/personnel/bodycam-videos/${videoId}/reprocess`, { method: 'POST' });
-            await refreshBodyCameras();
-            addToast('Overlay reprocessing started', 'info');
-          } catch {
-            addToast('Video saved but overlay reprocess failed', 'warning');
-          }
-        }
-      }
+      setModal('none');
+      addToast('Video metadata updated', 'success');
     } catch {
       addToast('Failed to update video', 'error');
     } finally {
@@ -793,7 +727,7 @@ export default function PersonnelPage() {
   const handleClockIn = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/clock-in', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Clocked in', 'success');
     } catch (err: any) {
@@ -804,7 +738,7 @@ export default function PersonnelPage() {
   const handleClockOut = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/clock-out', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Clocked out', 'success');
     } catch (err: any) {
@@ -815,7 +749,7 @@ export default function PersonnelPage() {
   const handleStartBreak = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/start-break', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Break started', 'success');
     } catch (err: any) {
@@ -826,7 +760,7 @@ export default function PersonnelPage() {
   const handleEndBreak = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/end-break', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Break ended', 'success');
     } catch (err: any) {
@@ -837,7 +771,7 @@ export default function PersonnelPage() {
   const handleDeleteTimeEntry = async (entryId: string) => {
     try {
       await apiFetch(`/personnel/time/${entryId}`, { method: 'DELETE' });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Time entry deleted', 'success');
     } catch (err: any) {
@@ -854,11 +788,11 @@ export default function PersonnelPage() {
     try {
       await apiFetch(`/personnel/time/${data.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null }),
+        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null, reason: data.reason, notes: data.notes || undefined }),
       });
       setModal('none');
       setEditingTimeEntry(null);
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Time entry updated', 'success');
     } catch (err: any) {
@@ -871,6 +805,40 @@ export default function PersonnelPage() {
   const openEditTimeEntry = (entry: TimeEntry) => {
     setEditingTimeEntry(entry);
     setModal('edit_time_entry');
+  };
+
+  const handleBatchClockIn = async (officerIds: string[]) => {
+    try {
+      const res = await apiFetch<any>('/personnel/time/batch-clock-in', {
+        method: 'POST',
+        body: JSON.stringify({ officer_ids: officerIds }),
+      });
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
+      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
+      addToast(`Clocked in ${res.clocked_in} officer${res.clocked_in !== 1 ? 's' : ''}${res.skipped > 0 ? ` (${res.skipped} already active)` : ''}`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to batch clock in', 'error');
+    }
+  };
+
+  const handleInlineTimeEdit = async (entryId: string, field: string, value: string, reason: string) => {
+    try {
+      const entry = timeEntries.find(te => te.id === entryId);
+      if (!entry) return;
+      await apiFetch(`/personnel/time/${entryId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          clock_in: field === 'clock_in' ? value : entry.clock_in,
+          clock_out: field === 'clock_out' ? value : (entry.clock_out || null),
+          reason,
+        }),
+      });
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
+      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
+      addToast('Time entry updated', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to update', 'error');
+    }
   };
 
   // ----------------------------------------------------------
@@ -1003,11 +971,8 @@ export default function PersonnelPage() {
       onDeleteBodyCamera={handleBodyCameraDelete}
       onUploadVideo={() => setModal('upload_video')}
       onDeleteVideo={handleVideoDelete}
-      onEditVideo={setEditingVideo}
+      onEditVideo={(vid) => { setEditingVideo(vid); setModal('edit_video'); }}
       onPlayVideo={setPlayingVideo}
-      dashcamEvents={officerDashcamEvents}
-      dashcamDeviceMapping={officerDeviceMapping}
-      dashcamLoading={officerDashcamLoading}
       onAddDeployment={id => openAddDeployment(id)}
       onEditOfficer={openEditOfficer}
       onDeleteOfficer={() => setDeleteTarget(selectedOfficer)}
@@ -1171,7 +1136,17 @@ export default function PersonnelPage() {
         )}
 
         {!loading && !error && activeTab === 'time' && (
-          <TimeAttendanceTab timeEntries={timeEntries} officers={officers} onEditTimeEntry={openEditTimeEntry} onDeleteTimeEntry={handleDeleteTimeEntry} />
+          <TimeAttendanceTab
+            timeEntries={timeEntries}
+            officers={officers}
+            onEditTimeEntry={openEditTimeEntry}
+            onDeleteTimeEntry={handleDeleteTimeEntry}
+            onBatchClockIn={handleBatchClockIn}
+            onInlineEdit={handleInlineTimeEdit}
+            userRole={user?.role}
+            dateRange={timeSheetDateRange}
+            onDateRangeChange={setTimeSheetDateRange}
+          />
         )}
 
         {!loading && !error && activeTab === 'credentials' && (
@@ -1199,19 +1174,6 @@ export default function PersonnelPage() {
             onAddEquipment={() => openAddEquipment()}
             onEditEquipment={openEditEquipment}
             onDeleteEquipment={handleEquipmentDelete}
-          />
-        )}
-
-        {!loading && !error && activeTab === 'dash_cameras' && (
-          <DashCameraTab
-            dashcamEvents={dashcamEvents}
-            deviceMappings={deviceMappings}
-            loading={dashcamLoading}
-            onSelectOfficer={officerId => {
-              const officer = officers.find(o => o.id === officerId);
-              if (officer) { setActiveTab('roster'); setSelectedOfficer(officer); setDetailTab('dash_cameras'); }
-            }}
-            onRefresh={refreshDashcamData}
           />
         )}
 
@@ -1297,6 +1259,14 @@ export default function PersonnelPage() {
         />
       )}
 
+      <VideoEditModal
+        isOpen={modal === 'edit_video'}
+        onClose={() => { setModal('none'); setEditingVideo(null); }}
+        onSave={handleVideoEdit}
+        video={editingVideo}
+        isSubmitting={isSubmitting}
+      />
+
       <VideoPlayer
         isOpen={!!playingVideo}
         onClose={() => setPlayingVideo(null)}
@@ -1308,15 +1278,6 @@ export default function PersonnelPage() {
           if (token) headers['Authorization'] = `Bearer ${token}`;
           return headers;
         }}
-        onEditVideo={(vid) => { setPlayingVideo(null); setEditingVideo(vid); }}
-      />
-
-      <VideoEditModal
-        isOpen={!!editingVideo}
-        onClose={() => setEditingVideo(null)}
-        onSave={handleVideoEdit}
-        video={editingVideo}
-        isSubmitting={isSubmitting}
       />
 
       <DeploymentFormModal

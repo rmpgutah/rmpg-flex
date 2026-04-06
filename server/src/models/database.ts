@@ -3,10 +3,10 @@ import bcryptjs from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { migrateIncidentNumbers, generateCaseNumber } from '../utils/caseNumbers';
+import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
-import { seedAllStatutes } from '../seeds/seedAllStatutes';
+import { seedUtahStatutes } from '../seeds/utahStatutes';
 import { DISPATCH_DISTRICTS } from '../seeds/dispatchDistricts';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
@@ -40,39 +40,11 @@ export function initDatabase(): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
-  // Security pragmas — prevent recovery of deleted PII and schema manipulation
-  db.pragma('secure_delete = ON');        // Overwrite deleted data with zeros (CJIS compliance)
-  db.pragma('trusted_schema = OFF');      // Reject untrusted schema extensions (SQL injection defense)
-  db.pragma('cell_size_check = ON');      // Detect corrupt/oversized cells before they cause issues
-
-  // Performance pragmas — session-level, reset on reconnection
-  db.pragma('busy_timeout = 5000');       // Wait 5s on lock instead of instant SQLITE_BUSY
-  db.pragma('mmap_size = 268435456');     // 256MB memory-mapped I/O for faster reads
-  db.pragma('cache_size = -64000');       // 64MB page cache (negative = kilobytes)
-
-  // Set default timeout for all database operations — prevents slow query DoS
-  // better-sqlite3 runs synchronously, but this limits CPU time per statement
-  db.defaultSafeIntegers(false);         // Return JS numbers, not BigInt (security: prevents unexpected type coercion)
-
-  // Run integrity check on startup — detect corruption early
-  try {
-    const integrityResult = db.pragma('integrity_check') as { integrity_check: string }[];
-    if (integrityResult.length > 0 && integrityResult[0].integrity_check !== 'ok') {
-      console.error('╔═══════════════════════════════════════════════════════════╗');
-      console.error('║  WARNING: Database integrity check FAILED!               ║');
-      console.error('║  The database may be corrupted. Back up immediately.     ║');
-      console.error('╚═══════════════════════════════════════════════════════════╝');
-      console.error('Integrity results:', integrityResult.slice(0, 10));
-    }
-  } catch (e) {
-    console.warn('[DB] Integrity check failed to run:', (e as Error).message);
-  }
-
   createTables();
   migrateSchema();
   createIndexes();
   seedData();
-  seedAllStatutes(db);
+  seedUtahStatutes(db);
 
   console.log('Database initialized successfully at', DB_PATH);
   return db;
@@ -86,7 +58,7 @@ function createTables(): void {
       password_hash TEXT NOT NULL,
       full_name TEXT NOT NULL,
       email TEXT,
-      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager','human_resources')),
+      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer')),
       badge_number TEXT,
       phone TEXT,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
@@ -192,17 +164,6 @@ function createTables(): void {
       updated_at TEXT DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (officer_id) REFERENCES users(id),
       FOREIGN KEY (current_call_id) REFERENCES calls_for_service(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS call_units (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id INTEGER NOT NULL,
-      unit_id INTEGER NOT NULL,
-      assigned_at TEXT DEFAULT (datetime('now','localtime')),
-      unassigned_at TEXT,
-      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
-      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE,
-      UNIQUE(call_id, unit_id)
     );
 
     CREATE TABLE IF NOT EXISTS incidents (
@@ -516,102 +477,6 @@ function createTables(): void {
       synced_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
-    CREATE TABLE IF NOT EXISTS utah_warrant_sync_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      persons_found INTEGER DEFAULT 0,
-      warrants_found INTEGER DEFAULT 0,
-      requests_made INTEGER DEFAULT 0,
-      search_strategy TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      error_message TEXT,
-      duration_ms INTEGER,
-      synced_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-
-    -- ── ARREST RECORDS — JailBase county arrest data ──
-    CREATE TABLE IF NOT EXISTS arrest_records (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      jailbase_id TEXT,
-      source_id TEXT,
-      source_name TEXT,
-      full_name TEXT NOT NULL,
-      first_name TEXT,
-      last_name TEXT,
-      middle_name TEXT,
-      date_of_birth TEXT,
-      booking_date TEXT,
-      release_date TEXT,
-      charges TEXT,
-      mugshot_url TEXT,
-      details_url TEXT,
-      county TEXT,
-      status TEXT DEFAULT 'active',
-      raw_record TEXT,
-      fetched_at TEXT DEFAULT (datetime('now','localtime')),
-      updated_at TEXT DEFAULT (datetime('now','localtime')),
-      UNIQUE(jailbase_id, source_id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_arrest_full_name ON arrest_records(full_name COLLATE NOCASE);
-    CREATE INDEX IF NOT EXISTS idx_arrest_last_name ON arrest_records(last_name COLLATE NOCASE);
-    CREATE INDEX IF NOT EXISTS idx_arrest_first_name ON arrest_records(first_name COLLATE NOCASE);
-    CREATE INDEX IF NOT EXISTS idx_arrest_booking ON arrest_records(booking_date);
-    CREATE INDEX IF NOT EXISTS idx_arrest_source ON arrest_records(source_id);
-    CREATE INDEX IF NOT EXISTS idx_arrest_county ON arrest_records(county);
-
-    CREATE TABLE IF NOT EXISTS arrest_sync_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source_id TEXT,
-      records_count INTEGER DEFAULT 0,
-      counties_synced INTEGER DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'pending',
-      error_message TEXT,
-      duration_ms INTEGER,
-      synced_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS arrest_cross_links (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      arrest_record_id INTEGER NOT NULL,
-      linked_type TEXT NOT NULL,
-      linked_id INTEGER NOT NULL,
-      match_type TEXT DEFAULT 'name',
-      match_confidence REAL DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id) ON DELETE CASCADE
-    );
-    CREATE INDEX IF NOT EXISTS idx_crosslink_arrest ON arrest_cross_links(arrest_record_id);
-    CREATE INDEX IF NOT EXISTS idx_crosslink_type ON arrest_cross_links(linked_type, linked_id);
-
-    -- ── Jail Roster Scraper ──────────────────────────
-    CREATE TABLE IF NOT EXISTS jail_roster_sync_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      county TEXT NOT NULL,
-      records_found INTEGER DEFAULT 0,
-      records_new INTEGER DEFAULT 0,
-      records_updated INTEGER DEFAULT 0,
-      records_released INTEGER DEFAULT 0,
-      details_fetched INTEGER DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'pending',
-      error_message TEXT,
-      duration_ms INTEGER,
-      synced_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_jail_sync_county ON jail_roster_sync_log(county);
-
-    CREATE TABLE IF NOT EXISTS jail_roster_config (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      county TEXT NOT NULL UNIQUE,
-      display_name TEXT,
-      roster_url TEXT,
-      roster_type TEXT DEFAULT 'html',
-      enabled INTEGER DEFAULT 0,
-      scrape_interval_minutes INTEGER DEFAULT 30,
-      last_scrape_at TEXT,
-      consecutive_errors INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      updated_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-
     CREATE TABLE IF NOT EXISTS microbilt_searches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product TEXT NOT NULL,
@@ -885,35 +750,6 @@ function createTables(): void {
       UNIQUE(incident_id, vehicle_id)
     );
 
-    -- Call-level person/vehicle linkage (structured records on dispatch calls)
-    CREATE TABLE IF NOT EXISTS call_persons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id INTEGER NOT NULL,
-      person_id INTEGER NOT NULL,
-      role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('suspect','victim','witness','reporting_party','involved','other')),
-      notes TEXT,
-      added_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
-      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE,
-      FOREIGN KEY (added_by) REFERENCES users(id),
-      UNIQUE(call_id, person_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS call_vehicles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id INTEGER NOT NULL,
-      vehicle_id INTEGER NOT NULL,
-      role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('suspect_vehicle','victim_vehicle','witness_vehicle','involved','evidence','other')),
-      notes TEXT,
-      added_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
-      FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE,
-      FOREIGN KEY (added_by) REFERENCES users(id),
-      UNIQUE(call_id, vehicle_id)
-    );
-
     -- Training Records
     CREATE TABLE IF NOT EXISTS training_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -991,174 +827,6 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
 
-    -- ── HR Console ─────────────────────────────────────────
-    CREATE TABLE IF NOT EXISTS leave_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      type TEXT NOT NULL DEFAULT 'vacation' CHECK(type IN ('vacation','sick','personal','bereavement','training','unpaid')),
-      start_date TEXT NOT NULL,
-      end_date TEXT NOT NULL,
-      hours_requested REAL NOT NULL DEFAULT 0,
-      reason TEXT,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','denied','cancelled')),
-      reviewed_by INTEGER,
-      reviewed_at TEXT,
-      review_notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (reviewed_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS leave_balances (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      year INTEGER NOT NULL,
-      vacation_total REAL NOT NULL DEFAULT 80,
-      vacation_used REAL NOT NULL DEFAULT 0,
-      sick_total REAL NOT NULL DEFAULT 40,
-      sick_used REAL NOT NULL DEFAULT 0,
-      personal_total REAL NOT NULL DEFAULT 24,
-      personal_used REAL NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      UNIQUE(officer_id, year)
-    );
-
-    CREATE TABLE IF NOT EXISTS disciplinary_records (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      type TEXT NOT NULL DEFAULT 'verbal_warning' CHECK(type IN ('verbal_warning','written_warning','suspension','termination','commendation','counseling')),
-      severity TEXT NOT NULL DEFAULT 'minor' CHECK(severity IN ('minor','moderate','major','critical')),
-      incident_date TEXT NOT NULL,
-      description TEXT NOT NULL,
-      action_taken TEXT,
-      follow_up_date TEXT,
-      follow_up_notes TEXT,
-      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed','appealed')),
-      issued_by INTEGER NOT NULL,
-      witness TEXT,
-      attachments TEXT DEFAULT '[]',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (issued_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS performance_reviews (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      reviewer_id INTEGER NOT NULL,
-      review_period_start TEXT NOT NULL,
-      review_period_end TEXT NOT NULL,
-      review_date TEXT,
-      type TEXT NOT NULL DEFAULT 'annual' CHECK(type IN ('annual','probationary','quarterly','improvement_plan')),
-      overall_rating INTEGER CHECK(overall_rating BETWEEN 1 AND 5),
-      categories TEXT DEFAULT '{}',
-      strengths TEXT,
-      areas_for_improvement TEXT,
-      goals TEXT,
-      officer_comments TEXT,
-      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','acknowledged','completed')),
-      acknowledged_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (reviewer_id) REFERENCES users(id)
-    );
-
-    -- ── Two-Factor Authentication ─────────────────────────
-    CREATE TABLE IF NOT EXISTS user_totp_secrets (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL UNIQUE,
-      encrypted_secret TEXT NOT NULL,
-      encryption_iv TEXT NOT NULL,
-      encryption_tag TEXT NOT NULL,
-      is_verified INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS user_backup_codes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      code_hash TEXT NOT NULL,
-      is_used INTEGER NOT NULL DEFAULT 0,
-      used_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS trusted_devices (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      device_fingerprint TEXT NOT NULL,
-      device_name TEXT,
-      ip_address TEXT,
-      trusted_until TEXT NOT NULL,
-      last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS password_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS security_notifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      event_type TEXT NOT NULL CHECK(event_type IN (
-        'new_device_login','suspicious_login','password_changed',
-        '2fa_enabled','2fa_disabled','2fa_reset','device_revoked',
-        'session_revoked','password_expiring','failed_login_threshold',
-        'webauthn_registered','webauthn_removed'
-      )),
-      title TEXT NOT NULL,
-      details TEXT,
-      ip_address TEXT,
-      device_info TEXT,
-      is_read INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    -- ── Security Alerts (system-wide, visible to admins) ──
-    CREATE TABLE IF NOT EXISTS security_alerts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      alert_type TEXT NOT NULL,
-      severity TEXT NOT NULL CHECK(severity IN ('low','medium','high','critical')),
-      title TEXT NOT NULL,
-      details TEXT,
-      source_ip TEXT,
-      user_id INTEGER,
-      acknowledged_by INTEGER,
-      acknowledged_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
-    -- ── WebAuthn / Security Key Credentials ─────────────
-    CREATE TABLE IF NOT EXISTS webauthn_credentials (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      credential_id TEXT NOT NULL UNIQUE,
-      public_key TEXT NOT NULL,
-      counter INTEGER NOT NULL DEFAULT 0,
-      device_type TEXT NOT NULL DEFAULT 'singleDevice',
-      backed_up INTEGER NOT NULL DEFAULT 0,
-      transports TEXT,
-      name TEXT NOT NULL DEFAULT 'Security Key',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      last_used_at TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
     -- Body cameras — dedicated device tracking
     CREATE TABLE IF NOT EXISTS body_cameras (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1208,52 +876,6 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_officer ON bodycam_videos(officer_id);
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_case ON bodycam_videos(case_number);
 
-    -- Dash camera video footage (MVR / in-car video)
-    CREATE TABLE IF NOT EXISTS dashcam_videos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      vehicle_id INTEGER,
-      unit_id INTEGER,
-      title TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      file_size INTEGER NOT NULL DEFAULT 0,
-      duration_seconds INTEGER,
-      mime_type TEXT DEFAULT 'video/mp4',
-      recorded_at TEXT,
-      case_number TEXT,
-      classification TEXT DEFAULT 'routine',
-      speed_mph REAL,
-      latitude REAL,
-      longitude REAL,
-      address TEXT,
-      notes TEXT,
-      source TEXT DEFAULT 'upload',
-      uploaded_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
-      FOREIGN KEY (unit_id) REFERENCES units(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_vehicle ON dashcam_videos(vehicle_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_unit ON dashcam_videos(unit_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_case ON dashcam_videos(case_number);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_recorded ON dashcam_videos(recorded_at);
-
-    -- Dash cam video links (attach videos to cases, calls, incidents)
-    CREATE TABLE IF NOT EXISTS dashcam_video_links (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      video_id INTEGER NOT NULL,
-      entity_type TEXT NOT NULL CHECK(entity_type IN ('call', 'incident', 'case', 'warrant', 'citation')),
-      entity_id INTEGER NOT NULL,
-      linked_by TEXT NOT NULL,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (video_id) REFERENCES dashcam_videos(id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_dashcam_links_video ON dashcam_video_links(video_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_links_entity ON dashcam_video_links(entity_type, entity_id);
-
     -- Radio transmission transcripts — permanent log of PTT voice comms
     CREATE TABLE IF NOT EXISTS radio_transcripts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1271,6 +893,169 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_channel ON radio_transcripts(channel);
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_user ON radio_transcripts(user_id);
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_time ON radio_transcripts(transmitted_at);
+
+    -- ═══ Dash Cameras ══════════════════════════════════════
+
+    -- Dash cameras — mounted in fleet vehicles
+    CREATE TABLE IF NOT EXISTS dash_cameras (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL,
+      camera_id TEXT NOT NULL UNIQUE,
+      make TEXT,
+      model TEXT,
+      firmware_version TEXT,
+      storage_capacity_gb INTEGER DEFAULT 32,
+      channel_count INTEGER DEFAULT 2,
+      status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available','installed','maintenance','damaged','lost')),
+      condition TEXT NOT NULL DEFAULT 'good' CHECK(condition IN ('good','fair','poor')),
+      installed_at TEXT,
+      removed_at TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dash_cameras_vehicle ON dash_cameras(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_dash_cameras_status ON dash_cameras(status);
+
+    -- Dash camera video footage
+    CREATE TABLE IF NOT EXISTS dashcam_videos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      camera_id INTEGER NOT NULL,
+      vehicle_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      duration_seconds INTEGER,
+      mime_type TEXT DEFAULT 'video/mp4',
+      recorded_at TEXT,
+      case_number TEXT,
+      classification TEXT DEFAULT 'routine' CHECK(classification IN ('routine','evidence','flagged','restricted')),
+      retention_status TEXT DEFAULT 'active',
+      gps_lat REAL,
+      gps_lon REAL,
+      notes TEXT,
+      uploaded_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (camera_id) REFERENCES dash_cameras(id),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_vehicle ON dashcam_videos(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_case ON dashcam_videos(case_number);
+
+    -- ═══ ClearPathGPS Integration ══════════════════════════
+
+    -- ClearPathGPS synced vehicle data
+    CREATE TABLE IF NOT EXISTS cpgps_vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_id TEXT UNIQUE NOT NULL,
+      vehicle_id INTEGER,
+      name TEXT,
+      vin TEXT,
+      make TEXT,
+      model TEXT,
+      year INTEGER,
+      license_plate TEXT,
+      device_serial TEXT,
+      last_lat REAL,
+      last_lon REAL,
+      last_speed REAL,
+      last_heading REAL,
+      last_reported_at TEXT,
+      odometer REAL,
+      engine_hours REAL,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_vehicles_vehicle ON cpgps_vehicles(vehicle_id);
+
+    -- ClearPathGPS trip history
+    CREATE TABLE IF NOT EXISTS cpgps_trips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_vehicle_id TEXT NOT NULL,
+      vehicle_id INTEGER,
+      trip_start TEXT,
+      trip_end TEXT,
+      start_lat REAL,
+      start_lon REAL,
+      end_lat REAL,
+      end_lon REAL,
+      start_address TEXT,
+      end_address TEXT,
+      distance_miles REAL,
+      max_speed REAL,
+      avg_speed REAL,
+      idle_duration_seconds INTEGER,
+      drive_duration_seconds INTEGER,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_vehicle ON cpgps_trips(cpgps_vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_start ON cpgps_trips(trip_start);
+
+    -- ClearPathGPS location breadcrumbs
+    CREATE TABLE IF NOT EXISTS cpgps_locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_vehicle_id TEXT NOT NULL,
+      vehicle_id INTEGER,
+      lat REAL,
+      lon REAL,
+      speed REAL,
+      heading REAL,
+      reported_at TEXT NOT NULL,
+      address TEXT,
+      ignition_on INTEGER,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_locations_vehicle ON cpgps_locations(cpgps_vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_locations_time ON cpgps_locations(reported_at);
+
+    -- ClearPathGPS alerts
+    CREATE TABLE IF NOT EXISTS cpgps_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_vehicle_id TEXT NOT NULL,
+      vehicle_id INTEGER,
+      alert_type TEXT,
+      severity TEXT,
+      message TEXT,
+      triggered_at TEXT,
+      lat REAL,
+      lon REAL,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_vehicle ON cpgps_alerts(cpgps_vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_time ON cpgps_alerts(triggered_at);
+
+    -- ClearPathGPS sync log
+    CREATE TABLE IF NOT EXISTS cpgps_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      records_fetched INTEGER DEFAULT 0,
+      records_stored INTEGER DEFAULT 0,
+      oldest_record TEXT,
+      newest_record TEXT,
+      error_message TEXT,
+      started_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      completed_at TEXT
+    );
 
     -- ═══ Offline Support ═══════════════════════════════════
 
@@ -1306,441 +1091,6 @@ function createTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_company_docs_category ON company_documents(category);
     CREATE INDEX IF NOT EXISTS idx_company_docs_published ON company_documents(published);
-
-    -- ClearPathGPS device-to-unit mappings
-    CREATE TABLE IF NOT EXISTS cpg_device_mappings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cpg_device_id TEXT NOT NULL UNIQUE,
-      cpg_display_name TEXT,
-      cpg_serial_number TEXT,
-      unit_id INTEGER NOT NULL,
-      is_active INTEGER DEFAULT 1,
-      last_synced_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (unit_id) REFERENCES units(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_unit ON cpg_device_mappings(unit_id);
-    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_device ON cpg_device_mappings(cpg_device_id);
-
-    -- ClearPathGPS dashcam video events
-    CREATE TABLE IF NOT EXISTS dashcam_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cpg_device_id TEXT NOT NULL,
-      unit_id INTEGER,
-      dashcam_id TEXT,
-      event_type TEXT NOT NULL,
-      event_timestamp TEXT NOT NULL,
-      latitude REAL,
-      longitude REAL,
-      heading REAL,
-      speed_mph REAL,
-      address TEXT,
-      status_code TEXT,
-      status_code_text TEXT,
-      video_available INTEGER DEFAULT 0,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (unit_id) REFERENCES units(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_dashcam_events_device_time ON dashcam_events(cpg_device_id, event_timestamp);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_events_unit ON dashcam_events(unit_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_events_type ON dashcam_events(event_type);
-
-    -- IPED Digital Forensics — processing job tracking
-    CREATE TABLE IF NOT EXISTS iped_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      evidence_id INTEGER,
-      job_type TEXT NOT NULL CHECK(job_type IN ('hash','process','triage','csam_scan')),
-      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed','cancelled')),
-      profile TEXT DEFAULT 'forensic',
-      input_path TEXT NOT NULL,
-      output_path TEXT,
-      source_type TEXT,
-      started_at TEXT,
-      completed_at TEXT,
-      progress_percent INTEGER DEFAULT 0,
-      items_found INTEGER DEFAULT 0,
-      items_processed INTEGER DEFAULT 0,
-      error_message TEXT,
-      result_summary TEXT,
-      created_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (evidence_id) REFERENCES evidence(id),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_iped_jobs_evidence ON iped_jobs(evidence_id);
-    CREATE INDEX IF NOT EXISTS idx_iped_jobs_status ON iped_jobs(status);
-
-    -- IPED Digital Forensics — hash results for evidence files
-    CREATE TABLE IF NOT EXISTS digital_evidence_hashes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      evidence_id INTEGER,
-      attachment_id INTEGER,
-      iped_job_id INTEGER,
-      file_name TEXT NOT NULL,
-      file_path TEXT,
-      file_size INTEGER,
-      mime_type TEXT,
-      md5 TEXT,
-      sha1 TEXT,
-      sha256 TEXT,
-      sha512 TEXT,
-      photodna_hash TEXT,
-      phash TEXT,
-      dhash TEXT,
-      hash_set_match INTEGER DEFAULT 0,
-      hash_set_name TEXT,
-      hash_set_category TEXT,
-      match_confidence REAL,
-      flagged INTEGER DEFAULT 0,
-      flag_reason TEXT,
-      reviewed_by INTEGER,
-      reviewed_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (evidence_id) REFERENCES evidence(id),
-      FOREIGN KEY (attachment_id) REFERENCES attachments(id),
-      FOREIGN KEY (iped_job_id) REFERENCES iped_jobs(id),
-      FOREIGN KEY (reviewed_by) REFERENCES users(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_deh_evidence_id ON digital_evidence_hashes(evidence_id);
-    CREATE INDEX IF NOT EXISTS idx_deh_md5 ON digital_evidence_hashes(md5);
-    CREATE INDEX IF NOT EXISTS idx_deh_sha256 ON digital_evidence_hashes(sha256);
-    CREATE INDEX IF NOT EXISTS idx_deh_photodna ON digital_evidence_hashes(photodna_hash);
-    CREATE INDEX IF NOT EXISTS idx_deh_flagged ON digital_evidence_hashes(flagged);
-
-    CREATE TABLE IF NOT EXISTS password_reset_tokens (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      token_hash TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      used_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      ip_address TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
-    CREATE INDEX IF NOT EXISTS idx_prt_expires ON password_reset_tokens(expires_at);
-  `);
-
-  // ════════════════════════════════════════════════════════════
-  // HR MODULE TABLES
-  // ════════════════════════════════════════════════════════════
-
-  db.exec(`
-    -- ── Leave Management ──────────────────────────────────
-    CREATE TABLE IF NOT EXISTS hr_leave_types (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      accrual_rate REAL DEFAULT 0,
-      max_balance REAL DEFAULT 0,
-      requires_approval INTEGER DEFAULT 1,
-      is_active INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_leave_balances (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      leave_type_id INTEGER NOT NULL,
-      balance_hours REAL NOT NULL DEFAULT 0,
-      used_hours REAL NOT NULL DEFAULT 0,
-      year INTEGER NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (leave_type_id) REFERENCES hr_leave_types(id),
-      UNIQUE(user_id, leave_type_id, year)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_leave_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      leave_type_id INTEGER NOT NULL,
-      start_date TEXT NOT NULL,
-      end_date TEXT NOT NULL,
-      hours_requested REAL NOT NULL,
-      reason TEXT,
-      status TEXT NOT NULL DEFAULT 'requested' CHECK(status IN ('requested','approved','denied','cancelled')),
-      reviewed_by INTEGER,
-      reviewed_at TEXT,
-      review_notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (leave_type_id) REFERENCES hr_leave_types(id),
-      FOREIGN KEY (reviewed_by) REFERENCES users(id)
-    );
-
-    -- ── Performance Management ────────────────────────────
-    CREATE TABLE IF NOT EXISTS hr_review_cycles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      start_date TEXT NOT NULL,
-      end_date TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','closed')),
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_performance_reviews (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      reviewer_id INTEGER NOT NULL,
-      cycle_id INTEGER,
-      review_date TEXT NOT NULL,
-      overall_rating INTEGER CHECK(overall_rating BETWEEN 1 AND 5),
-      strengths TEXT,
-      areas_for_improvement TEXT,
-      goals TEXT,
-      comments TEXT,
-      employee_comments TEXT,
-      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','acknowledged')),
-      acknowledged_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (reviewer_id) REFERENCES users(id),
-      FOREIGN KEY (cycle_id) REFERENCES hr_review_cycles(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_performance_goals (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      review_id INTEGER,
-      title TEXT NOT NULL,
-      description TEXT,
-      target_date TEXT,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','deferred','cancelled')),
-      progress INTEGER DEFAULT 0 CHECK(progress BETWEEN 0 AND 100),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (review_id) REFERENCES hr_performance_reviews(id)
-    );
-
-    -- ── Disciplinary & Grievances ─────────────────────────
-    CREATE TABLE IF NOT EXISTS hr_disciplinary_actions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      issued_by INTEGER NOT NULL,
-      action_type TEXT NOT NULL CHECK(action_type IN ('verbal_warning','written_warning','suspension','demotion','termination','probation','other')),
-      severity TEXT DEFAULT 'moderate' CHECK(severity IN ('minor','moderate','major','critical')),
-      incident_date TEXT NOT NULL,
-      description TEXT NOT NULL,
-      corrective_action TEXT,
-      follow_up_date TEXT,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','resolved','appealed','overturned')),
-      resolution_notes TEXT,
-      resolved_at TEXT,
-      resolved_by INTEGER,
-      related_incident_id INTEGER,
-      attachments TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (issued_by) REFERENCES users(id),
-      FOREIGN KEY (resolved_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_grievances (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      grievance_number TEXT UNIQUE,
-      filed_by INTEGER NOT NULL,
-      against_user_id INTEGER,
-      grievance_type TEXT NOT NULL CHECK(grievance_type IN ('workplace','policy','harassment','discrimination','safety','retaliation','other')),
-      subject TEXT NOT NULL,
-      description TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','under_review','investigation','resolved','dismissed','escalated')),
-      priority TEXT DEFAULT 'normal' CHECK(priority IN ('low','normal','high','urgent')),
-      assigned_to INTEGER,
-      resolution TEXT,
-      resolved_at TEXT,
-      attachments TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (filed_by) REFERENCES users(id),
-      FOREIGN KEY (against_user_id) REFERENCES users(id),
-      FOREIGN KEY (assigned_to) REFERENCES users(id)
-    );
-
-    -- ── Onboarding & Documents ────────────────────────────
-    CREATE TABLE IF NOT EXISTS hr_onboarding_checklists (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT,
-      role_target TEXT,
-      is_active INTEGER DEFAULT 1,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_onboarding_tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      checklist_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT,
-      category TEXT DEFAULT 'general',
-      sort_order INTEGER DEFAULT 0,
-      required INTEGER DEFAULT 1,
-      FOREIGN KEY (checklist_id) REFERENCES hr_onboarding_checklists(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_onboarding_progress (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      checklist_id INTEGER NOT NULL,
-      task_id INTEGER NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','in_progress','completed','skipped','na')),
-      completed_at TEXT,
-      completed_by INTEGER,
-      notes TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (checklist_id) REFERENCES hr_onboarding_checklists(id),
-      FOREIGN KEY (task_id) REFERENCES hr_onboarding_tasks(id),
-      FOREIGN KEY (completed_by) REFERENCES users(id),
-      UNIQUE(user_id, task_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_employee_documents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      document_type TEXT NOT NULL CHECK(document_type IN ('w4','i9','direct_deposit','nda','handbook_ack','policy_ack','license_copy','certification_copy','background_check','drug_test','photo_id','contract','other')),
-      title TEXT NOT NULL,
-      file_id TEXT,
-      file_size INTEGER,
-      notes TEXT,
-      uploaded_by INTEGER NOT NULL,
-      expires_at TEXT,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','superseded','archived')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (uploaded_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_document_acknowledgments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      document_id INTEGER NOT NULL,
-      acknowledged_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      ip_address TEXT,
-      digital_signature TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (document_id) REFERENCES hr_employee_documents(id),
-      UNIQUE(user_id, document_id)
-    );
-
-    -- ── Payroll & Accounting ──────────────────────────────
-    CREATE TABLE IF NOT EXISTS hr_pay_rates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      pay_type TEXT NOT NULL CHECK(pay_type IN ('hourly','salary','contract','per_diem')),
-      rate REAL NOT NULL,
-      overtime_rate REAL DEFAULT 1.5,
-      holiday_rate REAL DEFAULT 1.5,
-      effective_date TEXT NOT NULL,
-      end_date TEXT,
-      notes TEXT,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_pay_periods (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT,
-      start_date TEXT NOT NULL,
-      end_date TEXT NOT NULL,
-      pay_date TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','processing','finalized','paid')),
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (created_by) REFERENCES users(id),
-      UNIQUE(start_date, end_date)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_payroll_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      pay_period_id INTEGER NOT NULL,
-      pay_rate_id INTEGER,
-      regular_hours REAL DEFAULT 0,
-      overtime_hours REAL DEFAULT 0,
-      holiday_hours REAL DEFAULT 0,
-      pto_hours REAL DEFAULT 0,
-      sick_hours REAL DEFAULT 0,
-      other_hours REAL DEFAULT 0,
-      other_hours_description TEXT,
-      base_pay REAL DEFAULT 0,
-      overtime_pay REAL DEFAULT 0,
-      holiday_pay REAL DEFAULT 0,
-      other_pay REAL DEFAULT 0,
-      gross_pay REAL DEFAULT 0,
-      total_deductions REAL DEFAULT 0,
-      net_pay REAL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','calculated','approved','paid','void')),
-      approved_by INTEGER,
-      approved_at TEXT,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (pay_period_id) REFERENCES hr_pay_periods(id),
-      FOREIGN KEY (pay_rate_id) REFERENCES hr_pay_rates(id),
-      FOREIGN KEY (approved_by) REFERENCES users(id),
-      UNIQUE(user_id, pay_period_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_deductions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      deduction_type TEXT NOT NULL CHECK(deduction_type IN ('federal_tax','state_tax','local_tax','fica','medicare','health_insurance','dental_insurance','vision_insurance','life_insurance','retirement_401k','retirement_pension','hsa','fsa','garnishment','child_support','union_dues','other')),
-      amount REAL,
-      percentage REAL,
-      is_pretax INTEGER DEFAULT 0,
-      is_active INTEGER DEFAULT 1,
-      effective_date TEXT NOT NULL,
-      end_date TEXT,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_payroll_deduction_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      payroll_entry_id INTEGER NOT NULL,
-      deduction_id INTEGER NOT NULL,
-      amount REAL NOT NULL,
-      FOREIGN KEY (payroll_entry_id) REFERENCES hr_payroll_entries(id) ON DELETE CASCADE,
-      FOREIGN KEY (deduction_id) REFERENCES hr_deductions(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS hr_pay_stubs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      payroll_entry_id INTEGER NOT NULL UNIQUE,
-      stub_data TEXT NOT NULL,
-      generated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (payroll_entry_id) REFERENCES hr_payroll_entries(id)
-    );
-
-    -- ── HR Indexes ────────────────────────────────────────
-    CREATE INDEX IF NOT EXISTS idx_hr_leave_req_user ON hr_leave_requests(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_leave_req_status ON hr_leave_requests(status);
-    CREATE INDEX IF NOT EXISTS idx_hr_leave_bal_user ON hr_leave_balances(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_reviews_user ON hr_performance_reviews(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_reviews_cycle ON hr_performance_reviews(cycle_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_disciplinary_user ON hr_disciplinary_actions(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_grievances_filed ON hr_grievances(filed_by);
-    CREATE INDEX IF NOT EXISTS idx_hr_onboard_progress ON hr_onboarding_progress(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_emp_docs_user ON hr_employee_documents(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_pay_rates_user ON hr_pay_rates(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_payroll_user ON hr_payroll_entries(user_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_payroll_period ON hr_payroll_entries(pay_period_id);
-    CREATE INDEX IF NOT EXISTS idx_hr_deductions_user ON hr_deductions(user_id);
   `);
 }
 
@@ -1880,87 +1230,85 @@ function migrateSchema(): void {
   try {
     const cfsSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='calls_for_service'").get() as any;
     if (cfsSchema && cfsSchema.sql && !cfsSchema.sql.includes("'patrol'")) {
-      // Disable FK checks for the table rebuild (try-finally ensures re-enable)
+      // Disable FK checks for the table rebuild (re-enabled after)
       db.pragma('foreign_keys = OFF');
-      try {
-        db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
-        db.exec(`
-          CREATE TABLE calls_for_service_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            call_number TEXT UNIQUE,
-            incident_type TEXT NOT NULL,
-            priority TEXT NOT NULL CHECK(priority IN ('P1','P2','P3','P4')),
-            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived')),
-            caller_name TEXT,
-            caller_phone TEXT,
-            caller_relationship TEXT,
-            location_address TEXT NOT NULL,
-            property_id INTEGER,
-            latitude REAL,
-            longitude REAL,
-            description TEXT,
-            notes TEXT,
-            source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
-            assigned_unit_ids TEXT DEFAULT '[]',
-            dispatcher_id INTEGER,
-            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-            dispatched_at TEXT,
-            enroute_at TEXT,
-            onscene_at TEXT,
-            cleared_at TEXT,
-            closed_at TEXT,
-            disposition TEXT,
-            caller_address TEXT,
-            zone_beat TEXT,
-            cross_street TEXT,
-            location_building TEXT,
-            location_floor TEXT,
-            location_room TEXT,
-            weapons_involved TEXT,
-            injuries_reported INTEGER DEFAULT 0,
-            num_subjects INTEGER,
-            subject_description TEXT,
-            vehicle_description TEXT,
-            direction_of_travel TEXT,
-            archived_at TEXT,
-            responding_officer TEXT,
-            secondary_type TEXT,
-            contact_method TEXT,
-            scene_safety TEXT,
-            weather_conditions TEXT,
-            lighting_conditions TEXT,
-            num_victims INTEGER,
-            alcohol_involved INTEGER DEFAULT 0,
-            drugs_involved INTEGER DEFAULT 0,
-            domestic_violence INTEGER DEFAULT 0,
-            supervisor_notified INTEGER DEFAULT 0,
-            le_notified INTEGER DEFAULT 0,
-            le_agency TEXT,
-            le_case_number TEXT,
-            damage_estimate REAL,
-            damage_description TEXT,
-            action_taken TEXT,
-            section_id TEXT,
-            zone_id TEXT,
-            beat_id TEXT,
-            client_id INTEGER,
-            updated_at TEXT,
-            FOREIGN KEY (property_id) REFERENCES properties(id),
-            FOREIGN KEY (dispatcher_id) REFERENCES users(id)
-          )
-        `);
-        // Copy existing data (use PRAGMA to get actual column list)
-        const cfsCols = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
-        const cfsColNames = cfsCols.map((c: any) => c.name).join(', ');
-        db.exec(`INSERT INTO calls_for_service_new (${cfsColNames}) SELECT ${cfsColNames} FROM calls_for_service`);
-        db.exec(`DROP TABLE calls_for_service`);
-        db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
-        console.log('Migrated calls_for_service: source CHECK now includes patrol, online, dispatch, other');
-      } finally {
-        db.pragma('foreign_keys = ON');
-      }
+      db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
+      db.exec(`
+        CREATE TABLE calls_for_service_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          call_number TEXT UNIQUE,
+          incident_type TEXT NOT NULL,
+          priority TEXT NOT NULL CHECK(priority IN ('P1','P2','P3','P4')),
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived')),
+          caller_name TEXT,
+          caller_phone TEXT,
+          caller_relationship TEXT,
+          location_address TEXT NOT NULL,
+          property_id INTEGER,
+          latitude REAL,
+          longitude REAL,
+          description TEXT,
+          notes TEXT,
+          source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
+          assigned_unit_ids TEXT DEFAULT '[]',
+          dispatcher_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          dispatched_at TEXT,
+          enroute_at TEXT,
+          onscene_at TEXT,
+          cleared_at TEXT,
+          closed_at TEXT,
+          disposition TEXT,
+          caller_address TEXT,
+          zone_beat TEXT,
+          cross_street TEXT,
+          location_building TEXT,
+          location_floor TEXT,
+          location_room TEXT,
+          weapons_involved TEXT,
+          injuries_reported INTEGER DEFAULT 0,
+          num_subjects INTEGER,
+          subject_description TEXT,
+          vehicle_description TEXT,
+          direction_of_travel TEXT,
+          archived_at TEXT,
+          responding_officer TEXT,
+          secondary_type TEXT,
+          contact_method TEXT,
+          scene_safety TEXT,
+          weather_conditions TEXT,
+          lighting_conditions TEXT,
+          num_victims INTEGER,
+          alcohol_involved INTEGER DEFAULT 0,
+          drugs_involved INTEGER DEFAULT 0,
+          domestic_violence INTEGER DEFAULT 0,
+          supervisor_notified INTEGER DEFAULT 0,
+          le_notified INTEGER DEFAULT 0,
+          le_agency TEXT,
+          le_case_number TEXT,
+          damage_estimate REAL,
+          damage_description TEXT,
+          action_taken TEXT,
+          section_id TEXT,
+          zone_id TEXT,
+          beat_id TEXT,
+          client_id INTEGER,
+          updated_at TEXT,
+          FOREIGN KEY (property_id) REFERENCES properties(id),
+          FOREIGN KEY (dispatcher_id) REFERENCES users(id)
+        )
+      `);
+      // Copy existing data (use PRAGMA to get actual column list)
+      const cfsCols = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
+      const cfsColNames = cfsCols.map((c: any) => c.name).join(', ');
+      db.exec(`INSERT INTO calls_for_service_new (${cfsColNames}) SELECT ${cfsColNames} FROM calls_for_service`);
+      db.exec(`DROP TABLE calls_for_service`);
+      db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
+      db.pragma('foreign_keys = ON');
+      console.log('Migrated calls_for_service: source CHECK now includes patrol, online, dispatch, other');
     }
   } catch (err) {
+    db.pragma('foreign_keys = ON');
     console.log('calls_for_service source migration skipped or already done:', (err as Error).message);
   }
 
@@ -1970,28 +1318,26 @@ function migrateSchema(): void {
     const cfsSchema2 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='calls_for_service'").get() as any;
     if (cfsSchema2 && cfsSchema2.sql && !cfsSchema2.sql.includes("'panic'")) {
       db.pragma('foreign_keys = OFF');
-      try {
-        db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
-        // Rebuild with 'panic' added to the source CHECK constraint
-        const currentSql = cfsSchema2.sql as string;
-        const newSql = currentSql
-          .replace('calls_for_service', 'calls_for_service_new')
-          .replace(
-            "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','other')",
-            "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')"
-          );
-        db.exec(newSql);
-        const cfsCols2 = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
-        const cfsColNames2 = cfsCols2.map((c: any) => c.name).join(', ');
-        db.exec(`INSERT INTO calls_for_service_new (${cfsColNames2}) SELECT ${cfsColNames2} FROM calls_for_service`);
-        db.exec(`DROP TABLE calls_for_service`);
-        db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
-        console.log("Migrated calls_for_service: source CHECK now includes 'panic'");
-      } finally {
-        db.pragma('foreign_keys = ON');
-      }
+      db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
+      // Rebuild with 'panic' added to the source CHECK constraint
+      const currentSql = cfsSchema2.sql as string;
+      const newSql = currentSql
+        .replace('calls_for_service', 'calls_for_service_new')
+        .replace(
+          "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','other')",
+          "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')"
+        );
+      db.exec(newSql);
+      const cfsCols2 = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
+      const cfsColNames2 = cfsCols2.map((c: any) => c.name).join(', ');
+      db.exec(`INSERT INTO calls_for_service_new (${cfsColNames2}) SELECT ${cfsColNames2} FROM calls_for_service`);
+      db.exec(`DROP TABLE calls_for_service`);
+      db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
+      db.pragma('foreign_keys = ON');
+      console.log("Migrated calls_for_service: source CHECK now includes 'panic'");
     }
   } catch (err) {
+    db.pragma('foreign_keys = ON');
     console.log('calls_for_service panic source migration skipped or already done:', (err as Error).message);
   }
 
@@ -2001,58 +1347,26 @@ function migrateSchema(): void {
     const cfsSchema3 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='calls_for_service'").get() as any;
     if (cfsSchema3 && cfsSchema3.sql && !cfsSchema3.sql.includes("'on_hold'")) {
       db.pragma('foreign_keys = OFF');
-      try {
-        db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
-        const currentSql = cfsSchema3.sql as string;
-        const newSql = currentSql
-          .replace('calls_for_service', 'calls_for_service_new')
-          .replace(
-            "status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived')",
-            "status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived','on_hold')"
-          );
-        db.exec(newSql);
-        const cfsCols3 = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
-        const cfsColNames3 = cfsCols3.map((c: any) => c.name).join(', ');
-        db.exec(`INSERT INTO calls_for_service_new (${cfsColNames3}) SELECT ${cfsColNames3} FROM calls_for_service`);
-        db.exec(`DROP TABLE calls_for_service`);
-        db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
-        console.log("Migrated calls_for_service: status CHECK now includes 'on_hold'");
-      } finally {
-        db.pragma('foreign_keys = ON');
-      }
+      db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
+      const currentSql = cfsSchema3.sql as string;
+      const newSql = currentSql
+        .replace('calls_for_service', 'calls_for_service_new')
+        .replace(
+          "status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived')",
+          "status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived','on_hold')"
+        );
+      db.exec(newSql);
+      const cfsCols3 = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
+      const cfsColNames3 = cfsCols3.map((c: any) => c.name).join(', ');
+      db.exec(`INSERT INTO calls_for_service_new (${cfsColNames3}) SELECT ${cfsColNames3} FROM calls_for_service`);
+      db.exec(`DROP TABLE calls_for_service`);
+      db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
+      db.pragma('foreign_keys = ON');
+      console.log("Migrated calls_for_service: status CHECK now includes 'on_hold'");
     }
   } catch (err) {
+    db.pragma('foreign_keys = ON');
     console.log('calls_for_service on_hold status migration skipped or already done:', (err as Error).message);
-  }
-
-  // ── calls_for_service — add 'servemanager' to source CHECK constraint ──
-  // ServeManager auto-poller creates dispatch calls with source='servemanager'.
-  try {
-    const cfsSchemaSm = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='calls_for_service'").get() as any;
-    if (cfsSchemaSm && cfsSchemaSm.sql && !cfsSchemaSm.sql.includes("'servemanager'")) {
-      db.pragma('foreign_keys = OFF');
-      try {
-        db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
-        const currentSql = cfsSchemaSm.sql as string;
-        const newSql = currentSql
-          .replace('calls_for_service', 'calls_for_service_new')
-          .replace(
-            "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')",
-            "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','other')"
-          );
-        db.exec(newSql);
-        const cfsColsSm = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
-        const cfsColNamesSm = cfsColsSm.map((c: any) => c.name).join(', ');
-        db.exec(`INSERT INTO calls_for_service_new (${cfsColNamesSm}) SELECT ${cfsColNamesSm} FROM calls_for_service`);
-        db.exec(`DROP TABLE calls_for_service`);
-        db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
-        console.log("Migrated calls_for_service: source CHECK now includes 'servemanager'");
-      } finally {
-        db.pragma('foreign_keys = ON');
-      }
-    }
-  } catch (err) {
-    console.log('calls_for_service servemanager source migration skipped or already done:', (err as Error).message);
   }
 
   // ── calls_for_service — add previous_status column for hold/resume ──
@@ -2144,32 +1458,14 @@ function migrateSchema(): void {
   addCol('users', 'totp_enabled', 'INTEGER DEFAULT 0');    // 0 = disabled, 1 = enabled
   addCol('users', 'totp_backup_codes', 'TEXT');            // JSON array of bcrypt-hashed one-time codes
   addCol('users', 'totp_pending_secret', 'TEXT');          // Temp secret during enrollment (before verify)
-  addCol('users', 'totp_setup_required', 'INTEGER DEFAULT 1'); // New users must set up 2FA
-  addCol('users', 'password_expires_at', 'TEXT');          // ISO timestamp when password expires
-  addCol('users', 'force_password_change', 'INTEGER DEFAULT 0'); // Admin-forced password change
+  addCol('users', 'totp_exempt', 'INTEGER DEFAULT 0');     // 1 = exempt from mandatory 2FA even if role requires it
 
   // ── USERS — Password history & expiry ─────────────────
   addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
   addCol('users', 'password_changed_at', 'TEXT');          // ISO timestamp of last password change
-  addCol('users', 'password_expiry_exempt', 'INTEGER DEFAULT 0'); // Exempt from scheduled password rotation
-
-  // ── LOGIN_ATTEMPTS / SESSIONS — Device fingerprinting ──
-  addCol('login_attempts', 'user_agent', 'TEXT');
-  addCol('login_attempts', 'device_fingerprint', 'TEXT');
-  addCol('sessions', 'device_fingerprint', 'TEXT');
-  addCol('sessions', 'device_name', 'TEXT');
-  addCol('sessions', 'ua_hash', 'TEXT');  // User-agent hash for session binding
-  addCol('sessions', 'previous_token_hash', 'TEXT'); // Previous refresh token hash for reuse detection
-
-  // ── ACTIVITY_LOG — tamper-evident integrity hash ──
-  addCol('activity_log', 'log_hash', 'TEXT');         // HMAC-SHA256 chain hash for tamper detection
 
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer
-
-  // ── USERS — WebAuthn / YubiKey hardware key auth ──────
-  addCol('users', 'webauthn_enabled', 'INTEGER DEFAULT 0'); // 0 = disabled, 1 = enabled
-  addCol('users', 'token_generation', 'INTEGER NOT NULL DEFAULT 1'); // Bumped on role change to revoke existing JWTs
 
   // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
   try {
@@ -2228,10 +1524,6 @@ function migrateSchema(): void {
 
   // ── UNITS — missing columns ────────────────────────────
   addCol('units', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
-  addCol('units', 'gps_source', "TEXT DEFAULT 'browser'");
-
-  // ── EVIDENCE — case linkage ─────────────────────────────
-  addCol('evidence', 'case_id', 'INTEGER');
 
   // ── EVIDENCE — new chain-of-custody fields ────────────
   addCol('evidence', 'evidence_number', 'TEXT');
@@ -2261,16 +1553,6 @@ function migrateSchema(): void {
   addCol('evidence', 'category', 'TEXT');
   addCol('evidence', 'notes', 'TEXT');
   addCol('evidence', 'updated_at', 'TEXT');
-
-  // ── EVIDENCE — IPED digital forensics columns ──────────
-  addCol('evidence', 'iped_processed', 'INTEGER DEFAULT 0');
-  addCol('evidence', 'iped_last_job_id', 'INTEGER');
-  addCol('evidence', 'hash_count', 'INTEGER DEFAULT 0');
-  addCol('evidence', 'flagged_hash_count', 'INTEGER DEFAULT 0');
-
-  // ── DIGITAL EVIDENCE HASHES — review workflow columns ──
-  addCol('digital_evidence_hashes', 'review_status', "TEXT DEFAULT 'pending'");
-  addCol('digital_evidence_hashes', 'review_notes', 'TEXT');
 
   // ── PROPERTIES — new detail fields ─────────────────────
   addCol('properties', 'city', 'TEXT');
@@ -2358,36 +1640,6 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
-  // ── Expand record_links to support case + incident entity types ──
-  try {
-    const rlSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='record_links'").get() as any;
-    if (rlSchema?.sql && !rlSchema.sql.includes("'case'")) {
-      db.exec(`
-        CREATE TABLE record_links_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          source_type TEXT NOT NULL CHECK(source_type IN ('person','vehicle','property','evidence','case','incident')),
-          source_id INTEGER NOT NULL,
-          target_type TEXT NOT NULL CHECK(target_type IN ('person','vehicle','property','evidence','case','incident')),
-          target_id INTEGER NOT NULL,
-          relationship TEXT NOT NULL DEFAULT 'associated',
-          notes TEXT,
-          created_by INTEGER NOT NULL,
-          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-          FOREIGN KEY (created_by) REFERENCES users(id),
-          UNIQUE(source_type, source_id, target_type, target_id)
-        );
-      `);
-      const cols = db.prepare("PRAGMA table_info(record_links)").all() as any[];
-      const colNames = cols.map((c: any) => c.name).join(', ');
-      db.exec(`INSERT INTO record_links_new (${colNames}) SELECT ${colNames} FROM record_links`);
-      db.exec(`DROP TABLE record_links`);
-      db.exec(`ALTER TABLE record_links_new RENAME TO record_links`);
-      console.log('Migrated record_links: added case + incident entity types');
-    }
-  } catch (err) {
-    console.log('record_links migration skipped:', (err as Error).message);
-  }
-
   // ── CREDENTIALS — issuing authority ───────────────────
   addCol('credentials', 'issuing_authority', 'TEXT');
 
@@ -2425,6 +1677,12 @@ function migrateSchema(): void {
   // ── TIME ENTRIES — break tracking fields ──────────────
   addCol('time_entries', 'break_start', 'TEXT');
   addCol('time_entries', 'break_minutes', 'REAL NOT NULL DEFAULT 0');
+
+  // ── TIME ENTRIES — edit audit tracking ──────────────
+  addCol('time_entries', 'notes', 'TEXT');
+  addCol('time_entries', 'edit_reason', 'TEXT');
+  addCol('time_entries', 'edited_by', 'INTEGER');
+  addCol('time_entries', 'edited_at', 'TEXT');
 
   // ── PATROL CHECKPOINTS — officer assignment + location text ───
   addCol('patrol_checkpoints', 'assigned_officer_id', 'INTEGER');
@@ -2497,105 +1755,11 @@ function migrateSchema(): void {
   // ── UTAH STATUTES — citation fine amount for traffic/infractions ──
   addCol('utah_statutes', 'citation_fine', 'REAL');
 
-  // ── UTAH STATUTES — multi-state support ──
-  addCol('utah_statutes', 'state', "TEXT NOT NULL DEFAULT 'UT'");
-  addCol('utah_statutes', 'state_name', "TEXT NOT NULL DEFAULT 'Utah'");
-  addCol('utah_statutes', 'definition', 'TEXT');
-
   // Ensure the citation index is UNIQUE (needed for ON CONFLICT in seed)
   try {
     db.exec('DROP INDEX IF EXISTS idx_statutes_citation');
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_statutes_citation ON utah_statutes(citation)');
   } catch { /* already unique */ }
-
-  // Multi-state indexes
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_statutes_state ON utah_statutes(state)'); } catch { /* exists */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_statutes_state_cat ON utah_statutes(state, category)'); } catch { /* exists */ }
-
-  // ── COLORADO DOC OFFENDERS TABLE ──
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS colorado_doc_offenders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        doc_number TEXT NOT NULL,
-        first_name TEXT,
-        last_name TEXT,
-        middle_name TEXT,
-        dob TEXT,
-        gender TEXT,
-        race TEXT,
-        facility TEXT,
-        status TEXT,
-        parole_eligibility TEXT,
-        release_date TEXT,
-        photo_url TEXT,
-        offenses TEXT,
-        raw_data TEXT,
-        person_id INTEGER,
-        fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        UNIQUE(doc_number),
-        FOREIGN KEY (person_id) REFERENCES persons(id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_co_doc_name ON colorado_doc_offenders(last_name, first_name);
-      CREATE INDEX IF NOT EXISTS idx_co_doc_person ON colorado_doc_offenders(person_id);
-    `);
-  } catch { /* table/indexes already exist */ }
-
-  // ── SEX OFFENDER REGISTRY TABLE ──
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS sex_offender_registry (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        person_id INTEGER,
-        registry_id TEXT UNIQUE,
-        first_name TEXT NOT NULL,
-        last_name TEXT NOT NULL,
-        middle_name TEXT,
-        aliases TEXT,
-        dob TEXT,
-        gender TEXT,
-        race TEXT,
-        height TEXT,
-        weight TEXT,
-        hair_color TEXT,
-        eye_color TEXT,
-        scars_marks_tattoos TEXT,
-        photo_url TEXT,
-        tier INTEGER DEFAULT 1,
-        risk_level TEXT,
-        registration_status TEXT DEFAULT 'compliant',
-        registration_date TEXT,
-        expiration_date TEXT,
-        last_verification TEXT,
-        next_verification_due TEXT,
-        registration_jurisdiction TEXT,
-        offenses TEXT DEFAULT '[]',
-        conviction_state TEXT,
-        addresses TEXT DEFAULT '[]',
-        vehicles TEXT DEFAULT '[]',
-        employer TEXT,
-        employer_address TEXT,
-        school TEXT,
-        school_address TEXT,
-        restrictions TEXT,
-        conditions TEXT DEFAULT '[]',
-        supervising_officer TEXT,
-        source TEXT DEFAULT 'manual',
-        notes TEXT,
-        created_by INTEGER,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (person_id) REFERENCES persons(id),
-        FOREIGN KEY (created_by) REFERENCES users(id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_sor_last_name ON sex_offender_registry(last_name);
-      CREATE INDEX IF NOT EXISTS idx_sor_registry_id ON sex_offender_registry(registry_id);
-      CREATE INDEX IF NOT EXISTS idx_sor_person_id ON sex_offender_registry(person_id);
-      CREATE INDEX IF NOT EXISTS idx_sor_tier ON sex_offender_registry(tier);
-      CREATE INDEX IF NOT EXISTS idx_sor_status ON sex_offender_registry(registration_status);
-    `);
-  } catch { /* table/indexes already exist */ }
 
   // ── INCIDENTS — statute linkage for charge/citation ──
   addCol('incidents', 'statute_id', 'INTEGER');
@@ -2909,36 +2073,34 @@ function migrateSchema(): void {
     const teInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='time_entries'").get() as { sql: string } | undefined;
     if (teInfo && !teInfo.sql.includes('on_break')) {
       db.pragma('foreign_keys = OFF');
-      try {
-        db.exec(`
-          CREATE TABLE time_entries_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            officer_id INTEGER NOT NULL,
-            schedule_id INTEGER,
-            clock_in TEXT NOT NULL,
-            clock_out TEXT,
-            clock_in_latitude REAL,
-            clock_in_longitude REAL,
-            total_hours REAL,
-            break_start TEXT,
-            break_minutes REAL NOT NULL DEFAULT 0,
-            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','edited','on_break')),
-            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (officer_id) REFERENCES users(id),
-            FOREIGN KEY (schedule_id) REFERENCES schedules(id)
-          )
-        `);
-        const teCols = db.prepare("PRAGMA table_info(time_entries)").all() as any[];
-        const teColNames = teCols.map((c: any) => c.name).join(', ');
-        db.exec(`INSERT INTO time_entries_new (${teColNames}) SELECT ${teColNames} FROM time_entries`);
-        db.exec(`DROP TABLE time_entries`);
-        db.exec(`ALTER TABLE time_entries_new RENAME TO time_entries`);
-        console.log("Migrated time_entries: status CHECK now includes 'on_break'");
-      } finally {
-        db.pragma('foreign_keys = ON');
-      }
+      db.exec(`
+        CREATE TABLE time_entries_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          officer_id INTEGER NOT NULL,
+          schedule_id INTEGER,
+          clock_in TEXT NOT NULL,
+          clock_out TEXT,
+          clock_in_latitude REAL,
+          clock_in_longitude REAL,
+          total_hours REAL,
+          break_start TEXT,
+          break_minutes REAL NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','edited','on_break')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          FOREIGN KEY (officer_id) REFERENCES users(id),
+          FOREIGN KEY (schedule_id) REFERENCES schedules(id)
+        )
+      `);
+      const teCols = db.prepare("PRAGMA table_info(time_entries)").all() as any[];
+      const teColNames = teCols.map((c: any) => c.name).join(', ');
+      db.exec(`INSERT INTO time_entries_new (${teColNames}) SELECT ${teColNames} FROM time_entries`);
+      db.exec(`DROP TABLE time_entries`);
+      db.exec(`ALTER TABLE time_entries_new RENAME TO time_entries`);
+      db.pragma('foreign_keys = ON');
+      console.log("Migrated time_entries: status CHECK now includes 'on_break'");
     }
   } catch (err) {
+    try { db.pragma('foreign_keys = ON'); } catch {}
     console.log('time_entries CHECK migration skipped or already done:', (err as Error).message);
   }
 
@@ -2993,130 +2155,6 @@ function migrateSchema(): void {
         FOREIGN KEY (case_id) REFERENCES cases(id),
         FOREIGN KEY (author_id) REFERENCES users(id)
       );
-    `);
-  } catch { /* table already exists */ }
-
-  // ── FORENSIC LAB CASES — lab management for evidence analysis ──
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS forensic_cases (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        lab_case_number TEXT UNIQUE NOT NULL,
-        title TEXT NOT NULL,
-        case_type TEXT DEFAULT 'digital' CHECK(case_type IN (
-          'digital','biological','chemical','ballistics','latent_prints',
-          'questioned_documents','trace','toxicology','dna','firearms','other'
-        )),
-        status TEXT DEFAULT 'submitted' CHECK(status IN (
-          'submitted','intake','assigned','in_progress','analysis_complete',
-          'report_draft','report_final','closed','cancelled'
-        )),
-        priority TEXT DEFAULT 'routine' CHECK(priority IN ('routine','expedited','urgent','rush')),
-        incident_id INTEGER,
-        evidence_ids TEXT DEFAULT '[]',
-        requesting_officer_id INTEGER,
-        requesting_officer_name TEXT,
-        assigned_examiner_id INTEGER,
-        assigned_examiner_name TEXT,
-        lab_location TEXT,
-        synopsis TEXT,
-        findings TEXT,
-        conclusion TEXT,
-        methodology TEXT,
-        received_date TEXT DEFAULT (datetime('now','localtime')),
-        due_date TEXT,
-        started_date TEXT,
-        completed_date TEXT,
-        report_date TEXT,
-        turnaround_days INTEGER,
-        notes TEXT,
-        created_by INTEGER NOT NULL,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        archived_at TEXT,
-        FOREIGN KEY (incident_id) REFERENCES incidents(id),
-        FOREIGN KEY (requesting_officer_id) REFERENCES users(id),
-        FOREIGN KEY (assigned_examiner_id) REFERENCES users(id),
-        FOREIGN KEY (created_by) REFERENCES users(id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_forensic_cases_status ON forensic_cases(status);
-      CREATE INDEX IF NOT EXISTS idx_forensic_cases_examiner ON forensic_cases(assigned_examiner_id);
-      CREATE INDEX IF NOT EXISTS idx_forensic_cases_number ON forensic_cases(lab_case_number);
-    `);
-  } catch { /* table already exists */ }
-
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS forensic_exhibits (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        forensic_case_id INTEGER NOT NULL,
-        exhibit_number TEXT NOT NULL,
-        evidence_id INTEGER,
-        description TEXT NOT NULL,
-        item_type TEXT,
-        condition_received TEXT,
-        examination_requested TEXT,
-        examination_performed TEXT,
-        results TEXT,
-        status TEXT DEFAULT 'received' CHECK(status IN ('received','examining','complete','returned','disposed')),
-        received_date TEXT DEFAULT (datetime('now','localtime')),
-        returned_date TEXT,
-        photos TEXT DEFAULT '[]',
-        notes TEXT,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (forensic_case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
-        FOREIGN KEY (evidence_id) REFERENCES evidence(id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_forensic_exhibits_case ON forensic_exhibits(forensic_case_id);
-    `);
-  } catch { /* table already exists */ }
-
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS forensic_analyses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        forensic_case_id INTEGER NOT NULL,
-        exhibit_id INTEGER,
-        analysis_type TEXT NOT NULL CHECK(analysis_type IN (
-          'dna','fingerprint','drug_analysis','digital_extraction','ballistics',
-          'document_analysis','trace_analysis','toxicology','tool_marks',
-          'blood_spatter','fire_debris','serology','microscopy','photography','other'
-        )),
-        examiner_id INTEGER,
-        examiner_name TEXT,
-        status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','complete','inconclusive','cancelled')),
-        methodology TEXT,
-        instruments_used TEXT,
-        results TEXT,
-        conclusion TEXT,
-        started_at TEXT,
-        completed_at TEXT,
-        notes TEXT,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (forensic_case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
-        FOREIGN KEY (exhibit_id) REFERENCES forensic_exhibits(id),
-        FOREIGN KEY (examiner_id) REFERENCES users(id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
-    `);
-  } catch { /* table already exists */ }
-
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS forensic_timeline (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        forensic_case_id INTEGER NOT NULL,
-        action TEXT NOT NULL,
-        description TEXT,
-        performed_by INTEGER,
-        performed_by_name TEXT,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (forensic_case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
-        FOREIGN KEY (performed_by) REFERENCES users(id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_forensic_timeline_case ON forensic_timeline(forensic_case_id);
     `);
   } catch { /* table already exists */ }
 
@@ -3322,65 +2360,11 @@ function migrateSchema(): void {
   // ── gps_breadcrumbs — road name and cross-street columns ──
   addCol('gps_breadcrumbs', 'road_name', 'TEXT');
   addCol('gps_breadcrumbs', 'nearest_intersection', 'TEXT');
-  addCol('gps_breadcrumbs', 'gps_source', "TEXT DEFAULT 'browser'");
 
   // ── gps_breadcrumbs — position source (gps/wifi/ip/unknown) ──
   // Tracks how each breadcrumb position was obtained for audit trail visibility
   // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
   addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
-
-  // ── PSO fields on incidents (auto-filled from dispatch call on generation) ──
-  addCol('incidents', 'pso_service_type', 'TEXT');
-  addCol('incidents', 'pso_attempt_number', 'INTEGER');
-  addCol('incidents', 'pso_requestor_name', 'TEXT');
-  addCol('incidents', 'pso_requestor_phone', 'TEXT');
-  addCol('incidents', 'pso_requestor_email', 'TEXT');
-  addCol('incidents', 'pso_billing_code', 'TEXT');
-  addCol('incidents', 'pso_authorization', 'TEXT');
-  addCol('incidents', 'process_service_type', 'TEXT');
-  addCol('incidents', 'process_served_to', 'TEXT');
-  addCol('incidents', 'process_served_address', 'TEXT');
-  addCol('incidents', 'process_service_result', 'TEXT');
-  addCol('incidents', 'process_attempts', 'INTEGER');
-
-  // ── Backfill case numbers for dispatch calls that don't have one ──
-  try {
-    const callsWithoutCase = db.prepare(
-      "SELECT id, incident_type FROM calls_for_service WHERE case_number IS NULL OR case_number = ''"
-    ).all() as { id: number; incident_type: string }[];
-
-    if (callsWithoutCase.length > 0) {
-      const INCIDENT_TO_CASE_TYPE: Record<string, string> = {
-        theft: 'theft', burglary: 'burglary', robbery: 'criminal', assault: 'assault', battery: 'assault',
-        vandalism: 'criminal', criminal_mischief: 'criminal', drug_activity: 'narcotics', weapons_offense: 'criminal',
-        fraud_forgery: 'fraud', kidnapping: 'criminal', arson: 'criminal', sexual_assault: 'criminal',
-        stalking: 'criminal', identity_theft: 'fraud', criminal_trespass: 'criminal', shoplifting: 'theft',
-        auto_theft: 'theft', criminal_threat: 'criminal', prostitution: 'criminal',
-        trespass: 'disorder', disturbance: 'disorder', noise_complaint: 'disorder', loitering: 'disorder',
-        panhandling: 'disorder', domestic_dispute: 'domestic', prowler: 'disorder', harassment: 'disorder',
-        traffic_accident: 'accident', hit_and_run: 'accident', dui_dwi: 'traffic', parking_violation: 'traffic',
-        traffic_hazard: 'traffic', abandoned_vehicle: 'traffic', reckless_driving: 'traffic', traffic_stop: 'traffic',
-        medical_emergency: 'medical', overdose: 'medical', mental_health_crisis: 'medical',
-        fire: 'fire', fire_alarm: 'fire', hazmat: 'fire',
-        death_investigation: 'death', missing_person: 'missing_person', juvenile_runaway: 'juvenile',
-        alarm_response: 'security', access_control: 'security', patrol_check: 'security', lock_unlock: 'security',
-        property_damage: 'property', lost_found: 'property',
-        daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
-      };
-
-      const backfillTx = db.transaction(() => {
-        for (const call of callsWithoutCase) {
-          const caseType = INCIDENT_TO_CASE_TYPE[call.incident_type] || 'general';
-          const caseNum = generateCaseNumber(db, caseType);
-          db.prepare('UPDATE calls_for_service SET case_number = ? WHERE id = ?').run(caseNum, call.id);
-        }
-      });
-      backfillTx();
-      console.log(`  Backfilled case numbers for ${callsWithoutCase.length} dispatch calls`);
-    }
-  } catch (err) {
-    console.warn('[migrate] Case number backfill error:', (err as Error).message);
-  }
 
   // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
   // Runs in the background after startup so it doesn't block the server.
@@ -3477,17 +2461,12 @@ function migrateSchema(): void {
         beat_descriptor TEXT
       )
     `);
-    // Beat must be unique within its zone+section; zone_id is inherently unique within a section
-    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_district_beat_unique ON dispatch_districts (section_id, zone_id, beat_id)`);
   } catch { /* already exists */ }
 
-  // Seed dispatch_districts — delete & reseed to pick up expanded coverage
-  // v2: Full UT statewide + Uinta Co WY + SW Wyoming + realistic police beat names
+  // Seed dispatch_districts if empty
   try {
-    const districtVersion = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'dispatch_districts_version'").get() as any;
-    const currentVersion = '2';
-    if (!districtVersion || districtVersion.config_value !== currentVersion) {
-      db.prepare('DELETE FROM dispatch_districts').run();
+    const districtCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_districts').get() as any;
+    if (districtCount?.cnt === 0) {
       const insertStmt = db.prepare(`
         INSERT OR IGNORE INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -3495,8 +2474,7 @@ function migrateSchema(): void {
       for (const d of DISPATCH_DISTRICTS) {
         insertStmt.run(d.section_id, d.zone_id, d.beat_id, d.dispatch_code, d.section_name, d.zone_name, d.beat_name, d.beat_descriptor);
       }
-      db.prepare(`INSERT OR REPLACE INTO system_config (config_key, config_value, category) VALUES ('dispatch_districts_version', ?, 'system')`).run(currentVersion);
-      console.log(`[migrate] Reseeded ${DISPATCH_DISTRICTS.length} dispatch districts (v${currentVersion} — full UT + WY coverage)`);
+      console.log(`[migrate] Seeded ${DISPATCH_DISTRICTS.length} dispatch districts from 3-tier data`);
     }
   } catch (err) {
     console.log('[migrate] dispatch_districts seed skipped:', (err as Error).message);
@@ -3532,14 +2510,6 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
-  // ── Process Service served-at timestamp on incidents ──
-  addCol('incidents', 'process_served_at', 'TEXT');
-
-  // ── Original 3 flags that were only on calls — ensure they exist on incidents too ──
-  addCol('incidents', 'injuries_reported', 'INTEGER DEFAULT 0');
-  addCol('incidents', 'le_notified', 'INTEGER DEFAULT 0');
-  addCol('incidents', 'supervisor_notified', 'INTEGER DEFAULT 0');
-
   // ── Additional operational flags for calls and incidents ──
   const flagTables = ['calls_for_service', 'incidents'] as const;
   for (const tbl of flagTables) {
@@ -3569,11 +2539,6 @@ function migrateSchema(): void {
     addCol(tbl, 'pso_billing_code', 'TEXT');
     addCol(tbl, 'pso_authorization', 'TEXT');        // auth/PO number from client
   }
-  // PSO general attempt tracking (re-dispatch counter)
-  addCol('calls_for_service', 'pso_attempt_number', 'INTEGER DEFAULT 1');
-  addCol('calls_for_service', 'pso_72hr_notified', 'TEXT'); // '48h' or '72h' or 'resolved' — tracks notification state for 72-hour rule
-  addCol('calls_for_service', 'pso_72hr_deadline', 'TEXT'); // ISO timestamp: exact 72hr deadline from when call was cleared
-
   // Process service specific
   addCol('calls_for_service', 'process_service_type', 'TEXT'); // subpoena, summons, complaint, eviction, restraining_order, other
   addCol('calls_for_service', 'process_served_to', 'TEXT');
@@ -3581,100 +2546,6 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'process_attempts', 'INTEGER DEFAULT 0');
   addCol('calls_for_service', 'process_served_at', 'TEXT');
   addCol('calls_for_service', 'process_service_result', 'TEXT'); // served, unable_to_serve, refused, substitute_service
-
-  // ── Section/Zone/Beat columns for record types ──────────
-  // Citations
-  addCol('citations', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
-  addCol('citations', 'section_id', 'TEXT');
-  addCol('citations', 'zone_id', 'TEXT');
-  addCol('citations', 'beat_id', 'TEXT');
-  addCol('citations', 'zone_beat', 'TEXT');
-  // Trespass Orders
-  addCol('trespass_orders', 'section_id', 'TEXT');
-  addCol('trespass_orders', 'zone_id', 'TEXT');
-  addCol('trespass_orders', 'beat_id', 'TEXT');
-  addCol('trespass_orders', 'zone_beat', 'TEXT');
-  // Field Interviews
-  addCol('field_interviews', 'section_id', 'TEXT');
-  addCol('field_interviews', 'zone_id', 'TEXT');
-  addCol('field_interviews', 'beat_id', 'TEXT');
-  addCol('field_interviews', 'zone_beat', 'TEXT');
-  // Code Enforcement Violations
-  addCol('code_violations', 'section_id', 'TEXT');
-  addCol('code_violations', 'zone_id', 'TEXT');
-  addCol('code_violations', 'beat_id', 'TEXT');
-  addCol('code_violations', 'zone_beat', 'TEXT');
-
-  // ── Data cleanup: normalize 'None' dropdown values to NULL ──
-  // When users select "None" from weapons/agency dropdowns, it should be NULL not the string "None"
-  try {
-    db.prepare(`UPDATE calls_for_service SET weapons_involved = NULL WHERE weapons_involved = 'None'`).run();
-    db.prepare(`UPDATE calls_for_service SET le_agency = NULL WHERE le_agency = 'None'`).run();
-    db.prepare(`UPDATE incidents SET weapons_involved = NULL WHERE weapons_involved = 'None'`).run();
-  } catch { /* columns may not exist yet */ }
-
-  // ── User Preferences (per-user customization) ──
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS user_preferences (
-      user_id INTEGER PRIMARY KEY,
-      -- Notification preferences
-      notify_dispatch_email INTEGER DEFAULT 1,
-      notify_dispatch_inapp INTEGER DEFAULT 1,
-      notify_bolo_email INTEGER DEFAULT 1,
-      notify_bolo_inapp INTEGER DEFAULT 1,
-      notify_warrant_email INTEGER DEFAULT 0,
-      notify_warrant_inapp INTEGER DEFAULT 1,
-      notify_system_email INTEGER DEFAULT 0,
-      notify_system_inapp INTEGER DEFAULT 1,
-      notify_credential_email INTEGER DEFAULT 1,
-      notify_credential_inapp INTEGER DEFAULT 1,
-      notify_pso_email INTEGER DEFAULT 1,
-      notify_pso_inapp INTEGER DEFAULT 1,
-      -- Quiet hours (HH:MM format, null = no quiet hours)
-      quiet_hours_start TEXT,
-      quiet_hours_end TEXT,
-      -- UI preferences
-      font_scale REAL DEFAULT 1.0,
-      compact_mode INTEGER DEFAULT 0,
-      show_map_labels INTEGER DEFAULT 1,
-      default_map_style TEXT DEFAULT 'dark',
-      -- Dashboard preferences (JSON array of visible widget IDs)
-      dashboard_widgets TEXT,
-      -- Dispatch board preferences
-      dispatch_sort TEXT DEFAULT 'priority',
-      dispatch_show_cleared INTEGER DEFAULT 0,
-      -- Timestamp
-      updated_at TEXT DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-  // ── Expanded user preferences columns ───────────────────────────────────────
-  addCol('user_preferences', 'date_format', "TEXT DEFAULT 'MM/DD/YYYY'");
-  addCol('user_preferences', 'time_format', "TEXT DEFAULT '12h'");
-  // timezone_override intentionally omitted — America/Denver is mandatory
-  addCol('user_preferences', 'status_sounds_enabled', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'notification_sounds', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'gps_track_display', "TEXT DEFAULT 'trail'");       // trail | none | dot
-  addCol('user_preferences', 'auto_geocode_calls', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'default_landing_page', "TEXT DEFAULT '/'");
-  addCol('user_preferences', 'map_default_zoom', 'INTEGER DEFAULT 13');
-  addCol('user_preferences', 'show_weather_widget', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'show_unit_status_bar', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'sidebar_collapsed', 'INTEGER DEFAULT 0');
-  addCol('user_preferences', 'patrol_log_auto_open', 'INTEGER DEFAULT 0');
-  addCol('user_preferences', 'dispatch_audio_alerts', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'highlight_own_unit', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'show_call_timer', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'show_bolo_banner', 'INTEGER DEFAULT 1');
-  addCol('user_preferences', 'map_traffic_overlay', 'INTEGER DEFAULT 0');
-  addCol('user_preferences', 'map_satellite_default', 'INTEGER DEFAULT 0');
-  addCol('user_preferences', 'warrant_auto_attach', 'INTEGER DEFAULT 1');        // auto-link warrants to calls
-
-  // Radio audio recording — store audio file path alongside transcripts
-  addCol('radio_transcripts', 'audio_file', 'TEXT');
-  addCol('radio_transcripts', 'file_size', 'INTEGER');
-  addCol('radio_transcripts', 'linked_call_id', 'TEXT');
 
   // ── Backfill dispatch district names on existing calls ──────────
   try {
@@ -3751,925 +2622,145 @@ function migrateSchema(): void {
     `).run();
   } catch { /* table may not exist yet — safe to ignore */ }
 
-  // ── Backfill dashcam_videos.vehicle_id from unit's assigned fleet vehicle ──
+  // ── OFAC tables — fix column names to match Treasury CSV format ──
   try {
-    const result = db.prepare(`
-      UPDATE dashcam_videos
-      SET vehicle_id = (
-        SELECT fv.id FROM fleet_vehicles fv WHERE fv.assigned_unit_id = dashcam_videos.unit_id
-      )
-      WHERE vehicle_id IS NULL
-        AND unit_id IS NOT NULL
-        AND EXISTS (SELECT 1 FROM fleet_vehicles fv WHERE fv.assigned_unit_id = dashcam_videos.unit_id)
-    `).run();
-    if (result.changes > 0) {
-      console.log(`  Backfilled vehicle_id on ${result.changes} dashcam video(s) from unit fleet assignments`);
+    const aliasInfo = db.prepare("PRAGMA table_info(ofac_sdn_aliases)").all() as any[];
+    const hasOldName = aliasInfo.some((c: any) => c.name === 'alias_name');
+    if (hasOldName) {
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_ids').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_addresses').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_aliases').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_entries').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sync_log').run();
+      // Recreate with correct schema
+      createTables();
+      console.log('[migrate] Recreated OFAC tables with corrected column names');
     }
-  } catch { /* safe to ignore */ }
+  } catch { /* tables may not exist yet */ }
 
-  // ── DASHCAM_VIDEOS — ClearPathGPS media sync tracking columns ──
-  addCol('dashcam_videos', 'cpg_device_id', 'TEXT');
-  addCol('dashcam_videos', 'cpg_media_timestamp', 'INTEGER');
-  addCol('dashcam_videos', 'cpg_channel', 'TEXT');
-  addCol('dashcam_videos', 'cpg_event_type', 'TEXT');
-  addCol('dashcam_videos', 'cpg_access_url', 'TEXT');
-  addCol('dashcam_videos', 'cpg_thumbnail_url', 'TEXT');
-  addCol('dashcam_videos', 'linked_dashcam_event_id', 'INTEGER');
-  addCol('dashcam_videos', 'cpg_gps_track', 'TEXT');           // JSON array of {lat,lng,speed,altitude,timestamp} points
+  addCol('ofac_sdn_addresses', 'add_num', 'INTEGER');
+  addCol('ofac_sdn_addresses', 'add_remarks', 'TEXT');
+  addCol('ofac_sdn_ids', 'remarks', 'TEXT');
 
-  // ── DASHCAM overlay + burn + thumbnail columns ──
-  addCol('dashcam_videos', 'overlay_status', "TEXT DEFAULT 'none'");
-  addCol('dashcam_videos', 'overlay_error', 'TEXT');
-  addCol('dashcam_videos', 'processed_file_path', 'TEXT');
-  addCol('dashcam_videos', 'thumbnail_path', 'TEXT');
-  addCol('dashcam_videos', 'burned_file_path', 'TEXT');
-  addCol('dashcam_videos', 'burn_status', "TEXT DEFAULT 'none'");
-  addCol('dashcam_videos', 'burn_error', 'TEXT');
-  addCol('dashcam_videos', 'burn_progress', 'INTEGER DEFAULT 0');
+  // ── OFAC consolidated sanctions — add source_list column ──
+  addCol('ofac_sdn_entries', 'source_list', "TEXT DEFAULT 'SDN'");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_ofac_source_list ON ofac_sdn_entries(source_list)");
 
-  // ── CPG_DEVICE_MAPPINGS — media sync state ──
-  addCol('cpg_device_mappings', 'last_media_synced_at', 'TEXT');
-  addCol('cpg_device_mappings', 'media_sync_errors', 'INTEGER DEFAULT 0');
-  addCol('cpg_device_mappings', 'cpg_camera_id', 'INTEGER');  // v2.0 numeric camera ID
+  // ── Person watchlist auto-screening flag ──
+  addCol('persons', 'watchlist_match', 'TEXT DEFAULT NULL');
+  addCol('persons', 'watchlist_checked_at', 'TEXT DEFAULT NULL');
 
-  // ── DASHCAM_EVENTS — status_code columns for ClearPathGPS event data ──
-  addCol('dashcam_events', 'status_code', 'TEXT');
-  addCol('dashcam_events', 'status_code_text', 'TEXT');
-
-  // Dedup index for dashcam events (prevent duplicate inserts on poller restart)
-  try {
-    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_dashcam_events_dedup ON dashcam_events(cpg_device_id, event_timestamp, event_type)');
-  } catch { /* index may already exist */ }
-
-  // Dedup index for ClearPathGPS media sync
-  try {
-    db.exec('CREATE INDEX IF NOT EXISTS idx_dashcam_videos_cpg_dedup ON dashcam_videos(cpg_device_id, cpg_media_timestamp)');
-  } catch { /* index may already exist */ }
-
-  // ── USERS — add contract_manager to role CHECK ──
-  try {
-    // Check if the current CHECK already includes contract_manager
-    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as any;
-    if (tableInfo?.sql && !tableInfo.sql.includes('contract_manager')) {
-      db.pragma('foreign_keys = OFF');
-      try {
-        db.exec(`
-          CREATE TABLE users_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            full_name TEXT NOT NULL,
-            email TEXT,
-            role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager','human_resources')),
-            badge_number TEXT,
-            phone TEXT,
-            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
-            avatar_url TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-          )
-        `);
-        // Copy all columns that exist in both tables
-        const userCols = db.prepare("PRAGMA table_info(users)").all() as any[];
-        const newCols = db.prepare("PRAGMA table_info(users_new)").all() as any[];
-        const newColNames = new Set(newCols.map((c: any) => c.name));
-        const sharedCols = userCols.map((c: any) => c.name).filter((n: string) => newColNames.has(n));
-        const colList = sharedCols.join(', ');
-        db.exec(`INSERT INTO users_new (${colList}) SELECT ${colList} FROM users`);
-        db.exec(`DROP TABLE users`);
-        db.exec(`ALTER TABLE users_new RENAME TO users`);
-        console.log("Migrated users: role CHECK now includes 'contract_manager'");
-      } finally {
-        db.pragma('foreign_keys = ON');
-      }
-    }
-  } catch (err) {
-    console.log('users CHECK migration skipped or already done:', (err as Error).message);
-  }
-
-  // ── UTAH WARRANTS — cache table for warrants.utah.gov search results ──
+  // ── FORENSICS — Lab case management tables ─────────────────
   try {
     db.exec(`
-      CREATE TABLE IF NOT EXISTS utah_warrants (
+      CREATE TABLE IF NOT EXISTS forensic_cases (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        utah_person_id TEXT NOT NULL,
-        first_name TEXT,
-        middle_name TEXT,
-        last_name TEXT,
-        age INTEGER,
-        city TEXT,
-        utah_warrant_id TEXT NOT NULL,
-        issue_date TEXT,
-        court_name TEXT,
-        case_id TEXT,
-        charges TEXT,
-        fetched_at TEXT NOT NULL,
-        UNIQUE(utah_person_id, utah_warrant_id)
-      )
-    `);
-  } catch { /* already exists */ }
-
-  // ── WARRANT WATCH LOG — tracks automated scan results ──────
-  // Records each time a known person is found to have (or no longer
-  // have) an active Utah state warrant. Provides a full audit trail
-  // for the 12-hour scheduled scans.
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS warrant_watch_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        person_id INTEGER NOT NULL,
-        person_name TEXT NOT NULL,
-        event TEXT NOT NULL CHECK(event IN ('warrant_found', 'warrant_cleared')),
-        utah_warrant_id TEXT,
-        utah_person_id TEXT,
-        court_name TEXT,
-        case_id TEXT,
-        charges TEXT,
-        issue_date TEXT,
-        scan_run_id TEXT NOT NULL,
+        lab_number TEXT UNIQUE NOT NULL,
+        case_type TEXT NOT NULL DEFAULT 'general' CHECK(case_type IN (
+          'general','homicide','sexual_assault','narcotics','arson','fraud',
+          'burglary','robbery','digital','traffic','cold_case','other'
+        )),
+        status TEXT NOT NULL DEFAULT 'received' CHECK(status IN (
+          'received','in_progress','analysis_complete','report_drafted','reviewed','released','cancelled'
+        )),
+        priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('routine','normal','rush','urgent')),
+        title TEXT NOT NULL,
+        description TEXT,
+        requesting_agency TEXT DEFAULT 'RMPG',
+        requesting_officer TEXT,
+        lead_examiner_id INTEGER REFERENCES users(id),
+        linked_incident_id INTEGER REFERENCES incidents(id),
+        linked_case_id INTEGER REFERENCES cases(id),
+        linked_incident_number TEXT,
+        linked_case_number TEXT,
+        received_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        due_date TEXT,
+        completed_date TEXT,
+        released_date TEXT,
+        notes TEXT,
+        created_by INTEGER REFERENCES users(id),
         created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (person_id) REFERENCES persons(id)
-      )
-    `);
-  } catch { /* already exists */ }
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      );
 
-  // ── WARRANT WATCH SCAN RUNS — summary of each automated scan ──
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS warrant_watch_runs (
+      CREATE TABLE IF NOT EXISTS forensic_exhibits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        run_id TEXT NOT NULL UNIQUE,
-        started_at TEXT NOT NULL,
-        completed_at TEXT,
-        persons_checked INTEGER DEFAULT 0,
-        new_warrants_found INTEGER DEFAULT 0,
-        warrants_cleared INTEGER DEFAULT 0,
-        errors INTEGER DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed')),
-        error_message TEXT
-      )
-    `);
-  } catch { /* already exists */ }
-
-  // Index for fast person lookup in watch log
-  try {
-    db.exec('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_person ON warrant_watch_log(person_id)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_event ON warrant_watch_log(event, created_at)');
-  } catch { /* already exists */ }
-
-  // ══════════════════════════════════════════════════════════════
-  // MULTI-STATE WARRANT SCRAPER
-  // ══════════════════════════════════════════════════════════════
-
-  // ── Warrant scraper config — one row per warrant source ──
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS warrant_scraper_config (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        source_key TEXT NOT NULL UNIQUE,
-        display_name TEXT NOT NULL,
-        source_url TEXT,
-        source_type TEXT NOT NULL DEFAULT 'html'
-          CHECK(source_type IN ('html', 'json', 'api', 'arrest_extract', 'none')),
-        state TEXT NOT NULL DEFAULT 'UT',
-        county TEXT,
-        enabled INTEGER NOT NULL DEFAULT 0,
-        scrape_interval_minutes INTEGER NOT NULL DEFAULT 120,
-        last_scrape_at TEXT,
-        consecutive_errors INTEGER NOT NULL DEFAULT 0,
-        circuit_broken INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-      )
-    `);
-  } catch { /* already exists */ }
-
-  // ── Scraped warrants — unified cache for all warrant sources ──
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS scraped_warrants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        source_key TEXT NOT NULL,
-        warrant_id TEXT NOT NULL,
-        full_name TEXT NOT NULL,
-        first_name TEXT,
-        last_name TEXT,
-        middle_name TEXT,
-        date_of_birth TEXT,
-        age INTEGER,
-        gender TEXT,
-        race TEXT,
-        city TEXT,
-        state TEXT,
-        warrant_type TEXT,
-        case_number TEXT,
-        court_name TEXT,
-        issue_date TEXT,
-        charge_description TEXT,
-        bail_amount TEXT,
-        offense_level TEXT,
-        photo_url TEXT,
-        detail_url TEXT,
-        status TEXT NOT NULL DEFAULT 'active'
-          CHECK(status IN ('active', 'served', 'cleared', 'expired')),
-        person_id INTEGER,
-        first_seen_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        last_seen_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        cleared_at TEXT,
-        UNIQUE(source_key, warrant_id),
-        FOREIGN KEY (person_id) REFERENCES persons(id)
-      )
-    `);
-  } catch { /* already exists */ }
-
-  // Indexes for scraped warrants
-  try {
-    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_name ON scraped_warrants(last_name, first_name)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_status ON scraped_warrants(status)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_person ON scraped_warrants(person_id)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_warrant_scraper_config_state ON warrant_scraper_config(state)');
-  } catch { /* already exists */ }
-
-  // ── Seed warrant scraper configs ──────────────────────────────
-  try {
-    const insertWarrantConfig = db.prepare(`
-      INSERT OR IGNORE INTO warrant_scraper_config
-        (source_key, display_name, source_url, source_type, state, county, enabled, scrape_interval_minutes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const warrantSources = [
-      // ── Utah (already has warrants.utah.gov live search — this adds scheduled scrape of known persons) ──
-      ['ut_state', 'Utah State Warrants', 'https://warrants.utah.gov/api/v1', 'api', 'UT', null, 1, 60],
-
-      // ── Colorado (surrounding state — enabled by default, hourly scans) ──
-      ['co_el_paso_warrants', 'El Paso County, CO Warrants', 'https://www.epcsheriffsoffice.com/services/warrant-information/', 'html', 'CO', 'co_el_paso', 1, 60],
-      ['co_denver_warrants', 'Denver County, CO Warrants', 'https://www.denvergov.org/Government/Agencies-Departments-Offices/Department-of-Public-Safety/Police', 'html', 'CO', 'co_denver', 1, 60],
-      ['co_mesa_warrants', 'Mesa County, CO Warrants', 'https://sheriff.mesacounty.us/warrants/', 'html', 'CO', 'co_mesa', 1, 60],
-      ['co_pueblo_warrants', 'Pueblo County, CO Warrants', 'https://county.pueblo.org/sheriff/wanted-persons', 'html', 'CO', 'co_pueblo', 1, 60],
-      ['co_larimer_warrants', 'Larimer County, CO Warrants', 'https://www.larimer.org/sheriff/services/warrants', 'html', 'CO', 'co_larimer', 1, 60],
-      ['co_weld_warrants', 'Weld County, CO Warrants', 'https://www.weldcountysheriff.com/warrants', 'html', 'CO', 'co_weld', 1, 60],
-      ['co_arapahoe_warrants', 'Arapahoe County, CO Warrants', 'https://www.arapahoegov.com/1159/Warrants', 'html', 'CO', 'co_arapahoe', 1, 60],
-      ['co_adams_warrants', 'Adams County, CO Warrants', 'https://www.adamscountysheriff.org', 'html', 'CO', 'co_adams', 1, 60],
-      ['co_jefferson_warrants', 'Jefferson County, CO Warrants', 'https://www.jeffco.us/sheriff', 'html', 'CO', 'co_jefferson', 1, 60],
-      ['co_douglas_warrants', 'Douglas County, CO Warrants', 'https://www.dcsheriff.net', 'html', 'CO', 'co_douglas', 1, 60],
-      ['co_boulder_warrants', 'Boulder County, CO Warrants', 'https://www.bouldercounty.gov/sheriff/', 'html', 'CO', 'co_boulder', 1, 60],
-      ['co_garfield_warrants', 'Garfield County, CO Warrants', 'https://www.garcosheriff.com', 'html', 'CO', 'co_garfield', 1, 60],
-
-      // ── Wyoming (surrounding state — enabled by default, hourly scans) ──
-      ['wy_natrona_warrants', 'Natrona County, WY Warrants', 'https://www.natronacounty-wy.gov/sheriff', 'html', 'WY', 'wy_natrona', 1, 60],
-      ['wy_laramie_warrants', 'Laramie County, WY Warrants', 'https://www.laramiecountysheriff.com', 'html', 'WY', 'wy_laramie', 1, 60],
-      ['wy_sweetwater_warrants', 'Sweetwater County, WY Warrants', 'https://www.sweetwatercountywy.gov/sheriff', 'html', 'WY', 'wy_sweetwater', 1, 60],
-      ['wy_fremont_warrants', 'Fremont County, WY Warrants', 'https://www.fremontcountywy.org/sheriff', 'html', 'WY', 'wy_fremont', 1, 60],
-      ['wy_campbell_warrants', 'Campbell County, WY Warrants', 'https://www.ccsd.net', 'html', 'WY', 'wy_campbell', 1, 60],
-
-      // ── Idaho (surrounding state — enabled by default, hourly scans) ──
-      ['id_ada_warrants', 'Ada County, ID Warrants', 'https://www.adasheriff.org/Warrants', 'html', 'ID', 'id_ada', 1, 60],
-      ['id_canyon_warrants', 'Canyon County, ID Warrants', 'https://www.canyoncounty.id.gov/sheriff', 'html', 'ID', 'id_canyon', 1, 60],
-      ['id_bannock_warrants', 'Bannock County, ID Warrants', 'https://www.bannockcounty.us/sheriff/', 'html', 'ID', 'id_bannock', 1, 60],
-      ['id_bonneville_warrants', 'Bonneville County, ID Warrants', 'https://www.co.bonneville.id.us/sheriff', 'html', 'ID', 'id_bonneville', 1, 60],
-      ['id_twin_falls_warrants', 'Twin Falls County, ID Warrants', 'https://www.twinfallscounty.org/sheriff', 'html', 'ID', 'id_twin_falls', 1, 60],
-      ['id_kootenai_warrants', 'Kootenai County, ID Warrants', 'https://www.kcgov.us/sheriff', 'html', 'ID', 'id_kootenai', 1, 60],
-
-      // ── Nevada (surrounding state — enabled by default, hourly scans) ──
-      ['nv_clark_warrants', 'Clark County, NV (LVMPD) Warrants', 'https://www.lvmpd.com/en-us/Pages/WantedSuspects.aspx', 'html', 'NV', 'nv_clark', 1, 60],
-      ['nv_washoe_warrants', 'Washoe County, NV Warrants', 'https://www.washoecounty.gov/sheriff/warrants/', 'html', 'NV', 'nv_washoe', 1, 60],
-
-      // ── Arizona (surrounding state — enabled by default, hourly scans) ──
-      ['az_maricopa_warrants', 'Maricopa County, AZ (MCSO) Warrants', 'https://www.mcso.org/Home/MostWanted', 'html', 'AZ', 'az_maricopa', 1, 60],
-      ['az_pima_warrants', 'Pima County, AZ Warrants', 'https://www.pimasheriff.org/most-wanted', 'html', 'AZ', 'az_pima', 1, 60],
-      ['az_yavapai_warrants', 'Yavapai County, AZ Warrants', 'https://www.yavapai.us/sheriff/wanted', 'html', 'AZ', 'az_yavapai', 1, 60],
-
-      // ── New Mexico (surrounding state — enabled by default, hourly scans) ──
-      ['nm_bernalillo_warrants', 'Bernalillo County, NM Warrants', 'https://www.bernco.gov/sheriff/warrants/', 'html', 'NM', 'nm_bernalillo', 1, 60],
-      ['nm_dona_ana_warrants', 'Dona Ana County, NM Warrants', 'https://www.donaanacounty.org/sheriff', 'html', 'NM', 'nm_dona_ana', 1, 60],
-
-      // ── Federal / Nationwide Sources (critical for officer safety) ──
-      ['fed_fbi_wanted', 'FBI Most Wanted', 'https://www.fbi.gov/wanted', 'html', 'US', null, 1, 60],
-      ['fed_usms_wanted', 'US Marshals Most Wanted', 'https://www.usmarshals.gov/what-we-do/fugitive-operations/most-wanted', 'html', 'US', null, 1, 60],
-      ['fed_ice_wanted', 'ICE Most Wanted', 'https://www.ice.gov/most-wanted', 'html', 'US', null, 1, 60],
-      ['fed_dea_wanted', 'DEA Most Wanted', 'https://www.dea.gov/fugitives', 'html', 'US', null, 1, 60],
-      ['fed_atf_wanted', 'ATF Most Wanted', 'https://www.atf.gov/most-wanted', 'html', 'US', null, 1, 60],
-      ['fed_secret_service_wanted', 'Secret Service Most Wanted', 'https://www.secretservice.gov/investigation/mostwanted', 'html', 'US', null, 1, 60],
-
-      // ══════════════════════════════════════════════════════════
-      //  FULL 50-STATE WARRANT COVERAGE
-      //  Largest county/city law enforcement per state
-      //  All enabled, 2-hour intervals for non-surrounding states
-      // ══════════════════════════════════════════════════════════
-
-      // ── Alabama ──
-      ['al_jefferson_warrants', 'Jefferson County, AL Warrants', 'https://www.jeffcosheriff.net/warrants', 'html', 'AL', 'al_jefferson', 1, 120],
-      ['al_mobile_warrants', 'Mobile County, AL Warrants', 'https://www.mobileso.com/warrants/', 'html', 'AL', 'al_mobile', 1, 120],
-
-      // ── Alaska ──
-      ['ak_anchorage_warrants', 'Anchorage, AK Warrants', 'https://www.muni.org/departments/prior-records/warrants', 'html', 'AK', 'ak_anchorage', 1, 120],
-
-      // ── Arkansas ──
-      ['ar_pulaski_warrants', 'Pulaski County, AR Warrants', 'https://www.pulaskicounty.net/sheriff-warrants/', 'html', 'AR', 'ar_pulaski', 1, 120],
-      ['ar_benton_warrants', 'Benton County, AR Warrants', 'https://www.bentoncountysheriff.org/warrants', 'html', 'AR', 'ar_benton', 1, 120],
-
-      // ── California ──
-      ['ca_los_angeles_warrants', 'Los Angeles County, CA Warrants', 'https://lasd.org/most-wanted/', 'html', 'CA', 'ca_los_angeles', 1, 120],
-      ['ca_san_bernardino_warrants', 'San Bernardino County, CA Warrants', 'https://www.sbcounty.gov/sheriff/warrants/', 'html', 'CA', 'ca_san_bernardino', 1, 120],
-      ['ca_riverside_warrants', 'Riverside County, CA Warrants', 'https://www.riversidesheriff.org/585/Most-Wanted', 'html', 'CA', 'ca_riverside', 1, 120],
-      ['ca_san_diego_warrants', 'San Diego County, CA Warrants', 'https://www.sdsheriff.gov/bureaus/law-enforcement-services-bureau/warrants', 'html', 'CA', 'ca_san_diego', 1, 120],
-      ['ca_sacramento_warrants', 'Sacramento County, CA Warrants', 'https://www.sacsheriff.com/pages/warrants.aspx', 'html', 'CA', 'ca_sacramento', 1, 120],
-      ['ca_fresno_warrants', 'Fresno County, CA Warrants', 'https://www.fresnosheriff.org/warrants.html', 'html', 'CA', 'ca_fresno', 1, 120],
-      ['ca_kern_warrants', 'Kern County, CA Warrants', 'https://www.kernsheriff.org/warrants', 'html', 'CA', 'ca_kern', 1, 120],
-
-      // ── Connecticut ──
-      ['ct_hartford_warrants', 'Hartford, CT Warrants', 'https://www.hartfordct.gov/Government/Departments/Police/Most-Wanted', 'html', 'CT', 'ct_hartford', 1, 120],
-      ['ct_new_haven_warrants', 'New Haven, CT Warrants', 'https://www.newhavenct.gov/police/most-wanted', 'html', 'CT', 'ct_new_haven', 1, 120],
-
-      // ── Delaware ──
-      ['de_new_castle_warrants', 'New Castle County, DE Warrants', 'https://www.nccde.org/130/Most-Wanted', 'html', 'DE', 'de_new_castle', 1, 120],
-
-      // ── Florida ──
-      ['fl_miami_dade_warrants', 'Miami-Dade County, FL Warrants', 'https://www.miamidade.gov/global/police/wanted.page', 'html', 'FL', 'fl_miami_dade', 1, 120],
-      ['fl_broward_warrants', 'Broward County, FL Warrants', 'https://www.sheriff.org/BE/Pages/Wanted-Persons.aspx', 'html', 'FL', 'fl_broward', 1, 120],
-      ['fl_hillsborough_warrants', 'Hillsborough County, FL Warrants', 'https://www.hcso.tampa.fl.us/Community/Most-Wanted', 'html', 'FL', 'fl_hillsborough', 1, 120],
-      ['fl_orange_warrants', 'Orange County, FL Warrants', 'https://www.ocso.com/Crime-Information/Most-Wanted', 'html', 'FL', 'fl_orange', 1, 120],
-      ['fl_duval_warrants', 'Duval County (Jacksonville), FL Warrants', 'https://www.jaxsheriff.org/Divisions/Investigations/Most-Wanted.aspx', 'html', 'FL', 'fl_duval', 1, 120],
-
-      // ── Georgia ──
-      ['ga_fulton_warrants', 'Fulton County, GA Warrants', 'https://www.fultonsheriff.org/warrants', 'html', 'GA', 'ga_fulton', 1, 120],
-      ['ga_dekalb_warrants', 'DeKalb County, GA Warrants', 'https://www.dekalbcountyga.gov/sheriff/warrants', 'html', 'GA', 'ga_dekalb', 1, 120],
-      ['ga_gwinnett_warrants', 'Gwinnett County, GA Warrants', 'https://www.gwinnettcountysheriff.com/warrants', 'html', 'GA', 'ga_gwinnett', 1, 120],
-
-      // ── Hawaii ──
-      ['hi_honolulu_warrants', 'Honolulu, HI Warrants', 'https://www.honolulupd.org/most-wanted/', 'html', 'HI', 'hi_honolulu', 1, 120],
-
-      // ── Illinois ──
-      ['il_cook_warrants', 'Cook County, IL Warrants', 'https://www.cookcountysheriff.org/warrants/', 'html', 'IL', 'il_cook', 1, 120],
-      ['il_dupage_warrants', 'DuPage County, IL Warrants', 'https://www.dupagesheriff.org/warrants', 'html', 'IL', 'il_dupage', 1, 120],
-      ['il_lake_warrants', 'Lake County, IL Warrants', 'https://www.lakecountyil.gov/428/Warrants', 'html', 'IL', 'il_lake', 1, 120],
-
-      // ── Indiana ──
-      ['in_marion_warrants', 'Marion County, IN Warrants', 'https://www.indy.gov/agency/indianapolis-metropolitan-police-department', 'html', 'IN', 'in_marion', 1, 120],
-      ['in_lake_warrants', 'Lake County, IN Warrants', 'https://www.lakecountysheriff.com/warrants/', 'html', 'IN', 'in_lake', 1, 120],
-
-      // ── Iowa ──
-      ['ia_polk_warrants', 'Polk County, IA Warrants', 'https://www.polkcountyiowa.gov/county-sheriff/warrants/', 'html', 'IA', 'ia_polk', 1, 120],
-
-      // ── Kansas ──
-      ['ks_sedgwick_warrants', 'Sedgwick County, KS Warrants', 'https://www.sedgwickcounty.org/sheriff/warrants/', 'html', 'KS', 'ks_sedgwick', 1, 120],
-      ['ks_johnson_warrants', 'Johnson County, KS Warrants', 'https://www.jocosheriff.org/resources/warrants', 'html', 'KS', 'ks_johnson', 1, 120],
-
-      // ── Kentucky ──
-      ['ky_jefferson_warrants', 'Jefferson County, KY Warrants', 'https://www.loumetrowarrants.com', 'html', 'KY', 'ky_jefferson', 1, 120],
-      ['ky_fayette_warrants', 'Fayette County, KY Warrants', 'https://www.lexingtonky.gov/most-wanted', 'html', 'KY', 'ky_fayette', 1, 120],
-
-      // ── Louisiana ──
-      ['la_orleans_warrants', 'Orleans Parish, LA Warrants', 'https://www.nola.gov/nopd/crime-data/most-wanted/', 'html', 'LA', 'la_orleans', 1, 120],
-      ['la_east_baton_rouge_warrants', 'East Baton Rouge, LA Warrants', 'https://www.ebrso.org/warrants', 'html', 'LA', 'la_east_baton_rouge', 1, 120],
-
-      // ── Maine ──
-      ['me_cumberland_warrants', 'Cumberland County, ME Warrants', 'https://www.cumberlandso.org/warrants', 'html', 'ME', 'me_cumberland', 1, 120],
-
-      // ── Maryland ──
-      ['md_baltimore_warrants', 'Baltimore County, MD Warrants', 'https://www.baltimorepolice.org/crime-stats/most-wanted', 'html', 'MD', 'md_baltimore', 1, 120],
-      ['md_prince_georges_warrants', "Prince George's County, MD Warrants", 'https://www.princegeorgescountymd.gov/departments-offices/police/most-wanted', 'html', 'MD', 'md_prince_georges', 1, 120],
-
-      // ── Massachusetts ──
-      ['ma_suffolk_warrants', 'Suffolk County (Boston), MA Warrants', 'https://bpdnews.com/most-wanted', 'html', 'MA', 'ma_suffolk', 1, 120],
-      ['ma_worcester_warrants', 'Worcester County, MA Warrants', 'https://www.worcesterma.gov/police/most-wanted', 'html', 'MA', 'ma_worcester', 1, 120],
-
-      // ── Michigan ──
-      ['mi_wayne_warrants', 'Wayne County, MI Warrants', 'https://www.waynecounty.com/sheriff/warrants.aspx', 'html', 'MI', 'mi_wayne', 1, 120],
-      ['mi_oakland_warrants', 'Oakland County, MI Warrants', 'https://www.oakgov.com/sheriff/warrants', 'html', 'MI', 'mi_oakland', 1, 120],
-      ['mi_kent_warrants', 'Kent County, MI Warrants', 'https://www.accesskent.com/Sheriff/warrants/', 'html', 'MI', 'mi_kent', 1, 120],
-
-      // ── Minnesota ──
-      ['mn_hennepin_warrants', 'Hennepin County, MN Warrants', 'https://www.hennepinsheriff.org/warrants', 'html', 'MN', 'mn_hennepin', 1, 120],
-      ['mn_ramsey_warrants', 'Ramsey County, MN Warrants', 'https://www.ramseycounty.us/residents/public-safety/sheriff/warrants', 'html', 'MN', 'mn_ramsey', 1, 120],
-
-      // ── Mississippi ──
-      ['ms_hinds_warrants', 'Hinds County, MS Warrants', 'https://www.co.hinds.ms.us/pgs/apps/sheriff/warrants.asp', 'html', 'MS', 'ms_hinds', 1, 120],
-
-      // ── Missouri ──
-      ['mo_jackson_warrants', 'Jackson County, MO Warrants', 'https://www.jacksoncountygov.com/1441/Most-Wanted', 'html', 'MO', 'mo_jackson', 1, 120],
-      ['mo_st_louis_warrants', 'St. Louis County, MO Warrants', 'https://www.stlouiscountypolice.com/most-wanted', 'html', 'MO', 'mo_st_louis', 1, 120],
-
-      // ── Montana ──
-      ['mt_yellowstone_warrants', 'Yellowstone County, MT Warrants', 'https://www.co.yellowstone.mt.gov/sheriff/', 'html', 'MT', 'mt_yellowstone', 1, 120],
-      ['mt_missoula_warrants', 'Missoula County, MT Warrants', 'https://www.missoulacounty.us/government/public-safety/sheriff-s-office', 'html', 'MT', 'mt_missoula', 1, 120],
-
-      // ── Nebraska ──
-      ['ne_douglas_warrants', 'Douglas County, NE Warrants', 'https://www.douglascounty-ne.gov/sheriff', 'html', 'NE', 'ne_douglas', 1, 120],
-      ['ne_lancaster_warrants', 'Lancaster County, NE Warrants', 'https://lancaster.ne.gov/sheriff', 'html', 'NE', 'ne_lancaster', 1, 120],
-
-      // ── New Hampshire ──
-      ['nh_hillsborough_warrants', 'Hillsborough County, NH Warrants', 'https://www.goffstownpd.org/most-wanted', 'html', 'NH', 'nh_hillsborough', 1, 120],
-
-      // ── New Jersey ──
-      ['nj_essex_warrants', 'Essex County, NJ Warrants', 'https://www.essexsheriff.com/warrants/', 'html', 'NJ', 'nj_essex', 1, 120],
-      ['nj_hudson_warrants', 'Hudson County, NJ Warrants', 'https://www.hudsoncountysheriff.org/warrants', 'html', 'NJ', 'nj_hudson', 1, 120],
-      ['nj_bergen_warrants', 'Bergen County, NJ Warrants', 'https://www.bcsd.us/warrants', 'html', 'NJ', 'nj_bergen', 1, 120],
-
-      // ── New York ──
-      ['ny_nypd_warrants', 'New York City, NY Warrants', 'https://www.nyc.gov/site/nypd/services/see-something-say-something/most-wanted.page', 'html', 'NY', 'ny_nyc', 1, 120],
-      ['ny_suffolk_warrants', 'Suffolk County, NY Warrants', 'https://www.suffolkcountyny.gov/sheriff/warrants', 'html', 'NY', 'ny_suffolk', 1, 120],
-      ['ny_erie_warrants', 'Erie County, NY Warrants', 'https://www2.erie.gov/sheriff/warrants', 'html', 'NY', 'ny_erie', 1, 120],
-
-      // ── North Carolina ──
-      ['nc_mecklenburg_warrants', 'Mecklenburg County, NC Warrants', 'https://www.mecksheriff.com/warrants/', 'html', 'NC', 'nc_mecklenburg', 1, 120],
-      ['nc_wake_warrants', 'Wake County, NC Warrants', 'https://www.wakegov.com/sheriff/warrants', 'html', 'NC', 'nc_wake', 1, 120],
-      ['nc_guilford_warrants', 'Guilford County, NC Warrants', 'https://www.guilfordcountysheriff.com/warrants', 'html', 'NC', 'nc_guilford', 1, 120],
-
-      // ── North Dakota ──
-      ['nd_cass_warrants', 'Cass County, ND Warrants', 'https://www.casscountynd.gov/departments/sheriff/warrants', 'html', 'ND', 'nd_cass', 1, 120],
-
-      // ── Ohio ──
-      ['oh_cuyahoga_warrants', 'Cuyahoga County, OH Warrants', 'https://sheriff.cuyahogacounty.us/warrants/', 'html', 'OH', 'oh_cuyahoga', 1, 120],
-      ['oh_franklin_warrants', 'Franklin County, OH Warrants', 'https://sheriff.franklincountyohio.gov/warrants', 'html', 'OH', 'oh_franklin', 1, 120],
-      ['oh_hamilton_warrants', 'Hamilton County, OH Warrants', 'https://www.hcso.org/warrants', 'html', 'OH', 'oh_hamilton', 1, 120],
-
-      // ── Oklahoma ──
-      ['ok_oklahoma_warrants', 'Oklahoma County, OK Warrants', 'https://www.oklahomacounty.org/sheriff/warrants', 'html', 'OK', 'ok_oklahoma', 1, 120],
-      ['ok_tulsa_warrants', 'Tulsa County, OK Warrants', 'https://www.tcso.org/warrants/', 'html', 'OK', 'ok_tulsa', 1, 120],
-
-      // ── Oregon ──
-      ['or_multnomah_warrants', 'Multnomah County, OR Warrants', 'https://www.mcso.us/site/warrants.php', 'html', 'OR', 'or_multnomah', 1, 120],
-      ['or_jackson_warrants', 'Jackson County, OR Warrants', 'https://jacksoncounty.org/sheriff/', 'html', 'OR', 'or_jackson', 1, 120],
-      ['or_lane_warrants', 'Lane County, OR Warrants', 'https://www.lanecountyor.gov/government/county-departments-offices-and-representatives/sheriff-s-office/warrants', 'html', 'OR', 'or_lane', 1, 120],
-
-      // ── Pennsylvania ──
-      ['pa_philadelphia_warrants', 'Philadelphia, PA Warrants', 'https://www.phillypolice.com/most-wanted/', 'html', 'PA', 'pa_philadelphia', 1, 120],
-      ['pa_allegheny_warrants', 'Allegheny County, PA Warrants', 'https://www.alleghenycounty.us/sheriff/warrant-list', 'html', 'PA', 'pa_allegheny', 1, 120],
-
-      // ── Rhode Island ──
-      ['ri_providence_warrants', 'Providence, RI Warrants', 'https://www.providenceri.gov/police/most-wanted/', 'html', 'RI', 'ri_providence', 1, 120],
-
-      // ── South Carolina ──
-      ['sc_richland_warrants', 'Richland County, SC Warrants', 'https://www.rcsd.net/warrants/', 'html', 'SC', 'sc_richland', 1, 120],
-      ['sc_greenville_warrants', 'Greenville County, SC Warrants', 'https://www.gcso.org/warrants/', 'html', 'SC', 'sc_greenville', 1, 120],
-
-      // ── South Dakota ──
-      ['sd_minnehaha_warrants', 'Minnehaha County, SD Warrants', 'https://www.minnehahacounty.org/dept/sheriff/warrants.aspx', 'html', 'SD', 'sd_minnehaha', 1, 120],
-
-      // ── Tennessee ──
-      ['tn_shelby_warrants', 'Shelby County, TN Warrants', 'https://www.shelby-sheriff.org/warrants/', 'html', 'TN', 'tn_shelby', 1, 120],
-      ['tn_davidson_warrants', 'Davidson County, TN Warrants', 'https://www.nashville.gov/departments/police/investigative-services/most-wanted', 'html', 'TN', 'tn_davidson', 1, 120],
-      ['tn_knox_warrants', 'Knox County, TN Warrants', 'https://www.knoxsheriff.org/warrants/', 'html', 'TN', 'tn_knox', 1, 120],
-
-      // ── Texas ──
-      ['tx_harris_warrants', 'Harris County, TX Warrants', 'https://www.harriscountyso.org/Warrants/WarrantSearch', 'html', 'TX', 'tx_harris', 1, 120],
-      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 0, 120],
-      ['tx_bexar_warrants', 'Bexar County, TX Warrants', 'https://www.bexar.org/3044/Warrants', 'html', 'TX', 'tx_bexar', 1, 120],
-      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 0, 120],
-      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 0, 120],
-      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 0, 120],
-
-      // ── Vermont ──
-      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 0, 120],
-
-      // ── Virginia ──
-      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 0, 120],
-      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 0, 120],
-
-      // ── Washington ──
-      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 0, 120],
-      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 0, 120],
-      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 0, 120],
-      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 0, 120],
-
-      // ── West Virginia ──
-      ['wv_kanawha_warrants', 'Kanawha County, WV Warrants', 'https://www.kanawhasheriff.us/warrants/', 'html', 'WV', 'wv_kanawha', 1, 120],
-
-      // ── Wisconsin ──
-      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 0, 120],
-      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 0, 120],
-
-      // ── Arrest Record Extraction — extracts warrant-based bookings from existing arrest_records ──
-      ['arrest_extract_all', 'Warrant Extraction (All Arrest Records)', null, 'arrest_extract', 'ALL', null, 1, 60],
-    ];
-
-    let seeded = 0;
-    for (const [key, display, url, type, state, county, enabled, interval] of warrantSources) {
-      insertWarrantConfig.run(key, display, url, type, state, county, enabled ? 1 : 0, interval);
-      seeded++;
-    }
-    if (seeded > 0) {
-      console.log(`[migrate] Seeded ${seeded} warrant scraper configs`);
-    }
-  } catch (err) {
-    // INSERT OR IGNORE — safe if already seeded
-  }
-
-  // ── Add DOB verification flag to scraped warrants ──
-  addCol('scraped_warrants', 'dob_verified', 'INTEGER DEFAULT 0');
-
-  // ── Court Records cache table ──────────────────────────────
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS court_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        case_number TEXT NOT NULL,
-        court_name TEXT,
-        state TEXT,
-        case_type TEXT,
-        filing_date TEXT,
-        disposition TEXT,
+        forensic_case_id INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        exhibit_number TEXT NOT NULL,
+        exhibit_type TEXT NOT NULL DEFAULT 'other' CHECK(exhibit_type IN (
+          'biological','chemical','digital','document','drug','explosive',
+          'fingerprint','firearm','trace','clothing','dna_sample','tool_mark',
+          'glass','paint','fiber','soil','impression','other'
+        )),
+        description TEXT NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        condition_received TEXT,
+        storage_location TEXT,
+        storage_temp TEXT,
+        collected_by TEXT,
+        collected_date TEXT,
+        collection_method TEXT,
+        hash_md5 TEXT,
+        hash_sha256 TEXT,
+        chain_of_custody TEXT DEFAULT '[]',
+        disposition TEXT DEFAULT 'in_lab' CHECK(disposition IN (
+          'in_lab','returned','destroyed','transferred','in_storage'
+        )),
         disposition_date TEXT,
-        charges TEXT,
-        offense_level TEXT,
-        defendant_name TEXT,
-        defendant_dob TEXT,
-        judge TEXT,
-        source_url TEXT,
-        source_system TEXT,
-        fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        person_id INTEGER,
-        UNIQUE(case_number, source_system),
-        FOREIGN KEY (person_id) REFERENCES persons(id)
-      )
-    `);
-  } catch { /* already exists */ }
+        disposition_notes TEXT,
+        photos TEXT DEFAULT '[]',
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        UNIQUE(forensic_case_id, exhibit_number)
+      );
 
-  try {
-    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_person ON court_records(person_id)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_defendant ON court_records(defendant_name)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_state ON court_records(state)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_fetched ON court_records(fetched_at)');
-  } catch { /* indexes may already exist */ }
+      CREATE TABLE IF NOT EXISTS forensic_analyses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        exhibit_id INTEGER REFERENCES forensic_exhibits(id) ON DELETE SET NULL,
+        analysis_type TEXT NOT NULL CHECK(analysis_type IN (
+          'dna','fingerprint','drug_analysis','toxicology','ballistics',
+          'digital_forensics','document_exam','trace_evidence','serology',
+          'arson_analysis','tool_mark','glass_analysis','paint_analysis',
+          'fiber_analysis','blood_spatter','gunshot_residue','other'
+        )),
+        methodology TEXT,
+        equipment_used TEXT,
+        examiner_id INTEGER REFERENCES users(id),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+          'pending','in_progress','completed','inconclusive','cancelled'
+        )),
+        started_at TEXT,
+        completed_at TEXT,
+        results TEXT,
+        conclusion TEXT,
+        limitations TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      );
 
-  // ── Enable all surrounding-state warrant sources + hourly intervals ────
-  // This migration activates previously-disabled sources and updates scan frequency
-  try {
-    // Enable all surrounding state sources (CO, WY, ID, NV, AZ, NM) + federal
-    db.prepare(`
-      UPDATE warrant_scraper_config
-      SET enabled = 1, scrape_interval_minutes = 60
-      WHERE state IN ('CO', 'WY', 'ID', 'NV', 'AZ', 'NM', 'US')
-        AND enabled = 0
-    `).run();
-    // Update Utah state scan to hourly
-    db.prepare(`
-      UPDATE warrant_scraper_config
-      SET scrape_interval_minutes = 60
-      WHERE source_key = 'ut_state' AND scrape_interval_minutes > 60
-    `).run();
-    // Enable all remaining US state sources at 2-hour intervals (full 50-state coverage)
-    db.prepare(`
-      UPDATE warrant_scraper_config
-      SET enabled = 1, scrape_interval_minutes = 120
-      WHERE enabled = 0
-        AND state NOT IN ('CO', 'WY', 'ID', 'NV', 'AZ', 'NM', 'US', 'UT', 'ALL')
-    `).run();
-  } catch { /* safe — idempotent */ }
-
-  // ── MULTI-STATE JAIL ROSTER — add state columns ──────────────
-  addCol('jail_roster_config', 'state', "TEXT DEFAULT 'UT'");
-  addCol('arrest_records', 'state', "TEXT DEFAULT 'UT'");
-
-  // ── WARRANT SYSTEM REDESIGN — universal scanner fields ──
-  addCol('warrants', 'source', "TEXT DEFAULT 'manual'");
-  addCol('warrants', 'external_warrant_id', 'TEXT');
-  addCol('warrants', 'external_source_key', 'TEXT');
-  addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
-
-  try {
-    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_warrants_external_id ON warrants(external_warrant_id) WHERE external_warrant_id IS NOT NULL');
-  } catch { /* already exists */ }
-
-  // ── ARREST RECORDS — columns needed by warrant scraper extraction ──
-  addCol('arrest_records', 'gender', 'TEXT');
-  addCol('arrest_records', 'race', 'TEXT');
-  addCol('arrest_records', 'bail_amount', 'TEXT');
-  addCol('arrest_records', 'booking_number', 'TEXT');
-  addCol('arrest_records', 'agency', 'TEXT');
-
-  // Backfill state='UT' on existing scraper records
-  try {
-    db.prepare("UPDATE arrest_records SET state = 'UT' WHERE entry_source = 'scraper' AND state IS NULL").run();
-    db.prepare("UPDATE jail_roster_config SET state = 'UT' WHERE state IS NULL").run();
-  } catch { /* safe to ignore */ }
-
-  // Index for state-based queries
-  try {
-    db.exec('CREATE INDEX IF NOT EXISTS idx_arrest_state ON arrest_records(state)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_jail_roster_config_state ON jail_roster_config(state)');
-  } catch { /* already exists */ }
-
-  // ── Seed multi-state county configs ──────────────────────────
-  // Add surrounding state counties to jail_roster_config if they don't exist
-  try {
-    const insertCountyConfig = db.prepare(`
-      INSERT OR IGNORE INTO jail_roster_config (county, display_name, roster_url, roster_type, enabled, scrape_interval_minutes, state)
-      VALUES (?, ?, ?, ?, 0, 60, ?)
+      CREATE TABLE IF NOT EXISTS forensic_activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        exhibit_id INTEGER REFERENCES forensic_exhibits(id),
+        action TEXT NOT NULL,
+        details TEXT,
+        performed_by INTEGER REFERENCES users(id),
+        performed_by_name TEXT,
+        performed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      );
     `);
 
-    const multiStateCounties = [
-      // ── Colorado ──
-      ['co_el_paso', 'El Paso County, CO', 'https://epcsheriffsoffice.com/services/search-for-inmates/', 'html', 'CO'],
-      ['co_mesa', 'Mesa County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_pueblo', 'Pueblo County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_larimer', 'Larimer County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_weld', 'Weld County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_arapahoe', 'Arapahoe County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_adams', 'Adams County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_jefferson', 'Jefferson County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_denver', 'Denver County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_douglas', 'Douglas County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_boulder', 'Boulder County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-      ['co_garfield', 'Garfield County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
-
-      // ── Wyoming ──
-      ['wy_natrona', 'Natrona County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_laramie', 'Laramie County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_sweetwater', 'Sweetwater County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_fremont', 'Fremont County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_campbell', 'Campbell County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_albany', 'Albany County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_uinta', 'Uinta County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_lincoln', 'Lincoln County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-      ['wy_teton', 'Teton County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
-
-      // ── Idaho ──
-      ['id_ada', 'Ada County, ID', 'https://apps.adacounty.id.gov/sheriff/reports/inmates.aspx', 'html', 'ID'],
-      ['id_canyon', 'Canyon County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
-      ['id_bannock', 'Bannock County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
-      ['id_bonneville', 'Bonneville County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
-      ['id_twin_falls', 'Twin Falls County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
-      ['id_kootenai', 'Kootenai County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
-      ['id_bingham', 'Bingham County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
-      ['id_madison', 'Madison County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
-
-      // ── Nevada ──
-      ['nv_clark', 'Clark County, NV', 'https://redrock.clarkcountynv.gov/ccdcincustody/incustodysearch.aspx', 'html', 'NV'],
-      ['nv_washoe', 'Washoe County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
-      ['nv_elko', 'Elko County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
-      ['nv_lyon', 'Lyon County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
-      ['nv_nye', 'Nye County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
-      ['nv_carson', 'Carson City, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
-      ['nv_churchill', 'Churchill County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
-      ['nv_white_pine', 'White Pine County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
-
-      // ── Arizona ──
-      ['az_maricopa', 'Maricopa County, AZ', 'https://www.mcso.org/InmateInfo', 'html', 'AZ'],
-      ['az_pima', 'Pima County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-      ['az_yavapai', 'Yavapai County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-      ['az_mohave', 'Mohave County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-      ['az_coconino', 'Coconino County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-      ['az_yuma', 'Yuma County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-      ['az_navajo', 'Navajo County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-      ['az_apache', 'Apache County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-      ['az_cochise', 'Cochise County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
-
-      // ── New Mexico ──
-      ['nm_bernalillo', 'Bernalillo County, NM', 'https://viaintfacep2.bernco.gov/custodylist/Results', 'html', 'NM'],
-      ['nm_dona_ana', 'Dona Ana County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
-      ['nm_san_juan', 'San Juan County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
-      ['nm_sandoval', 'Sandoval County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
-      ['nm_santa_fe', 'Santa Fe County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
-      ['nm_lea', 'Lea County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
-      ['nm_chaves', 'Chaves County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
-      ['nm_otero', 'Otero County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
-    ];
-
-    const existingCounties = new Set(
-      (db.prepare('SELECT county FROM jail_roster_config').all() as { county: string }[]).map(r => r.county)
-    );
-
-    let seeded = 0;
-    for (const [county, display, url, type, state] of multiStateCounties) {
-      if (!existingCounties.has(county)) {
-        insertCountyConfig.run(county, display, url, type, state);
-        seeded++;
-      }
-    }
-    if (seeded > 0) {
-      console.log(`[migrate] Seeded ${seeded} multi-state county jail configs (CO/WY/ID/NV/AZ/NM)`);
-    }
-
-    // Non-UT counties are now supported — noRoster auto-disable and circuit breakers
-    // handle failures gracefully. No longer force-disabling on startup.
-  } catch (err) {
-    console.log('[migrate] Multi-state county seed skipped:', (err as Error).message);
-  }
-
-  // ── Seed ALL Utah counties ────────────────────────────────
-  // Utah has 29 counties. The original 6 (weber, davis, iron, uinta, summit, salt_lake)
-  // are already in production. This adds the remaining 23 — enabled where we have
-  // a working parser, disabled where there is no public roster or no parser yet.
-  try {
-    const insertUtCounty = db.prepare(`
-      INSERT OR IGNORE INTO jail_roster_config (county, display_name, roster_url, roster_type, enabled, scrape_interval_minutes, state)
-      VALUES (?, ?, ?, ?, ?, ?, 'UT')
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_forensic_cases_status ON forensic_cases(status);
+      CREATE INDEX IF NOT EXISTS idx_forensic_cases_lab ON forensic_cases(lab_number);
+      CREATE INDEX IF NOT EXISTS idx_forensic_exhibits_case ON forensic_exhibits(forensic_case_id);
+      CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
+      CREATE INDEX IF NOT EXISTS idx_forensic_activity_case ON forensic_activity_log(forensic_case_id);
     `);
-
-    const utahCounties = [
-      // ── Counties with scrapable public rosters (enabled) ──
-      ['ut_utah',       'Utah County',       'https://sheriff.utahcounty.gov/corrections/inmateSearch',                      'html', 1, 30],
-      ['ut_washington', 'Washington County',  'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 1, 30],
-      ['ut_tooele',     'Tooele County',      'https://inmate.tooelecountysheriff.org/',                                     'json', 1, 30],
-      ['ut_carbon',     'Carbon County',      'https://www.carbon.utah.gov/service/jail-bookings/',                           'html', 0, 60],
-      ['ut_state_prison','Utah State Prison (UDC)','https://corrections.utah.gov/inmate-services/offender-search/',              'json', 1, 120],
-      ['ut_beaver',     'Beaver County',      'https://beavercountyut.cleanwebdesign.com/',                                  'html', 1, 60],
-
-      // ── Counties with no public online roster or image-only ──
-      ['ut_box_elder',  'Box Elder County',   '',  'none', 0, 60],
-      ['ut_cache',      'Cache County',       '',  'none', 0, 60],
-      ['ut_daggett',    'Daggett County',     '',  'none', 0, 60],  // No active jail (pop ~700)
-      ['ut_duchesne',   'Duchesne County',    '',  'none', 0, 60],
-      ['ut_emery',      'Emery County',       '',  'none', 0, 60],
-      ['ut_garfield',   'Garfield County',    '',  'none', 0, 60],
-      ['ut_grand',      'Grand County',       '',  'none', 0, 60],  // Image-only roster
-      ['ut_juab',       'Juab County',        '',  'none', 0, 60],
-      ['ut_kane',       'Kane County',        '',  'none', 0, 60],
-      ['ut_millard',    'Millard County',     '',  'none', 0, 60],
-      ['ut_morgan',     'Morgan County',      '',  'none', 0, 60],
-      ['ut_piute',      'Piute County',       '',  'none', 0, 60],
-      ['ut_rich',       'Rich County',        '',  'none', 0, 60],
-      ['ut_san_juan',   'San Juan County',    '',  'none', 0, 60],
-      ['ut_sanpete',    'Sanpete County',     '',  'none', 0, 60],
-      ['ut_sevier',     'Sevier County',      '',  'none', 0, 60],
-      ['ut_wasatch',    'Wasatch County',     '',  'none', 0, 60],
-      ['ut_wayne',      'Wayne County',       '',  'none', 0, 60],
-    ];
-
-    // INSERT OR IGNORE handles duplicates — no need to check existing set
-    let utSeeded = 0;
-    for (const [county, display, url, type, enabled, interval] of utahCounties) {
-      const result = insertUtCounty.run(county, display, url, type, enabled, interval);
-      if (result.changes > 0) utSeeded++;
-    }
-    if (utSeeded > 0) {
-      console.log(`[migrate] Seeded ${utSeeded} additional Utah county jail configs`);
-    }
-  } catch (err) {
-    console.log('[migrate] Utah county seed skipped:', (err as Error).message);
-  }
-
-  // ── GPS SOURCE PRIORITY — dual-session phone/desktop support ─
-  addCol('units', 'gps_source', "TEXT DEFAULT 'browser'");
-  addCol('units', 'gps_updated_at', 'TEXT');
-  addCol('gps_breadcrumbs', 'gps_source', 'TEXT');
-
-  // ── MILEAGE TRACKING — responding vehicle on calls ─────────
-  addCol('calls_for_service', 'responding_vehicle_id', 'TEXT');
-
-  // ── CALL AGING / OVERDUE — 72-hour enforcement notifications ──
-  // Tracks whether 48h warning or 72h overdue notification has been sent
-  // for calls that remain in active status too long. NULL = no notification sent.
-  addCol('calls_for_service', 'overdue_notified', 'TEXT');
-
-  // ── CRM LEADS — service interest for legal/collections leads ──
-  addCol('crm_leads', 'service_interest', 'TEXT');
-
-  // ── CALL VISIT HISTORY — snapshot each PSO visit before redispatch ──
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS call_visit_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id TEXT NOT NULL,
-      visit_number INTEGER NOT NULL DEFAULT 1,
-      status TEXT,
-      dispatched_at TEXT,
-      enroute_at TEXT,
-      onscene_at TEXT,
-      cleared_at TEXT,
-      closed_at TEXT,
-      assigned_units TEXT,
-      responding_vehicle_id TEXT,
-      starting_mileage REAL,
-      ending_mileage REAL,
-      disposition TEXT,
-      note TEXT,
-      created_by TEXT,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (call_id) REFERENCES calls_for_service(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_visit_history_call ON call_visit_history(call_id);
-  `);
-
-  // ── PSO Service Window Compliance Tracking ──
-  // Tracks which required time windows have been covered by service attempts
-  addCol('calls_for_service', 'pso_service_windows', 'TEXT'); // JSON: { early_morning: bool, daytime: bool, evening: bool, weekend: bool }
-  addCol('calls_for_service', 'parent_call_id', 'INTEGER REFERENCES calls_for_service(id)'); // Links re-dispatched PSO calls to their parent
-  addCol('call_visit_history', 'time_window', 'TEXT');  // early_morning | daytime | evening
-  addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
-
-  // ── SERVE QUEUE — dispatch integration ─────────────────
-  addCol('serve_queue', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
-  try { db.exec("CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id)"); } catch {}
-
-  // ─── OVERWATCH CRM ENHANCEMENTS ─────────────────────────────────────────────
-  addCol('properties', 'risk_level', "TEXT DEFAULT 'low'");
-  addCol('crm_proposals', 'stage_entered_at', 'TEXT');
-  addCol('crm_tasks', 'auto_created_by', 'TEXT');
-  addCol('invoices', 'is_recurring', 'INTEGER DEFAULT 0');
-  addCol('invoices', 'recurrence_interval', 'TEXT');
-  addCol('invoices', 'recurrence_anchor', 'TEXT');
-
-  try { db.exec(`CREATE TABLE IF NOT EXISTS crm_proposal_versions (id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, version_num INTEGER NOT NULL, snapshot TEXT NOT NULL, edited_by TEXT, edited_at TEXT)`); } catch {}
-  try { db.exec(`CREATE TABLE IF NOT EXISTS crm_payments (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_at TEXT, method TEXT, reference TEXT, recorded_by TEXT)`); } catch {}
-
-  // ── Backfill dispatch_code from S/Z/B IDs on all calls ────────
-  // Ensures dispatch_code always matches current section_id/zone_id/beat_id
-  // Uses a single UPDATE...FROM to avoid N+1 queries during startup
-  try {
-    // Backfill calls that have a matching dispatch_districts row
-    const result1 = db.prepare(`
-      UPDATE calls_for_service SET
-        dispatch_code = dd.dispatch_code,
-        section_name = dd.section_name,
-        zone_name = dd.zone_name,
-        beat_name = dd.beat_name,
-        beat_descriptor = dd.beat_descriptor
-      FROM dispatch_districts dd
-      WHERE calls_for_service.section_id = dd.section_id
-        AND calls_for_service.zone_id = dd.zone_id
-        AND calls_for_service.beat_id = dd.beat_id
-        AND (calls_for_service.dispatch_code IS NULL OR calls_for_service.dispatch_code != dd.dispatch_code)
-    `).run();
-    // Backfill calls with no matching district — use fallback S-Z/B format
-    const result2 = db.prepare(`
-      UPDATE calls_for_service SET
-        dispatch_code = section_id || '-' || zone_id || '/' || beat_id
-      WHERE section_id IS NOT NULL AND zone_id IS NOT NULL AND beat_id IS NOT NULL
-        AND dispatch_code IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM dispatch_districts dd
-          WHERE dd.section_id = calls_for_service.section_id
-            AND dd.zone_id = calls_for_service.zone_id
-            AND dd.beat_id = calls_for_service.beat_id
-        )
-    `).run();
-    const backfilled = result1.changes + result2.changes;
-    if (backfilled > 0) console.log(`[Migration] Backfilled dispatch_code on ${backfilled} call(s)`);
-  } catch (err: any) {
-    console.warn('[Migration] dispatch_code backfill warning:', err?.message);
-  }
-
-  // ── Populate call_units junction table from assigned_unit_ids JSON ──
-  try {
-    const hasCallUnits = db.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='call_units'"
-    ).get();
-    if (hasCallUnits) {
-      const callUnitsCount = (db.prepare('SELECT COUNT(*) as cnt FROM call_units').get() as any).cnt;
-      if (callUnitsCount === 0) {
-        const calls = db.prepare(
-          "SELECT id, assigned_unit_ids FROM calls_for_service WHERE assigned_unit_ids IS NOT NULL AND assigned_unit_ids != '' AND assigned_unit_ids != '[]'"
-        ).all() as { id: number; assigned_unit_ids: string }[];
-
-        if (calls.length > 0) {
-          const validUnitIds = new Set(
-            (db.prepare('SELECT id FROM units').all() as { id: number }[]).map(r => r.id)
-          );
-          const insertStmt = db.prepare(
-            'INSERT OR IGNORE INTO call_units (call_id, unit_id) VALUES (?, ?)'
-          );
-          let migrated = 0;
-          const migrateAll = db.transaction(() => {
-            for (const call of calls) {
-              try {
-                const unitIds = JSON.parse(call.assigned_unit_ids);
-                if (!Array.isArray(unitIds)) continue;
-                for (const uid of unitIds) {
-                  const numId = typeof uid === 'string' ? parseInt(uid, 10) : uid;
-                  if (typeof numId === 'number' && !isNaN(numId) && validUnitIds.has(numId)) {
-                    insertStmt.run(call.id, numId);
-                    migrated++;
-                  }
-                }
-              } catch {
-                // Skip calls with malformed JSON
-              }
-            }
-          });
-          migrateAll();
-          if (migrated > 0) {
-            console.log(`[Migration] Populated call_units with ${migrated} assignments from ${calls.length} calls`);
-          }
-        }
-      }
-    }
-  } catch (err: any) {
-    console.warn('[Migration] call_units population warning:', err?.message);
-  }
-
-  // ── HR: Allow 'human_resources' role in existing databases ──
-  // SQLite doesn't support ALTER CHECK, so rebuild the users table
-  // with the updated constraint if the current CHECK doesn't include it.
-  try {
-    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql: string } | undefined;
-    if (tableInfo?.sql && !tableInfo.sql.includes('human_resources')) {
-      console.log('[Migration] Adding human_resources role to users table...');
-      db.exec(`
-        -- Temporarily allow inserting human_resources by using a new table
-        CREATE TABLE IF NOT EXISTS users_hr_temp AS SELECT * FROM users WHERE 0;
-      `);
-      // For existing DBs, the role check is handled at application level
-      // The CHECK constraint is updated on fresh installs via CREATE TABLE IF NOT EXISTS
-      db.exec(`DROP TABLE IF EXISTS users_hr_temp`);
-      console.log('[Migration] human_resources role support added (application-level validation).');
-    }
-  } catch (err: any) {
-    console.warn('[Migration] HR role migration note:', err?.message);
-  }
+  } catch { /* tables already exist */ }
 
   console.log('Schema migration completed.');
 }
@@ -4801,12 +2892,6 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id);
     CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at);
     CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log(entity_type, entity_id);
-    CREATE INDEX IF NOT EXISTS idx_activity_log_action ON activity_log(action);
-    CREATE INDEX IF NOT EXISTS idx_activity_log_hash ON activity_log(log_hash);
-
-    -- Composite indexes for common dispatch queries (status + priority, status + date)
-    CREATE INDEX IF NOT EXISTS idx_calls_status_priority ON calls_for_service(status, priority);
-    CREATE INDEX IF NOT EXISTS idx_calls_status_created ON calls_for_service(status, created_at);
 
     CREATE INDEX IF NOT EXISTS idx_credentials_officer ON credentials(officer_id);
     CREATE INDEX IF NOT EXISTS idx_credentials_status ON credentials(status);
@@ -4818,7 +2903,6 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active);
-    CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 
     CREATE INDEX IF NOT EXISTS idx_login_attempts_username ON login_attempts(username);
     CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address);
@@ -4832,11 +2916,6 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_incident_persons_person ON incident_persons(person_id);
     CREATE INDEX IF NOT EXISTS idx_incident_vehicles_incident ON incident_vehicles(incident_id);
     CREATE INDEX IF NOT EXISTS idx_incident_vehicles_vehicle ON incident_vehicles(vehicle_id);
-
-    CREATE INDEX IF NOT EXISTS idx_call_persons_call ON call_persons(call_id);
-    CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id);
-    CREATE INDEX IF NOT EXISTS idx_call_vehicles_call ON call_vehicles(call_id);
-    CREATE INDEX IF NOT EXISTS idx_call_vehicles_vehicle ON call_vehicles(vehicle_id);
 
     CREATE INDEX IF NOT EXISTS idx_persons_dl ON persons(dl_number);
     CREATE INDEX IF NOT EXISTS idx_vehicles_registration ON vehicles_records(registration_expiry);
@@ -4923,28 +3002,15 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_criminal_history_type ON criminal_history(record_type);
     CREATE INDEX IF NOT EXISTS idx_criminal_history_date ON criminal_history(offense_date);
 
+    -- Officer equipment indexes
+    CREATE INDEX IF NOT EXISTS idx_officer_equipment_officer ON officer_equipment(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
+    CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
+
     -- GPS breadcrumb indexes
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_unit_time ON gps_breadcrumbs(unit_id, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_officer ON gps_breadcrumbs(officer_id);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_recorded ON gps_breadcrumbs(recorded_at);
-
-    -- 2FA / Security indexes
-    CREATE INDEX IF NOT EXISTS idx_totp_secrets_user ON user_totp_secrets(user_id);
-    CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes(user_id);
-    CREATE INDEX IF NOT EXISTS idx_backup_codes_unused ON user_backup_codes(user_id, is_used);
-    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
-    CREATE INDEX IF NOT EXISTS idx_webauthn_creds_user ON webauthn_credentials(user_id);
-    CREATE INDEX IF NOT EXISTS idx_webauthn_creds_credid ON webauthn_credentials(credential_id);
-    CREATE INDEX IF NOT EXISTS idx_trusted_devices_fingerprint ON trusted_devices(device_fingerprint);
-    CREATE INDEX IF NOT EXISTS idx_trusted_devices_expiry ON trusted_devices(trusted_until);
-    CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history(user_id);
-    CREATE INDEX IF NOT EXISTS idx_security_notifs_user ON security_notifications(user_id);
-    CREATE INDEX IF NOT EXISTS idx_security_notifs_read ON security_notifications(user_id, is_read);
-    CREATE INDEX IF NOT EXISTS idx_security_notifs_created ON security_notifications(created_at);
-
-    -- Security alerts indexes
-    CREATE INDEX IF NOT EXISTS idx_security_alerts_created ON security_alerts(created_at);
-    CREATE INDEX IF NOT EXISTS idx_security_alerts_severity ON security_alerts(severity, acknowledged_at);
 
     -- Cases indexes
     CREATE INDEX IF NOT EXISTS idx_cases_number ON cases(case_number);
@@ -4991,434 +3057,82 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_status ON offender_alerts(status);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_severity ON offender_alerts(severity);
 
-    -- Call-units junction indexes
-    CREATE INDEX IF NOT EXISTS idx_call_units_call ON call_units(call_id);
-    CREATE INDEX IF NOT EXISTS idx_call_units_unit ON call_units(unit_id);
+    -- ═══ IPED Digital Forensics Integration ═══
 
-    -- Composite indexes for common query patterns
-    CREATE INDEX IF NOT EXISTS idx_cfs_status_priority ON calls_for_service(status, priority);
-    CREATE INDEX IF NOT EXISTS idx_units_officer_status ON units(officer_id, status);
-    CREATE INDEX IF NOT EXISTS idx_gps_unit_timestamp ON gps_breadcrumbs(unit_id, recorded_at);
-    CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type);
-    CREATE INDEX IF NOT EXISTS idx_incidents_location ON incidents(location_address);
+    CREATE TABLE IF NOT EXISTS iped_imports (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      forensic_case_id    INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+      import_type         TEXT NOT NULL CHECK(import_type IN ('case_link','findings','timeline','report','bookmarks','items')),
+      iped_case_id        TEXT NOT NULL,
+      iped_case_name      TEXT,
+      source_query        TEXT,
+      item_count          INTEGER DEFAULT 0,
+      imported_data       TEXT DEFAULT '[]',
+      summary             TEXT,
+      imported_by         INTEGER REFERENCES users(id),
+      imported_by_name    TEXT,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
 
+    CREATE INDEX IF NOT EXISTS idx_iped_imports_case ON iped_imports(forensic_case_id);
+    CREATE INDEX IF NOT EXISTS idx_iped_imports_iped ON iped_imports(iped_case_id);
+    CREATE INDEX IF NOT EXISTS idx_iped_imports_type ON iped_imports(import_type);
   `);
 
-  // ─── Email cache tables (Microsoft Graph inbox sync) ────────
+  // ── Forensic Hash Sets ───────────────────────────────
   db.exec(`
-    CREATE TABLE IF NOT EXISTS email_cache (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      graph_id TEXT UNIQUE NOT NULL,
-      conversation_id TEXT,
-      folder_id TEXT NOT NULL DEFAULT 'inbox',
-      subject TEXT,
-      from_address TEXT,
-      from_name TEXT,
-      to_addresses TEXT,
-      cc_addresses TEXT,
-      body_preview TEXT,
-      body_html TEXT,
-      has_attachments INTEGER DEFAULT 0,
-      is_read INTEGER DEFAULT 0,
-      is_flagged INTEGER DEFAULT 0,
-      importance TEXT DEFAULT 'normal',
-      received_at TEXT NOT NULL,
-      sent_at TEXT,
-      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    CREATE TABLE IF NOT EXISTS forensic_hash_sets (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL,
+      set_type      TEXT NOT NULL CHECK(set_type IN ('nsrl','projectvic','custom','known_good','known_bad')),
+      description   TEXT,
+      hash_count    INTEGER DEFAULT 0,
+      source_file   TEXT,
+      version       TEXT,
+      imported_by   INTEGER REFERENCES users(id),
+      imported_by_name TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
-    CREATE INDEX IF NOT EXISTS idx_email_cache_folder ON email_cache(folder_id);
-    CREATE INDEX IF NOT EXISTS idx_email_cache_received ON email_cache(received_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_email_cache_from ON email_cache(from_address);
-    CREATE INDEX IF NOT EXISTS idx_email_cache_graph ON email_cache(graph_id);
 
-    CREATE TABLE IF NOT EXISTS email_attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email_graph_id TEXT NOT NULL,
-      attachment_graph_id TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      content_type TEXT,
-      size INTEGER DEFAULT 0,
-      is_inline INTEGER DEFAULT 0,
-      content_id TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (email_graph_id) REFERENCES email_cache(graph_id) ON DELETE CASCADE
+    CREATE TABLE IF NOT EXISTS forensic_hash_entries (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash_set_id   INTEGER NOT NULL REFERENCES forensic_hash_sets(id) ON DELETE CASCADE,
+      hash_value    TEXT NOT NULL,
+      hash_type     TEXT NOT NULL CHECK(hash_type IN ('md5','sha1','sha256')),
+      file_name     TEXT,
+      file_size     INTEGER,
+      category      TEXT,
+      UNIQUE(hash_set_id, hash_value, hash_type)
     );
-    CREATE INDEX IF NOT EXISTS idx_email_attachments_email ON email_attachments(email_graph_id);
 
-    CREATE TABLE IF NOT EXISTS email_folders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      graph_id TEXT UNIQUE NOT NULL,
-      display_name TEXT NOT NULL,
-      parent_folder_id TEXT,
-      total_count INTEGER DEFAULT 0,
-      unread_count INTEGER DEFAULT 0,
-      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_email_folders_graph ON email_folders(graph_id);
-  `);
+    CREATE INDEX IF NOT EXISTS idx_hash_entries_value ON forensic_hash_entries(hash_value);
+    CREATE INDEX IF NOT EXISTS idx_hash_entries_set ON forensic_hash_entries(hash_set_id);
 
-  // ─── EMAIL TEMPLATES ─────────────────────────────────
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS email_templates (
+    CREATE TABLE IF NOT EXISTS integration_health_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT 'general',
-      subject TEXT NOT NULL DEFAULT '',
-      body TEXT NOT NULL DEFAULT '',
-      is_system INTEGER NOT NULL DEFAULT 0,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
-  `);
-
-  // ─── EMAIL INCIDENT LINKS ──────────────────────────
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS email_incident_links (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email_graph_id TEXT NOT NULL,
-      incident_id INTEGER,
-      call_id INTEGER,
-      warrant_id INTEGER,
-      person_id INTEGER,
-      link_type TEXT NOT NULL DEFAULT 'related'
-        CHECK(link_type IN ('related', 'evidence', 'notification', 'correspondence')),
-      notes TEXT,
-      linked_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (linked_by) REFERENCES users(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_email_incident_links_email ON email_incident_links(email_graph_id);
-    CREATE INDEX IF NOT EXISTS idx_email_incident_links_incident ON email_incident_links(incident_id);
-    CREATE INDEX IF NOT EXISTS idx_email_incident_links_call ON email_incident_links(call_id);
-  `);
-
-  // ─── SCHEDULED EMAILS ──────────────────────────────
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS scheduled_emails (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      to_addresses TEXT NOT NULL,
-      cc_addresses TEXT,
-      bcc_addresses TEXT,
-      subject TEXT NOT NULL,
-      body TEXT NOT NULL,
-      attachments TEXT,
-      scheduled_at TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'sent', 'failed', 'cancelled')),
+      integration_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('healthy','degraded','error')),
+      response_time_ms INTEGER,
       error_message TEXT,
-      sent_at TEXT,
-      created_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
+      checked_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
-    CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status, scheduled_at);
-  `);
 
-  // Seed default email templates for law enforcement
-  try {
-    const templateCount = (db.prepare('SELECT COUNT(*) as c FROM email_templates').get() as any).c;
-    if (templateCount === 0) {
-      const insertTemplate = db.prepare(`
-        INSERT INTO email_templates (name, category, subject, body, is_system) VALUES (?, ?, ?, ?, 1)
-      `);
-      const templates = [
-        ['BOLO Alert', 'dispatch', 'BOLO: [Subject Description]',
-          'ATTENTION ALL UNITS\n\nBe On the Lookout for:\n\nSubject: [Name / Description]\nVehicle: [Year Make Model Color / License Plate]\nLast Known Location: [Location]\nReason: [Reason for BOLO]\n\nIf located, contact dispatch immediately.\nDo NOT attempt to apprehend without backup.\n\n-- RMPG Flex Dispatch'],
-        ['Evidence Request', 'investigations', 'Evidence Request — Case #[Case Number]',
-          'To: [Lab / Agency]\n\nRe: Case #[Case Number]\n\nPlease process the following evidence item(s):\n\nItem #: [Evidence Item Number]\nDescription: [Description]\nRequested Analysis: [DNA / Fingerprint / Toxicology / Other]\nPriority: [Routine / Expedited / Rush]\n\nChain of custody documentation is attached.\n\nPlease contact me with any questions.\n\nThank you.'],
-        ['Court Notification', 'legal', 'Court Appearance — [Case Number] — [Date]',
-          'This is to notify you of a scheduled court appearance:\n\nCase #: [Case Number]\nCourt: [Court Name]\nDate: [Date]\nTime: [Time]\nCourtroom: [Room]\nJudge: [Judge Name]\n\nPlease arrive at least 15 minutes early.\nBring all relevant case documentation.\n\nIf you have questions or conflicts, contact the court clerk immediately.'],
-        ['Inter-Agency Request', 'inter_agency', 'Inter-Agency Assistance Request — [Subject]',
-          'To: [Receiving Agency]\nFrom: Rocky Mountain Protective Group\n\nWe are requesting assistance with the following matter:\n\nCase #: [Case Number]\nNature: [Type of Assistance Needed]\nLocation: [Jurisdiction / Location]\nTimeframe: [When assistance is needed]\n\nBackground:\n[Brief description of the case/situation]\n\nPlease contact us at your earliest convenience to coordinate.\n\nThank you for your cooperation.'],
-        ['Incident Report Follow-Up', 'patrol', 'Follow-Up: Incident Report #[Number]',
-          'Dear [Recipient],\n\nThis email is regarding Incident Report #[Number] filed on [Date].\n\n[Follow-up details / Additional information / Status update]\n\nIf you have any questions or additional information to provide, please reply to this email or contact our office.\n\nThank you.'],
-        ['Subpoena Service Confirmation', 'legal', 'Subpoena Service Confirmation — [Case Number]',
-          'This confirms that the following subpoena has been served:\n\nCase #: [Case Number]\nServed To: [Name]\nDate of Service: [Date]\nTime of Service: [Time]\nLocation: [Address]\nMethod: [Personal / Substitute / Posted]\n\nServer: [Officer Name / Badge]\nReturn of Service documentation is attached.'],
-        ['Trespass Warning Notice', 'patrol', 'Trespass Warning — [Location]',
-          'Dear [Property Owner/Manager],\n\nA trespass warning was issued at the following location:\n\nProperty: [Address / Name]\nDate: [Date]\nTime: [Time]\nSubject Warned: [Name if known]\nDescription: [Subject description]\n\nThe subject has been advised that returning to the property may result in arrest for criminal trespass.\n\nA copy of the trespass notice is attached for your records.'],
-        ['Shift Briefing', 'internal', 'Shift Briefing — [Date] [Shift]',
-          'SHIFT BRIEFING\nDate: [Date]\nShift: [Day/Swing/Grave]\n\nPERSONNEL:\n[List of officers on duty]\n\nBOLOs / HOT ITEMS:\n[Active BOLOs and priority items]\n\nBEAT ASSIGNMENTS:\n[Beat assignments]\n\nSPECIAL INSTRUCTIONS:\n[Any special notes for the shift]\n\nStay safe out there.'],
-      ];
-      for (const [name, cat, subj, body] of templates) {
-        insertTemplate.run(name, cat, subj, body);
-      }
-      console.log(`[migrate] Seeded ${templates.length} email templates`);
-    }
-  } catch { /* already seeded */ }
+    CREATE INDEX IF NOT EXISTS idx_health_log_integration ON integration_health_log(integration_id, checked_at);
 
-  // ─── CRM TABLES ─────────────────────────────────────
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS crm_tasks (
+    CREATE TABLE IF NOT EXISTS time_entry_edits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      client_id INTEGER REFERENCES clients(id),
-      property_id INTEGER REFERENCES properties(id),
-      title TEXT NOT NULL,
-      description TEXT,
-      task_type TEXT DEFAULT 'follow_up',
-      priority TEXT DEFAULT 'normal',
-      status TEXT DEFAULT 'pending',
-      due_date TEXT,
-      assigned_to TEXT,
-      completed_at TEXT,
-      completed_by TEXT,
-      notes TEXT,
-      created_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_crm_tasks_client ON crm_tasks(client_id);
-    CREATE INDEX IF NOT EXISTS idx_crm_tasks_status ON crm_tasks(status);
-    CREATE INDEX IF NOT EXISTS idx_crm_tasks_due ON crm_tasks(due_date);
-
-    CREATE TABLE IF NOT EXISTS crm_activity (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      client_id INTEGER REFERENCES clients(id),
-      activity_type TEXT NOT NULL,
-      subject TEXT,
-      details TEXT,
-      created_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_crm_activity_client ON crm_activity(client_id);
-    CREATE INDEX IF NOT EXISTS idx_crm_activity_date ON crm_activity(created_at);
-
-    -- ─── CRM LEADS & PIPELINE ──────────────────────────────
-
-    CREATE TABLE IF NOT EXISTS crm_leads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source TEXT NOT NULL DEFAULT 'manual',
-      source_id TEXT,
-      source_url TEXT,
-      business_name TEXT NOT NULL,
-      industry TEXT,
-      sic_code TEXT,
-      business_type TEXT,
-      contact_name TEXT,
-      contact_email TEXT,
-      contact_phone TEXT,
-      contact_title TEXT,
-      address TEXT,
-      city TEXT,
-      state TEXT DEFAULT 'UT',
-      zip TEXT,
-      latitude REAL,
-      longitude REAL,
-      estimated_value REAL,
-      permit_number TEXT,
-      registration_date TEXT,
-      license_number TEXT,
-      project_type TEXT,
-      property_size TEXT,
-      pipeline_stage TEXT NOT NULL DEFAULT 'new' CHECK(pipeline_stage IN ('new','contacted','qualified','proposal','negotiation','won','lost','dismissed')),
-      lead_score INTEGER DEFAULT 0,
-      assigned_to INTEGER,
-      client_id INTEGER REFERENCES clients(id),
-      proposal_id INTEGER,
-      notes TEXT,
-      lost_reason TEXT,
-      next_follow_up TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_crm_leads_source ON crm_leads(source);
-    CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(pipeline_stage);
-    CREATE INDEX IF NOT EXISTS idx_crm_leads_score ON crm_leads(lead_score DESC);
-    CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned ON crm_leads(assigned_to);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_dedup ON crm_leads(source, source_id) WHERE source_id IS NOT NULL;
-
-    CREATE TABLE IF NOT EXISTS crm_lead_activity (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id INTEGER NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
-      activity_type TEXT NOT NULL,
-      subject TEXT,
-      details TEXT,
+      time_entry_id INTEGER NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
+      edited_by INTEGER NOT NULL REFERENCES users(id),
+      edited_by_name TEXT NOT NULL,
+      edit_type TEXT NOT NULL CHECK(edit_type IN ('clock_in_changed','clock_out_changed','deleted','notes_changed','break_adjusted')),
       old_value TEXT,
       new_value TEXT,
-      created_by INTEGER,
+      reason TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
-    CREATE INDEX IF NOT EXISTS idx_crm_lead_activity_lead ON crm_lead_activity(lead_id);
 
-    CREATE TABLE IF NOT EXISTS crm_proposals (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      proposal_number TEXT NOT NULL,
-      lead_id INTEGER REFERENCES crm_leads(id),
-      client_id INTEGER REFERENCES clients(id),
-      title TEXT NOT NULL,
-      template_type TEXT,
-      description TEXT,
-      scope_of_work TEXT,
-      terms TEXT,
-      monthly_value REAL DEFAULT 0,
-      total_value REAL DEFAULT 0,
-      billing_frequency TEXT DEFAULT 'monthly',
-      valid_until TEXT,
-      proposed_start TEXT,
-      proposed_end TEXT,
-      contract_length_months INTEGER,
-      stage TEXT NOT NULL DEFAULT 'draft' CHECK(stage IN ('draft','sent','viewed','accepted','rejected','expired')),
-      sent_at TEXT,
-      viewed_at TEXT,
-      accepted_at TEXT,
-      rejected_at TEXT,
-      rejection_reason TEXT,
-      created_by INTEGER,
-      assigned_to INTEGER,
-      notes TEXT,
-      pdf_path TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_crm_proposals_lead ON crm_proposals(lead_id);
-    CREATE INDEX IF NOT EXISTS idx_crm_proposals_client ON crm_proposals(client_id);
-    CREATE INDEX IF NOT EXISTS idx_crm_proposals_stage ON crm_proposals(stage);
-
-    CREATE TABLE IF NOT EXISTS crm_proposal_templates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      template_type TEXT NOT NULL,
-      description TEXT,
-      default_scope TEXT,
-      default_terms TEXT,
-      default_monthly_value REAL,
-      default_billing_frequency TEXT DEFAULT 'monthly',
-      default_contract_months INTEGER DEFAULT 12,
-      is_active INTEGER DEFAULT 1,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS lead_scrape_sources (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source_key TEXT UNIQUE NOT NULL,
-      display_name TEXT NOT NULL,
-      base_url TEXT,
-      is_enabled INTEGER DEFAULT 0,
-      poll_interval_seconds INTEGER DEFAULT 86400,
-      last_poll_at TEXT,
-      last_success_at TEXT,
-      consecutive_failures INTEGER DEFAULT 0,
-      total_leads_imported INTEGER DEFAULT 0,
-      api_key_encrypted TEXT,
-      extra_config TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS lead_scrape_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source_key TEXT NOT NULL,
-      status TEXT NOT NULL,
-      records_found INTEGER DEFAULT 0,
-      records_imported INTEGER DEFAULT 0,
-      records_skipped INTEGER DEFAULT 0,
-      error_message TEXT,
-      duration_ms INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_source ON lead_scrape_log(source_key);
-    CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_date ON lead_scrape_log(created_at);
-
-    -- ─── PROCESS SERVER FIELD SUITE ─────────────────────────────────
-
-    CREATE TABLE IF NOT EXISTS serve_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sm_job_id INTEGER,
-      call_id INTEGER REFERENCES calls_for_service(id),
-      officer_id INTEGER REFERENCES users(id),
-      serve_date TEXT NOT NULL,
-      recipient_name TEXT NOT NULL,
-      recipient_address TEXT,
-      recipient_city TEXT,
-      recipient_state TEXT DEFAULT 'UT',
-      recipient_zip TEXT,
-      recipient_lat REAL,
-      recipient_lng REAL,
-      document_type TEXT NOT NULL DEFAULT 'summons',
-      case_number TEXT,
-      court_name TEXT,
-      jurisdiction TEXT,
-      client_name TEXT,
-      attorney_name TEXT,
-      priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low','normal','high','rush')),
-      time_window TEXT DEFAULT 'anytime' CHECK(time_window IN ('morning','afternoon','evening','anytime')),
-      deadline TEXT,
-      attempt_count INTEGER NOT NULL DEFAULT 0,
-      max_attempts INTEGER NOT NULL DEFAULT 3,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','in_progress','served','failed','skipped','archived')),
-      sort_order INTEGER DEFAULT 0,
-      service_instructions TEXT,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_serve_queue_officer ON serve_queue(officer_id, serve_date);
-    CREATE INDEX IF NOT EXISTS idx_serve_queue_status ON serve_queue(status);
-    CREATE INDEX IF NOT EXISTS idx_serve_queue_sm ON serve_queue(sm_job_id);
-    CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id);
-
-    CREATE TABLE IF NOT EXISTS serve_attempts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      serve_queue_id INTEGER NOT NULL REFERENCES serve_queue(id),
-      officer_id INTEGER NOT NULL REFERENCES users(id),
-      attempt_number INTEGER NOT NULL,
-      attempt_type TEXT NOT NULL CHECK(attempt_type IN ('personal','substitute','posting','failed')),
-      result TEXT NOT NULL CHECK(result IN ('served','no_answer','refused','wrong_address','moved','other')),
-      latitude REAL,
-      longitude REAL,
-      gps_accuracy REAL,
-      address_verified INTEGER DEFAULT 0,
-      person_served_name TEXT,
-      person_served_relationship TEXT,
-      person_served_description TEXT,
-      photo_ids TEXT DEFAULT '[]',
-      signature_data TEXT,
-      notes TEXT,
-      attempt_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_serve_attempts_queue ON serve_attempts(serve_queue_id);
-    CREATE INDEX IF NOT EXISTS idx_serve_attempts_officer ON serve_attempts(officer_id);
-
-    CREATE TABLE IF NOT EXISTS serve_routes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL REFERENCES users(id),
-      route_date TEXT NOT NULL,
-      planned_stops TEXT DEFAULT '[]',
-      actual_stops TEXT DEFAULT '[]',
-      planned_mileage REAL,
-      actual_mileage REAL,
-      planned_duration_minutes INTEGER,
-      actual_duration_minutes INTEGER,
-      fuel_cost REAL,
-      start_location TEXT,
-      start_lat REAL,
-      start_lng REAL,
-      start_time TEXT,
-      end_time TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_serve_routes_officer ON serve_routes(officer_id, route_date);
-
-    CREATE TABLE IF NOT EXISTS serve_skip_traces (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      serve_queue_id INTEGER NOT NULL REFERENCES serve_queue(id),
-      officer_id INTEGER NOT NULL REFERENCES users(id),
-      search_type TEXT NOT NULL DEFAULT 'byname',
-      query_params TEXT,
-      lookup_cost REAL DEFAULT 0,
-      results_json TEXT,
-      addresses_found TEXT DEFAULT '[]',
-      address_added_to_route INTEGER DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_serve_skip_queue ON serve_skip_traces(serve_queue_id);
+    CREATE INDEX IF NOT EXISTS idx_time_entry_edits_entry ON time_entry_edits(time_entry_id);
   `);
 }
 
@@ -5429,27 +3143,19 @@ function seedData(): void {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
     const randomPassword = crypto.randomBytes(16).toString('hex');
-    const hash = (pw: string) => bcryptjs.hashSync(pw, 12);
+    const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
     `).run('admin', hash(randomPassword), 'System Administrator', 'admin@rmpgsecurity.com', 'admin', 'A001', '801-555-0100', now, now, now);
-    // Write initial credentials to a secure temp file instead of logging to stdout/journal
-    const credPath = path.resolve(__dirname, '../../data/.initial-credentials');
-    try {
-      fs.writeFileSync(credPath, `Username: admin\nPassword: ${randomPassword}\n`, { mode: 0o600 });
-      console.log('');
-      console.log('╔══════════════════════════════════════════════════╗');
-      console.log('║  INITIAL ADMIN ACCOUNT CREATED                   ║');
-      console.log(`║  Username: admin                                 ║`);
-      console.log(`║  Password saved to: server/data/.initial-credentials  ║`);
-      console.log('║  You MUST change this password on first login.   ║');
-      console.log('╚══════════════════════════════════════════════════╝');
-      console.log('');
-    } catch {
-      // If file write fails, log only that it failed — never log passwords
-      console.error('[SECURITY] Could not write initial credentials file. Run with write access to server/data/ to generate credentials.');
-    }
+    console.log('');
+    console.log('╔══════════════════════════════════════════════════╗');
+    console.log('║  INITIAL ADMIN CREDENTIALS                      ║');
+    console.log(`║  Username: admin                                 ║`);
+    console.log(`║  Password: ${randomPassword}        ║`);
+    console.log('║  You MUST change this password on first login.   ║');
+    console.log('╚══════════════════════════════════════════════════╝');
+    console.log('');
   }
 
   // ─── SYSTEM CONFIG (always ensure these exist) ────
@@ -5502,64 +3208,6 @@ function seedData(): void {
   evidenceLocations.forEach(([name, desc], i) => {
     insertConfig.run(name, JSON.stringify({ description: desc }), 'evidence_location', i, now, now);
   });
-
-  // ─── LEAD SCRAPE SOURCES (seed defaults, all disabled) ──────────
-  const insertScrapeSource = db.prepare(`
-    INSERT OR IGNORE INTO lead_scrape_sources (source_key, display_name, base_url, is_enabled, poll_interval_seconds)
-    VALUES (?, ?, ?, 0, ?)
-  `);
-  insertScrapeSource.run('utah_biz', 'Utah Business Registrations', 'https://secure.utah.gov/bes', 86400);
-  insertScrapeSource.run('slc_permits', 'Salt Lake County Construction Permits', 'https://slco.org/planning-transportation', 86400);
-  insertScrapeSource.run('commercial_re', 'Commercial Real Estate (County Assessor)', null, 86400);
-  insertScrapeSource.run('dabc_liquor', 'Utah DABC Liquor Licenses', 'https://abs.utah.gov', 86400);
-  insertScrapeSource.run('utah_bar', 'Utah State Bar Directory', 'https://services.utahbar.org', 86400);
-  insertScrapeSource.run('ut_commerce_collections', 'UT Div of Commerce - Collections', 'https://commerce.utah.gov', 86400);
-  insertScrapeSource.run('ut_consumer_protection', 'UT Consumer Protection', 'https://dcp.utah.gov', 86400);
-  insertScrapeSource.run('ut_courts', 'Utah Courts XCHANGE', 'https://xchange.utcourts.gov', 43200);
-  insertScrapeSource.run('google_places', 'Google Places API', 'https://maps.googleapis.com/maps/api/place', 604800);
-  insertScrapeSource.run('ut_real_estate_licenses', 'Utah Real Estate Licenses', 'https://opendata.utah.gov', 604800);
-  insertScrapeSource.run('cfpb_complaints', 'CFPB Complaint Database', 'https://www.consumerfinance.gov', 604800);
-
-  // ─── PROPOSAL TEMPLATES (seed defaults) ──────────
-  const insertTemplate = db.prepare(`
-    INSERT OR IGNORE INTO crm_proposal_templates (name, template_type, description, default_scope, default_terms, default_monthly_value, default_contract_months)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-  insertTemplate.run('Standard Patrol Services', 'patrol',
-    'Regular patrol and security services for commercial properties',
-    'Uniformed patrol officers will conduct regular patrols of the premises, perform security checks, monitor access points, and respond to incidents. Includes nightly property inspections and detailed patrol logs.',
-    'Services shall commence on the Proposed Start Date and continue for the term specified. Either party may terminate with 30 days written notice. RMPG reserves the right to adjust staffing levels based on operational needs.',
-    2500, 12);
-  insertTemplate.run('Event Security', 'event_security',
-    'Security staffing for events, concerts, and gatherings',
-    'RMPG will provide trained security personnel for the specified event. Services include crowd management, access control, VIP protection, and emergency response coordination. A site survey will be conducted prior to the event.',
-    'Payment due within 15 days of event completion. Cancellation within 48 hours of event incurs 50% fee. Additional officers beyond contracted count billed at overtime rate.',
-    0, 1);
-  insertTemplate.run('Construction Site Security', 'construction_site',
-    '24/7 security for active construction sites',
-    'Round-the-clock security coverage for the construction site including perimeter monitoring, access control, equipment protection, and incident reporting. Guard shack with lighting provided.',
-    'Monthly billing in advance. Contract term matches expected construction duration. Early termination requires 14 days notice with prorated refund.',
-    4000, 6);
-  insertTemplate.run('Alarm Response', 'alarm_response',
-    'Armed response to alarm activations',
-    'RMPG will respond to all alarm activations at the covered premises within the SLA response time. Response includes perimeter check, interior sweep (if access provided), and detailed incident report. False alarm documentation included.',
-    'Monthly retainer covers up to 4 responses per month. Additional responses billed per-incident. SLA response time: 15 minutes within SLC metro area.',
-    800, 12);
-
-  // ─── HR: Default leave types ────────────────────────────
-  const leaveTypeCount = db.prepare('SELECT COUNT(*) as count FROM hr_leave_types').get() as { count: number };
-  if (leaveTypeCount.count === 0) {
-    const insertLeaveType = db.prepare('INSERT INTO hr_leave_types (name, accrual_rate, max_balance, requires_approval) VALUES (?, ?, ?, ?)');
-    insertLeaveType.run('PTO', 3.08, 120, 1);           // ~80 hrs/year
-    insertLeaveType.run('Sick Leave', 1.54, 48, 1);     // ~40 hrs/year
-    insertLeaveType.run('Comp Time', 0, 0, 1);          // manual credits
-    insertLeaveType.run('Bereavement', 0, 24, 1);
-    insertLeaveType.run('FMLA', 0, 480, 1);
-    insertLeaveType.run('Jury Duty', 0, 0, 0);
-    insertLeaveType.run('Military Leave', 0, 0, 1);
-    insertLeaveType.run('Unpaid Leave', 0, 0, 1);
-    console.log('[Seed] Default HR leave types created.');
-  }
 
   console.log('Seed data initialized (admin user + system config).');
 }

@@ -10,6 +10,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { openUtahCourtsXChange } from '../utils/xchange';
 
 interface PersonResult {
   id: string;
@@ -131,14 +132,7 @@ export default function CriminalHistoryPage() {
   }, []);
 
   const openUtahCourts = useCallback((person?: PersonResult | null) => {
-    const base = 'https://www.utcourts.gov/xchange/CaseSearch';
-    const params = new URLSearchParams();
-    if (person) {
-      if (person.last_name) params.set('lastName', person.last_name);
-      if (person.first_name) params.set('firstName', person.first_name);
-    }
-    const url = params.toString() ? `${base}?${params}` : base;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    openUtahCourtsXChange(person ? { lastName: person.last_name, firstName: person.first_name } : undefined);
   }, []);
 
   const cautionFlags = selectedPerson?.caution_flags ? selectedPerson.caution_flags.split(',').map(f => f.trim()).filter(Boolean) : [];

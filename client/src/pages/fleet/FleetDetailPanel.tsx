@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
-  Archive, RotateCcw, Trash2, Printer, ChevronDown,
+  Archive, RotateCcw, Trash2, Printer, ChevronDown, Camera, MapPin,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -14,10 +14,12 @@ import FleetInspectionsTab from './tabs/FleetInspectionsTab';
 import FleetAssignmentsTab from './tabs/FleetAssignmentsTab';
 import FleetPersonnelTab from './tabs/FleetPersonnelTab';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
+import FleetDashCamTab from './tabs/FleetDashCamTab';
+import FleetGpsTab from './tabs/FleetGpsTab';
 import { formatMilitary } from './utils/fleetFormatters';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics';
+export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'dashcam' | 'gps';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -52,6 +54,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { key: 'dashcam', label: 'Dash Cam', icon: Camera },
+  { key: 'gps', label: 'GPS', icon: MapPin },
 ];
 
 interface Props {
@@ -313,6 +317,8 @@ export default function FleetDetailPanel({
           />
         )}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
+        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
+        {activeTab === 'gps' && <FleetGpsTab vehicleId={detail.id} />}
       </div>
     </div>
   );
