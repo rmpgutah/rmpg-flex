@@ -583,8 +583,8 @@ export default function WarrantsPage() {
     const timer = setTimeout(async () => {
       setPersonSearchLoading(true);
       try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&limit=10`);
-        setPersonResults(res.data || res as any || []);
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(personSearch)}`);
+        setPersonResults(Array.isArray(res) ? res.slice(0, 10) : []);
       } catch { setPersonResults([]); }
       finally { setPersonSearchLoading(false); }
     }, 300);
