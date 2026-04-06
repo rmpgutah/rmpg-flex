@@ -1,18 +1,17 @@
 // ============================================================
-// RMPG Flex — Body Camera Video Player
+// RMPG Flex — Body Camera Video Player Modal
+// Police-style HUD overlay rendered as CSS over the video
+// element. Original files are never modified (no FFmpeg burn).
 // ============================================================
-// Modal video player for BWC footage with a minimal two-bar
-// HUD overlay showing timestamp, officer, camera serial,
-// case number, and REC indicator.
+// Enhanced player with police-style HUD preview, playback
+// controls, frame capture, download, and quick-classify.
+// ============================================================
 
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  X, Video, Shield, FileText, AlertTriangle, RefreshCw,
-  Clock, Eye, EyeOff, Download, Loader2,
-} from 'lucide-react';
-import type { BodyCamVideo } from '../types';
+import React, { useRef, useState, useEffect } from 'react';
+import { X, Video, Shield, Maximize2, Minimize2, Edit2 } from 'lucide-react';
+import type { BodyCamVideo, VideoClassification } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
-import BodyCamHudOverlay from './BodyCamHudOverlay';
+import VideoHudOverlay from './VideoHudOverlay';
 
 interface Props {
   isOpen: boolean;
@@ -20,228 +19,205 @@ interface Props {
   video: BodyCamVideo | null;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
+  onEditVideo?: (video: BodyCamVideo) => void;
+  onClassify?: (videoId: number, classification: VideoClassification) => void;
 }
 
-export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders }: Props) {
-  const [videoError, setVideoError] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [showHud, setShowHud] = useState(true);
-  const [burning, setBurning] = useState(false);
-  const [burnError, setBurnError] = useState<string | null>(null);
+export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [hudVisible, setHudVisible] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setVideoError(null); setIsPlaying(false); }, [video?.id]);
-
-  // Track play/pause state from the <video> element
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onEnded = () => setIsPlaying(false);
-    el.addEventListener('play', onPlay);
-    el.addEventListener('pause', onPause);
-    el.addEventListener('ended', onEnded);
-    return () => {
-      el.removeEventListener('play', onPlay);
-      el.removeEventListener('pause', onPause);
-      el.removeEventListener('ended', onEnded);
-    };
-  }, [video?.id, videoError]);
+    const vid = videoRef.current;
+    if (!vid) return;
+    const onTime = () => setCurrentTime(vid.currentTime);
+    vid.addEventListener('timeupdate', onTime);
+    return () => vid.removeEventListener('timeupdate', onTime);
+  }, [isOpen, video]);
 
   if (!isOpen || !video) return null;
 
-  // ── Formatters ────────────────────────────────────────
+  const formatHudTime = (seconds: number) => {
+    const d = video.recorded_at ? new Date(video.recorded_at) : new Date();
+    const playback = new Date(d.getTime() + seconds * 1000);
+    return playback.toLocaleString('en-US', {
+      month: '2-digit', day: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).replace(',', '');
+  };
 
-  const fmtDate = (d?: string) => {
+  const formatDuration = (seconds?: number) => {
+    if (seconds == null) return '-';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
+    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  const fmtDuration = (s?: number) => {
-    if (!s) return '-';
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    return h > 0
-      ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-      : `${m}:${String(sec).padStart(2, '0')}`;
-  };
+  const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
 
-  const fmtSize = (b: number) => {
-    if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
-    if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
+  const signedQuery = (video as any)._signedQuery || (() => {
+    const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
+    return `token=${encodeURIComponent(token)}`;
+  })();
+  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?${signedQuery}`;
 
-  const classLabel = (cls: string) => cls.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-
-  const headers = getAuthHeaders();
-  const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
-
-  /** Download video with HUD overlay burned into pixels via FFmpeg */
-  const handleBurnDownload = async () => {
-    setBurning(true);
-    setBurnError(null);
-    try {
-      const burnUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/download-burned?token=${encodeURIComponent(token)}`;
-      const resp = await fetch(burnUrl, { signal: AbortSignal.timeout(600000) });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: 'Download failed' }));
-        throw new Error(err.error || `HTTP ${resp.status}`);
-      }
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = resp.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'BWC_overlay.mp4';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setBurnError(err?.message || 'Download failed');
-    } finally {
-      setBurning(false);
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch((err) => { console.warn('[VideoPlayer] enter fullscreen failed:', err); });
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch((err) => { console.warn('[VideoPlayer] exit fullscreen failed:', err); });
     }
   };
 
+  const classColor = VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300';
+
+  const overlayInfo = video.overlay_status ? {
+    label: video.overlay_status.replace(/_/g, ' ').toUpperCase(),
+    cls: video.overlay_status === 'complete' ? 'border-green-500 text-green-400' : video.overlay_status === 'error' ? 'border-red-500 text-red-400' : 'border-amber-500 text-amber-400'
+  } : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" role="dialog" aria-modal="true" onClick={onClose}>
       <div
-        className="bg-surface-base border border-rmpg-700 rounded-lg shadow-2xl w-[800px] max-h-[95vh] overflow-y-auto"
+        ref={containerRef}
+        className={`bg-black border border-rmpg-800 rounded-sm shadow-md overflow-hidden ${
+          isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
+        }`}
         onClick={e => e.stopPropagation()}
       >
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700 bg-surface-raised">
+        {/* Compact header */}
+        <div className="flex items-center justify-between px-3 py-1.5 bg-surface-deep border-b border-rmpg-800">
           <div className="flex items-center gap-2 min-w-0">
-            <Video className="w-4 h-4 text-brand-400 flex-shrink-0" />
-            <h2 className="text-sm font-bold text-rmpg-100 truncate">{video.title}</h2>
-            <span className={`text-[9px] px-1.5 py-0.5 font-bold flex-shrink-0 ${
-              VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300'
-            }`}>
+            <Video className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+            <span className="text-[10px] font-mono font-bold text-rmpg-200 uppercase tracking-wider truncate">
+              BWC — {video.title}
+            </span>
+            <span className={`text-[8px] px-1 py-0.5 font-bold flex-shrink-0 ${classColor}`}>
               {classLabel(video.classification)}
             </span>
+            {overlayInfo && (
+              <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded-sm flex-shrink-0 ${overlayInfo.cls}`}>
+                <Shield className={`w-2.5 h-2.5 ${video.overlay_status === 'processing' || video.overlay_status === 'pending' ? 'animate-spin' : ''}`} />
+                {overlayInfo.label}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={handleBurnDownload}
-              disabled={burning}
-              className="toolbar-btn p-1"
-              title="Download with overlay burned in"
-            >
-              {burning
-                ? <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                : <Download className="w-3.5 h-3.5 text-green-400" />}
+            {onEditVideo && (
+              <button type="button" onClick={() => onEditVideo(video)} className="toolbar-btn p-1" title="Edit video metadata">
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
+              <X className="w-4 h-4" />
             </button>
-            <button
-              onClick={() => setShowHud(h => !h)}
-              className="toolbar-btn p-1"
-              title={showHud ? 'Hide overlay' : 'Show overlay'}
-            >
-              {showHud
-                ? <Eye className="w-3.5 h-3.5 text-cyan-400" />
-                : <EyeOff className="w-3.5 h-3.5 text-rmpg-500" />}
+          </div>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
+              HUD {hudVisible ? 'ON' : 'OFF'}
             </button>
-            <button onClick={onClose} className="toolbar-btn p-1">
+            <button type="button" onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+            <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* ── Video + HUD ── */}
-        <div className="bg-black relative">
-          {videoError ? (
-            <div className="flex flex-col items-center justify-center py-14 px-4 text-center">
-              <AlertTriangle className="w-10 h-10 text-amber-500 mb-3" />
-              <p className="text-sm font-bold text-rmpg-200 mb-1">Video Unavailable</p>
-              <p className="text-[11px] text-rmpg-400 mb-4 max-w-sm">{videoError}</p>
-              <button
-                onClick={() => { setVideoError(null); videoRef.current?.load(); }}
-                className="toolbar-btn toolbar-btn-primary"
-              >
-                <RefreshCw className="w-3 h-3" /> Retry
-              </button>
-            </div>
-          ) : (
+        {/* Video + HUD Overlay */}
+        <div className="relative bg-black">
+          <video
+            ref={videoRef}
+            controls
+            autoPlay
+            className="w-full max-h-[70vh]"
+            src={streamUrl}
+          >
+            Your browser does not support the video tag.
+          </video>
+
+          {/* ── Police-Style HUD Overlay ── */}
+          {hudVisible && (
             <>
-              <video
-                ref={videoRef}
-                controls
-                autoPlay
-                className="w-full max-h-[55vh]"
-                src={streamUrl}
-                onError={() => setVideoError('Could not load video. File may have been deleted or moved.')}
-              />
-              {showHud && (
-                <BodyCamHudOverlay
-                  video={video}
-                  videoRef={videoRef}
-                  isPlaying={isPlaying}
-                />
-              )}
+              {/* Top-left: Agency & Officer */}
+              <div className="absolute top-2 left-3 pointer-events-none select-none">
+                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1.5 border border-white/10 rounded-sm">
+                  <p className="font-mono text-[11px] text-white font-bold tracking-wider leading-tight">
+                    ROCKY MOUNTAIN PROTECTIVE GROUP
+                  </p>
+                  <p className="font-mono text-[10px] text-cyan-400 leading-tight">
+                    BWC | {video.officer_name || 'UNKNOWN'} | CAM: {video.camera_serial || 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Top-right: Classification badge */}
+              <div className="absolute top-2 right-3 pointer-events-none select-none">
+                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1.5 border border-white/10 rounded-sm text-right">
+                  <p className="font-mono text-[10px] text-amber-400 font-bold tracking-wider">
+                    {classLabel(video.classification)}
+                  </p>
+                  {video.case_number && (
+                    <p className="font-mono text-[10px] text-white/80 leading-tight">
+                      CASE: {video.case_number}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Bottom-left: Timestamp (updates in real-time) */}
+              <div className="absolute bottom-12 left-3 pointer-events-none select-none">
+                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1 border border-white/10 rounded-sm">
+                  <p className="font-mono text-[12px] text-white font-bold tabular-nums tracking-wide">
+                    {formatHudTime(currentTime)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bottom-right: REC indicator */}
+              <div className="absolute bottom-12 right-3 pointer-events-none select-none">
+                <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1 border border-white/10 rounded-sm flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="font-mono text-[10px] text-red-400 font-bold">REC</span>
+                </div>
+              </div>
             </>
           )}
         </div>
 
-        {/* ── Burn status ── */}
-        {(burning || burnError) && (
-          <div className={`px-4 py-2 border-t border-rmpg-700 text-[11px] flex items-center gap-2 ${
-            burnError ? 'bg-red-900/20 text-red-400' : 'bg-amber-900/20 text-amber-300'
-          }`}>
-            {burning && <><Loader2 className="w-3 h-3 animate-spin" /> Processing video with overlay — this may take a few minutes...</>}
-            {burnError && <><AlertTriangle className="w-3 h-3" /> {burnError}</>}
+        {/* Compact Metadata Bar */}
+        <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
+          <div className="flex items-center justify-between text-[10px] font-mono text-rmpg-400 gap-4">
+            <span className="flex items-center gap-1">
+              <Shield className="w-2.5 h-2.5 text-brand-400" />
+              <span className="text-rmpg-200">{video.officer_name || '-'}</span>
+            </span>
+            <span>CAM: <span className="text-rmpg-200">{video.camera_serial || '-'}</span></span>
+            <span>DUR: <span className="text-rmpg-200">{formatDuration(video.duration_seconds)}</span></span>
+            <span>SIZE: <span className="text-rmpg-200">{formatSize(video.file_size)}</span></span>
+            <span>REC: <span className="text-rmpg-200">{formatDate(video.recorded_at)}</span></span>
+            <span>RETENTION: <span className="text-rmpg-200 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</span></span>
           </div>
-        )}
-
-        {/* ── Metadata ── */}
-        <div className="p-4 space-y-2.5 border-t border-rmpg-700">
-          <div className="grid grid-cols-4 gap-4">
-            <div>
-              <p className="field-label flex items-center gap-1"><Shield className="w-2.5 h-2.5" /> Officer</p>
-              <p className="text-xs text-rmpg-100">{video.officer_name || '-'}</p>
-            </div>
-            <div>
-              <p className="field-label">Camera</p>
-              <p className="text-xs text-rmpg-100 font-mono">{video.camera_serial || '-'}</p>
-            </div>
-            <div>
-              <p className="field-label">Duration</p>
-              <p className="text-xs text-rmpg-100 font-mono">{fmtDuration(video.duration_seconds)}</p>
-            </div>
-            <div>
-              <p className="field-label">Size</p>
-              <p className="text-xs text-rmpg-100 font-mono">{fmtSize(video.file_size)}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-4">
-            <div>
-              <p className="field-label flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> Recorded</p>
-              <p className="text-xs text-rmpg-100 font-mono">{fmtDate(video.recorded_at)}</p>
-            </div>
-            <div>
-              <p className="field-label">Uploaded</p>
-              <p className="text-xs text-rmpg-100 font-mono">{fmtDate(video.created_at)}</p>
-            </div>
-            <div>
-              <p className="field-label flex items-center gap-1"><FileText className="w-2.5 h-2.5" /> Case #</p>
-              <p className="text-xs text-rmpg-100 font-mono">{video.case_number || '-'}</p>
-            </div>
-            <div>
-              <p className="field-label">Retention</p>
-              <p className="text-xs text-rmpg-100 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</p>
-            </div>
-          </div>
-
           {video.notes && (
-            <div className="panel-inset px-3 py-2">
-              <p className="text-[10px] text-rmpg-400 italic">{video.notes}</p>
-            </div>
+            <p className="text-[9px] text-rmpg-500 italic mt-1 truncate">{video.notes}</p>
           )}
         </div>
       </div>

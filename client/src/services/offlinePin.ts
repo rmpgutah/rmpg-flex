@@ -249,7 +249,7 @@ async function computePin(
     .join('');
 
   // Dynamic truncation (HOTP-style, same as desktop)
-  const offset = parseInt(hash.substring(hash.length - 1, 10), 16);
+  const offset = parseInt(hash.substring(hash.length - 1), 16);
   const truncated = parseInt(hash.substring(offset * 2, offset * 2 + 8), 16) & 0x7FFFFFFF;
   return String(truncated % Math.pow(10, PIN_LENGTH)).padStart(PIN_LENGTH, '0');
 }
@@ -327,7 +327,6 @@ async function checkExpiredSessions(): Promise<void> {
     const session = cursor.value;
     if (session.is_active === 1 && session.expires_at < now) {
       await cursor.update({ ...session, is_active: 0 });
-      console.log(`[PIN] Session expired for user ${session.user_id}`);
       emit('pin-expired', { userId: session.user_id });
       emit('authorization-changed', { isLocalAuthorized: false, expiresAt: null });
     }

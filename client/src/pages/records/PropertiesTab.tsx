@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import PropertyFormModal from '../../components/PropertyFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -57,10 +58,10 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
   if (!value) return null;
   const Icon = icon;
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-xs group">
       {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
-      <span className="text-rmpg-200">{value}</span>
+      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
+      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
 }
@@ -237,40 +238,52 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
           <span className="text-rmpg-300">Hazards:</span>
           <span className="text-red-400 font-bold">{properties.filter(p => p.hazard_notes).length}</span>
         </div>
-        <div className="ml-auto relative w-64">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400" />
+        <div className="ml-auto relative w-64" role="search">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400 pointer-events-none" />
           <input
             type="text"
-            className="input-dark pl-8 w-full text-[11px] py-1"
-            placeholder="Search properties..."
+            className="input-dark pl-8 w-full text-[11px] py-1 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
+            placeholder="Search properties..." aria-label="Search properties..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Property List */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Property records">
         {filteredProperties.length === 0 && (
-          <div className="text-center py-12">
-            <Building2 className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
+          <div className="text-center py-16">
+            <Building2 className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery ? 'Try broadening your search.' : 'Click "New Property" to add a record.'}
+            </p>
           </div>
         )}
-        {filteredProperties.map((prop) => (
+        {filteredProperties.map((prop, idx) => (
           <div
             key={prop.id}
+            role="listitem"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedProperty(selectedProperty?.id === prop.id ? null : prop); } }}
             onClick={() => setSelectedProperty(selectedProperty?.id === prop.id ? null : prop)}
             className={`
-              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedProperty?.id === prop.id
                 ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : `hover:bg-rmpg-700/30 border-l-2 ${prop.hazard_notes ? 'border-l-red-600' : 'border-l-transparent'}`
+                : `hover:bg-rmpg-700/30 border-l-2 ${prop.hazard_notes ? 'border-l-red-600' : 'border-l-transparent'} ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
               }
             `}
+            aria-selected={selectedProperty?.id === prop.id}
           >
             <div className="flex items-start gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded flex items-center justify-center border ${
+              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
                 prop.is_active ? 'bg-brand-900/30 text-brand-400 border-brand-700/50' : 'bg-rmpg-800 text-rmpg-500 border-rmpg-600'
               }`}>
                 <Building2 className="w-4 h-4" />
@@ -327,6 +340,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
 // ════════════════════════════════════════════════════
 
 export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
+  const { user } = useAuth();
   const {
     selectedProperty, showArchived,
     openEditProperty, setDeleteTarget, handleArchive, handleUnarchive,
@@ -359,21 +373,21 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           {selectedProperty.hazard_notes && <AlertTriangle className="w-3.5 h-3.5 text-red-400" />}
           {/* Inline action buttons for properties (edit/delete/archive in detail header) */}
           <div className="ml-auto flex items-center gap-1">
-            {!showArchived && (
+            {(!showArchived || user?.role === 'admin') && (
               <>
-                <button onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
+                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />
                 </button>
-                <button onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
+                <button type="button" onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
                   <Trash2 className="w-3 h-3" />
                 </button>
-                <button onClick={() => handleArchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-amber-400 transition-colors" title="Archive">
+                <button type="button" onClick={() => handleArchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-amber-400 transition-colors" title="Archive">
                   <Archive className="w-3 h-3" />
                 </button>
               </>
             )}
             {showArchived && (
-              <button onClick={() => handleUnarchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-green-400 transition-colors" title="Unarchive">
+              <button type="button" onClick={() => handleUnarchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-green-400 transition-colors" title="Unarchive">
                 <RotateCcw className="w-3 h-3" />
               </button>
             )}
@@ -398,7 +412,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
             {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
             {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
             {renderInfoRow('Property Type', selectedProperty.property_type)}
-            {selectedProperty.latitude && selectedProperty.longitude && (
+            {selectedProperty.latitude != null && selectedProperty.longitude != null && (
               renderInfoRow('Coordinates', `${selectedProperty.latitude.toFixed(5)}, ${selectedProperty.longitude.toFixed(5)}`, Globe)
             )}
           </div>
@@ -421,7 +435,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Access Instructions (conditional) ── */}
         {selectedProperty.access_instructions && (
           <CollapsibleSection title="Access Instructions" icon={MapPin}>
-            <p className="text-xs text-blue-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+            <p className="text-xs text-gray-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
           </CollapsibleSection>
         )}
 
@@ -454,9 +468,28 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 // Legacy default export
 // ════════════════════════════════════════════════════
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function PropertiesTab(props: PropertiesTabProps) {
   const state = usePropertiesTab(props);
+
+  // Set document title
+  useEffect(() => { document.title = 'Records - Properties \u2014 RMPG Flex'; }, []);
+
   if (props.loadingProperties) return null;
+
   return (
     <>
       <div className={`${state.selectedProperty ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

@@ -2,11 +2,10 @@
 // RMPG Flex — Personnel Backend->Frontend Data Mappers
 // ============================================================
 
-import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment, BodyCamera, BodyCamVideo, OfficerEquipment } from '../../../types';
+import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment, BodyCamera, BodyCamVideo } from '../../../types';
 
-export interface OfficerWithStatus extends UserType {
+export interface OfficerWithStatus extends Omit<UserType, 'status'> {
   status: string;
-  archived_at?: string | null;
 }
 
 export function mapUser(row: any): OfficerWithStatus {
@@ -52,8 +51,6 @@ export function mapUser(row: any): OfficerWithStatus {
     last_login: undefined,
     // OPR: unit call sign from units table (list query) or nested unit object (detail query)
     unit_call_sign: row.unit_call_sign || row.unit?.call_sign || undefined,
-    full_name: row.full_name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
-    archived_at: row.archived_at || null,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
     status: isActive ? 'on_duty' : 'off_duty',
@@ -122,9 +119,7 @@ export function mapTimeEntry(row: any): TimeEntry {
 
 export function mapCredential(row: any): Credential {
   let status: Credential['status'] = 'valid';
-  if (row.status === 'revoked') {
-    status = 'revoked';
-  } else if (row.expiry_date) {
+  if (row.expiry_date) {
     const expiry = new Date(row.expiry_date);
     const now = new Date();
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
@@ -204,7 +199,6 @@ export function mapBodyCamVideo(row: any): BodyCamVideo {
     mime_type: row.mime_type || 'video/mp4',
     recorded_at: row.recorded_at || '',
     case_number: row.case_number || '',
-    interaction_type: row.interaction_type || null,
     classification: row.classification || 'routine',
     retention_status: row.retention_status || 'active',
     notes: row.notes || '',
@@ -213,27 +207,6 @@ export function mapBodyCamVideo(row: any): BodyCamVideo {
     updated_at: row.updated_at || '',
     officer_name: row.officer_name || undefined,
     camera_serial: row.camera_serial || undefined,
-  };
-}
-
-export function mapEquipment(row: any): OfficerEquipment {
-  return {
-    id: String(row.id),
-    officer_id: String(row.officer_id),
-    officer_name: row.officer_name || undefined,
-    equipment_type: row.equipment_type || 'other',
-    make: row.make || undefined,
-    model: row.model || undefined,
-    serial_number: row.serial_number || undefined,
-    asset_tag: row.asset_tag || undefined,
-    condition: row.condition || 'good',
-    status: row.status || 'issued',
-    issued_date: row.issued_date || undefined,
-    returned_date: row.returned_date || undefined,
-    notes: row.notes || undefined,
-    created_by: row.created_by || undefined,
-    created_at: row.created_at || '',
-    updated_at: row.updated_at || '',
   };
 }
 

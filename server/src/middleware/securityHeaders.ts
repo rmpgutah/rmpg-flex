@@ -8,37 +8,17 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Prevent clickjacking (SAMEORIGIN allows internal blob: PDF viewer iframes)
   res.set('X-Frame-Options', 'SAMEORIGIN');
 
-  // Disable legacy XSS filter — it can introduce vulnerabilities; CSP is the proper defense
-  res.set('X-XSS-Protection', '0');
+  // XSS protection (legacy browsers)
+  res.set('X-XSS-Protection', '1; mode=block');
 
-  // Referrer policy — stricter for API routes to prevent leaking internal paths
-  res.set('Referrer-Policy', req.path.startsWith('/api') ? 'no-referrer' : 'strict-origin-when-cross-origin');
+  // Referrer policy
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  // Permissions policy — restrict browser features; lock down peripherals for security
-  res.set('Permissions-Policy', [
-    'camera=(self)',
-    'microphone=(self)',
-    'geolocation=(self)',
-    'payment=()',
-    'usb=()',
-    'bluetooth=()',
-    'serial=()',
-    'hid=()',
-    'fullscreen=(self)',
-    'display-capture=()',
-    'accelerometer=()',
-    'gyroscope=()',
-    'magnetometer=()',
-    'autoplay=(self)',
-  ].join(', '));
+  // Permissions policy (restrict browser features)
+  res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
 
-  // Cross-origin isolation headers
-  res.set('Cross-Origin-Opener-Policy', 'same-origin');
-  res.set('Cross-Origin-Resource-Policy', 'same-origin');
-
-  // Strict Transport Security — ONLY when SSL is actually enabled
-  // Sending HSTS without HTTPS causes browsers to refuse plain HTTP connections
-  if (config.ssl.enabled) {
+  // Strict Transport Security (when SSL is enabled or in production)
+  if (config.isProduction || config.ssl.enabled) {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
@@ -53,24 +33,36 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // when Google or Esri add new sub-domains.
   res.set('Content-Security-Policy', [
     "default-src 'self'",
-    // unsafe-inline is required by Google Maps JS API which injects inline scripts
-    // unsafe-eval only in dev for Vite HMR; blocked in production
-    `script-src 'self' 'unsafe-inline' ${config.isProduction ? '' : "'unsafe-eval'"} blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`.replace(/\s+/g, ' '),
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    "img-src 'self' data: blob: https: http: https://*.tile.openstreetmap.org https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com",
+    "img-src 'self' data: blob: https: http:",
     "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    `connect-src 'self' wss://rmpgutah.us ${config.isProduction ? '' : 'ws://localhost:* wss://localhost:*'} https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com`.replace(/\s+/g, ' '),
+    "connect-src 'self' ws: wss: https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com",
     "frame-src 'self' blob: https://*.arcgis.com",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
-    "report-uri /api/csp-report",
+    // [FIX 17] Add base-uri to prevent <base> tag injection attacks
+    "base-uri 'self'",
+    // [FIX 18] Add form-action to restrict form submission targets
+    "form-action 'self'",
+    // [FIX 19] Add object-src to block Flash/plugin-based attacks
+    "object-src 'none'",
   ].join('; '));
 
-  // Remove headers that disclose server technology
+  // Remove powered-by header
   res.removeHeader('X-Powered-By');
-  res.removeHeader('Server');
+
+  // [FIX 20] Add Cross-Origin headers to prevent speculative execution side-channel attacks
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
+
+  // [FIX 21] Cache-Control for API responses to prevent sensitive data caching
+  if (req.path.startsWith('/api/')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+  }
 
   next();
 }

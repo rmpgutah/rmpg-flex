@@ -9,7 +9,7 @@ import React, { useRef, useCallback, useEffect } from 'react';
 interface TotpCodeInputProps {
   value: string;
   onChange: (value: string) => void;
-  onComplete: (code: string) => void;
+  onComplete?: (code: string) => void;
   disabled?: boolean;
   error?: boolean;
 }
@@ -18,10 +18,12 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = value.padEnd(6, '').slice(0, 6).split('');
 
-  // Focus first input on mount
+  // Focus first input on mount and when value is cleared (retry after error)
   useEffect(() => {
-    inputRefs.current[0]?.focus();
-  }, []);
+    if (!value || value.trim() === '') {
+      inputRefs.current[0]?.focus();
+    }
+  }, [value]);
 
   const handleInput = useCallback((index: number, char: string) => {
     if (!/^\d$/.test(char)) return;
@@ -37,7 +39,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
     }
 
     // Auto-submit when all 6 digits entered
-    if (newValue.replace(/\s/g, '').length === 6) {
+    if (newValue.replace(/\s/g, '').length === 6 && onComplete) {
       setTimeout(() => onComplete(newValue.trim()), 50);
     }
   }, [digits, onChange, onComplete]);
@@ -66,11 +68,12 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (pasted.length > 0) {
+      // Always fill from the first box regardless of which was focused
       onChange(pasted.padEnd(6, ' '));
       const focusIdx = Math.min(pasted.length, 5);
       inputRefs.current[focusIdx]?.focus();
 
-      if (pasted.length === 6) {
+      if (pasted.length === 6 && onComplete) {
         setTimeout(() => onComplete(pasted), 50);
       }
     }
@@ -89,7 +92,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
           value={digits[i]?.trim() || ''}
           onChange={(e) => handleInput(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
-          onPaste={i === 0 ? handlePaste : undefined}
+          onPaste={handlePaste}
           autoComplete="one-time-code"
           style={{
             width: 44,
@@ -98,20 +101,20 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
             fontSize: 22,
             fontWeight: 700,
             fontFamily: 'monospace',
-            background: '#0d1520',
-            border: `2px solid ${error ? '#d93030' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048'}`,
-            borderRadius: 4,
+            background: '#050505',
+            border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222'}`,
+            borderRadius: 2,
             color: '#fff',
             outline: 'none',
-            caretColor: '#1a5a9e',
+            caretColor: '#888888',
             transition: 'border-color 0.15s',
           }}
           onFocus={(e) => {
-            e.target.style.borderColor = '#1a5a9e';
+            e.target.style.borderColor = '#888888';
             e.target.select();
           }}
           onBlur={(e) => {
-            e.target.style.borderColor = error ? '#d93030' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048';
+            e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222';
           }}
         />
       ))}

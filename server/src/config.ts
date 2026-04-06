@@ -61,11 +61,8 @@ let sslEnabled = false;
 let sslCert: string | undefined;
 let sslKey: string | undefined;
 
-// DISABLE_SSL=true skips auto-detection (e.g. running behind nginx reverse proxy)
-const disableSsl = envBool('DISABLE_SSL', false);
-
 try {
-  if (!disableSsl && fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
+  if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
     sslCert = fs.readFileSync(sslCertPath, 'utf-8');
     sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
     sslEnabled = true;
@@ -117,6 +114,7 @@ export const config = {
     requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
     historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
     expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
+    expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 14),
   },
 
   // Two-Factor Authentication (TOTP)
@@ -145,8 +143,54 @@ export const config = {
   // Auto-Update Server URL (where desktop apps check for updates)
   updateServerUrl: process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us',
 
+  // Two-Factor Authentication (general 2FA settings)
+  twoFactor: {
+    trustedDeviceDays: envInt('TWO_FACTOR_TRUSTED_DEVICE_DAYS', 30),
+  },
+
+  // WebAuthn / FIDO2
+  webauthn: {
+    rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
+    rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
+    origin: process.env.WEBAUTHN_ORIGIN || (isProduction ? 'https://rmpgutah.us' : 'http://localhost:5173'),
+  },
+
   // Integrations
   serveManagerApiKey: process.env.SERVEMANAGER_API_KEY || '',
+
+  // Email (Microsoft Graph)
+  email: {
+    clientId: process.env.AZURE_CLIENT_ID || '',
+    clientSecret: process.env.AZURE_CLIENT_SECRET || '',
+    tenantId: process.env.AZURE_TENANT_ID || '',
+  },
 } as const;
+
+// ─── Environment Variable Validation ──────────────────
+// Warn about missing critical env vars at startup
+const requiredInProduction: Array<{ key: string; label: string }> = [
+  { key: 'JWT_SECRET', label: 'JWT signing secret' },
+];
+
+const recommendedInProduction: Array<{ key: string; label: string }> = [
+  { key: 'CORS_ORIGINS', label: 'Allowed CORS origins' },
+  { key: 'PRIMARY_DOMAIN', label: 'Primary domain for redirects' },
+  { key: 'WEBAUTHN_RP_ID', label: 'WebAuthn relying party ID' },
+];
+
+if (isProduction) {
+  const missing = requiredInProduction.filter(({ key }) => !process.env[key] || process.env[key] === defaultSecret);
+  if (missing.length > 0) {
+    console.warn(`\n[Config] Missing required environment variables in production:`);
+    missing.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));
+    console.warn('');
+  }
+  const unset = recommendedInProduction.filter(({ key }) => !process.env[key]);
+  if (unset.length > 0) {
+    console.warn(`[Config] Recommended environment variables not set:`);
+    unset.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));
+    console.warn('');
+  }
+}
 
 export default config;

@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   Users, Search, X, Clock, AlertTriangle, BarChart3, Loader2, Plus, Archive, RotateCcw,
 } from 'lucide-react';
-import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping, DashcamVideo } from '../../types';
+import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -35,8 +34,8 @@ import TrainingTab from './tabs/TrainingTab';
 import EquipmentTab from './tabs/EquipmentTab';
 import DeploymentTab from './tabs/DeploymentTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
-import BodyCameraTab from './tabs/BodyCameraTab';
 import DashCameraTab from './tabs/DashCameraTab';
+import CalendarTab from './tabs/CalendarTab';
 import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
 import EquipmentFormModal from './modals/EquipmentFormModal';
@@ -45,16 +44,15 @@ import BodyCameraFormModal from './modals/BodyCameraFormModal';
 import type { BodyCameraFormData } from './modals/BodyCameraFormModal';
 import VideoUploadModal from '../../components/VideoUploadModal';
 import VideoPlayer from '../../components/VideoPlayer';
-import DashCamVideoPlayer from '../../components/DashCamVideoPlayer';
-import BodyCamVideoEditModal from '../../components/BodyCamVideoEditModal';
-import DashCamVideoEditModal from '../../components/DashCamVideoEditModal';
-import DashCamUploadModal from '../../components/DashCamUploadModal';
+import VideoEditModal from '../../components/VideoEditModal';
+import type { BodyCamVideoEditData } from '../../components/VideoEditModal';
 import DeploymentFormModal from './modals/DeploymentFormModal';
 import type { DeploymentFormData } from './modals/DeploymentFormModal';
 import OfficerFormModal from './modals/OfficerFormModal';
 import type { OfficerFormData } from './modals/OfficerFormModal';
 import TimeEntryEditModal from './modals/TimeEntryEditModal';
 import type { TimeEntryEditData } from './modals/TimeEntryEditModal';
+import ExportButton from '../../components/ExportButton';
 
 // ============================================================
 // Activity entry type (matches backend activity_log)
@@ -75,13 +73,12 @@ interface ActivityEntry {
 export default function PersonnelPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
     'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'body_cameras', 'dash_cameras', 'deployment', 'analytics'] as const,
+    ['roster', 'duty_board', 'schedule', 'calendar', 'time', 'credentials', 'training', 'equipment', 'dash_cameras', 'deployment', 'analytics'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,21 +111,15 @@ export default function PersonnelPage() {
   const [bodyCameraEditData, setBodyCameraEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
   const [bodyCameraModalMode, setBodyCameraModalMode] = useState<'create' | 'edit'>('create');
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
-  const [editingBodyCamVideo, setEditingBodyCamVideo] = useState<BodyCamVideo | null>(null);
-  const [editingDashcamVideo, setEditingDashcamVideo] = useState<DashcamVideo | null>(null);
+  const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
 
-  // Dash camera data (Traccar GPS)
+  // Dash camera data (ClearPathGPS)
   const [dashcamEvents, setDashcamEvents] = useState<DashcamEvent[]>([]);
   const [deviceMappings, setDeviceMappings] = useState<CpgDeviceMapping[]>([]);
   const [dashcamLoading, setDashcamLoading] = useState(false);
   const [officerDashcamEvents, setOfficerDashcamEvents] = useState<DashcamEvent[]>([]);
   const [officerDeviceMapping, setOfficerDeviceMapping] = useState<CpgDeviceMapping | null>(null);
   const [officerDashcamLoading, setOfficerDashcamLoading] = useState(false);
-
-  // Dash camera video data
-  const [dashcamVideos, setDashcamVideos] = useState<DashcamVideo[]>([]);
-  const [officerDashcamVideos, setOfficerDashcamVideos] = useState<DashcamVideo[]>([]);
-  const [playingDashcamVideo, setPlayingDashcamVideo] = useState<DashcamVideo | null>(null);
 
   // All properties from the database (for deployment/schedule dropdowns)
   const [allProperties, setAllProperties] = useState<{ id: string; name: string }[]>([]);
@@ -215,17 +206,6 @@ export default function PersonnelPage() {
   const silentRefresh = useCallback(() => fetchCoreData({ silent: true }), [fetchCoreData]);
   useLiveSync('personnel', silentRefresh);
 
-  // Deep-link: auto-select officer from query params (?officerId=)
-  useEffect(() => {
-    if (officers.length === 0) return;
-    const officerId = searchParams.get('officerId');
-    if (officerId) {
-      const match = officers.find(o => String(o.id) === officerId);
-      if (match) setSelectedOfficer(match);
-      setSearchParams({}, { replace: true });
-    }
-  }, [officers, searchParams, setSearchParams]);
-
   // Lazy-load tab data
   useEffect(() => {
     if (activeTab === 'training' && training.length === 0 && !trainingLoading) {
@@ -260,21 +240,18 @@ export default function PersonnelPage() {
         .catch(() => addToast('Failed to load equipment data', 'error'))
         .finally(() => setEquipmentLoading(false));
     }
-    if (activeTab === 'body_cameras' && bodyCameras.length === 0 && !bodyCamerasLoading) {
-      setBodyCamerasLoading(true);
+    if (activeTab === 'dash_cameras' && dashcamEvents.length === 0 && !dashcamLoading) {
+      setDashcamLoading(true);
       Promise.all([
-        apiFetch<any[]>('/personnel/body-cameras'),
-        apiFetch<any[]>('/personnel/body-cam-videos'),
+        apiFetch<any[]>('/clearpathgps/dashcam-events'),
+        apiFetch<any[]>('/clearpathgps/mappings'),
       ])
-        .then(([cams, vids]) => {
-          setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
-          setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
+        .then(([events, mappings]) => {
+          setDashcamEvents(Array.isArray(events) ? events : []);
+          setDeviceMappings(Array.isArray(mappings) ? mappings : []);
         })
-        .catch(() => addToast('Failed to load body camera data', 'error'))
-        .finally(() => setBodyCamerasLoading(false));
-    }
-    if (activeTab === 'dash_cameras' && dashcamEvents.length === 0 && dashcamVideos.length === 0 && !dashcamLoading) {
-      refreshDashcamData();
+        .catch(() => addToast('Failed to load dash camera data', 'error'))
+        .finally(() => setDashcamLoading(false));
     }
     if (activeTab === 'analytics' && !analytics && !analyticsLoading) {
       setAnalyticsLoading(true);
@@ -322,30 +299,17 @@ export default function PersonnelPage() {
     }
     if (detailTab === 'dash_cameras') {
       setOfficerDashcamLoading(true);
-      // Fetch per-officer dashcam events, device mapping, and videos
+      // Fetch per-officer dashcam events and find their device mapping
       Promise.all([
-        apiFetch<any>(`/traccar/dashcam-events/by-officer/${selectedOfficer.id}`),
-        apiFetch<any>('/traccar/mappings'),
-        apiFetch<any>(`/dashcam-videos/by-officer/${selectedOfficer.id}`),
+        apiFetch<any[]>(`/clearpathgps/dashcam-events/by-officer/${selectedOfficer.id}`),
+        apiFetch<any[]>('/clearpathgps/mappings'),
       ])
-        .then(([evtRes, mapRes, vidRes]) => {
-          const evts = Array.isArray(evtRes?.events) ? evtRes.events : Array.isArray(evtRes) ? evtRes : [];
-          const allMappings: CpgDeviceMapping[] = Array.isArray(mapRes?.mappings) ? mapRes.mappings : Array.isArray(mapRes) ? mapRes : [];
-          const vids = Array.isArray(vidRes?.videos) ? vidRes.videos : Array.isArray(vidRes) ? vidRes : [];
-          setOfficerDashcamEvents(evts);
-          setOfficerDashcamVideos(vids);
-          // Find the mapping for this officer's unit — match by unit_id first, then name
-          const officerUnits = selectedOfficer ? (selectedOfficer as any).unit_id : null;
-          const match = allMappings.find(m => {
-            if (!m || !selectedOfficer) return false;
-            // Match by unit_id (most reliable)
-            if (officerUnits && m.unit_id === officerUnits) return true;
-            // Fallback: match by officer name (case-insensitive, flexible)
-            const officerFullName = `${selectedOfficer.first_name} ${selectedOfficer.last_name}`.toLowerCase();
-            const mappingName = (m.officer_name || '').toLowerCase();
-            return mappingName === officerFullName ||
-              mappingName === `${selectedOfficer.last_name}, ${selectedOfficer.first_name}`.toLowerCase();
-          });
+        .then(([events, mappings]) => {
+          setOfficerDashcamEvents(Array.isArray(events) ? events : []);
+          // Find the mapping for this officer's unit
+          const allMappings: CpgDeviceMapping[] = Array.isArray(mappings) ? mappings : [];
+          const match = allMappings.find(m => m.officer_name && selectedOfficer &&
+            m.officer_name === `${selectedOfficer.first_name} ${selectedOfficer.last_name}`);
           setOfficerDeviceMapping(match || null);
         })
         .catch(() => addToast('Failed to load dash camera data', 'error'))
@@ -423,6 +387,7 @@ export default function PersonnelPage() {
   };
 
   const handleScheduleDelete = async (scheduleId: string) => {
+    if (!window.confirm('Delete this schedule? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/schedules/${scheduleId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/schedules');
@@ -454,6 +419,7 @@ export default function PersonnelPage() {
   };
 
   const handleCredentialDelete = async (credId: string) => {
+    if (!window.confirm('Delete this credential? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/credentials/${credId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/credentials');
@@ -532,6 +498,7 @@ export default function PersonnelPage() {
   };
 
   const handleEquipmentDelete = async (equipId: string) => {
+    if (!window.confirm('Delete this equipment record? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/equipment/${equipId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/equipment');
@@ -575,14 +542,12 @@ export default function PersonnelPage() {
   const refreshDashcamData = async () => {
     setDashcamLoading(true);
     try {
-      const [evtRes, mapRes, vidRes] = await Promise.all([
-        apiFetch<any>('/traccar/dashcam-events'),
-        apiFetch<any>('/traccar/mappings'),
-        apiFetch<any>('/dashcam-videos'),
+      const [events, mappings] = await Promise.all([
+        apiFetch<any[]>('/clearpathgps/dashcam-events'),
+        apiFetch<any[]>('/clearpathgps/mappings'),
       ]);
-      setDashcamEvents(Array.isArray(evtRes?.events) ? evtRes.events : Array.isArray(evtRes) ? evtRes : []);
-      setDeviceMappings(Array.isArray(mapRes?.mappings) ? mapRes.mappings : Array.isArray(mapRes) ? mapRes : []);
-      setDashcamVideos(Array.isArray(vidRes?.videos) ? vidRes.videos : Array.isArray(vidRes) ? vidRes : []);
+      setDashcamEvents(Array.isArray(events) ? events : []);
+      setDeviceMappings(Array.isArray(mappings) ? mappings : []);
     } catch {
       addToast('Failed to refresh dash camera data', 'error');
     } finally {
@@ -590,49 +555,10 @@ export default function PersonnelPage() {
     }
   };
 
-  // Dashcam video handlers
-  const handleSyncNow = async () => {
-    setDashcamLoading(true);
-    try {
-      await apiFetch('/dashcam-videos/sync', { method: 'POST' });
-      addToast('Dashcam sync complete', 'success');
-      await refreshDashcamData();
-    } catch {
-      addToast('Dashcam sync failed', 'error');
-      setDashcamLoading(false);
-    }
-  };
-
-  const handleDashcamVideoDelete = async (videoId: number) => {
-    try {
-      await apiFetch(`/dashcam-videos/${videoId}`, { method: 'DELETE' });
-      setDashcamVideos(prev => prev.filter(v => v.id !== videoId));
-      setOfficerDashcamVideos(prev => prev.filter(v => v.id !== videoId));
-      addToast('Video deleted', 'success');
-    } catch {
-      addToast('Failed to delete video', 'error');
-    }
-  };
-
-  const handleDashcamUploadComplete = async () => {
-    // Refresh both the global and per-officer video lists
-    try {
-      const vidRes = await apiFetch<any>('/dashcam-videos');
-      setDashcamVideos(Array.isArray(vidRes?.videos) ? vidRes.videos : Array.isArray(vidRes) ? vidRes : []);
-      if (selectedOfficer) {
-        const officerVidRes = await apiFetch<any>(`/dashcam-videos/by-officer/${selectedOfficer.id}`);
-        setOfficerDashcamVideos(Array.isArray(officerVidRes?.videos) ? officerVidRes.videos : Array.isArray(officerVidRes) ? officerVidRes : []);
-      }
-      addToast('Video uploaded successfully', 'success');
-    } catch {
-      // Silent — the upload was successful, just refresh failed
-    }
-  };
-
   const handleBodyCameraSubmit = async (data: BodyCameraFormData) => {
     setIsSubmitting(true);
     try {
-      const payload = { ...data, storage_capacity_gb: parseInt(data.storage_capacity_gb) || 32 };
+      const payload = { ...data, storage_capacity_gb: parseInt(data.storage_capacity_gb, 10) || 32 };
       if (bodyCameraModalMode === 'edit' && bodyCameraEditData?.id) {
         await apiFetch(`/personnel/body-cameras/${bodyCameraEditData.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {
@@ -650,6 +576,7 @@ export default function PersonnelPage() {
   };
 
   const handleBodyCameraDelete = async (camId: number) => {
+    if (!window.confirm('Delete this body camera record? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -678,6 +605,7 @@ export default function PersonnelPage() {
   };
 
   const handleVideoDelete = async (videoId: number) => {
+    if (!window.confirm('Delete this video? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -687,26 +615,39 @@ export default function PersonnelPage() {
     }
   };
 
-  const handleEditBodyCamVideo = async (videoId: number, data: Record<string, any>) => {
-    await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-    await refreshBodyCameras();
-    addToast('Video updated', 'success');
-  };
-
-  const handleEditDashcamVideo = async (videoId: number, data: Record<string, any>) => {
-    await apiFetch(`/dashcam-videos/${videoId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-    await refreshDashcamData();
-    if (selectedOfficer) {
-      const officerVidRes = await apiFetch<any>(`/dashcam-videos/by-officer/${selectedOfficer.id}`);
-      setOfficerDashcamVideos(Array.isArray(officerVidRes?.videos) ? officerVidRes.videos : []);
+  const handleVideoEdit = async (videoId: number, data: BodyCamVideoEditData) => {
+    setIsSubmitting(true);
+    try {
+      // Capture original values to detect overlay-relevant changes
+      const original = editingVideo;
+      await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      await refreshBodyCameras();
+      setEditingVideo(null);
+      addToast('Video updated', 'success');
+      // Auto-reprocess overlay if overlay-affecting fields changed
+      if (original && original.overlay_status === 'complete') {
+        const overlayChanged =
+          original.classification !== data.classification ||
+          (original.case_number || '') !== data.case_number ||
+          (original.recorded_at ? original.recorded_at.slice(0, 16) : '') !== data.recorded_at;
+        if (overlayChanged) {
+          try {
+            await apiFetch(`/personnel/bodycam-videos/${videoId}/reprocess`, { method: 'POST' });
+            await refreshBodyCameras();
+            addToast('Overlay reprocessing started', 'info');
+          } catch {
+            addToast('Video saved but overlay reprocess failed', 'warning');
+          }
+        }
+      }
+    } catch {
+      addToast('Failed to update video', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
-    addToast('Video updated', 'success');
   };
 
   const handleDeploymentSubmit = async (data: DeploymentFormData) => {
@@ -901,6 +842,7 @@ export default function PersonnelPage() {
   };
 
   const handleDeleteTimeEntry = async (entryId: string) => {
+    if (!window.confirm('Delete this time entry? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/time/${entryId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/time');
@@ -949,21 +891,22 @@ export default function PersonnelPage() {
       <div className="p-3 border-b border-rmpg-600">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" aria-hidden="true" />
             <input
               type="text"
-              className="input-dark pl-9 w-full text-[11px]"
-              placeholder="Search by name, badge, rank, department..."
+              className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
+              placeholder="Search by name, badge, rank, department..." aria-label="Search personnel by name, badge, rank, or department"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors duration-150" aria-label="Clear search">
                 <X className="w-3 h-3" />
               </button>
             )}
           </div>
-          <button
+          <ExportButton exportUrl="/api/personnel/export/csv" exportFilename="personnel.csv" />
+          <button type="button"
             onClick={() => { setOfficerEditData(undefined); setOfficerModalMode('create'); setModal('new_officer'); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1 whitespace-nowrap"
           >
@@ -973,7 +916,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Officer List */}
-      <div className="flex-1 overflow-auto py-1">
+      <div className="flex-1 overflow-auto scrollbar-dark py-1" role="listbox" aria-label="Personnel roster">
         {filteredOfficers.map(officer => {
           const officerCreds = credentials.filter(c => c.officer_id === officer.id);
           const hasExpired = officerCreds.some(c => c.status === 'expired');
@@ -983,11 +926,16 @@ export default function PersonnelPage() {
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
-              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all border-l-2 ${
+              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-200 border-l-2 focus-visible:ring-1 focus-visible:ring-brand-500/50 focus-visible:outline-none ${
                 isSelected
-                  ? 'bg-brand-900/15 border-l-brand-500'
-                  : 'bg-surface-base hover:brightness-110 border-l-transparent'
+                  ? 'bg-brand-900/15 border-l-brand-500 shadow-sm'
+                  : 'bg-surface-base hover:brightness-110 hover:shadow-sm hover:border-rmpg-500 border-l-transparent'
               }`}
+              role="option"
+              tabIndex={0}
+              aria-selected={isSelected}
+              aria-label={`${officer.first_name} ${officer.last_name}, ${officer.role}, ${officer.status === 'on_duty' ? 'on duty' : 'off duty'}`}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedOfficer(officer); setDetailTab('profile'); } }}
             >
               <div className="flex items-center gap-3">
                 <OfficerAvatar officer={officer} size="md" />
@@ -1006,16 +954,30 @@ export default function PersonnelPage() {
                     {officer.rank && <span>{officer.rank}</span>}
                     {officer.department && <span>{officer.department}</span>}
                     {officer.badge_number && <span className="font-mono text-[10px]">#{officer.badge_number}</span>}
+                    {officer.hire_date && (() => {
+                      const yrs = Math.floor((Date.now() - new Date(officer.hire_date).getTime()) / (365.25 * 86400000));
+                      return yrs >= 0 ? <span className="text-[9px] text-cyan-400 font-mono">{yrs}yr</span> : null;
+                    })()}
+                    {officerCreds.length > 0 && (
+                      <span className="text-[9px] text-green-400 font-mono">{officerCreds.length} cert{officerCreds.length !== 1 ? 's' : ''}</span>
+                    )}
+                    {officer.date_of_birth && (() => {
+                      const today = new Date();
+                      const bday = new Date(officer.date_of_birth + 'T00:00:00');
+                      bday.setFullYear(today.getFullYear());
+                      const diff = Math.floor((bday.getTime() - today.getTime()) / 86400000);
+                      return (diff >= 0 && diff <= 7) ? <span title="Birthday soon!" className="text-[10px]">&#127874;</span> : null;
+                    })()}
                   </div>
                   <CredentialProgressBar credentials={officerCreds} />
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="flex items-center gap-1.5 justify-end">
-                    <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
+                    <span className={officer.status === 'on_duty' ? 'led-dot led-green' : officer.status === 'on_leave' ? 'led-dot led-amber' : 'led-dot led-off'} />
                     <span className={`text-[10px] font-bold uppercase ${
-                      officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-500'
+                      officer.status === 'on_duty' ? 'text-green-400' : officer.status === 'on_leave' ? 'text-amber-400' : 'text-rmpg-500'
                     }`}>
-                      {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
+                      {officer.status === 'on_duty' ? 'ON DUTY' : officer.status === 'on_leave' ? 'ON LEAVE' : 'OFF DUTY'}
                     </span>
                   </div>
                   {officer.shift_preference && (
@@ -1027,9 +989,12 @@ export default function PersonnelPage() {
           );
         })}
         {filteredOfficers.length === 0 && (
-          <div className="panel-inset p-8 text-center mx-2 mt-2">
-            <Users className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
+          <div className="panel-inset p-10 text-center mx-2 mt-2" role="status">
+            <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+              <Users className="w-7 h-7 text-rmpg-600" />
+            </div>
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">{searchQuery ? 'Try a different search term' : 'Add officers to get started'}</p>
           </div>
         )}
       </div>
@@ -1069,16 +1034,11 @@ export default function PersonnelPage() {
       onDeleteBodyCamera={handleBodyCameraDelete}
       onUploadVideo={() => setModal('upload_video')}
       onDeleteVideo={handleVideoDelete}
-      onEditVideo={setEditingBodyCamVideo}
+      onEditVideo={setEditingVideo}
       onPlayVideo={setPlayingVideo}
       dashcamEvents={officerDashcamEvents}
       dashcamDeviceMapping={officerDeviceMapping}
       dashcamLoading={officerDashcamLoading}
-      dashcamVideos={officerDashcamVideos}
-      onPlayDashcamVideo={setPlayingDashcamVideo}
-      onDeleteDashcamVideo={handleDashcamVideoDelete}
-      onEditDashcamVideo={setEditingDashcamVideo}
-      onUploadDashcamVideo={() => setModal('upload_dashcam_video')}
       onAddDeployment={id => openAddDeployment(id)}
       onEditOfficer={openEditOfficer}
       onDeleteOfficer={() => setDeleteTarget(selectedOfficer)}
@@ -1106,13 +1066,22 @@ export default function PersonnelPage() {
   // Render
   // ----------------------------------------------------------
 
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Header */}
       <PanelTitleBar title={showArchived ? 'PERSONNEL MANAGEMENT — ARCHIVES' : 'PERSONNEL MANAGEMENT'} icon={showArchived ? Archive : Users}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
-        <button
+        <button type="button"
           className={`toolbar-btn ${showArchived ? 'text-amber-400 border-amber-600/50' : ''}`}
           onClick={() => { setShowArchived(!showArchived); setSelectedOfficer(null); }}
         >
@@ -1122,42 +1091,42 @@ export default function PersonnelPage() {
       </PanelTitleBar>
 
       {/* Stats Bar — compact stat cards */}
-      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`}>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <span className="led-dot led-green" />
+      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`} role="group" aria-label="Personnel statistics">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-green-700/40">
+          <span className="led-dot led-green" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Active</span>
           <span className="text-green-400 font-bold text-base ml-0.5">{onDutyCount}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <span className="led-dot led-off" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
+          <span className="led-dot led-off" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Off Duty</span>
           <span className="text-rmpg-200 font-bold text-base ml-0.5">{offDutyCount}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <Clock className="w-3 h-3 text-brand-400" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-brand-600/40">
+          <Clock className="w-3 h-3 text-brand-400" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Clocked In</span>
           <span className="text-brand-400 font-bold text-base ml-0.5">{clockedInCount}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <BarChart3 className="w-3 h-3 text-rmpg-300" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
+          <BarChart3 className="w-3 h-3 text-rmpg-300" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Hours</span>
           <span className="text-white font-bold text-base ml-0.5">{totalHoursThisPeriod.toFixed(1)}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <Users className="w-3 h-3 text-rmpg-300" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
+          <Users className="w-3 h-3 text-rmpg-300" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Total</span>
           <span className="text-white font-bold text-base ml-0.5">{officers.length}</span>
         </div>
         {expiringCreds > 0 && (
-          <div className="flex items-center gap-1.5 ml-auto px-2.5 py-1 panel-beveled border-l-2 border-l-amber-500 text-[10px]">
-            <span className="led-dot led-amber" />
+          <div className="flex items-center gap-1.5 ml-auto px-2.5 py-1 panel-beveled border-l-2 border-l-amber-500 text-[10px]" role="alert">
+            <span className="led-dot led-amber" aria-hidden="true" />
             <span className="text-amber-400 font-bold font-mono">{expiringCreds} credential alert{expiringCreds !== 1 ? 's' : ''}</span>
           </div>
         )}
       </div>
 
       {/* Tab Navigation */}
-      <div className="tab-bar overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <div className="tab-bar overflow-x-auto scrollbar-dark" role="tablist" aria-label="Personnel management tabs" style={{ scrollbarWidth: 'none' }}>
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const count = tab.id === 'roster' ? officers.length
@@ -1168,8 +1137,10 @@ export default function PersonnelPage() {
           const alert = tab.id === 'credentials' && expiringCreds > 0;
           const isActive = activeTab === tab.id;
           return (
-            <button
+            <button type="button"
               key={tab.id}
+              role="tab"
+              aria-selected={isActive}
               onClick={() => { setActiveTab(tab.id); if (tab.id !== 'roster') setSelectedOfficer(null); }}
               className={`tab-bar-item ${isActive ? 'active' : ''}`}
             >
@@ -1189,11 +1160,11 @@ export default function PersonnelPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto flex">
+      <div className="flex-1 overflow-y-auto scrollbar-dark flex">
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center flex-1">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
           </div>
         )}
 
@@ -1203,7 +1174,7 @@ export default function PersonnelPage() {
             <div className="text-center">
               <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
               <p className="text-sm text-rmpg-300">{error}</p>
-              <button onClick={() => fetchCoreData()} className="toolbar-btn mt-3">Retry</button>
+              <button type="button" onClick={() => fetchCoreData()} className="toolbar-btn mt-3">Retry</button>
             </div>
           </div>
         )}
@@ -1241,6 +1212,10 @@ export default function PersonnelPage() {
           />
         )}
 
+        {!loading && !error && activeTab === 'calendar' && (
+          <CalendarTab />
+        )}
+
         {!loading && !error && activeTab === 'time' && (
           <TimeAttendanceTab timeEntries={timeEntries} officers={officers} onEditTimeEntry={openEditTimeEntry} onDeleteTimeEntry={handleDeleteTimeEntry} />
         )}
@@ -1273,33 +1248,16 @@ export default function PersonnelPage() {
           />
         )}
 
-        {!loading && !error && activeTab === 'body_cameras' && (
-          <BodyCameraTab
-            cameras={bodyCameras}
-            videos={bodyCamVideos}
-            onAddCamera={() => openAddBodyCamera()}
-            onEditCamera={openEditBodyCamera}
-            onDeleteCamera={handleBodyCameraDelete}
-            onSelectOfficer={(id) => { const match = officers.find(o => String(o.id) === id); if (match) setSelectedOfficer(match); }}
-            onPlayVideo={setPlayingVideo}
-            onEditVideo={setEditingBodyCamVideo}
-            onDeleteVideo={handleVideoDelete}
-            onUploadVideo={() => setModal('upload_video')}
-          />
-        )}
-
         {!loading && !error && activeTab === 'dash_cameras' && (
           <DashCameraTab
             dashcamEvents={dashcamEvents}
             deviceMappings={deviceMappings}
-            dashcamVideos={dashcamVideos}
             loading={dashcamLoading}
-            onSelectOfficer={(id) => { const match = officers.find(o => String(o.id) === id); if (match) setSelectedOfficer(match); }}
+            onSelectOfficer={officerId => {
+              const officer = officers.find(o => o.id === officerId);
+              if (officer) { setActiveTab('roster'); setSelectedOfficer(officer); setDetailTab('dash_cameras'); }
+            }}
             onRefresh={refreshDashcamData}
-            onPlayVideo={setPlayingDashcamVideo}
-            onDeleteVideo={handleDashcamVideoDelete}
-            onUploadVideo={() => setModal('upload_dashcam_video')}
-            onSyncNow={handleSyncNow}
           />
         )}
 
@@ -1396,34 +1354,15 @@ export default function PersonnelPage() {
           if (token) headers['Authorization'] = `Bearer ${token}`;
           return headers;
         }}
+        onEditVideo={(vid) => { setPlayingVideo(null); setEditingVideo(vid); }}
       />
 
-      <DashCamVideoPlayer
-        isOpen={!!playingDashcamVideo}
-        onClose={() => setPlayingDashcamVideo(null)}
-        video={playingDashcamVideo}
-        apiBase={window.location.origin + '/api'}
-        getAuthHeaders={() => {
-          const token = localStorage.getItem('rmpg_token');
-          const headers: Record<string, string> = {};
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-          return headers;
-        }}
-      />
-
-      <DashCamUploadModal
-        isOpen={modal === 'upload_dashcam_video'}
-        onClose={() => setModal('none')}
-        onSuccess={handleDashcamUploadComplete}
-        apiBase={window.location.origin + '/api'}
-        getAuthHeaders={() => {
-          const token = localStorage.getItem('rmpg_token');
-          const headers: Record<string, string> = {};
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-          return headers;
-        }}
-        deviceMappings={deviceMappings}
-        officers={officers.map(o => ({ id: Number(o.id), full_name: `${o.first_name} ${o.last_name}` }))}
+      <VideoEditModal
+        isOpen={!!editingVideo}
+        onClose={() => setEditingVideo(null)}
+        onSave={handleVideoEdit}
+        video={editingVideo}
+        isSubmitting={isSubmitting}
       />
 
       <DeploymentFormModal
@@ -1463,20 +1402,6 @@ export default function PersonnelPage() {
         confirmLabel="Terminate"
         confirmVariant="danger"
         isLoading={deleting}
-      />
-
-      <BodyCamVideoEditModal
-        isOpen={!!editingBodyCamVideo}
-        onClose={() => setEditingBodyCamVideo(null)}
-        video={editingBodyCamVideo}
-        onSave={handleEditBodyCamVideo}
-      />
-
-      <DashCamVideoEditModal
-        isOpen={!!editingDashcamVideo}
-        onClose={() => setEditingDashcamVideo(null)}
-        video={editingDashcamVideo}
-        onSave={handleEditDashcamVideo}
       />
     </div>
   );

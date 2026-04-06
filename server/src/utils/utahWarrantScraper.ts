@@ -14,41 +14,9 @@
 //   5. Fresh results returned to user immediately
 // ============================================================
 
-import * as https from 'node:https';
-import * as http from 'node:http';
-import * as url from 'node:url';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { escapeLike } from '../middleware/sanitize';
-
-// ── Proxy config (set WARRANT_PROXY_URL in .env to route via proxy) ──────────
-// Format: http://user:pass@host:port  OR  socks5://user:pass@host:port
-const PROXY_URL = process.env.WARRANT_PROXY_URL || null;
-const proxyAgent: https.Agent | null = PROXY_URL
-  ? new HttpsProxyAgent(PROXY_URL)
-  : null;
-
-if (PROXY_URL) {
-  console.log(`[Utah Warrants] Proxy enabled: ${PROXY_URL.replace(/:\/\/[^@]+@/, '://***@')}`);
-}
-
-// ── IP rotation — rotates X-Forwarded-For on each request ────────────────────
-// Residential IP ranges (Comcast, Charter, AT&T, Cox, Xfinity Utah)
-function _r(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-const IP_GENERATORS: (() => string)[] = [
-  () => `73.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Comcast
-  () => `24.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Charter/Spectrum
-  () => `99.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // AT&T
-  () => `68.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Cox
-  () => `71.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Comcast West
-  () => `75.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Xfinity Utah
-];
-function randomForwardedIp(): string {
-  return IP_GENERATORS[Math.floor(Math.random() * IP_GENERATORS.length)]();
-}
 
 // ── API endpoints ────────────────────────────────────────────
 const BASE_URL = 'https://warrants.utah.gov/api/v1';
@@ -67,7 +35,7 @@ let _lastRateLimitAt = 0;
 
 /** Get current scan delay based on rate-limit history */
 export function getAdaptiveScanDelay(): number {
-  const base = 5000; // 5 second base delay (was 3s — too aggressive)
+  const base = 8000; // 8 second base delay (was 5s — CloudFront WAF still blocking)
   if (_consecutiveRateLimits === 0) return base;
   // Exponential backoff: 5s → 10s → 20s → 40s, capped at 60s
   return Math.min(base * Math.pow(2, _consecutiveRateLimits), 60_000);
@@ -126,7 +94,7 @@ async function sleep(ms: number): Promise<void> {
 // Track if our IP is blocked by CloudFront WAF
 let _ipBlocked = false;
 let _ipBlockedUntil = 0;
-const IP_BLOCK_COOLDOWN_MS = 4 * 60 * 60 * 1000; // Wait 4h before retrying after IP block (CloudFront blocks typically last this long)
+const IP_BLOCK_COOLDOWN_MS = 30 * 60 * 1000; // Wait 30 min before retrying after IP block
 
 /** Check if we're currently IP-blocked */
 export function isUtahApiBlocked(): boolean {
@@ -139,117 +107,67 @@ export function isUtahApiBlocked(): boolean {
   return true;
 }
 
-/** Manually clear the in-memory IP block — call from admin endpoint when VPS is unblocked */
-export function clearUtahApiBlock(): void {
-  _ipBlocked = false;
-  _ipBlockedUntil = 0;
-  _consecutiveRateLimits = 0;
-  console.log('[Utah Warrants] IP block manually cleared by admin');
-}
-
-/** Make an HTTPS request, routing through proxy if WARRANT_PROXY_URL is set */
-function httpsRequest(
-  targetUrl: string,
-  method: string,
-  headers: Record<string, string>,
-  body?: string
-): Promise<{ status: number; text: () => Promise<string> }> {
-  return new Promise((resolve, reject) => {
-    const parsed = new url.URL(targetUrl);
-    const reqOptions: https.RequestOptions = {
-      hostname: parsed.hostname,
-      port: parsed.port || 443,
-      path: parsed.pathname + parsed.search,
-      method,
-      headers,
-      agent: proxyAgent || undefined,
-      timeout: REQUEST_TIMEOUT_MS,
-    };
-
-    const req = https.request(reqOptions, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (chunk: Buffer) => chunks.push(chunk));
-      res.on('end', () => {
-        const rawBody = Buffer.concat(chunks).toString('utf8');
-        resolve({
-          status: res.statusCode ?? 0,
-          text: () => Promise.resolve(rawBody),
-        });
-      });
-      res.on('error', reject);
-    });
-
-    req.on('timeout', () => { req.destroy(new Error('Request timeout')); });
-    req.on('error', reject);
-    if (body) req.write(body);
-    req.end();
-  });
-}
-
-async function fetchJson<T>(targetUrl: string, options: RequestInit, retries = MAX_RETRIES): Promise<T | null> {
+async function fetchJson<T>(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<T | null> {
   // Skip if IP is currently blocked
   if (isUtahApiBlocked()) return null;
 
-  const forwardedIp = randomForwardedIp();
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json, text/plain, */*',
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Origin': 'https://warrants.utah.gov',
-    'Referer': 'https://warrants.utah.gov/',
-    'sec-ch-ua': '"Chromium";v="122", "Google Chrome";v="122"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"macOS"',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-origin',
-    // NOTE: Do NOT send CF-Connecting-IP, True-Client-IP, or X-Real-IP to CloudFront.
-    // Those are headers that CloudFront *sets* on requests it forwards to the origin —
-    // sending them in an outgoing request to CloudFront triggers managed WAF injection
-    // rules and causes a persistent IP block. X-Forwarded-For is safe to include.
-    'X-Forwarded-For': forwardedIp,
-    ...((options.headers as Record<string, string>) || {}),
-  };
-
-  const bodyStr = options.body ? String(options.body) : undefined;
-  const method = (options.method || 'GET').toUpperCase();
-
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await httpsRequest(targetUrl, method, headers, bodyStr);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-      if (res.status === 200 || res.status === 201) {
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Origin': 'https://warrants.utah.gov',
+          'Referer': 'https://warrants.utah.gov/',
+          'sec-ch-ua': '"Chromium";v="122", "Google Chrome";v="122"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"macOS"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          ...(options.headers || {}),
+        },
+      });
+
+      clearTimeout(timeout);
+
+      if (res.ok || res.status === 201) {
         onSuccess();
-        const text = await res.text();
-        return JSON.parse(text) as T;
+        return await res.json() as T;
       }
 
       if (res.status === 403) {
-        const bodyText = await res.text();
+        // Check if this is a CloudFront WAF block (IP banned) vs simple rate limit
+        const bodyText = await res.text().catch(() => '');
         const isCloudFrontBlock = bodyText.includes('cloudfront') || bodyText.includes('CloudFront');
 
         if (isCloudFrontBlock) {
           console.error(`[Utah Warrants] CloudFront WAF blocked our IP — entering ${IP_BLOCK_COOLDOWN_MS / 60000} min cooldown`);
           _ipBlocked = true;
           _ipBlockedUntil = Date.now() + IP_BLOCK_COOLDOWN_MS;
-          return null;
+          return null; // Don't retry — we're IP blocked
         }
 
         onRateLimit();
         const backoff = getAdaptiveScanDelay();
         if (attempt < retries) {
-          console.warn(`[Utah Warrants] 403 rate-limited (forwarded=${forwardedIp}) — backing off ${(backoff / 1000).toFixed(0)}s (attempt ${attempt + 1}/${retries})`);
+          console.warn(`[Utah Warrants] 403 rate-limited — backing off ${(backoff / 1000).toFixed(0)}s (attempt ${attempt + 1}/${retries})`);
           await sleep(backoff);
           continue;
         }
       }
 
-      console.warn(`[Utah Warrants] HTTP ${res.status} from ${targetUrl}`);
+      console.warn(`[Utah Warrants] HTTP ${res.status} from ${url}`);
       return null;
     } catch (err: any) {
-      if (err.message === 'Request timeout') {
-        console.warn(`[Utah Warrants] Request timeout for ${targetUrl}`);
+      if (err.name === 'AbortError') {
+        console.warn(`[Utah Warrants] Request timeout for ${url}`);
       } else if (attempt < retries) {
         await sleep(RETRY_DELAY_MS);
         continue;
@@ -484,7 +402,7 @@ export function getUtahWarrantSyncStatus(): {
 // ══════════════════════════════════════════════════════════════
 
 /** Base delay between person searches (adaptive backoff applies on top) */
-const SCAN_DELAY_MS = 5000;
+const SCAN_DELAY_MS = 8000; // 8 second base delay between warrant checks
 
 /** Generate a unique run ID for each scan */
 function generateRunId(): string {
@@ -645,14 +563,12 @@ async function _runWarrantWatchScanImpl(): Promise<{
           }
         }
 
-        // Check for CLEARED warrants — only if we got results that matched this person's name.
-        // If the API returned zero name-matched results, the warrant may still be active
-        // but not returned due to API inconsistency — do NOT clear in that case.
+        // Check for CLEARED warrants (previously active but no longer returned)
         const previouslyKnown = warrantsByPerson.get(person.id);
-        if (previouslyKnown && foundWarrantIds.size > 0) {
-          // We found at least one warrant for this person — safe to check for clears
+        if (previouslyKnown) {
           for (const prevWarrantId of previouslyKnown) {
             if (!foundWarrantIds.has(prevWarrantId)) {
+              // Warrant was cleared / no longer active
               insertLog.run(
                 person.id, personName, 'warrant_cleared',
                 prevWarrantId, null,
@@ -663,15 +579,13 @@ async function _runWarrantWatchScanImpl(): Promise<{
               console.log(`[Warrant Watch] 🟢 CLEARED: ${personName} — warrant ${prevWarrantId} no longer active`);
             }
           }
-        } else if (previouslyKnown && foundWarrantIds.size === 0 && results.length > 0) {
-          // API returned results but none matched this person's name — possible name mismatch, skip clearing
-          console.log(`[Warrant Watch] ⚠️  SKIP CLEAR: ${personName} — API returned ${results.length} results but none matched name, keeping ${previouslyKnown.size} existing warrants`);
         }
 
-        // Adaptive throttle — slows down when 403s are detected
+        // Adaptive throttle with jitter — avoids CloudFront WAF pattern detection
         if (personsChecked < persons.length) {
-          const delay = Math.max(SCAN_DELAY_MS, getAdaptiveScanDelay());
-          await sleep(delay);
+          const baseDelay = Math.max(SCAN_DELAY_MS, getAdaptiveScanDelay());
+          const jitter = Math.floor(Math.random() * 4000); // 0-4s random jitter
+          await sleep(baseDelay + jitter);
         }
       } catch (err: any) {
         errors++;
@@ -706,8 +620,8 @@ async function _runWarrantWatchScanImpl(): Promise<{
 // Runs warrant watch scan every hour for maximum officer safety.
 // Also cleans up stale cache entries every 6 hours.
 
-/** Scan interval — every 6 hours (reduced from 4h to respect Utah API limits) */
-const SCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Scan interval — every 4 hours (reduced from 1h to respect Utah API limits) */
+const SCAN_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 /** Startup delay before first scan — 90 seconds (let other services start first) */
 const SCAN_STARTUP_DELAY_MS = 90_000;
@@ -718,7 +632,7 @@ let cleanupIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 export function scheduleUtahWarrantSync(): void {
   console.log('[Utah Warrants] Live search mode active — queries warrants.utah.gov on demand');
-  console.log('[Warrant Watch] Automated bulk scan enabled — runs every 6 hours');
+  console.log('[Warrant Watch] Automated bulk scan enabled — runs every hour for officer safety');
 
   // Initial scan after startup delay
   startupTimer = setTimeout(async () => {
@@ -727,7 +641,7 @@ export function scheduleUtahWarrantSync(): void {
 
     // Then schedule hourly recurring scans
     scanInterval = setInterval(() => {
-      console.log('[Warrant Watch] Starting 6-hour warrant scan...');
+      console.log('[Warrant Watch] Starting hourly warrant scan...');
       runWarrantWatchScan().catch(err => console.error('[Warrant Watch] Scan error:', err.message || err));
     }, SCAN_INTERVAL_MS);
 

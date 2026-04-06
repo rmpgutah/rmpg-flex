@@ -2,10 +2,9 @@
 // RMPG Flex — Officer Time Log Detail Tab
 // ============================================================
 
-import React, { useState, useMemo, useCallback } from 'react';
-import { Clock, LogIn, LogOut, Pencil, Coffee, Zap, Trash2, History, Calendar } from 'lucide-react';
-import type { TimeEntry, TimeEntryEdit } from '../../../types';
-import { apiFetch } from '../../../hooks/useApi';
+import React, { useState } from 'react';
+import { Clock, LogIn, LogOut, Pencil, Coffee, Zap, Trash2 } from 'lucide-react';
+import type { TimeEntry } from '../../../types';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 
 interface Props {
@@ -33,10 +32,11 @@ function formatTime(dateStr: string): string {
 }
 
 function calcHours(entry: TimeEntry): string {
-  if (entry.total_hours != null) return entry.total_hours.toFixed(2);
+  if (entry.total_hours != null && Number.isFinite(Number(entry.total_hours))) return Number(entry.total_hours).toFixed(2);
   if (!entry.clock_in) return '-';
   const start = new Date(entry.clock_in).getTime();
   const end = entry.clock_out ? new Date(entry.clock_out).getTime() : Date.now();
+  if (isNaN(start) || isNaN(end)) return '-';
   const hrs = (end - start) / (1000 * 60 * 60);
   return hrs.toFixed(2);
 }
@@ -48,41 +48,30 @@ function leftBarColor(status: string): string {
   return 'border-l-rmpg-500';
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TimeLogDetailTab({
   timeEntries, officerId, isClockedIn, isOnBreak,
   onClockIn, onClockOut, onStartBreak, onEndBreak,
   onEditTimeEntry, onDeleteTimeEntry,
 }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [filterStart, setFilterStart] = useState('');
-  const [filterEnd, setFilterEnd] = useState('');
-  const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
-  const [editHistory, setEditHistory] = useState<TimeEntryEdit[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  const filteredEntries = useMemo(() => {
-    return timeEntries.filter(te => {
-      const d = te.clock_in?.split('T')[0] || te.clock_in?.split(' ')[0] || '';
-      if (filterStart && d < filterStart) return false;
-      if (filterEnd && d > filterEnd) return false;
-      return true;
-    });
-  }, [timeEntries, filterStart, filterEnd]);
-
-  const toggleHistory = useCallback(async (entryId: string) => {
-    if (expandedHistory === entryId) { setExpandedHistory(null); return; }
-    setHistoryLoading(true);
-    try {
-      const edits = await apiFetch<TimeEntryEdit[]>(`/personnel/time/${entryId}/history`);
-      setEditHistory(Array.isArray(edits) ? edits : []);
-      setExpandedHistory(entryId);
-    } catch { setEditHistory([]); }
-    finally { setHistoryLoading(false); }
-  }, [expandedHistory]);
 
   const isActive = isClockedIn || isOnBreak;
-  const totalEntries = filteredEntries.length;
-  const totalHours = filteredEntries.reduce((sum, e) => {
+  const totalEntries = timeEntries.length;
+  const totalHours = timeEntries.reduce((sum, e) => {
     const h = e.total_hours ?? (
       e.clock_in
         ? (((e.clock_out ? new Date(e.clock_out).getTime() : Date.now()) - new Date(e.clock_in).getTime()) / (1000 * 60 * 60))
@@ -91,7 +80,7 @@ export default function TimeLogDetailTab({
     return sum + h;
   }, 0);
   const avgPerEntry = totalEntries > 0 ? totalHours / totalEntries : 0;
-  const totalBreakMins = filteredEntries.reduce((sum, e) => sum + (e.break_minutes || 0), 0);
+  const totalBreakMins = timeEntries.reduce((sum, e) => sum + (e.break_minutes || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -102,22 +91,22 @@ export default function TimeLogDetailTab({
           {isActive ? (
             <>
               {isClockedIn && (
-                <button
+                <button type="button"
                   onClick={() => onStartBreak(officerId)}
-                  className="toolbar-btn flex items-center gap-1.5 text-blue-400 border-blue-700/50 hover:bg-blue-900/40"
+                  className="toolbar-btn flex items-center gap-1.5 text-gray-400 border-gray-700/50 hover:bg-gray-900/40"
                 >
                   <Coffee className="w-3 h-3" /> Start Break
                 </button>
               )}
               {isOnBreak && (
-                <button
+                <button type="button"
                   onClick={() => onEndBreak(officerId)}
                   className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
                 >
                   <Zap className="w-3 h-3" /> End Break
                 </button>
               )}
-              <button
+              <button type="button"
                 onClick={() => onClockOut(officerId)}
                 className="toolbar-btn toolbar-btn-danger flex items-center gap-1.5"
               >
@@ -125,7 +114,7 @@ export default function TimeLogDetailTab({
               </button>
             </>
           ) : (
-            <button
+            <button type="button"
               onClick={() => onClockIn(officerId)}
               className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
             >
@@ -133,20 +122,6 @@ export default function TimeLogDetailTab({
             </button>
           )}
         </div>
-      </div>
-
-      {/* Date Range Filter */}
-      <div className="flex items-center gap-2 mb-2">
-        <Calendar className="w-3 h-3 text-rmpg-400" />
-        <span className="text-[8px] text-rmpg-500 uppercase font-bold">Filter</span>
-        <input type="date" className="input-dark text-[10px]" style={{ padding: '1px 4px' }}
-          value={filterStart} onChange={e => setFilterStart(e.target.value)} />
-        <span className="text-rmpg-600 text-[9px]">to</span>
-        <input type="date" className="input-dark text-[10px]" style={{ padding: '1px 4px' }}
-          value={filterEnd} onChange={e => setFilterEnd(e.target.value)} />
-        {(filterStart || filterEnd) && (
-          <button onClick={() => { setFilterStart(''); setFilterEnd(''); }} className="toolbar-btn text-[8px]" style={{ padding: '1px 4px' }}>Clear</button>
-        )}
       </div>
 
       {/* Summary Stats */}
@@ -176,20 +151,16 @@ export default function TimeLogDetailTab({
       </div>
 
       {/* Time Entry List */}
-      {filteredEntries.length > 0 ? (
+      {timeEntries.length > 0 ? (
         <div className="space-y-2">
-          {filteredEntries.map((entry) => {
+          {timeEntries.map((entry) => {
             const hours = calcHours(entry);
             const isActiveEntry = (entry.status === 'clocked_in' || entry.status === 'on_break') && !entry.clock_out;
 
             return (
               <div
                 key={entry.id}
-                className={`panel-beveled p-3 border-l-2 bg-surface-base ${
-                  (entry.edit_count != null && entry.edit_count > 0)
-                    ? 'border-l-amber-500'
-                    : leftBarColor(entry.status)
-                }`}
+                className={`panel-beveled p-3 border-l-2 bg-surface-base ${leftBarColor(entry.status)}`}
               >
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
@@ -231,11 +202,11 @@ export default function TimeLogDetailTab({
                       {entry.break_minutes > 0 && (
                         <span className="text-[9px] text-amber-400 font-mono">
                           <Coffee className="w-2.5 h-2.5 inline mr-0.5" />
-                          {entry.break_minutes.toFixed(0)}min break
+                          {(Number(entry.break_minutes) || 0).toFixed(0)}min break
                         </span>
                       )}
                       {entry.status === 'edited' && (
-                        <span className="text-[8px] px-1 py-0.5 bg-blue-900/40 text-blue-400 border border-blue-700/50 font-bold uppercase">
+                        <span className="text-[8px] px-1 py-0.5 bg-gray-900/40 text-gray-400 border border-gray-700/50 font-bold uppercase">
                           Edited
                         </span>
                       )}
@@ -247,14 +218,14 @@ export default function TimeLogDetailTab({
                     <div className="text-right">
                       <p className="text-sm font-mono font-bold text-rmpg-100">{hours}h</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => onEditTimeEntry(entry)}
                       className="toolbar-btn p-1"
                       title="Edit time entry"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => setDeleteTarget(entry.id)}
                       className="toolbar-btn toolbar-btn-danger p-1"
                       title="Delete time entry"
@@ -263,39 +234,6 @@ export default function TimeLogDetailTab({
                     </button>
                   </div>
                 </div>
-
-                {/* Edit history indicator */}
-                {(entry.status === 'edited' || (entry.edit_count != null && entry.edit_count > 0)) && (
-                  <div className="mt-1 pt-1 border-t border-rmpg-700/30">
-                    <div className="flex items-center gap-1.5 text-[9px]">
-                      <History className="w-2.5 h-2.5 text-amber-400" />
-                      <span className="text-amber-400">
-                        Edited{entry.edited_by_name ? ` by ${entry.edited_by_name}` : ''}
-                        {entry.edit_reason ? ` — ${entry.edit_reason}` : ''}
-                      </span>
-                      {entry.edit_count != null && entry.edit_count > 0 && (
-                        <button onClick={() => toggleHistory(entry.id)} className="text-[8px] text-brand-400 hover:underline ml-auto">
-                          {expandedHistory === entry.id ? 'Hide' : `${entry.edit_count} change${entry.edit_count > 1 ? 's' : ''}`}
-                        </button>
-                      )}
-                    </div>
-                    {expandedHistory === entry.id && (
-                      <div className="mt-1 space-y-0.5 pl-4">
-                        {historyLoading ? (
-                          <span className="text-[8px] text-rmpg-500">Loading...</span>
-                        ) : editHistory.map(edit => (
-                          <div key={edit.id} className="flex items-center gap-2 text-[8px] text-rmpg-500">
-                            <span className="text-rmpg-400">{edit.edited_by_name}</span>
-                            <span>{edit.edit_type.replace(/_/g, ' ')}</span>
-                            {edit.old_value && !edit.old_value.startsWith('{') && <span className="line-through text-red-400/60 font-mono">{edit.old_value}</span>}
-                            {edit.new_value && <span className="text-green-400 font-mono">{edit.new_value}</span>}
-                            {edit.reason && <span className="italic text-rmpg-600">— {edit.reason}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}

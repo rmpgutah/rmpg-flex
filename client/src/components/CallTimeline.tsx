@@ -25,8 +25,8 @@ interface CallTimelineProps {
  */
 const ACTION_LED_CLASS: Record<string, string> = {
   call_created: 'led-green',
-  dispatched: 'led-blue',
-  unit_dispatched: 'led-blue',
+  dispatched: 'led-gray',
+  unit_dispatched: 'led-gray',
   enroute: 'led-amber',
   onscene: 'led-amber',
   cleared: 'led-green',
@@ -42,7 +42,9 @@ function getLedClass(action: string): string {
 }
 
 function formatTimestamp(dateStr: string): string {
-  const date = new Date(dateStr);
+  if (!dateStr) return '--:--:--';
+  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  if (isNaN(date.getTime())) return '--:--:--';
   return date.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -69,7 +71,7 @@ export default function CallTimeline({ entries, className = '' }: CallTimelinePr
         style={{
           left: '3.5px',
           width: '1px',
-          background: '#2a3e58',
+          background: '#2e2e2e',
         }}
       />
 

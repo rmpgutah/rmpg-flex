@@ -10,35 +10,38 @@ import {
   Search,
   Loader2,
   AlertTriangle,
-  Clock,
   DollarSign,
   TrendingUp,
   Calendar,
-  ChevronRight,
   Edit3,
   Trash2,
   Phone,
   Mail,
-  ExternalLink,
   RefreshCw,
-  Filter,
   X,
   Save,
-  AlertCircle,
   BarChart3,
   Activity,
   Target,
   FileSignature,
+  Globe,
+  Eye,
+  Flame,
 } from 'lucide-react';
 import LeadsTab from '../components/crm/LeadsTab';
 import ProposalsTab from '../components/crm/ProposalsTab';
 import ReportsTab from '../components/crm/ReportsTab';
+import WebIntelPanel from '../components/crm/WebIntelPanel';
+import CompetitorMonitorPanel from '../components/crm/CompetitorMonitorPanel';
+import FirecrawlTab from '../components/crm/FirecrawlTab';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
+import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import ClientFormModal from '../components/ClientFormModal';
+import ExportButton from '../components/ExportButton';
 import type {
   Client,
   Property,
@@ -48,7 +51,7 @@ import type {
   CrmDashboardStats,
 } from '../types';
 
-type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports';
+type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors' | 'firecrawl';
 
 const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -60,6 +63,9 @@ const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[
   { id: 'invoices', label: 'Invoices', icon: FileText },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'webintel', label: 'Web Intel', icon: Globe },
+  { id: 'competitors', label: 'Competitors', icon: Eye },
+  { id: 'firecrawl', label: 'Firecrawl', icon: Flame },
 ];
 
 const TASK_TYPES = ['follow_up', 'site_visit', 'contract_renewal', 'billing', 'other'] as const;
@@ -74,16 +80,16 @@ function formatCurrency(val: number): string {
 
 function formatDate(d?: string): string {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string): string {
   if (!d) return '—';
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ── Priority badge colors ──────────────────────────────
@@ -91,7 +97,7 @@ function priorityColor(p: string): string {
   switch (p) {
     case 'urgent': return 'text-red-400 bg-red-900/30 border-red-700/50';
     case 'high': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'normal': return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
+    case 'normal': return 'text-gray-400 bg-gray-900/30 border-gray-700/50';
     case 'low': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
     default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
   }
@@ -100,7 +106,7 @@ function priorityColor(p: string): string {
 function statusColor(s: string): string {
   switch (s) {
     case 'pending': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'in_progress': return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
+    case 'in_progress': return 'text-gray-400 bg-gray-900/30 border-gray-700/50';
     case 'completed': return 'text-green-400 bg-green-900/30 border-green-700/50';
     case 'cancelled': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
     default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
@@ -110,7 +116,7 @@ function statusColor(s: string): string {
 function invoiceStatusColor(s: string): string {
   switch (s) {
     case 'paid': return 'text-green-400 bg-green-900/30 border-green-700/50';
-    case 'sent': return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
+    case 'sent': return 'text-gray-400 bg-gray-900/30 border-gray-700/50';
     case 'overdue': return 'text-red-400 bg-red-900/30 border-red-700/50';
     case 'partial': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
     case 'draft': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
@@ -122,21 +128,34 @@ function invoiceStatusColor(s: string): string {
 // ════════════════════════════════════════════════════════
 // CRM PAGE
 // ════════════════════════════════════════════════════════
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CrmPage() {
+  const isMobile = useIsMobile();
   const { addToast } = useToast();
   const [activeSection, setActiveSection] = useState<CrmSection>(() => {
     const saved = localStorage.getItem('crm_active_section');
     return (saved as CrmSection) || 'dashboard';
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   // Dashboard
   const [stats, setStats] = useState<CrmDashboardStats | null>(null);
   const [recentActivity, setRecentActivity] = useState<CrmActivity[]>([]);
   const [expiringContracts, setExpiringContracts] = useState<any[]>([]);
-  const [pipelineSummary, setPipelineSummary] = useState<any[]>([]);
-  const [revenueTrend, setRevenueTrend] = useState<any[]>([]);
-  const [dashTasks, setDashTasks] = useState<CrmTask[]>([]);
 
   // Clients
   const [clients, setClients] = useState<Client[]>([]);
@@ -149,10 +168,6 @@ export default function CrmPage() {
   // Properties
   const [properties, setProperties] = useState<(Property & { client_name?: string })[]>([]);
   const [propertySearch, setPropertySearch] = useState('');
-  const [propertyIncidentCounts, setPropertyIncidentCounts] = useState<Record<string, number>>({});
-  const [showPropertyModal, setShowPropertyModal] = useState(false);
-  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-  const [propertyForm, setPropertyForm] = useState<Partial<Property & { client_id: string }>>({});
 
   // Contacts
   const [contacts, setContacts] = useState<any[]>([]);
@@ -162,19 +177,6 @@ export default function CrmPage() {
   // Invoices
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [invoiceFilter, setInvoiceFilter] = useState('');
-  const [invoiceAgingBucket, setInvoiceAgingBucket] = useState<string | null>(null);
-  // Recurring invoice banner
-  const [recurringDue, setRecurringDue] = useState<any[]>([]);
-  const [recurringBannerDismissed, setRecurringBannerDismissed] = useState(false);
-  // Payment recording modal
-  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
-  const [paymentForm, setPaymentForm] = useState({ amount: '', paid_at: new Date().toISOString().slice(0, 10), method: 'check', reference: '' });
-  const [paymentSaving, setPaymentSaving] = useState(false);
-  // Invoice create/edit form
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceFormData, setInvoiceFormData] = useState<any>({
-    is_recurring: false, recurrence_interval: 'monthly', recurrence_anchor: '',
-  });
 
   // Tasks
   const [tasks, setTasks] = useState<CrmTask[]>([]);
@@ -182,14 +184,9 @@ export default function CrmPage() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<CrmTask | null>(null);
   const [taskForm, setTaskForm] = useState<Partial<CrmTask>>({});
-  const [completingTaskId, setCompletingTaskId] = useState<Set<number | string>>(new Set());
-  const [taskGroupCollapsed, setTaskGroupCollapsed] = useState<Record<string, boolean>>({});
 
   // Officers for assignment
   const [officers, setOfficers] = useState<{ id: string; full_name: string }[]>([]);
-
-  // Proposal pre-fill from lead quick-convert
-  const [proposalPrefill, setProposalPrefill] = useState<{ title?: string; scope_of_work?: string; total_value?: string } | null>(null);
 
   // Activity log modal
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -197,40 +194,49 @@ export default function CrmPage() {
     client_id: '', activity_type: 'note', subject: '', details: '',
   });
 
-  // Quick-action modals (Log Call / Log Email / New Task)
-  const [quickActionType, setQuickActionType] = useState<'call' | 'email' | 'task' | null>(null);
-  const [quickActionForm, setQuickActionForm] = useState<{ notes: string; due_date: string; priority: string }>({
-    notes: '', due_date: '', priority: 'normal',
-  });
+  // Feature 12: Pipeline summary
+  const [pipelineSummary, setPipelineSummary] = useState<any>(null);
+  // Feature 13: Follow-ups
+  const [followUps, setFollowUps] = useState<any>(null);
+  // Feature 14: Source analytics
+  const [sourceAnalytics, setSourceAnalytics] = useState<any>(null);
+  // Feature 15: Revenue forecast
+  const [revenueForecast, setRevenueForecast] = useState<any>(null);
 
-  // Client detail sub-tab (activity | incidents)
-  const [clientDetailTab, setClientDetailTab] = useState<'activity' | 'incidents'>('activity');
-  const [clientIncidents, setClientIncidents] = useState<any[]>([]);
-  const [incidentsLoading, setIncidentsLoading] = useState(false);
-  const [incidentsFetched, setIncidentsFetched] = useState<string | null>(null); // clientId last fetched
+  const fetchPipelineSummary = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/pipeline-summary'); setPipelineSummary(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchFollowUps = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/leads/follow-ups'); setFollowUps(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchSourceAnalytics = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/leads/source-analytics'); setSourceAnalytics(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchRevenueForecast = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/revenue-forecast'); setRevenueForecast(res); } catch { /* ignore */ }
+  }, []);
 
   // Persist active section
   useEffect(() => { try { localStorage.setItem('crm_active_section', activeSection); } catch { /* ignore */ } }, [activeSection]);
 
   // ── Data Fetching ──────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
+    setFetchError('');
     try {
-      const [statsRes, activityRes, expiringRes, pipelineRes, trendRes, tasksRes] = await Promise.all([
+      const [statsRes, activityRes, expiringRes] = await Promise.all([
         apiFetch<CrmDashboardStats>('/crm/dashboard'),
         apiFetch<CrmActivity[]>('/crm/recent-activity?limit=20'),
         apiFetch<any[]>('/crm/expiring-contracts?days=90'),
-        apiFetch<any[]>('/crm/leads/pipeline-summary').catch(() => []),
-        apiFetch<any[]>('/crm/reports/revenue-trend').catch(() => []),
-        apiFetch<CrmTask[]>('/crm/tasks').catch(() => []),
       ]);
       setStats(statsRes);
       setRecentActivity(Array.isArray(activityRes) ? activityRes : []);
       setExpiringContracts(Array.isArray(expiringRes) ? expiringRes : []);
-      setPipelineSummary(Array.isArray(pipelineRes) ? pipelineRes : []);
-      setRevenueTrend(Array.isArray(trendRes) ? trendRes : []);
-      setDashTasks(Array.isArray(tasksRes) ? tasksRes : []);
     } catch (err: any) {
       console.error('CRM dashboard fetch error:', err);
+      setFetchError(err?.message || 'Failed to load data');
     }
   }, []);
 
@@ -243,16 +249,8 @@ export default function CrmPage() {
 
   const fetchProperties = useCallback(async () => {
     try {
-      const [res, counts] = await Promise.all([
-        apiFetch<any[]>('/records/properties'),
-        apiFetch<{ property_id: string; count_30d: number }[]>('/crm/properties/incident-counts').catch(() => []),
-      ]);
+      const res = await apiFetch<any[]>('/records/properties');
       setProperties(Array.isArray(res) ? res : []);
-      const countMap: Record<string, number> = {};
-      if (Array.isArray(counts)) {
-        for (const row of counts) countMap[String(row.property_id)] = row.count_30d;
-      }
-      setPropertyIncidentCounts(countMap);
     } catch { setProperties([]); }
   }, []);
 
@@ -268,12 +266,8 @@ export default function CrmPage() {
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const [res, recurring] = await Promise.all([
-        apiFetch<any[]>('/invoices'),
-        apiFetch<any[]>('/crm/invoices/due-recurring').catch(() => []),
-      ]);
+      const res = await apiFetch<any[]>('/invoices');
       setInvoices(Array.isArray(res) ? res : []);
-      setRecurringDue(Array.isArray(recurring) ? recurring : []);
     } catch { setInvoices([]); }
   }, []);
 
@@ -309,24 +303,22 @@ export default function CrmPage() {
     if (activeSection === 'properties') fetchProperties();
     if (activeSection === 'contacts') fetchContacts();
     if (activeSection === 'invoices') fetchInvoices();
-    if (activeSection === 'tasks') {
-      // Silently trigger auto-renewal task generation, then refresh task list
-      apiFetch('/crm/dashboard/renewal-tasks').catch(() => {}).finally(() => fetchTasks());
+    if (activeSection === 'tasks') fetchTasks();
+    if (activeSection === 'dashboard') {
+      fetchDashboard();
+      fetchPipelineSummary();
+      fetchFollowUps();
+      fetchSourceAnalytics();
+      fetchRevenueForecast();
     }
-    if (activeSection === 'dashboard') fetchDashboard();
-  }, [activeSection, fetchProperties, fetchContacts, fetchInvoices, fetchTasks, fetchDashboard]);
+  }, [activeSection, fetchProperties, fetchContacts, fetchInvoices, fetchTasks, fetchDashboard, fetchPipelineSummary, fetchFollowUps, fetchSourceAnalytics, fetchRevenueForecast]);
 
   // Live sync
   useLiveSync('admin', useCallback(() => { fetchClients(); fetchDashboard(); }, [fetchClients, fetchDashboard]));
 
-  // When selected client changes, fetch their activity and reset sub-tabs
+  // When selected client changes, fetch their activity
   useEffect(() => {
-    if (selectedClientId) {
-      fetchClientActivity(selectedClientId);
-      setClientDetailTab('activity');
-      setIncidentsFetched(null);
-      setClientIncidents([]);
-    }
+    if (selectedClientId) fetchClientActivity(selectedClientId);
   }, [selectedClientId, fetchClientActivity]);
 
   // ── Task Handlers ──────────────────────────────────────
@@ -358,24 +350,6 @@ export default function CrmPage() {
     }
   };
 
-  const saveProperty = async () => {
-    try {
-      if (editingProperty) {
-        await apiFetch(`/records/properties/${editingProperty.id}`, { method: 'PUT', body: JSON.stringify(propertyForm) });
-        addToast('Property updated', 'success');
-      } else {
-        await apiFetch('/records/properties', { method: 'POST', body: JSON.stringify(propertyForm) });
-        addToast('Property created', 'success');
-      }
-      setShowPropertyModal(false);
-      setEditingProperty(null);
-      setPropertyForm({});
-      fetchProperties();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to save property', 'error');
-    }
-  };
-
   const deleteTask = async (id: string | number) => {
     try {
       await apiFetch(`/crm/tasks/${id}`, { method: 'DELETE' });
@@ -388,15 +362,11 @@ export default function CrmPage() {
 
   const toggleTaskComplete = async (task: CrmTask) => {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-    setCompletingTaskId(prev => new Set(prev).add(task.id));
     try {
       await apiFetch(`/crm/tasks/${task.id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
-      // Optimistic update: update local state immediately
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
+      fetchTasks();
     } catch (err: any) {
       addToast(err?.message || 'Failed to update task', 'error');
-    } finally {
-      setCompletingTaskId(prev => { const s = new Set(prev); s.delete(task.id); return s; });
     }
   };
 
@@ -414,133 +384,6 @@ export default function CrmPage() {
       addToast(err?.message || 'Failed to log activity', 'error');
     }
   };
-
-  // ── Quick-Action Handlers ─────────────────────────────
-  const openQuickAction = (type: 'call' | 'email' | 'task') => {
-    setQuickActionForm({ notes: '', due_date: '', priority: 'normal' });
-    setQuickActionType(type);
-  };
-
-  const submitQuickAction = async () => {
-    if (!selectedClientId || !quickActionType) return;
-    try {
-      if (quickActionType === 'call' || quickActionType === 'email') {
-        await apiFetch('/crm/activity', {
-          method: 'POST',
-          body: JSON.stringify({
-            client_id: selectedClientId,
-            activity_type: quickActionType,
-            subject: quickActionType === 'call' ? 'Phone Call' : 'Email',
-            details: quickActionForm.notes,
-          }),
-        });
-        addToast(`${quickActionType === 'call' ? 'Call' : 'Email'} logged`, 'success');
-        fetchClientActivity(selectedClientId);
-        fetchDashboard();
-      } else {
-        await apiFetch('/crm/tasks', {
-          method: 'POST',
-          body: JSON.stringify({
-            title: quickActionForm.notes || `Follow up with ${selectedClient?.name}`,
-            related_client_id: Number(selectedClientId),
-            due_date: quickActionForm.due_date || undefined,
-            priority: quickActionForm.priority,
-            task_type: 'follow_up',
-          }),
-        });
-        addToast('Task created', 'success');
-        fetchTasks();
-      }
-      setQuickActionType(null);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to save', 'error');
-    }
-  };
-
-  // ── Invoice Payment Recording ────────────────────────
-  const openPaymentModal = (inv: Invoice) => {
-    setPaymentInvoice(inv);
-    setPaymentForm({ amount: String(inv.balance_due || ''), paid_at: new Date().toISOString().slice(0, 10), method: 'check', reference: '' });
-  };
-
-  const submitPayment = async () => {
-    if (!paymentInvoice) return;
-    setPaymentSaving(true);
-    try {
-      await apiFetch(`/invoices/${paymentInvoice.id}/payments`, {
-        method: 'POST',
-        body: JSON.stringify({
-          amount: parseFloat(paymentForm.amount),
-          paid_at: paymentForm.paid_at,
-          method: paymentForm.method,
-          reference: paymentForm.reference || undefined,
-        }),
-      });
-      addToast('Payment recorded', 'success');
-      setPaymentInvoice(null);
-      fetchInvoices();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to record payment', 'error');
-    } finally {
-      setPaymentSaving(false);
-    }
-  };
-
-  // ── Invoice Overdue Escalation ───────────────────────
-  const escalateInvoice = async (inv: Invoice) => {
-    try {
-      const days = Math.floor((Date.now() - new Date(inv.due_date!).getTime()) / 86400000);
-      await Promise.all([
-        apiFetch('/crm/activities', {
-          method: 'POST',
-          body: JSON.stringify({
-            client_id: inv.client_id,
-            activity_type: 'note',
-            subject: `Invoice Escalation: ${inv.invoice_number}`,
-            details: `Invoice ${inv.invoice_number} is ${days} days overdue. Balance due: ${formatCurrency(inv.balance_due)}. Escalated for follow-up.`,
-          }),
-        }).catch(() => apiFetch('/crm/activity', {
-          method: 'POST',
-          body: JSON.stringify({
-            client_id: inv.client_id,
-            activity_type: 'note',
-            subject: `Invoice Escalation: ${inv.invoice_number}`,
-            details: `Invoice ${inv.invoice_number} is ${days} days overdue. Balance due: ${formatCurrency(inv.balance_due)}. Escalated for follow-up.`,
-          }),
-        })),
-        apiFetch('/crm/tasks', {
-          method: 'POST',
-          body: JSON.stringify({
-            title: `ESCALATE: Follow up on invoice ${inv.invoice_number} (${days}d overdue)`,
-            related_client_id: Number(inv.client_id),
-            due_date: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
-            priority: 'urgent',
-            task_type: 'billing',
-            description: `Invoice ${inv.invoice_number} balance: ${formatCurrency(inv.balance_due)}. ${days} days overdue.`,
-          }),
-        }),
-      ]);
-      addToast('Escalation logged — activity + task created', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to escalate', 'error');
-    }
-  };
-
-  // ── Incidents Fetch ───────────────────────────────────
-  const fetchClientIncidents = useCallback(async (clientId: string) => {
-    if (incidentsFetched === clientId) return;
-    setIncidentsLoading(true);
-    try {
-      const res = await apiFetch<any[]>(`/crm/clients/${clientId}/incidents`);
-      setClientIncidents(Array.isArray(res) ? res : []);
-      setIncidentsFetched(clientId);
-    } catch {
-      setClientIncidents([]);
-      setIncidentsFetched(clientId);
-    } finally {
-      setIncidentsLoading(false);
-    }
-  }, [incidentsFetched]);
 
   // ── Filtered Data ──────────────────────────────────────
   const filteredClients = useMemo(() => {
@@ -564,32 +407,10 @@ export default function CrmPage() {
     );
   }, [properties, propertySearch]);
 
-  // Compute days overdue helper
-  function daysOverdue(inv: Invoice): number {
-    if (!inv.due_date || inv.status === 'paid' || inv.status === 'void' || inv.status === 'cancelled') return 0;
-    const diff = Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86400000);
-    return Math.max(0, diff);
-  }
-
-  // Aging bucket for an invoice
-  function agingBucket(inv: Invoice): string {
-    const days = daysOverdue(inv);
-    if (days === 0) return 'current';
-    if (days <= 30) return '1-30';
-    if (days <= 60) return '31-60';
-    if (days <= 90) return '61-90';
-    return '90+';
-  }
-
   const filteredInvoices = useMemo(() => {
-    let result = invoices;
-    if (invoiceFilter) result = result.filter(i => i.status === invoiceFilter);
-    if (invoiceAgingBucket) {
-      result = result.filter(i => agingBucket(i) === invoiceAgingBucket);
-    }
-    return result;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoices, invoiceFilter, invoiceAgingBucket]);
+    if (!invoiceFilter) return invoices;
+    return invoices.filter(i => i.status === invoiceFilter);
+  }, [invoices, invoiceFilter]);
 
   const selectedClient = useMemo(() => {
     if (!selectedClientId) return null;
@@ -599,22 +420,34 @@ export default function CrmPage() {
   // ════════════════════════════════════════════════════════
   // RENDER
   // ════════════════════════════════════════════════════════
+  // Set document title
+  useEffect(() => { document.title = 'CRM \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowTaskModal(false); setEditingTask(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
       </div>
     );
   }
+
 
   return (
     <div className="flex h-full">
       {/* ── Sidebar ────────────────────────────────────── */}
       <div className="w-48 border-r border-rmpg-600 bg-surface-sunken flex flex-col flex-shrink-0">
-        <div className="px-3 py-2 border-b border-rmpg-600">
+        <div className="px-3 py-2.5 border-b border-rmpg-600" style={{ background: '#050505' }}>
           <div className="flex items-center gap-2">
             <RmpgLogo height={14} iconOnly />
-            <span className="text-xs font-bold text-brand-400 tracking-wider">OVERWATCH</span>
+            <span className="text-xs font-bold text-brand-400 tracking-wider uppercase">Overwatch</span>
           </div>
         </div>
         <nav className="flex-1 py-1">
@@ -622,28 +455,22 @@ export default function CrmPage() {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
             return (
-              <button
+              <button type="button"
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-all duration-150 ${
                   isActive
-                    ? 'bg-brand-600/20 text-brand-400 border-l-2 border-brand-400'
+                    ? 'bg-brand-600/20 text-brand-400 border-l-2 border-brand-400 font-medium'
                     : 'text-rmpg-300 hover:bg-rmpg-700/30 hover:text-rmpg-200 border-l-2 border-transparent'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 flex-shrink-0" />
                 {item.label}
-                {item.id === 'tasks' && (() => {
-                  const todayStr = new Date().toISOString().slice(0, 10);
-                  const activeTasks = tasks.filter(t => t.status === 'pending' || t.status === 'in_progress');
-                  const urgentTasks = activeTasks.filter(t => t.due_date && t.due_date <= todayStr);
-                  if (activeTasks.length === 0) return null;
-                  return (
-                    <span className={`ml-auto text-[9px] font-mono px-1 py-0.5 border ${urgentTasks.length > 0 ? 'bg-red-900/40 text-red-400 border-red-700/60' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
-                      {activeTasks.length}
-                    </span>
-                  );
-                })()}
+                {item.id === 'tasks' && tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length > 0 && (
+                  <span className="ml-auto text-[8px] font-mono font-bold px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50 tabular-nums" style={{ borderRadius: '2px' }}>
+                    {tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -652,122 +479,50 @@ export default function CrmPage() {
 
       {/* ── Main Content ──────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {activeSection === 'dashboard' && renderDashboard()}
-        {activeSection === 'leads' && (
-          <LeadsTab
-            onNavigateToProposals={(prefill) => {
-              setProposalPrefill(prefill);
-              setActiveSection('proposals');
-            }}
-          />
+        {fetchError && (
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2 shadow-lg">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+            <span className="flex-1">{fetchError}</span>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]">Dismiss</button>
+          </div>
         )}
+        {activeSection === 'dashboard' && renderDashboard()}
+        {activeSection === 'leads' && <LeadsTab />}
         {activeSection === 'clients' && renderClients()}
         {activeSection === 'properties' && renderProperties()}
         {activeSection === 'contacts' && renderContacts()}
-        {activeSection === 'proposals' && (
-          <ProposalsTab
-            prefillData={proposalPrefill}
-            onPrefillConsumed={() => setProposalPrefill(null)}
-          />
-        )}
+        {activeSection === 'proposals' && <ProposalsTab />}
         {activeSection === 'invoices' && renderInvoices()}
         {activeSection === 'tasks' && renderTasks()}
         {activeSection === 'reports' && <ReportsTab />}
+        {activeSection === 'webintel' && <WebIntelPanel />}
+        {activeSection === 'competitors' && <CompetitorMonitorPanel />}
+        {activeSection === 'firecrawl' && <FirecrawlTab />}
       </div>
-
-      {/* ── Property Modal ────────────────────────────── */}
-      {showPropertyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setShowPropertyModal(false); setEditingProperty(null); setPropertyForm({}); }}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="panel-title-bar flex items-center justify-between">
-              <span className="text-xs font-bold text-white">{editingProperty ? 'Edit Property' : 'New Property'}</span>
-              <button onClick={() => { setShowPropertyModal(false); setEditingProperty(null); setPropertyForm({}); }} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label">Name *</label>
-                  <input className="input-dark w-full" value={propertyForm.name || ''} onChange={e => setPropertyForm(p => ({ ...p, name: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="field-label">Client *</label>
-                  <select className="input-dark w-full" value={String(propertyForm.client_id || '')} onChange={e => setPropertyForm(p => ({ ...p, client_id: e.target.value }))}>
-                    <option value="">Select client…</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="field-label">Address *</label>
-                <input className="input-dark w-full" value={propertyForm.address || ''} onChange={e => setPropertyForm(p => ({ ...p, address: e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="field-label">City</label>
-                  <input className="input-dark w-full" value={propertyForm.city || ''} onChange={e => setPropertyForm(p => ({ ...p, city: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="field-label">State</label>
-                  <input className="input-dark w-full" value={propertyForm.state || ''} onChange={e => setPropertyForm(p => ({ ...p, state: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="field-label">ZIP</label>
-                  <input className="input-dark w-full" value={propertyForm.zip || ''} onChange={e => setPropertyForm(p => ({ ...p, zip: e.target.value }))} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label">Property Type</label>
-                  <input className="input-dark w-full" placeholder="e.g. Commercial, Residential" value={(propertyForm as any).property_type || ''} onChange={e => setPropertyForm(p => ({ ...p, property_type: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="field-label">Risk Level</label>
-                  <select className="input-dark w-full" value={propertyForm.risk_level || 'low'} onChange={e => setPropertyForm(p => ({ ...p, risk_level: e.target.value as Property['risk_level'] }))}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="field-label">Hazard Notes</label>
-                <textarea className="input-dark w-full" rows={2} value={(propertyForm as any).hazard_notes || ''} onChange={e => setPropertyForm(p => ({ ...p, hazard_notes: e.target.value }))} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => { setShowPropertyModal(false); setEditingProperty(null); setPropertyForm({}); }} className="toolbar-btn">Cancel</button>
-              <button onClick={saveProperty} className="toolbar-btn toolbar-btn-primary" disabled={!propertyForm.name?.trim() || !propertyForm.address?.trim() || !propertyForm.client_id}>
-                <Save className="w-3 h-3" /> {editingProperty ? 'Update' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowTaskModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
-              <button onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <button type="button" onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title</label>
-                <input className="input-dark w-full" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
+                <input className="input-dark w-full min-h-[36px]" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select className="input-dark w-full" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
                     {TASK_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select className="input-dark w-full" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
                     {TASK_PRIORITIES.map(p => <option key={p} value={p}>{toDisplayLabel(p)}</option>)}
                   </select>
                 </div>
@@ -775,11 +530,11 @@ export default function CrmPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Due Date</label>
-                  <input type="date" className="input-dark w-full" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
+                  <input type="date" className="input-dark w-full min-h-[36px]" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
                 </div>
                 <div>
                   <label className="field-label">Assign To</label>
-                  <select className="input-dark w-full" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
                     <option value="">Unassigned</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -787,27 +542,27 @@ export default function CrmPage() {
               </div>
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
+                <select className="input-dark w-full min-h-[36px]" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
                   <option value="">No client</option>
-                  {clients.filter(c => c.status !== 'inactive').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Description</label>
-                <textarea className="input-dark w-full" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
+                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
               </div>
               {editingTask && (
                 <div>
                   <label className="field-label">Status</label>
-                  <select className="input-dark w-full" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
                     {TASK_STATUSES.map(s => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
                   </select>
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={saveTask} className="toolbar-btn toolbar-btn-primary" disabled={!taskForm.title?.trim()}>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600 bg-surface-sunken/50">
+              <button type="button" onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!taskForm.title?.trim()}>
                 <Save className="w-3 h-3" /> {editingTask ? 'Update' : 'Create'}
               </button>
             </div>
@@ -817,38 +572,38 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowActivityModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">Log Activity</span>
-              <button onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <button type="button" onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
+                <select className="input-dark w-full min-h-[36px]" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
                   <option value="">Select client...</option>
-                  {clients.filter(c => c.status !== 'inactive').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Type</label>
-                <select className="input-dark w-full" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
+                <select className="input-dark w-full min-h-[36px]" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
                   {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Subject</label>
-                <input className="input-dark w-full" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
+                <input className="input-dark w-full min-h-[36px]" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
               </div>
               <div>
                 <label className="field-label">Details</label>
-                <textarea className="input-dark w-full" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
+                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={logActivity} className="toolbar-btn toolbar-btn-primary" disabled={!activityForm.client_id}>
+              <button type="button" onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={logActivity} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!activityForm.client_id}>
                 <Save className="w-3 h-3" /> Log
               </button>
             </div>
@@ -891,201 +646,140 @@ export default function CrmPage() {
 
   function renderDashboard() {
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
-          <button onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
-          <button onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary">
+          <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
+          <button type="button" onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
+          <button type="button" onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3 h-3" /> Log Activity
           </button>
         </PanelTitleBar>
 
-        {/* Recurring invoice banner on dashboard */}
-        {recurringDue.length > 0 && !recurringBannerDismissed && (
-          <div className="mx-4 mt-3 flex items-center justify-between p-2 border border-amber-700/60 bg-amber-900/20 text-xs">
-            <span className="text-amber-300">
-              <AlertTriangle className="inline w-3.5 h-3.5 mr-1 text-amber-400" />
-              {recurringDue.length} recurring invoice{recurringDue.length > 1 ? 's' : ''} ready to generate
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { setActiveSection('invoices'); setRecurringBannerDismissed(true); }}
-                className="toolbar-btn toolbar-btn-primary text-[10px]"
-              >
-                View Invoices
-              </button>
-              <button onClick={() => setRecurringBannerDismissed(true)} className="p-0.5 text-rmpg-400 hover:text-rmpg-200">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {stats && (
           <div className="p-4 space-y-4">
             {/* Stats Cards */}
-            {(() => {
-              const pipelineValue = pipelineSummary
-                .filter((s: any) => !['lost', 'dismissed'].includes(s.stage))
-                .reduce((sum: number, s: any) => sum + (s.total_value || 0), 0);
-              const fmtPipelineValue = pipelineValue >= 1000
-                ? `$${(pipelineValue / 1000).toFixed(1)}K`
-                : `$${pipelineValue.toFixed(0)}`;
-              return (
-                <div className="grid grid-cols-5 gap-3">
-                  <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
-                  <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
-                  <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
-                  <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-blue-400" />
-                  <StatCard icon={Target} label="Pipeline Value" value={fmtPipelineValue} sub={`${pipelineSummary.filter((s: any) => !['lost','dismissed'].includes(s.stage)).reduce((n: number, s: any) => n + (s.count || 0), 0)} active leads`} color="text-purple-400" />
-                </div>
-              );
-            })()}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
+              <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
+              <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
+              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-gray-400" />
+            </div>
 
-            {/* New widgets row */}
-            <div className="grid grid-cols-3 gap-4">
-              {/* Pipeline Funnel */}
-              <div className="panel-raised p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <BarChart3 className="w-3.5 h-3.5 text-purple-400" />
-                  <span className="text-xs font-bold text-white">PIPELINE</span>
-                </div>
-                {pipelineSummary.length === 0 ? (
-                  <p className="text-xs text-rmpg-400">No pipeline data</p>
-                ) : (() => {
-                  const STAGES = ['new', 'qualified', 'proposal', 'negotiation', 'won'];
-                  const stageColors: Record<string, string> = {
-                    new: '#475569',
-                    qualified: '#1d4ed8',
-                    proposal: '#7c3aed',
-                    negotiation: '#b45309',
-                    won: '#15803d',
-                  };
-                  const stageMap = Object.fromEntries(pipelineSummary.map((s: any) => [s.stage, s]));
-                  const maxCount = Math.max(1, ...STAGES.map(st => stageMap[st]?.count || 0));
-                  return (
-                    <div className="space-y-1.5">
-                      {STAGES.map(st => {
-                        const row = stageMap[st];
-                        const count = row?.count || 0;
-                        const pct = Math.max(4, Math.round((count / maxCount) * 100));
-                        return (
-                          <button
-                            key={st}
-                            onClick={() => setActiveSection('leads')}
-                            className="w-full text-left group"
-                          >
-                            <div className="flex items-center justify-between text-[10px] mb-0.5">
-                              <span className="text-rmpg-300 uppercase tracking-wide">{st}</span>
-                              <span className="text-rmpg-400 font-mono">{count}</span>
-                            </div>
-                            <div className="h-2 bg-surface-sunken border border-rmpg-700/40">
-                              <div
-                                className="h-full transition-all"
-                                style={{ width: `${pct}%`, backgroundColor: stageColors[st] || '#475569' }}
-                              />
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Revenue Trend Sparkline */}
-              <div className="panel-raised p-3">
+            {/* Feature 15: Revenue Forecast */}
+            {revenueForecast && (
+              <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-3.5 h-3.5 text-green-400" />
-                  <span className="text-xs font-bold text-white">REVENUE TREND (6 MO)</span>
+                  <span className="text-xs font-bold text-white">Revenue Forecast</span>
                 </div>
-                {revenueTrend.length === 0 ? (
-                  <p className="text-xs text-rmpg-400">No data</p>
-                ) : (() => {
-                  const invoicedVals = revenueTrend.map((r: any) => r.invoiced || 0);
-                  const paidVals = revenueTrend.map((r: any) => r.paid || 0);
-                  const allVals = [...invoicedVals, ...paidVals];
-                  const maxVal = Math.max(1, ...allVals);
-                  const W = 200, H = 60, PAD = 4;
-                  const n = revenueTrend.length;
-                  const xStep = n > 1 ? (W - PAD * 2) / (n - 1) : W - PAD * 2;
-                  const toY = (v: number) => PAD + (H - PAD * 2) * (1 - v / maxVal);
-                  const toX = (i: number) => PAD + i * xStep;
-                  const buildPath = (vals: number[]) =>
-                    vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
-                  return (
-                    <div>
-                      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 60 }}>
-                        <path d={buildPath(invoicedVals)} fill="none" stroke="#1a5a9e" strokeWidth="1.5" />
-                        <path d={buildPath(paidVals)} fill="none" stroke="#22c55e" strokeWidth="1.5" />
-                        {revenueTrend.map((_: any, i: number) => (
-                          <line key={i} x1={toX(i).toFixed(1)} y1={H - 2} x2={toX(i).toFixed(1)} y2={H - 1} stroke="#334155" strokeWidth="1" />
-                        ))}
-                      </svg>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="flex items-center gap-1 text-[10px] text-rmpg-400">
-                          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#1a5a9e' }} /> Invoiced
-                        </span>
-                        <span className="flex items-center gap-1 text-[10px] text-rmpg-400">
-                          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#22c55e' }} /> Paid
-                        </span>
-                        <span className="ml-auto text-[10px] text-rmpg-500">
-                          {revenueTrend[0]?.month && revenueTrend[revenueTrend.length - 1]?.month
-                            ? `${revenueTrend[0].month} – ${revenueTrend[revenueTrend.length - 1].month}`
-                            : ''}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div><div className="text-lg font-bold text-green-400 font-mono">{formatCurrency(revenueForecast.won_revenue)}</div><div className="text-[9px] text-rmpg-400 uppercase">Won</div></div>
+                  <div><div className="text-lg font-bold text-brand-300 font-mono">{formatCurrency(revenueForecast.total_expected)}</div><div className="text-[9px] text-rmpg-400 uppercase">Expected</div></div>
+                  <div><div className="text-lg font-bold text-white font-mono">{formatCurrency(revenueForecast.total_pipeline)}</div><div className="text-[9px] text-rmpg-400 uppercase">Total Pipeline</div></div>
+                  <div><div className="text-lg font-bold text-amber-400 font-mono">{revenueForecast.active_deals}</div><div className="text-[9px] text-rmpg-400 uppercase">Active Deals</div></div>
+                </div>
               </div>
+            )}
 
-              {/* Due This Week */}
-              <div className="panel-raised p-3">
+            {/* Feature 12: Pipeline Summary */}
+            {pipelineSummary && (
+              <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-xs font-bold text-white">DUE THIS WEEK</span>
+                  <Target className="w-3.5 h-3.5 text-brand-400" />
+                  <span className="text-xs font-bold text-white">Sales Pipeline</span>
                 </div>
-                {(() => {
-                  const now = new Date();
-                  const cutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-                  const dueTasks = dashTasks
-                    .filter((t: CrmTask) =>
-                      t.status !== 'completed' &&
-                      t.status !== 'cancelled' &&
-                      t.due_date &&
-                      new Date(t.due_date) <= cutoff
-                    )
-                    .sort((a, b) => {
-                      const pri: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
-                      return (pri[a.priority] ?? 2) - (pri[b.priority] ?? 2);
-                    })
-                    .slice(0, 5);
-                  if (dueTasks.length === 0) return <p className="text-xs text-rmpg-400">No tasks due this week</p>;
-                  return (
-                    <div className="space-y-1.5">
-                      {dueTasks.map((t: CrmTask) => {
-                        const dotColor = t.priority === 'urgent' || t.priority === 'high'
-                          ? 'bg-red-500'
-                          : t.priority === 'normal'
-                          ? 'bg-amber-500'
-                          : 'bg-green-500';
-                        return (
-                          <button
-                            key={t.id}
-                            onClick={() => setActiveSection('tasks')}
-                            className="w-full text-left flex items-start gap-2 p-1.5 bg-surface-sunken border border-rmpg-700/30 hover:border-rmpg-600 transition-colors group"
-                          >
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-0.5 ${dotColor}`} />
-                            <span className="flex-1 text-[10px] text-rmpg-200 group-hover:text-white truncate">{t.title}</span>
-                            <span className="text-[9px] text-rmpg-500 font-mono flex-shrink-0">{formatDate(t.due_date)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+                <div className="flex gap-1">
+                  {(pipelineSummary.stages || []).map((s: any) => {
+                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-gray-700', qualified: 'bg-cyan-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
+                    return (
+                      <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
+                        <div className="text-sm font-bold text-white font-mono tabular-nums">{s.count}</div>
+                        <div className="text-[8px] text-white/70 uppercase font-bold tracking-wider">{s.pipeline_stage}</div>
+                        {s.total_value > 0 && <div className="text-[8px] text-white/50 font-mono">{formatCurrency(s.total_value)}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {pipelineSummary.conversions?.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1 text-[9px] text-rmpg-400">
+                    {pipelineSummary.conversions.map((c: any, i: number) => (
+                      <span key={i}>{c.from} → {c.to}: <span className="text-white font-bold">{c.rate}%</span>{i < pipelineSummary.conversions.length - 1 ? ' | ' : ''}</span>
+                    ))}
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Feature 13: Follow-up Reminders + Feature 14: Source Analytics */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Follow-ups */}
+              {followUps && (
+                <div className="panel-inset p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-bold text-white">Follow-up Reminders</span>
+                  </div>
+                  {(followUps.overdue?.length || 0) > 0 && (
+                    <div className="mb-2">
+                      <div className="text-[9px] text-red-400 font-bold uppercase mb-1">Overdue ({followUps.overdue.length})</div>
+                      {followUps.overdue.slice(0, 5).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">{l.next_follow_up}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(followUps.today?.length || 0) > 0 && (
+                    <div className="mb-2">
+                      <div className="text-[9px] text-amber-400 font-bold uppercase mb-1">Today ({followUps.today.length})</div>
+                      {followUps.today.slice(0, 5).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-amber-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">Score: {l.lead_score}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(followUps.upcoming?.length || 0) > 0 && (
+                    <div>
+                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
+                      {followUps.upcoming.slice(0, 3).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-gray-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">{l.next_follow_up}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!followUps.overdue?.length && !followUps.today?.length && !followUps.upcoming?.length && (
+                    <p className="text-xs text-rmpg-400">No follow-ups scheduled</p>
+                  )}
+                </div>
+              )}
+
+              {/* Feature 14: Lead Source Analytics */}
+              {sourceAnalytics && (
+                <div className="panel-inset p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="text-xs font-bold text-white">Lead Sources ({sourceAnalytics.period_days}d)</span>
+                  </div>
+                  <div className="space-y-1">
+                    {(sourceAnalytics.data || []).slice(0, 8).map((s: any) => (
+                      <div key={s.source} className="flex items-center gap-2 text-[10px]">
+                        <span className="w-24 text-rmpg-300 truncate capitalize">{s.source.replace(/_/g, ' ')}</span>
+                        <div className="flex-1 bg-rmpg-700 h-2 overflow-hidden" style={{ borderRadius: '2px' }}>
+                          <div className="h-full bg-brand-500 transition-all duration-300" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%`, borderRadius: '2px' }} />
+                        </div>
+                        <span className="text-white w-6 text-right">{s.total_leads}</span>
+                        <span className="text-green-400 w-10 text-right">{s.conversion_rate}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1098,7 +792,7 @@ export default function CrmPage() {
                 {expiringContracts.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No contracts expiring soon</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                     {expiringContracts.map((c: any) => (
                       <div key={c.id} className="flex items-center justify-between text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div>
@@ -1118,13 +812,13 @@ export default function CrmPage() {
               {/* Recent Activity */}
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-3.5 h-3.5 text-blue-400" />
+                  <Activity className="w-3.5 h-3.5 text-gray-400" />
                   <span className="text-xs font-bold text-white">Recent Activity</span>
                 </div>
                 {recentActivity.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No recent activity</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                     {recentActivity.slice(0, 10).map((a: any) => (
                       <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div className="flex items-center justify-between">
@@ -1134,7 +828,7 @@ export default function CrmPage() {
                         <div className="text-rmpg-300 mt-0.5">
                           <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                             a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                            a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
+                            a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
                             'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                           }`}>{toDisplayLabel(a.activity_type)}</span>
                           {a.subject && <span className="ml-1.5">{a.subject}</span>}
@@ -1153,19 +847,27 @@ export default function CrmPage() {
 
   function renderClients() {
     return (
-      <>
       <div className="flex h-full">
         {/* Client List */}
         <div className="w-80 border-r border-rmpg-600 flex flex-col flex-shrink-0">
           <PanelTitleBar title="CLIENTS" icon={Building2}>
-            <input className="input-dark text-xs flex-1" style={{ maxWidth: 120 }} placeholder="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
-            <button onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary">
+            <input className="input-dark text-xs flex-1 min-h-[36px]" style={{ maxWidth: 120 }} placeholder="Search..." aria-label="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+            <button type="button" onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+            {filteredClients.length === 0 && !isLoading && (
+              <div className="text-center py-12 text-rmpg-500">
+                <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                  <Building2 size={24} className="text-rmpg-600" />
+                </div>
+                <p className="text-sm font-medium text-rmpg-400">{clientSearch ? 'No clients match your search' : 'No clients yet'}</p>
+                <p className="text-xs text-rmpg-600 mt-1">{clientSearch ? 'Try a different search term' : 'Click "New" to add your first client'}</p>
+              </div>
+            )}
             {filteredClients.map(c => (
-              <button
+              <button type="button"
                 key={c.id}
                 onClick={() => setSelectedClientId(String(c.id))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-700/30 transition-colors ${
@@ -1175,7 +877,7 @@ export default function CrmPage() {
                 <div className="text-xs font-medium text-rmpg-200">{c.name}</div>
                 <div className="text-[10px] text-rmpg-400 flex items-center gap-2 mt-0.5">
                   {c.contact_name && <span>{c.contact_name}</span>}
-                  {c.status === 'inactive' && <span className="text-red-400">INACTIVE</span>}
+                  {c.is_active === false && <span className="text-red-400">INACTIVE</span>}
                   {(c as any).priority_client && <span className="text-amber-400">PRIORITY</span>}
                 </div>
               </button>
@@ -1184,389 +886,161 @@ export default function CrmPage() {
         </div>
 
         {/* Client Detail */}
-        <div className="flex-1 overflow-y-auto">
-          {selectedClient ? (() => {
-            // ── Contract Status Banner ────────────────────
-            const contractEndRaw = (selectedClient as any).contract_end as string | undefined;
-            let contractBanner: React.ReactNode = null;
-            if (contractEndRaw) {
-              const now = new Date();
-              const end = new Date(contractEndRaw);
-              const diffMs = end.getTime() - now.getTime();
-              const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-              if (diffDays > 90) {
-                contractBanner = (
-                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-green-900/30 border-b border-green-700/40 text-green-400 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
-                    CONTRACT ACTIVE — Expires {formatDate(contractEndRaw)}
-                  </div>
-                );
-              } else if (diffDays > 30) {
-                contractBanner = (
-                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-amber-900/30 border-b border-amber-700/40 text-amber-400 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
-                    CONTRACT EXPIRING SOON — {diffDays} days remaining
-                  </div>
-                );
-              } else if (diffDays >= 0) {
-                contractBanner = (
-                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-red-900/30 border-b border-red-700/40 text-red-400 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block animate-pulse" />
-                    CONTRACT EXPIRES IN {diffDays} DAY{diffDays !== 1 ? 'S' : ''}
-                  </div>
-                );
-              } else {
-                const expiredDays = Math.abs(diffDays);
-                contractBanner = (
-                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-red-900/40 border-b border-red-700/50 text-red-400 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-pulse" />
-                    CONTRACT EXPIRED {expiredDays} day{expiredDays !== 1 ? 's' : ''} ago
-                  </div>
-                );
-              }
-            }
-
-            return (
-              <div>
-                <div className="panel-title-bar flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-white">{selectedClient.name}</span>
-                    {(selectedClient as any).priority_client && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 text-amber-400 bg-amber-900/30 border border-amber-700/50">PRIORITY</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
-                    <button onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
-                    <button onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
-                      <Activity className="w-3 h-3" /> Log
-                    </button>
-                  </div>
-                </div>
-
-                {/* Contract Status Banner */}
-                {contractBanner}
-
-                {/* Quick-Action Bar */}
-                <div className="flex items-center gap-1 px-4 py-2 border-b border-rmpg-700/40 bg-surface-sunken">
-                  <button
-                    onClick={() => openQuickAction('call')}
-                    className="toolbar-btn flex items-center gap-1.5 text-[10px]"
-                    title="Log a phone call"
-                  >
-                    <Phone className="w-3 h-3 text-green-400" /> Log Call
-                  </button>
-                  <button
-                    onClick={() => openQuickAction('email')}
-                    className="toolbar-btn flex items-center gap-1.5 text-[10px]"
-                    title="Log an email"
-                  >
-                    <Mail className="w-3 h-3 text-blue-400" /> Log Email
-                  </button>
-                  <button
-                    onClick={() => openQuickAction('task')}
-                    className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 text-[10px]"
-                    title="Create a task for this client"
-                  >
-                    <CheckSquare className="w-3 h-3" /> New Task
-                  </button>
-                </div>
-
-                <div className="p-4 space-y-4">
-                  {/* Contact Info */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="panel-inset p-3">
-                      <div className="field-label mb-1">Contact</div>
-                      <div className="text-xs text-rmpg-200">{selectedClient.contact_name || '—'}</div>
-                      {selectedClient.contact_phone && (
-                        <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Phone className="w-2.5 h-2.5" />{selectedClient.contact_phone}</div>
-                      )}
-                      {selectedClient.contact_email && (
-                        <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Mail className="w-2.5 h-2.5" />{selectedClient.contact_email}</div>
-                      )}
-                    </div>
-                    <div className="panel-inset p-3">
-                      <div className="field-label mb-1">Contract</div>
-                      <div className="text-xs text-rmpg-200">{(selectedClient as any).contract_type || 'Standard'}</div>
-                      <div className="text-[10px] text-rmpg-400 mt-0.5">
-                        {selectedClient.contract_start && formatDate(selectedClient.contract_start)} — {selectedClient.contract_end && formatDate(selectedClient.contract_end)}
-                      </div>
-                      {(selectedClient as any).contract_value && (
-                        <div className="text-[10px] text-green-400 mt-0.5">{formatCurrency((selectedClient as any).contract_value)}</div>
-                      )}
-                    </div>
-                    <div className="panel-inset p-3">
-                      <div className="field-label mb-1">Billing</div>
-                      <div className="text-xs text-rmpg-200">
-                        Outstanding: <span className="text-amber-400">{formatCurrency((selectedClient as any).outstanding_balance || 0)}</span>
-                      </div>
-                      <div className="text-[10px] text-rmpg-400 mt-0.5">
-                        Total: {formatCurrency((selectedClient as any).total_invoiced || 0)} | Paid: {formatCurrency((selectedClient as any).total_paid || 0)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Address */}
-                  {selectedClient.address && (
-                    <div className="panel-inset p-3">
-                      <div className="field-label mb-1">Address</div>
-                      <div className="text-xs text-rmpg-200">{selectedClient.address}</div>
-                    </div>
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          {selectedClient ? (
+            <div>
+              <div className="panel-title-bar flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-white">{selectedClient.name}</span>
+                  {(selectedClient as any).priority_client && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 text-amber-400 bg-amber-900/30 border border-amber-700/50">PRIORITY</span>
                   )}
-
-                  {/* Activity / Incidents Tab Panel */}
-                  <div className="panel-inset">
-                    {/* Sub-tab bar */}
-                    <div className="flex border-b border-rmpg-700/40">
-                      <button
-                        onClick={() => setClientDetailTab('activity')}
-                        className={`px-3 py-1.5 text-[10px] font-bold tracking-wide border-b-2 transition-colors ${
-                          clientDetailTab === 'activity'
-                            ? 'border-brand-400 text-brand-400 bg-brand-900/10'
-                            : 'border-transparent text-rmpg-400 hover:text-rmpg-200'
-                        }`}
-                      >
-                        <Activity className="w-3 h-3 inline mr-1" />ACTIVITY
-                      </button>
-                      <button
-                        onClick={() => {
-                          setClientDetailTab('incidents');
-                          if (selectedClientId) fetchClientIncidents(selectedClientId);
-                        }}
-                        className={`px-3 py-1.5 text-[10px] font-bold tracking-wide border-b-2 transition-colors ${
-                          clientDetailTab === 'incidents'
-                            ? 'border-brand-400 text-brand-400 bg-brand-900/10'
-                            : 'border-transparent text-rmpg-400 hover:text-rmpg-200'
-                        }`}
-                      >
-                        <AlertCircle className="w-3 h-3 inline mr-1" />INCIDENTS
-                      </button>
-                      {clientDetailTab === 'activity' && (
-                        <button
-                          onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }}
-                          className="toolbar-btn ml-auto mr-2 my-1"
-                        >
-                          <Plus className="w-3 h-3" /> Log
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Activity content */}
-                    {clientDetailTab === 'activity' && (
-                      <div className="p-3">
-                        {clientActivity.length === 0 ? (
-                          <p className="text-xs text-rmpg-400">No activity recorded</p>
-                        ) : (
-                          <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                            {clientActivity.map((a: any) => (
-                              <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
-                                <div className="flex items-center justify-between">
-                                  <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
-                                    a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                                    a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
-                                    a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
-                                    'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
-                                  }`}>{toDisplayLabel(a.activity_type)}</span>
-                                  <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
-                                </div>
-                                {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
-                                {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
-                                {a.created_by_name && <div className="text-rmpg-500 mt-0.5">— {a.created_by_name}</div>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Incidents content */}
-                    {clientDetailTab === 'incidents' && (
-                      <div className="p-3">
-                        {incidentsLoading ? (
-                          <div className="flex items-center gap-2 text-xs text-rmpg-400">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Loading incidents…
-                          </div>
-                        ) : clientIncidents.length === 0 ? (
-                          <p className="text-xs text-rmpg-400">No recent incidents</p>
-                        ) : (
-                          <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                            {clientIncidents.map((inc: any) => (
-                              <div key={inc.id ?? inc.call_number} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-mono text-brand-400">{inc.call_number || '—'}</span>
-                                  <span className="text-rmpg-400 font-mono">{formatDateTime(inc.reported_at)}</span>
-                                </div>
-                                {inc.incident_type && <div className="text-rmpg-200 font-medium mt-0.5">{inc.incident_type}</div>}
-                                {inc.location_address && (
-                                  <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
-                                    <MapPin className="w-2.5 h-2.5" />{inc.location_address}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Notes */}
-                  {selectedClient.notes && (
-                    <div className="panel-inset p-3">
-                      <div className="field-label mb-1">Notes</div>
-                      <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedClient.notes}</div>
-                    </div>
-                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
+                  <button type="button" onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
+                  <button type="button" onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
+                    <Activity className="w-3 h-3" /> Log
+                  </button>
                 </div>
               </div>
-            );
-          })() : (
+
+              <div className="p-4 space-y-4">
+                {/* Contact Info */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="panel-inset p-3">
+                    <div className="field-label mb-1">Contact</div>
+                    <div className="text-xs text-rmpg-200">{selectedClient.contact_name || '—'}</div>
+                    {selectedClient.contact_phone && (
+                      <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Phone className="w-2.5 h-2.5" />{selectedClient.contact_phone}</div>
+                    )}
+                    {selectedClient.contact_email && (
+                      <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Mail className="w-2.5 h-2.5" />{selectedClient.contact_email}</div>
+                    )}
+                  </div>
+                  <div className="panel-inset p-3">
+                    <div className="field-label mb-1">Contract</div>
+                    <div className="text-xs text-rmpg-200">{(selectedClient as any).contract_type || 'Standard'}</div>
+                    <div className="text-[10px] text-rmpg-400 mt-0.5">
+                      {selectedClient.contract_start && formatDate(selectedClient.contract_start)} — {selectedClient.contract_end && formatDate(selectedClient.contract_end)}
+                    </div>
+                    {(selectedClient as any).contract_value && (
+                      <div className="text-[10px] text-green-400 mt-0.5">{formatCurrency((selectedClient as any).contract_value)}</div>
+                    )}
+                  </div>
+                  <div className="panel-inset p-3">
+                    <div className="field-label mb-1">Billing</div>
+                    <div className="text-xs text-rmpg-200">
+                      Outstanding: <span className="text-amber-400">{formatCurrency((selectedClient as any).outstanding_balance || 0)}</span>
+                    </div>
+                    <div className="text-[10px] text-rmpg-400 mt-0.5">
+                      Total: {formatCurrency((selectedClient as any).total_invoiced || 0)} | Paid: {formatCurrency((selectedClient as any).total_paid || 0)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address */}
+                {selectedClient.address && (
+                  <div className="panel-inset p-3">
+                    <div className="field-label mb-1">Address</div>
+                    <div className="text-xs text-rmpg-200">{selectedClient.address}</div>
+                  </div>
+                )}
+
+                {/* Activity Feed */}
+                <div className="panel-inset p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-white">Activity Timeline</span>
+                    <button type="button" onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
+                      <Plus className="w-3 h-3" /> Log
+                    </button>
+                  </div>
+                  {clientActivity.length === 0 ? (
+                    <p className="text-xs text-rmpg-400">No activity recorded</p>
+                  ) : (
+                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                      <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
+                      {clientActivity.map((a: any) => {
+                        const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
+                          a.activity_type === 'email' ? 'bg-gray-500' :
+                          a.activity_type === 'meeting' ? 'bg-purple-500' :
+                          a.activity_type === 'invoice' ? 'bg-amber-500' :
+                          a.activity_type === 'contract_change' ? 'bg-cyan-500' : 'bg-rmpg-500';
+                        return (
+                          <div key={a.id} className="relative mb-2">
+                            <div className={`absolute -left-[14px] top-1.5 w-2 h-2 rounded-full ${dotColor}`} />
+                            <div className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
+                              <div className="flex items-center justify-between">
+                                <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
+                                  a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
+                                  a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
+                                  a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
+                                  'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
+                                }`}>{toDisplayLabel(a.activity_type)}</span>
+                                <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
+                              </div>
+                              {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
+                              {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
+                              {a.created_by_name && <div className="text-rmpg-500 mt-0.5">-- {a.created_by_name}</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes */}
+                {selectedClient.notes && (
+                  <div className="panel-inset p-3">
+                    <div className="field-label mb-1">Notes</div>
+                    <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedClient.notes}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
             <div className="flex items-center justify-center h-full text-rmpg-400 text-sm">
               Select a client to view details
             </div>
           )}
         </div>
       </div>
-
-      {/* ── Quick-Action Modal ─────────────────────────────── */}
-      {quickActionType && selectedClient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="panel-raised w-80 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white">
-                {quickActionType === 'call' ? '📞 Log Call' : quickActionType === 'email' ? '✉ Log Email' : '📋 New Task'}
-                {' '}— {selectedClient.name}
-              </span>
-              <button onClick={() => setQuickActionType(null)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
-            </div>
-
-            {(quickActionType === 'call' || quickActionType === 'email') && (
-              <div>
-                <label className="field-label mb-1 block">Notes</label>
-                <textarea
-                  className="input-dark w-full text-xs resize-none"
-                  rows={3}
-                  placeholder={quickActionType === 'call' ? 'Call summary…' : 'Email summary…'}
-                  value={quickActionForm.notes}
-                  onChange={e => setQuickActionForm(f => ({ ...f, notes: e.target.value }))}
-                />
-              </div>
-            )}
-
-            {quickActionType === 'task' && (
-              <>
-                <div>
-                  <label className="field-label mb-1 block">Task Title</label>
-                  <input
-                    className="input-dark w-full text-xs"
-                    placeholder={`Follow up with ${selectedClient.name}`}
-                    value={quickActionForm.notes}
-                    onChange={e => setQuickActionForm(f => ({ ...f, notes: e.target.value }))}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="field-label mb-1 block">Due Date</label>
-                    <input
-                      type="date"
-                      className="input-dark w-full text-xs"
-                      value={quickActionForm.due_date}
-                      onChange={e => setQuickActionForm(f => ({ ...f, due_date: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="field-label mb-1 block">Priority</label>
-                    <select
-                      className="input-dark w-full text-xs"
-                      value={quickActionForm.priority}
-                      onChange={e => setQuickActionForm(f => ({ ...f, priority: e.target.value }))}
-                    >
-                      {TASK_PRIORITIES.map(p => <option key={p} value={p}>{toDisplayLabel(p)}</option>)}
-                    </select>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setQuickActionType(null)} className="toolbar-btn">Cancel</button>
-              <button onClick={submitQuickAction} className="toolbar-btn toolbar-btn-primary">
-                <Save className="w-3 h-3" /> Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      </>
     );
   }
 
   function renderProperties() {
-    const RISK_DOT: Record<string, string> = {
-      low: 'bg-rmpg-500',
-      medium: 'bg-amber-400',
-      high: 'bg-orange-500',
-      critical: 'bg-red-500',
-    };
-
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
-          <input className="input-dark text-xs" style={{ maxWidth: 200 }} placeholder="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
-          <button
-            onClick={() => { setEditingProperty(null); setPropertyForm({ risk_level: 'low', is_active: true }); setShowPropertyModal(true); }}
-            className="toolbar-btn toolbar-btn-primary"
-          >
-            <Plus className="w-3 h-3" /> New
-          </button>
+          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
         <div className="p-4">
           {filteredProperties.length === 0 ? (
             <div className="text-center py-12 text-rmpg-400 text-sm">No properties found</div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {filteredProperties.map(p => {
-                const incidentCount = propertyIncidentCounts[String(p.id)] ?? 0;
-                const riskLevel = (p as any).risk_level as string | undefined;
-                return (
-                  <div key={p.id} className="panel-inset p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {riskLevel && RISK_DOT[riskLevel] && (
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${RISK_DOT[riskLevel]}`} title={`Risk: ${riskLevel}`} />
-                        )}
-                        <span className="text-xs font-bold text-rmpg-200 truncate">{p.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {incidentCount > 0 && (
-                          <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50 font-bold">{incidentCount} incident{incidentCount !== 1 ? 's' : ''}</span>
-                        )}
-                        {(p as any).property_type && <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-800/30 text-rmpg-400 border border-rmpg-700/50">{(p as any).property_type}</span>}
-                        <button
-                          onClick={() => { setEditingProperty(p); setPropertyForm({ ...p }); setShowPropertyModal(true); }}
-                          className="toolbar-btn p-0.5"
-                          title="Edit property"
-                        >
-                          <Edit3 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="text-[10px] text-rmpg-400 flex items-center gap-1">
-                      <MapPin className="w-2.5 h-2.5" /> {p.address}
-                    </div>
-                    {(p as any).client_name && (
-                      <div className="text-[10px] text-brand-400 mt-0.5 flex items-center gap-1">
-                        <Building2 className="w-2.5 h-2.5" /> {(p as any).client_name}
-                      </div>
-                    )}
-                    {(p as any).hazard_notes && (
-                      <div className="text-[10px] text-red-400 mt-1 flex items-center gap-1">
-                        <AlertTriangle className="w-2.5 h-2.5" /> {(p as any).hazard_notes}
-                      </div>
-                    )}
+              {filteredProperties.map(p => (
+                <div key={p.id} className="panel-inset p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-rmpg-200">{p.name}</span>
+                    {(p as any).property_type && <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-800/30 text-rmpg-400 border border-rmpg-700/50">{(p as any).property_type}</span>}
                   </div>
-                );
-              })}
+                  <div className="text-[10px] text-rmpg-400 flex items-center gap-1">
+                    <MapPin className="w-2.5 h-2.5" /> {p.address}
+                  </div>
+                  {(p as any).client_name && (
+                    <div className="text-[10px] text-brand-400 mt-0.5 flex items-center gap-1">
+                      <Building2 className="w-2.5 h-2.5" /> {(p as any).client_name}
+                    </div>
+                  )}
+                  {(p as any).hazard_notes && (
+                    <div className="text-[10px] text-red-400 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-2.5 h-2.5" /> {(p as any).hazard_notes}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1576,14 +1050,14 @@ export default function CrmPage() {
 
   function renderContacts() {
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
         <PanelTitleBar title="CONTACTS" icon={Users}>
-          <input className="input-dark text-xs" style={{ maxWidth: 200 }} placeholder="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
-          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
+          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
             <option value="">All Relationships</option>
             {RELATIONSHIP_TYPES.map(r => <option key={r} value={r}>{toDisplayLabel(r)}</option>)}
           </select>
-          <button onClick={fetchContacts} className="toolbar-btn"><Search className="w-3 h-3" /> Search</button>
+          <button type="button" onClick={fetchContacts} className="toolbar-btn"><Search className="w-3 h-3" /> Search</button>
         </PanelTitleBar>
         <div className="p-4">
           {contacts.length === 0 ? (
@@ -1591,7 +1065,7 @@ export default function CrmPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-[#050505]">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Name</th>
                     <th className="p-2 font-medium">Client</th>
@@ -1603,7 +1077,7 @@ export default function CrmPage() {
                 </thead>
                 <tbody>
                   {contacts.map((c: any) => (
-                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
+                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-[#141414]/50 transition-colors">
                       <td className="p-2 text-rmpg-200">{c.first_name} {c.last_name}</td>
                       <td className="p-2 text-brand-400">{c.client_name}</td>
                       <td className="p-2">
@@ -1628,31 +1102,10 @@ export default function CrmPage() {
   }
 
   function renderInvoices() {
-    // ── Aging buckets ──────────────────────────────────
-    const agingBuckets = [
-      { key: 'current', label: 'Current', color: 'text-green-400', borderColor: 'border-green-700/50', bg: 'bg-green-900/20', activeBg: 'bg-green-900/40' },
-      { key: '1-30',    label: '1–30 Days', color: 'text-yellow-400', borderColor: 'border-yellow-700/50', bg: 'bg-yellow-900/20', activeBg: 'bg-yellow-900/40' },
-      { key: '31-60',   label: '31–60 Days', color: 'text-amber-400', borderColor: 'border-amber-700/50', bg: 'bg-amber-900/20', activeBg: 'bg-amber-900/40' },
-      { key: '61-90',   label: '61–90 Days', color: 'text-orange-400', borderColor: 'border-orange-700/50', bg: 'bg-orange-900/20', activeBg: 'bg-orange-900/40' },
-      { key: '90+',     label: '90+ Days', color: 'text-red-400', borderColor: 'border-red-700/50', bg: 'bg-red-900/20', activeBg: 'bg-red-900/40' },
-    ];
-    const agingTotals: Record<string, { amount: number; count: number }> = {
-      'current': { amount: 0, count: 0 },
-      '1-30':    { amount: 0, count: 0 },
-      '31-60':   { amount: 0, count: 0 },
-      '61-90':   { amount: 0, count: 0 },
-      '90+':     { amount: 0, count: 0 },
-    };
-    for (const inv of invoices) {
-      const b = agingBucket(inv);
-      agingTotals[b].amount += inv.balance_due || 0;
-      agingTotals[b].count += 1;
-    }
-
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
         <PanelTitleBar title="INVOICES" icon={FileText}>
-          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => { setInvoiceFilter(e.target.value); setInvoiceAgingBucket(null); }}>
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
@@ -1660,70 +1113,14 @@ export default function CrmPage() {
             <option value="partial">Partial</option>
             <option value="overdue">Overdue</option>
           </select>
-          {invoiceAgingBucket && (
-            <button className="toolbar-btn text-amber-400" onClick={() => setInvoiceAgingBucket(null)}>
-              <X className="w-3 h-3" /> Clear Filter
-            </button>
-          )}
-          <button
-            onClick={() => {
-              setInvoiceFormData({ is_recurring: false, recurrence_interval: 'monthly', recurrence_anchor: '' });
-              setShowInvoiceModal(true);
-            }}
-            className="toolbar-btn toolbar-btn-primary"
-          >
-            + NEW INVOICE
-          </button>
-          <button onClick={() => fetchInvoices()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /></button>
         </PanelTitleBar>
-
-        <div className="p-4 space-y-4">
-          {/* ── Recurring invoice banner ───────────────── */}
-          {recurringDue.length > 0 && !recurringBannerDismissed && (
-            <div className="flex items-center justify-between p-2 border border-amber-700/60 bg-amber-900/20 text-xs">
-              <span className="text-amber-300">
-                <AlertTriangle className="inline w-3.5 h-3.5 mr-1 text-amber-400" />
-                {recurringDue.length} recurring invoice{recurringDue.length > 1 ? 's' : ''} ready to generate
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => { setActiveSection('invoices'); }}
-                  className="toolbar-btn toolbar-btn-primary text-[10px]"
-                >
-                  Generate
-                </button>
-                <button onClick={() => setRecurringBannerDismissed(true)} className="p-0.5 text-rmpg-400 hover:text-rmpg-200">
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Aging dashboard bar ─────────────────────── */}
-          <div className="grid grid-cols-5 gap-2">
-            {agingBuckets.map(b => {
-              const isActive = invoiceAgingBucket === b.key;
-              return (
-                <button
-                  key={b.key}
-                  onClick={() => setInvoiceAgingBucket(isActive ? null : b.key)}
-                  className={`panel-inset p-2 text-left border ${b.borderColor} transition-colors ${isActive ? b.activeBg : b.bg} hover:opacity-90`}
-                >
-                  <div className={`text-[9px] font-bold uppercase tracking-wider ${b.color}`}>{b.label}</div>
-                  <div className={`text-sm font-bold font-mono mt-0.5 ${b.color}`}>{formatCurrency(agingTotals[b.key].amount)}</div>
-                  <div className="text-[10px] text-rmpg-400">{agingTotals[b.key].count} invoice{agingTotals[b.key].count !== 1 ? 's' : ''}</div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ── Invoice table ──────────────────────────── */}
+        <div className="p-4">
           {filteredInvoices.length === 0 ? (
             <div className="text-center py-12 text-rmpg-400 text-sm">No invoices found</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-[#050505]">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Invoice #</th>
                     <th className="p-2 font-medium">Client</th>
@@ -1732,363 +1129,40 @@ export default function CrmPage() {
                     <th className="p-2 font-medium text-right">Total</th>
                     <th className="p-2 font-medium text-right">Balance</th>
                     <th className="p-2 font-medium">Due Date</th>
-                    <th className="p-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInvoices.map((inv: any) => {
-                    const overduedays = daysOverdue(inv);
-                    const isPaid = inv.status === 'paid' || inv.status === 'void' || inv.status === 'cancelled';
-                    return (
-                      <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
-                        <td className="p-2 text-green-400 font-mono">
-                          {inv.invoice_number}
-                          {inv.is_recurring && (
-                            <span className="ml-1 px-1 py-0.5 text-[8px] font-bold border border-purple-700/50 text-purple-400 bg-purple-900/20">REC</span>
-                          )}
-                        </td>
-                        <td className="p-2 text-rmpg-200">{inv.client_name || '—'}</td>
-                        <td className="p-2">
-                          <span className={`px-1.5 py-0.5 text-[9px] font-bold border ${invoiceStatusColor(inv.status)}`}>
-                            {toDisplayLabel(inv.status)}
-                          </span>
-                          {overduedays > 0 && (
-                            <span className="ml-1 text-[9px] font-bold text-red-400">OVERDUE {overduedays}d</span>
-                          )}
-                        </td>
-                        <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.period_start)} — {formatDate(inv.period_end)}</td>
-                        <td className="p-2 text-rmpg-200 text-right font-mono">{formatCurrency(inv.total || 0)}</td>
-                        <td className="p-2 text-right font-mono">
-                          <span className={(inv.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'}>{formatCurrency(inv.balance_due || 0)}</span>
-                        </td>
-                        <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.due_date)}</td>
-                        <td className="p-2">
-                          <div className="flex items-center gap-1">
-                            {!isPaid && (
-                              <button
-                                onClick={() => openPaymentModal(inv)}
-                                className="toolbar-btn text-[9px] text-green-400 border-green-700/50"
-                              >
-                                <DollarSign className="w-2.5 h-2.5" /> Pay
-                              </button>
-                            )}
-                            {overduedays >= 60 && (
-                              <button
-                                onClick={() => escalateInvoice(inv)}
-                                className="toolbar-btn text-[9px] text-orange-400 border-orange-700/50"
-                                title="Log escalation activity and create follow-up task"
-                              >
-                                <AlertTriangle className="w-2.5 h-2.5" /> ESCALATE
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredInvoices.map((inv: any) => (
+                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-[#141414]/50 transition-colors">
+                      <td className="p-2 text-green-400 font-mono">{inv.invoice_number}</td>
+                      <td className="p-2 text-rmpg-200">{inv.client_name || '—'}</td>
+                      <td className="p-2">
+                        <span className={`px-1.5 py-0.5 text-[9px] font-bold border ${invoiceStatusColor(inv.status)}`}>
+                          {toDisplayLabel(inv.status)}
+                        </span>
+                      </td>
+                      <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.period_start)} — {formatDate(inv.period_end)}</td>
+                      <td className="p-2 text-rmpg-200 text-right font-mono">{formatCurrency(inv.total || 0)}</td>
+                      <td className="p-2 text-right font-mono">
+                        <span className={(inv.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'}>{formatCurrency(inv.balance_due || 0)}</span>
+                      </td>
+                      <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.due_date)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
-
-        {/* ── Payment Recording Modal ─────────────────── */}
-        {paymentInvoice && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="panel-raised border border-rmpg-600 w-full max-w-md">
-              <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
-                <span className="text-sm font-bold text-white">Record Payment — {paymentInvoice.invoice_number}</span>
-                <button onClick={() => setPaymentInvoice(null)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="text-xs text-rmpg-400">
-                  Balance due: <span className="text-amber-400 font-mono font-bold">{formatCurrency(paymentInvoice.balance_due || 0)}</span>
-                  {(paymentInvoice.amount_paid || 0) > 0 && (
-                    <span className="ml-3">Total payments received: <span className="text-green-400 font-mono">{formatCurrency(paymentInvoice.amount_paid)}</span></span>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-[10px] text-rmpg-400 mb-1">Amount *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input-dark w-full text-xs"
-                    value={paymentForm.amount}
-                    onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-rmpg-400 mb-1">Date *</label>
-                  <input
-                    type="date"
-                    className="input-dark w-full text-xs"
-                    value={paymentForm.paid_at}
-                    onChange={e => setPaymentForm(p => ({ ...p, paid_at: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-rmpg-400 mb-1">Method</label>
-                  <select className="input-dark w-full text-xs" value={paymentForm.method} onChange={e => setPaymentForm(p => ({ ...p, method: e.target.value }))}>
-                    <option value="cash">Cash</option>
-                    <option value="check">Check</option>
-                    <option value="credit_card">Credit Card</option>
-                    <option value="ach">ACH</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] text-rmpg-400 mb-1">Reference # (optional)</label>
-                  <input
-                    type="text"
-                    className="input-dark w-full text-xs"
-                    value={paymentForm.reference}
-                    onChange={e => setPaymentForm(p => ({ ...p, reference: e.target.value }))}
-                    placeholder="Check #, transaction ID, etc."
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button onClick={() => setPaymentInvoice(null)} className="toolbar-btn">Cancel</button>
-                  <button
-                    onClick={submitPayment}
-                    disabled={paymentSaving || !paymentForm.amount || parseFloat(paymentForm.amount) <= 0}
-                    className="toolbar-btn toolbar-btn-primary disabled:opacity-50"
-                  >
-                    {paymentSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                    Record Payment
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── New Invoice Modal ────────────────────────── */}
-        {showInvoiceModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowInvoiceModal(false)}>
-            <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
-              <div className="panel-title-bar flex items-center justify-between">
-                <span className="text-xs font-bold text-white">New Invoice</span>
-                <button onClick={() => setShowInvoiceModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="field-label">Client</label>
-                  <select
-                    className="input-dark w-full"
-                    value={String(invoiceFormData.client_id || '')}
-                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, client_id: e.target.value ? Number(e.target.value) : undefined }))}
-                  >
-                    <option value="">Select client…</option>
-                    {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="field-label">Title / Description</label>
-                  <input
-                    className="input-dark w-full"
-                    value={invoiceFormData.description || ''}
-                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, description: e.target.value }))}
-                    placeholder="Invoice description…"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="field-label">Total Amount</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="input-dark w-full"
-                      value={invoiceFormData.total || ''}
-                      onChange={e => setInvoiceFormData((p: any) => ({ ...p, total: e.target.value }))}
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="field-label">Due Date</label>
-                    <input
-                      type="date"
-                      className="input-dark w-full"
-                      value={invoiceFormData.due_date || ''}
-                      onChange={e => setInvoiceFormData((p: any) => ({ ...p, due_date: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="field-label">Status</label>
-                  <select
-                    className="input-dark w-full"
-                    value={invoiceFormData.status || 'draft'}
-                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, status: e.target.value }))}
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="paid">Paid</option>
-                    <option value="partial">Partial</option>
-                    <option value="overdue">Overdue</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    id="inv-recurring"
-                    type="checkbox"
-                    className="w-3.5 h-3.5 accent-brand-400"
-                    checked={!!invoiceFormData.is_recurring}
-                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, is_recurring: e.target.checked }))}
-                  />
-                  <label htmlFor="inv-recurring" className="text-xs text-rmpg-200 cursor-pointer">Recurring Invoice</label>
-                </div>
-                {invoiceFormData.is_recurring && (
-                  <div className="grid grid-cols-2 gap-3 pl-5">
-                    <div>
-                      <label className="field-label">Recurrence Interval</label>
-                      <select
-                        className="input-dark w-full"
-                        value={invoiceFormData.recurrence_interval || 'monthly'}
-                        onChange={e => setInvoiceFormData((p: any) => ({ ...p, recurrence_interval: e.target.value }))}
-                      >
-                        <option value="monthly">Monthly</option>
-                        <option value="quarterly">Quarterly</option>
-                        <option value="annually">Annually</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="field-label">Recurrence Anchor Date</label>
-                      <input
-                        type="date"
-                        className="input-dark w-full"
-                        value={invoiceFormData.recurrence_anchor || ''}
-                        onChange={e => setInvoiceFormData((p: any) => ({ ...p, recurrence_anchor: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-                <button onClick={() => setShowInvoiceModal(false)} className="toolbar-btn">Cancel</button>
-                <button
-                  onClick={async () => {
-                    await apiFetch('/crm/invoices', { method: 'POST', body: JSON.stringify(invoiceFormData) });
-                    setShowInvoiceModal(false);
-                    fetchInvoices();
-                  }}
-                  className="toolbar-btn toolbar-btn-primary"
-                  disabled={!invoiceFormData.client_id || !invoiceFormData.total}
-                >
-                  <Save className="w-3 h-3" /> Create Invoice
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
   function renderTasks() {
-    // ── Due-date grouping helpers ──────────────────────────
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const weekEnd = new Date();
-    weekEnd.setDate(weekEnd.getDate() + 7);
-    const weekEndStr = weekEnd.toISOString().slice(0, 10);
-
-    const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
-    const sortByPriority = (a: CrmTask, b: CrmTask) =>
-      (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
-
-    // Only group active tasks; show completed/cancelled flat
-    const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
-    const otherTasks = tasks.filter(t => t.status === 'completed' || t.status === 'cancelled');
-
-    const overdueTasks = activeTasks.filter(t => t.due_date && t.due_date < todayStr).sort(sortByPriority);
-    const thisWeekTasks = activeTasks.filter(t => t.due_date && t.due_date >= todayStr && t.due_date <= weekEndStr).sort(sortByPriority);
-    const upcomingTasks = activeTasks.filter(t => !t.due_date || t.due_date > weekEndStr).sort(sortByPriority);
-
-    const toggleGroup = (key: string) =>
-      setTaskGroupCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
-
-    const renderTaskRow = (task: CrmTask) => {
-      const isCompleting = completingTaskId.has(task.id);
-      return (
-        <div key={task.id} className="panel-inset p-3 flex items-start gap-3">
-          {/* Quick-complete button */}
-          <button
-            onClick={() => toggleTaskComplete(task)}
-            disabled={isCompleting}
-            title={task.status === 'completed' ? 'Mark as pending' : 'Mark as complete'}
-            className={`mt-0.5 w-4 h-4 border flex-shrink-0 flex items-center justify-center transition-colors ${
-              task.status === 'completed'
-                ? 'bg-green-600 border-green-500 text-white'
-                : isCompleting
-                ? 'border-brand-500 bg-brand-900/30 animate-pulse'
-                : 'border-rmpg-500 hover:border-green-400 hover:bg-green-900/20'
-            }`}
-          >
-            {isCompleting
-              ? <span className="text-[8px] text-brand-400">...</span>
-              : task.status === 'completed'
-              ? <span className="text-[10px]">✓</span>
-              : <span className="text-[10px] text-rmpg-500 hover:text-green-400">✓</span>
-            }
-          </button>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-xs font-medium ${task.status === 'completed' ? 'text-rmpg-400 line-through' : 'text-rmpg-200'}`}>
-                {task.title}
-              </span>
-              <span className={`px-1 py-0.5 text-[8px] font-bold border ${priorityColor(task.priority)}`}>{task.priority.toUpperCase()}</span>
-              <span className={`px-1 py-0.5 text-[8px] font-bold border ${statusColor(task.status)}`}>{toDisplayLabel(task.status)}</span>
-              <span className="px-1 py-0.5 text-[8px] font-bold border border-rmpg-600 text-rmpg-400 bg-rmpg-800/20">{toDisplayLabel(task.task_type)}</span>
-            </div>
-            <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-              {task.client_name && <span className="flex items-center gap-1"><Building2 className="w-2.5 h-2.5" />{task.client_name}</span>}
-              {task.due_date && (
-                <span className={`flex items-center gap-1 ${task.due_date < todayStr && task.status !== 'completed' ? 'text-red-400' : ''}`}>
-                  <Calendar className="w-2.5 h-2.5" />{formatDate(task.due_date)}
-                </span>
-              )}
-              {task.assigned_to_name && <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{task.assigned_to_name}</span>}
-            </div>
-            {task.description && <div className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{task.description}</div>}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
-            <button onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
-          </div>
-        </div>
-      );
-    };
-
-    const renderGroup = (key: string, label: string, color: string, groupTasks: CrmTask[]) => {
-      if (groupTasks.length === 0) return null;
-      const collapsed = taskGroupCollapsed[key];
-      return (
-        <div key={key} className="mb-3">
-          <button
-            onClick={() => toggleGroup(key)}
-            className="w-full flex items-center gap-2 px-2 py-1 mb-1.5 text-[10px] font-bold uppercase tracking-widest border-b border-rmpg-700/50 hover:border-rmpg-600 transition-colors text-left"
-          >
-            <span className={color}>{collapsed ? '▶' : '▼'}</span>
-            <span className={color}>{label}</span>
-            <span className={`ml-1 text-[9px] font-mono px-1 border ${color === 'text-red-400' ? 'border-red-700/50 bg-red-900/20 text-red-400' : color === 'text-amber-400' ? 'border-amber-700/50 bg-amber-900/20 text-amber-400' : 'border-rmpg-600 bg-rmpg-800/20 text-rmpg-400'}`}>
-              {groupTasks.length}
-            </span>
-          </button>
-          {!collapsed && <div className="space-y-2">{groupTasks.map(renderTaskRow)}</div>}
-        </div>
-      );
-    };
-
-    const hasGroups = overdueTasks.length > 0 || thisWeekTasks.length > 0 || upcomingTasks.length > 0;
-
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
-          <select className="input-dark text-xs" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>
             <option value="">All</option>
             <option value="pending">Pending</option>
@@ -2096,32 +1170,64 @@ export default function CrmPage() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <button onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3 h-3" /> New Task
           </button>
         </PanelTitleBar>
         <div className="p-4">
           {tasks.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-400 text-sm">No tasks found</div>
+            <div className="text-center py-12 text-rmpg-500">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                <CheckSquare className="w-7 h-7 text-rmpg-600" />
+              </div>
+              <p className="text-sm font-medium text-rmpg-400">No tasks found</p>
+              <p className="text-[10px] text-rmpg-600 mt-1">Click "New Task" to create one</p>
+            </div>
           ) : (
-            <div>
-              {hasGroups ? (
-                <>
-                  {renderGroup('overdue', 'OVERDUE', 'text-red-400', overdueTasks)}
-                  {renderGroup('this_week', 'DUE THIS WEEK', 'text-amber-400', thisWeekTasks)}
-                  {renderGroup('upcoming', 'UPCOMING', 'text-rmpg-300', upcomingTasks)}
-                  {otherTasks.length > 0 && (
-                    <div className="mt-3">
-                      <div className="text-[10px] font-bold uppercase tracking-widest text-rmpg-500 border-b border-rmpg-700/50 pb-1 mb-2">
-                        COMPLETED / CANCELLED
-                      </div>
-                      <div className="space-y-2">{otherTasks.map(renderTaskRow)}</div>
+            <div className="space-y-2">
+              {tasks.map(task => (
+                <div key={task.id} className="panel-inset p-3 flex items-start gap-3">
+                  {/* Checkbox */}
+                  <button type="button"
+                    onClick={() => toggleTaskComplete(task)}
+                    className={`mt-0.5 w-4 h-4 border flex-shrink-0 flex items-center justify-center ${
+                      task.status === 'completed'
+                        ? 'bg-green-600 border-green-500 text-white'
+                        : 'border-rmpg-500 hover:border-brand-400'
+                    }`}
+                  >
+                    {task.status === 'completed' && <span className="text-[10px]">✓</span>}
+                  </button>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-medium ${task.status === 'completed' ? 'text-rmpg-400 line-through' : 'text-rmpg-200'}`}>
+                        {task.title}
+                      </span>
+                      <span className={`px-1 py-0.5 text-[8px] font-bold border ${priorityColor(task.priority)}`}>{task.priority.toUpperCase()}</span>
+                      <span className={`px-1 py-0.5 text-[8px] font-bold border ${statusColor(task.status)}`}>{toDisplayLabel(task.status)}</span>
+                      <span className="px-1 py-0.5 text-[8px] font-bold border border-rmpg-600 text-rmpg-400 bg-rmpg-800/20">{toDisplayLabel(task.task_type)}</span>
                     </div>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-2">{tasks.map(renderTaskRow)}</div>
-              )}
+                    <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
+                      {task.client_name && <span className="flex items-center gap-1"><Building2 className="w-2.5 h-2.5" />{task.client_name}</span>}
+                      {task.due_date && (
+                        <span className={`flex items-center gap-1 ${new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'text-red-400' : ''}`}>
+                          <Calendar className="w-2.5 h-2.5" />{formatDate(task.due_date)}
+                        </span>
+                      )}
+                      {task.assigned_to_name && <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{task.assigned_to_name}</span>}
+                    </div>
+                    {task.description && <div className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{task.description}</div>}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button type="button" onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -2133,13 +1239,13 @@ export default function CrmPage() {
 // ── Stat Card Component ──────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: React.ElementType; label: string; value: string | number; sub?: string; color: string }) {
   return (
-    <div className="panel-inset p-3">
+    <div className="panel-inset p-3 hover:bg-surface-raised/30 transition-colors group cursor-default">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`w-3.5 h-3.5 ${color}`} />
-        <span className="text-[10px] text-rmpg-400 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold">{label}</span>
       </div>
-      <div className={`text-lg font-bold font-mono ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-rmpg-400 mt-0.5">{sub}</div>}
+      <div className={`text-lg font-bold font-mono tabular-nums ${color}`}>{value}</div>
+      {sub && <div className="text-[10px] text-rmpg-500 mt-0.5">{sub}</div>}
     </div>
   );
 }

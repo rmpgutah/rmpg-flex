@@ -5,7 +5,7 @@
 // field operations. Mirrors the Spillman Flex MDT interface.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Monitor,
   Radio,
@@ -17,44 +17,36 @@ import {
   Send,
   RefreshCw,
   AlertTriangle,
-  ChevronRight,
   MessageSquare,
   Shield,
   FileText,
   Loader2,
+  X,
+  ChevronRight,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useWebSocket } from '../context/WebSocketContext';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
+import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
-
-// ── Helpers ────────────────────────────────────────────────
-
-function mapDbCall(raw: any): CallForService {
-  return {
-    ...raw,
-    id: String(raw.id),
-    assigned_units: (() => {
-      try { return JSON.parse(raw.assigned_unit_callsigns || '[]'); } catch { return []; }
-    })(),
-    notes: (() => {
-      try { return JSON.parse(raw.notes || '[]'); } catch { return []; }
-    })(),
-  };
-}
+import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
+import { useToast } from '../components/ToastProvider';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
 const UNIT_STATUSES = [
   { label: 'AVAIL', status: 'available', color: '#22c55e' },
+  { label: 'ENROUTE', status: 'enroute', color: '#888888' },
+  { label: 'ON SCENE', status: 'onscene', color: '#a855f7' },
   { label: 'BUSY', status: 'busy', color: '#ef4444' },
-  { label: 'OFF', status: 'off_duty', color: '#6b7280' },
+  { label: 'OFF', status: 'off_duty', color: '#666666' },
 ] as const;
 
 // ── MDT Messages Panel ────────────────────────────────────
@@ -75,6 +67,7 @@ interface MdtMessage {
 }
 
 function MdtMessagesPanel({ userId }: { userId?: string }) {
+  const { addToast } = useToast();
   const [messages, setMessages] = useState<MdtMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [composeText, setComposeText] = useState('');
@@ -90,7 +83,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
   }, []);
 
   useEffect(() => { fetchMessages(); }, [fetchMessages]);
-  useLiveSync('dispatch', fetchMessages);
+  useLiveSync('comms', fetchMessages);
 
   const handleSend = async () => {
     if (!composeText.trim()) return;
@@ -105,8 +98,10 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       });
       setComposeText('');
       fetchMessages();
+      addToast('Message sent', 'success');
     } catch (err) {
       console.error('Send message failed:', err);
+      addToast('Failed to send message', 'error');
     }
   };
 
@@ -126,11 +121,11 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
   };
 
   const channelBadge = (ch: string) => {
-    const colors: Record<string, string> = { dispatch: '#3b82f6', broadcast: '#a855f7', direct: '#22c55e', zone: '#f59e0b' };
+    const colors: Record<string, string> = { dispatch: '#888888', broadcast: '#a855f7', direct: '#22c55e', zone: '#f59e0b' };
     return (
       <span
-        className="text-[7px] font-black uppercase px-1 py-px"
-        style={{ background: colors[ch] || '#666', color: '#000' }}
+        className="text-[7px] font-black uppercase px-1 py-px rounded-sm"
+        style={{ background: colors[ch] || '#666666', color: '#000', letterSpacing: '0.05em' }}
       >
         {ch}
       </span>
@@ -155,7 +150,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               <div
                 key={msg.id}
                 onClick={() => !msg.read_at && msg.to_user_id && handleMarkRead(msg.id)}
-                className="px-3 py-2 border-b border-rmpg-800/50 cursor-pointer transition-colors hover:bg-white/[0.02]"
+                className="px-3 py-2 border-b border-rmpg-700/50 cursor-pointer transition-colors hover:bg-surface-raised/30"
                 style={{
                   background: ps.bg,
                   borderLeft: msg.read_at ? '3px solid transparent' : `3px solid ${ps.color}`,
@@ -170,7 +165,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
                     )}
                   </div>
                   <span className="text-[8px] text-rmpg-500 font-mono">
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {safeTimeStr(msg.created_at)}
                   </span>
                 </div>
                 {msg.subject && (
@@ -179,8 +174,8 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
                 <div className="text-[10px] text-rmpg-200 mt-0.5">{msg.content}</div>
                 {msg.priority !== 'routine' && (
                   <span
-                    className="text-[7px] font-black uppercase px-1 py-px mt-1 inline-block"
-                    style={{ background: ps.color, color: '#000' }}
+                    className="text-[7px] font-black uppercase px-1 py-px mt-1 inline-block rounded-sm"
+                    style={{ background: ps.color, color: '#000', letterSpacing: '0.05em' }}
                   >
                     {msg.priority}
                   </span>
@@ -192,17 +187,17 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       </div>
 
       {/* Compose bar */}
-      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50" style={{ background: '#111' }}>
+      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50 bg-surface-sunken">
         <div className="flex items-center gap-1 mb-1">
           {(['dispatch', 'broadcast'] as const).map(ch => (
-            <button
+            <button type="button"
               key={ch}
               onClick={() => setComposeChannel(ch)}
               className="text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors"
               style={{
-                background: composeChannel === ch ? '#3b82f6' : 'transparent',
-                color: composeChannel === ch ? '#000' : '#666',
-                border: `1px solid ${composeChannel === ch ? '#3b82f6' : '#333'}`,
+                background: composeChannel === ch ? '#888888' : 'transparent',
+                color: composeChannel === ch ? '#000' : '#666666',
+                border: `1px solid ${composeChannel === ch ? '#888888' : '#222222'}`,
               }}
             >
               {ch}
@@ -225,12 +220,12 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
             onChange={(e) => setComposeText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Type message..."
-            className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 focus:border-green-500 focus:outline-none"
+            className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500/30 transition-colors"
           />
-          <button
+          <button type="button"
             onClick={handleSend}
             disabled={!composeText.trim()}
-            className="px-3 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40"
+            className="px-3 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40 transition-colors"
           >
             <Send style={{ width: 10, height: 10 }} />
           </button>
@@ -240,10 +235,25 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
   );
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 // ── Component ──────────────────────────────────────────────
 
 export default function MdtPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const gps = useGpsTracking();
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
   const [myCalls, setMyCalls] = useState<CallForService[]>([]);
@@ -254,16 +264,34 @@ export default function MdtPage() {
   const [loading, setLoading] = useState(true);
   const [msgUnread, setMsgUnread] = useState(0);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [dispatchingCallId, setDispatchingCallId] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   const [showFiForm, setShowFiForm] = useState(false);
   const [fiData, setFiData] = useState({ subject_name: '', location: '', reason: '', narrative: '' });
   const [fiSubmitting, setFiSubmitting] = useState(false);
+
+  // Error toast auto-dismiss
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showError = useCallback((msg: string) => {
+    setErrorToast(msg);
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = setTimeout(() => setErrorToast(null), 5000);
+  }, []);
+  useEffect(() => () => { if (errorTimerRef.current) clearTimeout(errorTimerRef.current); }, []);
+
+  // Timer tick — force re-render every second so elapsed timers update
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // ── Shift Report PDF ──
   const handleGenerateShiftReport = async () => {
     setGeneratingReport(true);
     try {
       const userId = localStorage.getItem('rmpg_user_id') || '';
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localToday();
       const data = await apiFetch<any>(`/reports/shift-activity/${userId}?date=${today}`);
       // Generate a text-based report and download as PDF-like text file
       const lines: string[] = [
@@ -286,9 +314,9 @@ export default function MdtPage() {
       if (data.calls.length > 0) {
         lines.push('───── CALLS FOR SERVICE ────────────────────────────────');
         data.calls.forEach((c: any) => {
-          lines.push(`  ${c.call_number}  ${c.incident_type?.toUpperCase()}  ${c.priority}  ${c.status}`);
+          lines.push(`  ${c.call_number}  ${(c.incident_type || 'UNKNOWN').toUpperCase()}  ${c.priority || ''}  ${c.status || ''}`);
           lines.push(`    Location: ${c.location_address || 'N/A'}`);
-          lines.push(`    Time: ${new Date(c.created_at).toLocaleTimeString()}`);
+          lines.push(`    Time: ${safeTimeStr(c.created_at)}`);
           lines.push('');
         });
       }
@@ -296,7 +324,7 @@ export default function MdtPage() {
       if (data.incidents.length > 0) {
         lines.push('───── INCIDENT REPORTS ─────────────────────────────────');
         data.incidents.forEach((i: any) => {
-          lines.push(`  ${i.incident_number}  ${i.incident_type?.toUpperCase()}  ${i.status}`);
+          lines.push(`  ${i.incident_number}  ${(i.incident_type || '').replace(/_/g, ' ').toUpperCase()}  ${(i.status || '').replace(/_/g, ' ').toUpperCase()}`);
           lines.push(`    Location: ${i.location_address || 'N/A'}`);
           lines.push('');
         });
@@ -305,13 +333,13 @@ export default function MdtPage() {
       if (data.scans.length > 0) {
         lines.push('───── PATROL SCANS ────────────────────────────────────');
         data.scans.forEach((s: any) => {
-          lines.push(`  ${new Date(s.scanned_at).toLocaleTimeString()}  ${s.checkpoint_name || 'Unknown'}`);
+          lines.push(`  ${safeTimeStr(s.scanned_at)}  ${s.checkpoint_name || 'Unknown'}`);
         });
         lines.push('');
       }
 
       lines.push('═══════════════════════════════════════════════════════');
-      lines.push(`Generated: ${new Date().toLocaleString()}`);
+      lines.push(`Generated: ${formatDateTime(new Date().toISOString())}`);
 
       const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
@@ -322,6 +350,7 @@ export default function MdtPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to generate shift report:', err);
+      addToast('Failed to generate shift report', 'error');
     }
     setGeneratingReport(false);
   };
@@ -342,8 +371,10 @@ export default function MdtPage() {
       });
       setFiData({ subject_name: '', location: '', reason: '', narrative: '' });
       setShowFiForm(false);
+      addToast('Field interview submitted', 'success');
     } catch (err) {
       console.error('Failed to submit FI:', err);
+      addToast('Failed to submit field interview', 'error');
     }
     setFiSubmitting(false);
   };
@@ -352,14 +383,16 @@ export default function MdtPage() {
   const fetchData = useCallback(async () => {
     try {
       const [callsRaw, unitsRaw, msgResult] = await Promise.all([
-        apiFetch<any[]>('/dispatch/calls?limit=100'),
+        apiFetch<any>('/dispatch/calls?limit=100'),
         apiFetch<any[]>('/dispatch/units'),
         apiFetch<{ unreadCount: number }>('/comms/messages?limit=1'),
       ]);
 
       setMsgUnread(msgResult?.unreadCount || 0);
 
-      const allCalls = (Array.isArray(callsRaw) ? callsRaw : []).map(mapDbCall);
+      // API returns { data: [...], pagination: {} } envelope
+      const callRows: any[] = Array.isArray(callsRaw?.data) ? callsRaw.data : Array.isArray(callsRaw) ? callsRaw : [];
+      const allCalls: CallForService[] = callRows.map(mapDbCall);
       const allUnits = Array.isArray(unitsRaw) ? unitsRaw : [];
 
       // Find my unit via GPS hook's unit ID
@@ -367,10 +400,11 @@ export default function MdtPage() {
       setMyUnit(unit ? { ...unit, id: String(unit.id) } as Unit : null);
 
       // My calls: calls where my unit is assigned
+      // assigned_units contains unit IDs as strings (from JSON.parse of assigned_unit_ids)
       if (unit) {
-        const myCallSign = unit.call_sign;
+        const myUnitIdStr = String(unit.id);
         setMyCalls(allCalls.filter(c =>
-          isActiveStatus(c.status) && c.assigned_units?.includes(myCallSign)
+          isActiveStatus(c.status) && c.assigned_units?.includes(myUnitIdStr)
         ));
       } else {
         setMyCalls([]);
@@ -379,15 +413,41 @@ export default function MdtPage() {
       // Pending calls (available for self-dispatch)
       setPendingCalls(allCalls.filter(c => c.status === 'pending'));
 
+      // Keep selectedCall fresh — update from new data if still exists
+      setSelectedCall(prev => {
+        if (!prev) return null;
+        const fresh = allCalls.find(c => c.id === prev.id);
+        return fresh || null;
+      });
+
     } catch (err) {
       console.error('MDT fetch error:', err);
+      addToast('Failed to load dispatch data', 'error');
     } finally {
       setLoading(false);
     }
-  }, [gps.unitId]);
+  }, [gps.unitId, showError]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('dispatch', fetchData);
+
+  // ── Real-time WebSocket subscriptions for dispatch events ──
+  const { subscribe } = useWebSocket();
+  useEffect(() => {
+    // When dispatch assigns/unassigns units or changes call status, refresh immediately
+    const unsubDispatch = subscribe('dispatch_update', () => {
+      fetchData();
+    });
+    // When any unit status changes (dispatched, enroute, onscene, available)
+    const unsubUnit = subscribe('unit_update', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.unit && gps.unitId && data.unit.id === gps.unitId) {
+        // Our unit was updated — refresh to pick up status/call changes
+        fetchData();
+      }
+    });
+    return () => { unsubDispatch(); unsubUnit(); };
+  }, [subscribe, fetchData, gps.unitId]);
 
   // ── Unit Status Change ──
   const handleUnitStatus = async (newStatus: string) => {
@@ -400,6 +460,7 @@ export default function MdtPage() {
       fetchData();
     } catch (err) {
       console.error('Status change failed:', err);
+      addToast('Failed to change unit status', 'error');
     }
   };
 
@@ -416,12 +477,14 @@ export default function MdtPage() {
       fetchData();
     } catch (err) {
       console.error('Call status update failed:', err);
+      addToast('Failed to update call status', 'error');
     }
   };
 
   // ── Self-Dispatch ──
   const handleSelfDispatch = async (callId: string) => {
-    if (!myUnit) return;
+    if (!myUnit || dispatchingCallId) return;
+    setDispatchingCallId(callId);
     try {
       await apiFetch(`/dispatch/calls/${callId}/assign-unit`, {
         method: 'POST',
@@ -430,6 +493,9 @@ export default function MdtPage() {
       fetchData();
     } catch (err) {
       console.error('Self-dispatch failed:', err);
+      addToast('Failed to self-dispatch', 'error');
+    } finally {
+      setDispatchingCallId(null);
     }
   };
 
@@ -439,30 +505,48 @@ export default function MdtPage() {
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#6b7280';
+      default: return '#666666';
     }
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Mobile Data Terminal \u2014 RMPG Flex'; }, []);
+
 
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-surface-base">
         <div className="text-center">
-          <RefreshCw className="w-8 h-8 text-green-500 animate-spin mx-auto mb-3" />
-          <p className="text-rmpg-400 text-xs uppercase tracking-wider font-bold">Loading MDT...</p>
+          <Monitor className="w-8 h-8 text-green-500 animate-pulse mx-auto mb-3" />
+          <p className="text-rmpg-400 text-xs uppercase tracking-wider font-bold font-mono">Initializing MDT...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden animate-fade-in">
+      {/* ── Error Toast ── */}
+      {errorToast && (
+        <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"
+          style={{ maxWidth: 320 }}
+        >
+          <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
+          <span className="flex-1">{errorToast}</span>
+          <button type="button" onClick={() => setErrorToast(null)} className="text-red-400 hover:text-white">
+            <X style={{ width: 10, height: 10 }} />
+          </button>
+        </div>
+      )}
+
       {/* ── TOP BAR: Unit Identity & Status ─────────────── */}
       <div
-        className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: '#0c0c0c', borderBottom: '1px solid #222' }}
+        className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0 bg-surface-sunken border-b border-rmpg-700`}
       >
         <div className="flex items-center gap-3">
-          <Monitor style={{ width: 16, height: 16, color: '#22c55e' }} />
+          <div className="flex items-center justify-center w-6 h-6" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+            <Monitor style={{ width: 14, height: 14, color: '#22c55e' }} />
+          </div>
           <div>
             <span className="text-[11px] font-black text-green-400 tracking-wider font-mono">
               {myUnit?.call_sign || 'UNASSIGNED'}
@@ -474,7 +558,8 @@ export default function MdtPage() {
             )}
           </div>
           {!isMobile && (
-            <span className="text-[8px] text-rmpg-500 font-mono">
+            <span className="text-[8px] text-rmpg-500 font-mono flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${gps.latitude ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
               {gps.latitude ? `${gps.latitude.toFixed(4)}, ${gps.longitude?.toFixed(4)}` : 'NO GPS'}
             </span>
           )}
@@ -482,25 +567,25 @@ export default function MdtPage() {
 
         {/* Quick status buttons + actions */}
         <div className={`flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
-          <button
+          <button type="button"
             onClick={() => setShowFiForm(!showFiForm)}
             className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border mr-0.5 ${
-              showFiForm ? 'border-purple-500 text-purple-400 bg-purple-900/20' : 'border-rmpg-600 text-rmpg-400 hover:text-white hover:border-purple-500'
+              showFiForm ? 'border-purple-500 text-purple-400 bg-purple-900/20' : 'border-rmpg-700 text-rmpg-400 hover:text-white hover:border-purple-500'
             }`}
             title="Quick Field Interview"
           >
             FI
           </button>
-          <button
+          <button type="button"
             onClick={handleGenerateShiftReport}
             disabled={generatingReport}
-            className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border border-rmpg-600 text-rmpg-400 hover:text-white hover:border-brand-500 mr-1"
+            className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border border-rmpg-700 text-rmpg-400 hover:text-white hover:border-brand-500 mr-1"
             title="Generate End-of-Shift Report"
           >
             {generatingReport ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
           </button>
           {UNIT_STATUSES.map(({ label, status, color }) => (
-            <button
+            <button type="button"
               key={status}
               onClick={() => handleUnitStatus(status)}
               disabled={!myUnit}
@@ -528,21 +613,21 @@ export default function MdtPage() {
           <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-4'} gap-2`}>
             <input
               type="text"
-              className="input-dark text-[10px]"
+              className="input-dark text-[10px] min-h-[36px]"
               placeholder="Subject Name *"
               value={fiData.subject_name}
               onChange={(e) => setFiData(prev => ({ ...prev, subject_name: e.target.value }))}
             />
             <input
               type="text"
-              className="input-dark text-[10px]"
+              className="input-dark text-[10px] min-h-[36px]"
               placeholder={gps.latitude ? `Location (auto: ${gps.latitude.toFixed(4)})` : 'Location'}
               value={fiData.location}
               onChange={(e) => setFiData(prev => ({ ...prev, location: e.target.value }))}
             />
             <input
               type="text"
-              className="input-dark text-[10px]"
+              className="input-dark text-[10px] min-h-[36px]"
               placeholder="Reason for contact"
               value={fiData.reason}
               onChange={(e) => setFiData(prev => ({ ...prev, reason: e.target.value }))}
@@ -550,12 +635,12 @@ export default function MdtPage() {
             <div className="flex items-center gap-1">
               <input
                 type="text"
-                className="input-dark text-[10px] flex-1"
+                className="input-dark text-[10px] flex-1 min-h-[36px]"
                 placeholder="Brief narrative"
                 value={fiData.narrative}
                 onChange={(e) => setFiData(prev => ({ ...prev, narrative: e.target.value }))}
               />
-              <button
+              <button type="button"
                 onClick={handleSubmitFi}
                 disabled={!fiData.subject_name.trim() || fiSubmitting}
                 className="px-2 py-1 text-[9px] font-bold uppercase bg-purple-700 text-white border border-purple-600 hover:bg-purple-600 disabled:opacity-40"
@@ -567,21 +652,53 @@ export default function MdtPage() {
         </div>
       )}
 
+      {/* ── ACTIVE CALL BANNER ── */}
+      {myCalls.length > 0 && !selectedCall && (
+        <div
+          className="flex-shrink-0 px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-green-900/15 transition-colors"
+          style={{ background: 'rgba(34,197,94,0.06)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}
+          onClick={() => setSelectedCall(myCalls[0])}
+        >
+          <span className="led-dot led-green animate-led-pulse" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono font-black text-green-400">{myCalls[0].call_number}</span>
+              <span className="text-[9px] font-bold px-1 py-px rounded-sm" style={{ background: prioColor(myCalls[0].priority), color: '#fff' }}>{myCalls[0].priority}</span>
+              <StatusBadge status={myCalls[0].status} type="call_status" size="sm" />
+            </div>
+            <div className="text-[10px] text-white font-semibold truncate">{formatIncidentType(myCalls[0].incident_type)}</div>
+            <div className="text-[9px] text-rmpg-400 truncate flex items-center gap-1">
+              <MapPin style={{ width: 9, height: 9 }} />
+              {myCalls[0].location || 'No address'}
+            </div>
+          </div>
+          {myCalls[0].description && (
+            <div className="hidden md:block text-[9px] text-rmpg-300 max-w-[200px] truncate">
+              {myCalls[0].description}
+            </div>
+          )}
+          <div className="text-[9px] text-green-500 font-mono font-bold">
+            {getStatusElapsed(myCalls[0]) ? formatTimer(getStatusElapsed(myCalls[0])!) : ''}
+          </div>
+          <ChevronRight style={{ width: 12, height: 12, color: '#666666' }} />
+        </div>
+      )}
+
       {/* ── MAIN CONTENT ────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
         {/* ── LEFT: Call List ── */}
         <div className={`${isMobile ? (selectedCall ? 'hidden' : 'w-full') : 'w-2/5'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
           {/* Tabs */}
-          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto" style={{ background: '#111' }}>
+          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto bg-surface-sunken">
             {(['my-calls', 'pending', 'messages', 'ncic'] as const).map(tab => (
-              <button
+              <button type="button"
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
-                  background: activeTab === tab ? '#141e2b' : 'transparent',
-                  color: activeTab === tab ? (tab === 'ncic' ? '#22d3ee' : '#fff') : '#666',
-                  borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22d3ee' : '#22c55e'}` : '2px solid transparent',
+                  background: activeTab === tab ? '#0a0a0a' : 'transparent',
+                  color: activeTab === tab ? (tab === 'ncic' ? '#22c55e' : '#fff') : '#666666',
+                  borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22c55e' : '#22c55e'}` : '2px solid transparent',
                 }}
               >
                 {tab === 'my-calls' ? `My Calls (${myCalls.length})` :
@@ -607,7 +724,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-800/50"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#141414]"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -644,7 +761,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-800/50"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#141414]"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -654,17 +771,21 @@ export default function MdtPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono font-bold text-amber-400">{call.call_number}</span>
                         <span
-                          className="text-[8px] font-black px-1"
+                          className="text-[8px] font-black px-1 rounded-sm"
                           style={{ background: prioColor(call.priority), color: '#fff' }}
                         >
                           {call.priority}
                         </span>
                       </div>
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); handleSelfDispatch(call.id); }}
-                        className="flex items-center gap-1 px-2 py-0.5 text-[8px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 transition-colors"
+                        disabled={dispatchingCallId === call.id}
+                        className="flex items-center gap-1 px-2 py-0.5 text-[8px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40 transition-colors"
                       >
-                        <Send style={{ width: 8, height: 8 }} /> Self-Dispatch
+                        {dispatchingCallId === call.id
+                          ? <Loader2 style={{ width: 8, height: 8 }} className="animate-spin" />
+                          : <Send style={{ width: 8, height: 8 }} />
+                        } Self-Dispatch
                       </button>
                     </div>
                     <div className="text-[10px] text-white font-semibold mt-0.5">
@@ -705,12 +826,11 @@ export default function MdtPage() {
             <>
               {/* Call header */}
               <div
-                className="px-4 py-2 flex items-center justify-between flex-shrink-0"
-                style={{ borderBottom: '1px solid #222', background: '#111' }}
+                className="px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-rmpg-700 bg-surface-sunken"
               >
                 <div>
                   {isMobile && (
-                    <button
+                    <button type="button"
                       onClick={() => setSelectedCall(null)}
                       className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider mb-1"
                     >
@@ -723,7 +843,7 @@ export default function MdtPage() {
                     </span>
                     <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                     <span
-                      className="text-[8px] font-black px-1 py-px"
+                      className="text-[8px] font-black px-1 py-px rounded-sm"
                       style={{ background: prioColor(selectedCall.priority), color: '#fff' }}
                     >
                       {selectedCall.priority}
@@ -737,15 +857,15 @@ export default function MdtPage() {
                 {/* Action buttons */}
                 <div className="flex items-center gap-1">
                   {selectedCall.status === 'dispatched' && (
-                    <button
+                    <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'enroute')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
                     >
                       <Navigation style={{ width: 10, height: 10 }} /> En Route
                     </button>
                   )}
                   {selectedCall.status === 'enroute' && (
-                    <button
+                    <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'onscene')}
                       className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-purple-900/50 text-purple-400 border border-purple-700/50 hover:bg-purple-800/50 transition-colors"
                     >
@@ -753,19 +873,23 @@ export default function MdtPage() {
                     </button>
                   )}
                   {selectedCall.status === 'onscene' && (
-                    <button
+                    <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'cleared')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-gray-700/50 text-rmpg-300 border border-rmpg-600/50 hover:bg-gray-600/50 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-rmpg-700/50 text-rmpg-300 border border-rmpg-600/50 hover:bg-rmpg-600/50 transition-colors"
                     >
                       <CheckCircle style={{ width: 10, height: 10 }} /> Clear
                     </button>
                   )}
                   {selectedCall.status === 'pending' && myUnit && (
-                    <button
+                    <button type="button"
                       onClick={() => handleSelfDispatch(selectedCall.id)}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 transition-colors"
+                      disabled={!!dispatchingCallId}
+                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40 transition-colors"
                     >
-                      <Send style={{ width: 10, height: 10 }} /> Accept
+                      {dispatchingCallId === selectedCall.id
+                        ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+                        : <Send style={{ width: 10, height: 10 }} />
+                      } Accept
                     </button>
                   )}
                 </div>
@@ -775,7 +899,7 @@ export default function MdtPage() {
               <div className="flex-1 overflow-auto p-4 space-y-3">
                 {/* Location */}
                 <div>
-                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Location</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1" style={{ letterSpacing: '0.1em' }}>Location</div>
                   <div className="text-[11px] text-white flex items-center gap-1.5">
                     <MapPin style={{ width: 11, height: 11, color: '#22c55e' }} />
                     {selectedCall.location || 'No address'}
@@ -789,18 +913,18 @@ export default function MdtPage() {
                 {selectedCall.description && (
                   <div>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Description</div>
-                    <div className="text-[10px] text-rmpg-200 p-2" style={{ background: '#111', border: '1px solid #222' }}>
+                    <div className="text-[10px] text-rmpg-200 p-2 bg-surface-sunken border border-rmpg-700">
                       {selectedCall.description}
                     </div>
                   </div>
                 )}
 
                 {/* Hazard flags */}
-                {(selectedCall.weapons_involved || selectedCall.domestic_violence || selectedCall.injuries_reported) && (
+                {(selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) || selectedCall.domestic_violence || selectedCall.injuries_reported ? (
                   <div className="flex items-center gap-2 p-2" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #991b1b' }}>
                     <AlertTriangle style={{ width: 12, height: 12, color: '#ef4444' }} />
                     <div className="flex gap-2">
-                      {selectedCall.weapons_involved && (
+                      {selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim()) && (
                         <span className="text-[9px] font-bold text-red-400 uppercase">WEAPONS</span>
                       )}
                       {selectedCall.domestic_violence && (
@@ -811,14 +935,14 @@ export default function MdtPage() {
                       )}
                     </div>
                   </div>
-                )}
+                ) : null}
 
                 {/* Subject / Vehicle descriptions with NCIC buttons */}
                 {selectedCall.subject_description && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Subject Description</div>
-                      <button
+                      <button type="button"
                         onClick={() => { setNcicQuery({ type: 'person', query: selectedCall.subject_description || '' }); setActiveTab('ncic'); }}
                         className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
                         title="Run NCIC person query"
@@ -833,7 +957,7 @@ export default function MdtPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Vehicle Description</div>
-                      <button
+                      <button type="button"
                         onClick={() => { setNcicQuery({ type: 'vehicle', query: selectedCall.vehicle_description || '' }); setActiveTab('ncic'); }}
                         className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
                         title="Run NCIC vehicle query"
@@ -866,9 +990,9 @@ export default function MdtPage() {
                           key={u}
                           className="text-[9px] font-mono font-bold px-1.5 py-0.5"
                           style={{
-                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : '#222',
-                            color: u === myUnit?.call_sign ? '#22c55e' : '#999',
-                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : '#333'}`,
+                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : '#141414',
+                            color: u === myUnit?.call_sign ? '#22c55e' : '#888888',
+                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : '#222222'}`,
                           }}
                         >
                           {u}
@@ -887,8 +1011,8 @@ export default function MdtPage() {
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Notes</div>
                     <div className="space-y-1">
                       {selectedCall.notes.slice(-5).map((note, i) => (
-                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1" style={{ background: '#111', borderLeft: '2px solid #333' }}>
-                          <span className="text-rmpg-500">{new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1 bg-surface-sunken border-l-2 border-l-rmpg-700">
+                          <span className="text-rmpg-500">{safeTimeStr(note.timestamp)}</span>
                           {' — '}
                           {note.text}
                         </div>
@@ -900,7 +1024,7 @@ export default function MdtPage() {
                 {/* Timer */}
                 <div className="flex items-center gap-2 mt-3 text-[9px] text-rmpg-500">
                   <Clock style={{ width: 10, height: 10 }} />
-                  <span>Created: {new Date(selectedCall.created_at).toLocaleString()}</span>
+                  <span>Created: {formatDateTime(selectedCall.created_at)}</span>
                   <span>• Time in status: {formatTimer(getStatusElapsed(selectedCall))}</span>
                 </div>
               </div>
@@ -908,9 +1032,10 @@ export default function MdtPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center text-rmpg-500">
               <div className="text-center">
-                <Monitor className="w-10 h-10 mx-auto mb-3 text-rmpg-600" />
-                <p className="text-sm">Select a call to view details</p>
+                <Monitor className="w-10 h-10 mx-auto mb-3 text-rmpg-600 opacity-60" />
+                <p className="text-sm font-medium">Select a call to view details</p>
                 <p className="text-[10px] text-rmpg-600 mt-1">or self-dispatch from the Pending queue</p>
+                <div className="text-[8px] text-rmpg-600 mt-3 font-mono">MDT v5.3 ONLINE</div>
               </div>
             </div>
           )}

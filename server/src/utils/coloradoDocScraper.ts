@@ -175,7 +175,7 @@ function getCachedResults(lastName: string, firstName?: string): CdocOffenderRes
       ...r,
       source: 'cache',
     }));
-  } catch {
+  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
     return [];
   }
 }
@@ -195,7 +195,7 @@ function getLocalResults(lastName: string, firstName?: string): CdocOffenderResu
 
   try {
     return db.prepare(sql).all(...params) as CdocOffenderResult[];
-  } catch {
+  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
     return [];
   }
 }
@@ -271,7 +271,7 @@ export function getCdocOffender(docNumber: string): CdocOffenderResult | null {
   const db = getDb();
   try {
     return db.prepare('SELECT * FROM colorado_doc_offenders WHERE doc_number = ?').get(docNumber) as CdocOffenderResult | null;
-  } catch {
+  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
     return null;
   }
 }
@@ -286,7 +286,7 @@ export function getCdocStats(): { total: number; facilities: { facility: string;
       "SELECT COALESCE(facility, 'Unknown') as facility, COUNT(*) as count FROM colorado_doc_offenders GROUP BY facility ORDER BY count DESC LIMIT 20"
     ).all() as { facility: string; count: number }[];
     return { total, facilities };
-  } catch {
+  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
     return { total: 0, facilities: [] };
   }
 }

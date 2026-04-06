@@ -23,6 +23,11 @@ export interface MapUnit {
   current_call_type: string | null;
   current_call_location: string | null;
   gps_source?: string;
+  gps_speed?: number | null;       // m/s from GPS tracker
+  gps_heading?: number | null;     // degrees 0-360
+  battery_level?: number | null;   // 0-100 from mobile device
+  dispatched_at?: string | null;   // timestamp when dispatched to current call
+  onscene_at?: string | null;      // timestamp when arrived on scene
 }
 
 export interface ActiveCall {
@@ -35,6 +40,7 @@ export interface ActiveCall {
   latitude: number | null;
   longitude: number | null;
   property_name: string | null;
+  created_at?: string | null;
 }
 
 export interface MapProperty {
@@ -82,6 +88,7 @@ export function isSatelliteStyle(style: MapStyleId): boolean {
 // ── Incident Category Icons ──────────────────────────────────
 
 export function getIncidentCategory(type: string): { symbol: string; category: string } {
+  if (!type) return { symbol: '\u25CF', category: 'CALL' };
   const t = type.toLowerCase();
   if (t.includes('theft') || t.includes('burglary') || t.includes('robbery') || t.includes('larceny') || t.includes('shoplifting'))
     return { symbol: '\u{1F511}', category: 'THEFT' };
@@ -122,4 +129,61 @@ export function getIncidentCategory(type: string): { symbol: string; category: s
   if (t.includes('animal'))
     return { symbol: '\u{1F43E}', category: 'ANML' };
   return { symbol: '\u25CF', category: 'CALL' };
+}
+
+// ── Map Style Icons ──────────────────────────────────────────
+
+export const MAP_STYLE_ICONS: Record<MapStyleId, string> = {
+  dark: '\u{1F319}',        // crescent moon
+  satellite: '\u{1F6F0}',   // satellite
+  hybrid: '\u{1F30D}',      // globe
+  streets: '\u{1F6E3}',     // motorway
+  terrain: '\u26F0',        // mountain
+  night_nav: '\u{1F5FA}',   // world map
+};
+
+export function getMapStyleIcon(style: MapStyleId): string {
+  return MAP_STYLE_ICONS[style] || '\u{1F5FA}';
+}
+
+// ── Incident Category Colors ─────────────────────────────────
+
+export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
+  THEFT: '#f59e0b',
+  ASLT: '#ef4444',
+  TRFC: '#888888',
+  FIRE: '#f97316',
+  MED: '#22c55e',
+  SUSP: '#a855f7',
+  ALM: '#eab308',
+  TRSP: '#6366f1',
+  DV: '#ec4899',
+  DRUG: '#14b8a6',
+  VNDL: '#f43f5e',
+  PTRL: '#aaaaaa',
+  NOIS: '#84cc16',
+  FRAD: '#8b5cf6',
+  MISP: '#fb923c',
+  WPNS: '#dc2626',
+  WRNT: '#7c3aed',
+  HZMT: '#fbbf24',
+  ANML: '#a3e635',
+  CALL: '#666666',
+};
+
+export function getIncidentCategoryColor(type: string): string {
+  const { category } = getIncidentCategory(type);
+  return INCIDENT_CATEGORY_COLORS[category] || '#666666';
+}
+
+// ── Map Zoom Breakpoints ─────────────────────────────────────
+
+export const MAP_ZOOM_BREAKPOINTS = { overview: 10, neighborhood: 13, street: 15, building: 18 } as const;
+
+export function getZoomLevel(zoom: number): 'overview' | 'neighborhood' | 'street' | 'building' {
+  if (!Number.isFinite(zoom)) return 'overview';
+  if (zoom >= MAP_ZOOM_BREAKPOINTS.building) return 'building';
+  if (zoom >= MAP_ZOOM_BREAKPOINTS.street) return 'street';
+  if (zoom >= MAP_ZOOM_BREAKPOINTS.neighborhood) return 'neighborhood';
+  return 'overview';
 }

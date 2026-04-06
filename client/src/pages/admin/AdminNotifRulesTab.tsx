@@ -50,7 +50,7 @@ const TRIGGER_EVENTS = [
   { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance' },
 ];
 
-const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 
 const NOTIF_TYPE_ICONS: Record<string, React.ElementType> = {
   in_app: Smartphone,
@@ -177,23 +177,36 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setForm((f) => ({ ...f, target_roles: JSON.stringify(next) }));
   };
 
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditing(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (loading && rules.length === 0) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-brand-400" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Notification Rules</h2>
-          <span className="text-[10px] text-rmpg-500 ml-1">({rules.filter((r) => r.is_active).length} active)</span>
+          <div className="w-7 h-7 flex items-center justify-center bg-amber-900/30 border border-amber-700/40 shrink-0" aria-hidden="true">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Notification Rules</h2>
+            <span className="text-[9px] text-rmpg-500">{rules.filter((r) => r.is_active).length} active</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="input-dark text-[10px] pl-6 pr-2 py-1 w-40" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search rules..." aria-label="Search notification rules" autoComplete="off" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
           </div>
-          <button onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
             New Rule
           </button>
@@ -203,7 +216,10 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
       {/* Rules List */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <div className="text-center py-8 text-rmpg-500 text-xs">No notification rules configured.</div>
+          <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-xs gap-2">
+            <Zap className="w-6 h-6 text-rmpg-600" />
+            <span>No notification rules configured.</span>
+          </div>
         ) : filtered.map((r) => {
           const trigger = TRIGGER_EVENTS.find((t) => t.value === r.trigger_event);
           const NotifIcon = NOTIF_TYPE_ICONS[r.notification_type] || Bell;
@@ -235,7 +251,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
+                  <button type="button"
                     onClick={() => testRule(r.id)}
                     disabled={testing === r.id}
                     className="toolbar-btn p-1"
@@ -243,13 +259,13 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   >
                     {testing === r.id ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Play className="w-3 h-3" />}
                   </button>
-                  <button onClick={() => toggleActive(r)} className="toolbar-btn p-1" title={r.is_active ? 'Disable' : 'Enable'}>
+                  <button type="button" onClick={() => toggleActive(r)} className="toolbar-btn p-1" title={r.is_active ? 'Disable' : 'Enable'}>
                     <span className={`text-[9px] font-bold ${r.is_active ? 'text-green-400' : 'text-rmpg-500'}`}>
                       {r.is_active ? 'ON' : 'OFF'}
                     </span>
                   </button>
-                  <button onClick={() => openEdit(r)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => openEdit(r)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
             </div>
@@ -259,22 +275,22 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit notification rule' : 'New notification rule'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Notification Rule' : 'New Notification Rule'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Rule Name *</label>
-                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs" placeholder="e.g. Alert supervisors on P1 calls" />
+                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Alert supervisors on P1 calls" />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
-                <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs" placeholder="Optional description..." />
+                <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="Optional description..." />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -301,7 +317,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {ROLES.map((role) => (
-                    <button
+                    <button type="button"
                       key={role}
                       onClick={() => toggleRole(role)}
                       className={`text-[10px] px-2 py-0.5 rounded-sm border transition-colors ${
@@ -317,9 +333,9 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
-              <button onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
-                {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
+              <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+                {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>

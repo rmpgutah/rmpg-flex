@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Link2, Loader2, Trash2, FileText, Phone, Briefcase, Gavel, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { safeDateStr } from '../utils/dateUtils';
 
 interface VideoLink {
   id: number;
@@ -64,6 +65,8 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!entityId.trim()) return;
+    const parsedEntityId = parseInt(entityId, 10);
+    if (isNaN(parsedEntityId) || parsedEntityId < 1) { setError('Invalid record ID'); return; }
     setSubmitting(true);
     setError('');
 
@@ -72,7 +75,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
         method: 'POST',
         body: JSON.stringify({
           entity_type: entityType,
-          entity_id: parseInt(entityId, 10),
+          entity_id: parsedEntityId,
           notes: notes.trim() || undefined,
         }),
       });
@@ -98,19 +101,19 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-lg mx-4 panel-beveled bg-surface-base animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Title bar */}
         <div className="panel-title-bar flex items-center gap-2">
-          <Link2 className="w-3 h-3" style={{ color: '#1a5a9e' }} />
+          <Link2 className="w-3 h-3" style={{ color: '#888888' }} />
           <span>LINK VIDEO TO RECORDS</span>
-          <button
+          <button type="button"
             onClick={onClose}
             className="ml-auto hover:bg-white/10 p-0.5 transition-colors"
-          >
+            aria-label="Close modal">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -205,11 +208,11 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
                           <div className="text-[9px] text-rmpg-500 truncate">{link.notes}</div>
                         )}
                         <div className="text-[8px] text-rmpg-600">
-                          by {link.linked_by} — {new Date(link.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          by {link.linked_by} — {safeDateStr(link.created_at)}
                         </div>
                       </div>
                       {canManage && (
-                        <button
+                        <button type="button"
                           onClick={() => handleRemove(link.id)}
                           className="toolbar-btn p-1 text-red-400 hover:text-red-300"
                           title="Remove link"

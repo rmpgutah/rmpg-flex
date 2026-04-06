@@ -1,4 +1,3 @@
-function sanitizePdfText(s: string): string { return String(s || "").replace(/[\x00-\x1F]/g, ""); }
 // ============================================================
 // RMPG Flex — Process Server PDF Generator
 // Affidavit of Service, Affidavit of Non-Service, Service Log
@@ -23,7 +22,7 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
-
+  sanitizePdfText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -274,7 +273,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
     const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
     y = Math.max(fy1, fy2);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Server Information ──
@@ -284,7 +283,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
     y = Math.max(fy1, fy2);
     y = addFieldPair(doc, '6. Company', data.serverCompany, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Recipient Information ──
@@ -293,7 +292,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     y = addFieldPair(doc, '7. Recipient Name', data.recipientName, lx, y, ffw);
     y = addFieldPair(doc, '8. Address', data.recipientAddress, lx, y, ffw);
     y = addFieldPair(doc, '9. Document Type Served', data.documentType, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Service Details ──
@@ -314,7 +313,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
       y = Math.max(fy5, fy6);
       y = addFieldPair(doc, '16. Description', data.substituteInfo.description, lx, y, ffw);
     }
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Photos ──
@@ -323,7 +322,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     const sec = openAutoSection(doc, 'Service Photos', y);
     y = sec.contentY;
     y = addPhotos(doc, data.photos, y);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Signature Block ──
@@ -406,7 +405,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
     const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
     y = Math.max(fy1, fy2);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Server Information ──
@@ -415,7 +414,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     const fy1 = addFieldPair(doc, '4. Server Name', data.serverName, lx, y, hfw);
     const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
     y = Math.max(fy1, fy2);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Recipient Information ──
@@ -424,7 +423,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     y = addFieldPair(doc, '6. Recipient Name', data.recipientName, lx, y, ffw);
     y = addFieldPair(doc, '7. Address', data.recipientAddress, lx, y, ffw);
     y = addFieldPair(doc, '8. Document Type', data.documentType, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Attempt History Table ──
@@ -453,7 +452,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
     y = addTableWithShading(doc, headers, rows, y, cols);
     y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Photos from attempts ──
@@ -463,7 +462,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
       const sec = openAutoSection(doc, `Attempt #${attempt.number} Photos`, y);
       y = sec.contentY;
       y = addPhotos(doc, attempt.photos, y, `Attempt #${attempt.number}`);
-      y = closeAutoSection(doc, sec.sectionY, y);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
   }
 
@@ -496,7 +495,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
       }
     }
 
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Declaration ──
@@ -514,7 +513,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
     y = addWrappedText(doc, declarationText, lx, y, ffw, FONT.SIZE_FIELD_VALUE);
     y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Signature Block ──
@@ -596,7 +595,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const fy2 = addFieldPair(doc, '2. Badge #', data.officerBadge, rx, y, hfw);
     y = Math.max(fy1, fy2);
     y = addFieldPair(doc, '3. Date Range', dateRangeLabel, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Summary Statistics ──
@@ -613,7 +612,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const fy4 = addFieldPair(doc, '7. Pending', String(pending), rx, y, hfw);
     y = Math.max(fy3, fy4);
     y = addFieldPair(doc, '8. Miles Driven', data.totalMileage.toFixed(1), lx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Job Details Table ──
@@ -656,7 +655,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
 
     y = addTableWithShading(doc, headers, rows, y, cols);
     y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Route Efficiency ──
@@ -674,7 +673,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
       : 'N/A';
     y = addFieldPair(doc, 'Efficiency', efficiency !== 'N/A' ? `${efficiency}%` : efficiency, lx, y, hfw);
     y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // Add page footers to all pages

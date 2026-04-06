@@ -5,12 +5,14 @@
 // and contract expiration alerts for the CRM module.
 // Client/Property/Invoice CRUD reuses existing admin routes.
 
-import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike, validateParamIdMiddleware, validateStr, validateEnum, requireInt, validateDateStr } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticate);
@@ -38,9 +40,10 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
     ).get() as any)?.c || 0;
 
     // Contracts expiring in next 90 days
-    const futureDate = new Date();
+    const today = localNow().slice(0, 10);
+    const futureDate = new Date(today + 'T12:00:00');
     futureDate.setDate(futureDate.getDate() + 90);
-    const future90 = futureDate.toISOString().slice(0, 10);
+    const future90 = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
     const expiringContracts = (db.prepare(
       "SELECT COUNT(*) as c FROM clients WHERE status = 'active' AND contract_end IS NOT NULL AND contract_end <= ? AND contract_end >= date('now')"
     ).get(future90) as any)?.c || 0;
@@ -65,7 +68,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -87,7 +90,7 @@ router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -110,9 +113,11 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     const params: any[] = [];
 
     if (status) {
-      const statuses = (status as string).split(',');
-      sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
-      params.push(...statuses);
+      const statuses = (status as string).split(',').filter(Boolean);
+      if (statuses.length > 0) {
+        sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
+        params.push(...statuses);
+      }
     }
     if (client_id) { sql += ' AND t.client_id = ?'; params.push(client_id); }
     if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }
@@ -123,7 +128,7 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -131,15 +136,29 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
   try {
     const db = getDb();
     const { client_id, property_id, title, description, task_type, priority, due_date, assigned_to, notes } = req.body;
-    if (!title?.trim()) { res.status(400).json({ error: 'Title is required' }); return; }
+
+    // ── Validate task inputs ──
+    const TASK_TYPES = ['follow_up', 'call', 'meeting', 'proposal', 'contract_review', 'billing', 'inspection', 'other'] as const;
+    const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+
+    const validTitle = validateStr(title, 'title', 200);
+    if (!validTitle) { res.status(400).json({ error: 'Title is required', code: 'TITLE_IS_REQUIRED' }); return; }
+    const validTaskType = validateEnum(task_type, TASK_TYPES, 'task_type') || 'follow_up';
+    const validPriority = validateEnum(priority, PRIORITIES, 'priority') || 'normal';
+    if (client_id) requireInt(client_id, 'client_id');
+    if (property_id) requireInt(property_id, 'property_id');
+    if (assigned_to) requireInt(assigned_to, 'assigned_to');
+    if (due_date) validateDateStr(due_date, 'due_date');
+    validateStr(description, 'description', 5000);
+    validateStr(notes, 'notes', 5000);
 
     const now = localNow();
     const result = db.prepare(`
       INSERT INTO crm_tasks (client_id, property_id, title, description, task_type, priority, status, due_date, assigned_to, notes, created_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
     `).run(
-      client_id || null, property_id || null, title.trim(), description || null,
-      task_type || 'follow_up', priority || 'normal', due_date || null,
+      client_id || null, property_id || null, validTitle, description || null,
+      validTaskType, validPriority, due_date || null,
       assigned_to || null, notes || null, req.user?.userId || null, now, now,
     );
 
@@ -147,27 +166,41 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     auditLog(req, 'crm_task_created', 'crm_task', taskId, `Created task: ${title.trim()}`);
 
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(taskId);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'created', id: taskId });
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
-router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'Task not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' }); return; }
 
     const { title, description, task_type, priority, status, due_date, assigned_to, notes } = req.body;
+
+    // ── Validate update fields ──
+    const TASK_UPDATE_TYPES = ['follow_up', 'call', 'meeting', 'proposal', 'contract_review', 'billing', 'inspection', 'other'] as const;
+    const TASK_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+    const TASK_STATUSES = ['pending', 'in_progress', 'completed', 'cancelled'] as const;
+
+    if (task_type !== undefined) validateEnum(task_type, TASK_UPDATE_TYPES, 'task_type');
+    if (priority !== undefined) validateEnum(priority, TASK_PRIORITIES, 'priority');
+    if (status !== undefined) validateEnum(status, TASK_STATUSES, 'status');
+    if (due_date !== undefined && due_date) validateDateStr(due_date, 'due_date');
+    if (title !== undefined) validateStr(title, 'title', 200);
+    if (assigned_to !== undefined && assigned_to) requireInt(assigned_to, 'assigned_to');
+
     const now = localNow();
 
     const updates: string[] = [];
     const params: any[] = [];
 
-    if (title !== undefined) { updates.push('title = ?'); params.push(typeof title === 'string' ? title.trim() : title); }
+    if (title !== undefined) { updates.push('title = ?'); params.push(String(title).trim()); }
     if (description !== undefined) { updates.push('description = ?'); params.push(description); }
     if (task_type !== undefined) { updates.push('task_type = ?'); params.push(task_type); }
     if (priority !== undefined) { updates.push('priority = ?'); params.push(priority); }
@@ -189,26 +222,28 @@ router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (r
     auditLog(req, 'crm_task_updated', 'crm_task', String(id), `Updated task: ${title || existing.title}`);
 
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'updated', id: Number(id) });
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
-router.delete('/tasks/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'Task not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' }); return; }
 
     db.prepare('DELETE FROM crm_tasks WHERE id = ?').run(id);
     auditLog(req, 'crm_task_deleted', 'crm_task', String(id), `Deleted task: ${existing.title}`);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'deleted', id: Number(id) });
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -231,7 +266,7 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -239,7 +274,14 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
   try {
     const db = getDb();
     const { client_id, activity_type, subject, details } = req.body;
-    if (!client_id || !activity_type) { res.status(400).json({ error: 'client_id and activity_type required' }); return; }
+    // ── Validate activity inputs ──
+    const validClientId = requireInt(client_id, 'client_id');
+    if (!validClientId) { res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' }); return; }
+    const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'note', 'follow_up', 'task', 'proposal', 'contract', 'billing', 'other'] as const;
+    const validActType = validateEnum(activity_type, ACTIVITY_TYPES, 'activity_type');
+    if (!validActType) { res.status(400).json({ error: 'activity_type is required', code: 'ACTIVITYTYPE_IS_REQUIRED' }); return; }
+    validateStr(subject, 'subject', 500);
+    validateStr(details, 'details', 5000);
 
     const now = localNow();
     const result = db.prepare(`
@@ -256,10 +298,11 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
       LEFT JOIN users u ON u.id = a.created_by
       WHERE a.id = ?
     `).get(activityId);
+    broadcast('admin', 'crm:updated', { entity: 'activity', action: 'created', id: activityId });
     res.json(activity);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -280,8 +323,8 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     const params: any[] = [];
 
     if (search) {
-      sql += " AND ((p.first_name || ' ' || p.last_name) LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)";
-      const q = `%${search}%`;
+      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? ESCAPE '\\' OR p.phone LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')";
+      const q = `%${escapeLike(String(search))}%`;
       params.push(q, q, q);
     }
     if (relationship) { sql += ' AND cp.relationship = ?'; params.push(relationship); }
@@ -291,7 +334,7 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -314,12 +357,14 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
         AND contract_end <= ?
         AND contract_end >= date('now')
       ORDER BY contract_end ASC
+    
+      LIMIT 1000
     `).all(future);
 
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -341,23 +386,10 @@ router.get('/reports/revenue', requireRole('admin', 'manager', 'contract_manager
       FROM months m
       ORDER BY m.month ASC
     `).all();
-
-    // Per-client breakdown: top 10 by invoiced amount
-    const byClient = db.prepare(`
-      SELECT i.client_id, c.name as client_name,
-             COALESCE(SUM(i.total), 0) as invoiced,
-             COALESCE(SUM(i.amount_paid), 0) as paid
-      FROM invoices i
-      LEFT JOIN clients c ON c.id = i.client_id
-      GROUP BY i.client_id
-      ORDER BY invoiced DESC
-      LIMIT 10
-    `).all();
-
-    res.json({ months: rows, by_client: byClient });
+    res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -387,7 +419,7 @@ router.get('/reports/pipeline', requireRole('admin', 'manager', 'contract_manage
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -410,7 +442,7 @@ router.get('/reports/retention', requireRole('admin', 'manager', 'contract_manag
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -437,216 +469,7 @@ router.get('/reports/lead-source-roi', requireRole('admin', 'manager', 'contract
     res.json(result);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Revenue trend: last 6 months invoiced vs paid
-router.get('/reports/revenue-trend', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      WITH months AS (
-        SELECT strftime('%Y-%m', date('now', '-' || n || ' months')) as month
-        FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5)
-      )
-      SELECT m.month,
-        COALESCE((SELECT SUM(total) FROM invoices WHERE strftime('%Y-%m', issue_date) = m.month), 0) as invoiced,
-        COALESCE((SELECT SUM(amount) FROM crm_payments WHERE strftime('%Y-%m', paid_at) = m.month), 0) as paid
-      FROM months m
-      ORDER BY m.month ASC
-    `).all();
-    res.json(rows);
-  } catch (err: any) {
-    console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Client incidents: CAD calls linked to client's properties
-router.get('/clients/:id/incidents', validateParamId, requireRole('admin', 'manager', 'contract_manager', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { id } = req.params;
-
-    const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(id);
-    if (!client) { res.status(404).json({ error: 'Client not found' }); return; }
-
-    const rows = db.prepare(`
-      SELECT c.id, c.call_number, c.incident_type, c.location_address,
-             c.created_at as reported_at, c.status
-      FROM calls_for_service c
-      JOIN properties p ON p.id = c.property_id
-      WHERE p.client_id = ?
-      ORDER BY c.created_at DESC
-      LIMIT 20
-    `).all(id);
-
-    res.json(rows);
-  } catch (err: any) {
-    console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Property incident counts: 30-day count per property
-router.get('/properties/incident-counts', requireRole('admin', 'manager', 'contract_manager', 'officer'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT property_id, COUNT(*) as count_30d
-      FROM calls_for_service
-      WHERE property_id IS NOT NULL
-        AND created_at >= datetime('now', '-30 days')
-      GROUP BY property_id
-      ORDER BY count_30d DESC
-    `).all();
-    res.json(rows);
-  } catch (err: any) {
-    console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Due recurring invoices
-router.get('/invoices/due-recurring', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const now = localNow();
-    const currentMonth = now.slice(0, 7);          // 'YYYY-MM'
-    const currentYear = now.slice(0, 4);           // 'YYYY'
-    const currentQuarter = Math.ceil(parseInt(now.slice(5, 7), 10) / 3);
-
-    const rows = (db.prepare(`
-      SELECT * FROM invoices
-      WHERE is_recurring = 1
-        AND status != 'paid'
-        AND recurrence_anchor IS NOT NULL
-    `).all() as any[]).filter((inv: any) => {
-      const anchor = String(inv.recurrence_anchor || '');
-      const interval = String(inv.recurrence_interval || 'monthly');
-      if (!anchor) return false;
-
-      switch (interval) {
-        case 'monthly':
-          return anchor.slice(0, 7) <= currentMonth;
-        case 'quarterly': {
-          const anchorQ = Math.ceil(parseInt(anchor.slice(5, 7), 10) / 3);
-          const anchorYear = anchor.slice(0, 4);
-          return anchorYear < currentYear ||
-            (anchorYear === currentYear && anchorQ <= currentQuarter);
-        }
-        case 'annually':
-          return anchor.slice(0, 4) <= currentYear;
-        default:
-          return anchor.slice(0, 7) <= currentMonth;
-      }
-    });
-
-    res.json(rows);
-  } catch (err: any) {
-    console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Record a payment against an invoice
-router.post('/invoices/:id/payments', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { id } = req.params;
-    const { amount, paid_at, method, reference } = req.body;
-
-    if (amount == null || isNaN(Number(amount)) || !isFinite(Number(amount)) || Number(amount) <= 0) {
-      res.status(400).json({ error: 'amount is required and must be positive' });
-      return;
-    }
-
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id) as any;
-    if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
-
-    const now = localNow();
-    const paymentId = crypto.randomUUID();
-    const paidAt = paid_at || now;
-
-    db.prepare(`
-      INSERT INTO crm_payments (id, invoice_id, amount, paid_at, method, reference, recorded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(paymentId, id, Number(amount), paidAt, method || null, reference || null, req.user?.username || null);
-
-    auditLog(req, 'payment_recorded', 'payment', paymentId, `Recorded payment $${amount} for invoice #${invoice.invoice_number}`);
-
-    // Sum all payments and update invoice status if fully paid
-    const totalPaid = (db.prepare('SELECT COALESCE(SUM(amount), 0) as t FROM crm_payments WHERE invoice_id = ?').get(id) as any)?.t || 0;
-
-    let invoiceStatus = invoice.status;
-    if (totalPaid >= invoice.total) {
-      invoiceStatus = 'paid';
-      db.prepare("UPDATE invoices SET status = 'paid', amount_paid = ?, balance_due = 0, paid_date = ?, updated_at = ? WHERE id = ?")
-        .run(totalPaid, paidAt, now, id);
-      auditLog(req, 'invoice_updated', 'invoice', String(id), `Invoice #${invoice.invoice_number} marked paid (total_paid=${totalPaid})`);
-    } else {
-      db.prepare("UPDATE invoices SET amount_paid = ?, balance_due = ?, status = 'partial', updated_at = ? WHERE id = ?")
-        .run(totalPaid, Math.max(0, invoice.total - totalPaid), now, id);
-      invoiceStatus = 'partial';
-    }
-
-    res.json({ success: true, payment_id: paymentId, invoice_status: invoiceStatus });
-  } catch (err: any) {
-    console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Dashboard renewal tasks: auto-create tasks for contracts expiring in 90 days
-router.get('/dashboard/renewal-tasks', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const today = localNow().slice(0, 10);
-    const futureDate = new Date(today + 'T12:00:00');
-    futureDate.setDate(futureDate.getDate() + 90);
-    const future90 = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-
-    const expiringClients = db.prepare(`
-      SELECT id, name, contract_end
-      FROM clients
-      WHERE status = 'active'
-        AND contract_end IS NOT NULL
-        AND contract_end <= ?
-        AND contract_end >= date('now')
-      ORDER BY contract_end ASC
-    `).all(future90) as any[];
-
-    const now = localNow();
-    let created = 0;
-
-    for (const client of expiringClients) {
-      // Check if a pending auto renewal task already exists
-      const existing = db.prepare(`
-        SELECT id FROM crm_tasks
-        WHERE auto_created_by = 'contract_renewal'
-          AND client_id = ?
-          AND status != 'completed'
-        LIMIT 1
-      `).get(client.id);
-
-      if (existing) continue;
-
-      const daysUntil = Math.ceil((new Date(client.contract_end + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24));
-      const priority = daysUntil < 30 ? 'high' : daysUntil < 60 ? 'medium' : 'low';
-
-      db.prepare(`
-        INSERT INTO crm_tasks (client_id, title, task_type, priority, status, due_date, auto_created_by, created_by, created_at, updated_at)
-        VALUES (?, ?, 'renewal', ?, 'pending', ?, 'contract_renewal', 'system', ?, ?)
-      `).run(client.id, `Contract Renewal — ${client.name}`, priority, client.contract_end, now, now);
-
-      created++;
-    }
-
-    res.json({ created });
-  } catch (err: any) {
-    console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -692,7 +515,45 @@ router.get('/reports/metrics', requireRole('admin', 'manager', 'contract_manager
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/crm/export/csv — Export CRM tasks and activity
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT t.id, t.title, t.description, t.task_type, t.priority, t.status, t.due_date,
+        t.completed_at, t.created_at,
+        c.name as client_name, p.name as property_name,
+        u1.full_name as assigned_to_name, u2.full_name as created_by_name
+      FROM crm_tasks t
+      LEFT JOIN clients c ON c.id = t.client_id
+      LEFT JOIN properties p ON p.id = t.property_id
+      LEFT JOIN users u1 ON u1.id = t.assigned_to
+      LEFT JOIN users u2 ON u2.id = t.created_by
+      ORDER BY t.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'crm_tasks_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'title', header: 'Title' },
+      { key: 'description', header: 'Description' },
+      { key: 'task_type', header: 'Task Type' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'status', header: 'Status' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'property_name', header: 'Property' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'completed_at', header: 'Completed At' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

@@ -131,30 +131,46 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
 
   const activeUsers = users.filter((u) => u.is_active);
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Departments \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditing(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (loading && departments.length === 0) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-brand-400" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Departments & Divisions</h2>
-          <span className="text-[10px] text-rmpg-500 ml-1">({departments.length} total)</span>
+          <div className="w-7 h-7 flex items-center justify-center bg-brand-900/30 border border-brand-700/40 shrink-0" aria-hidden="true">
+            <Building2 className="w-3.5 h-3.5 text-brand-400" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Departments & Divisions</h2>
+            <span className="text-[9px] text-rmpg-500">{departments.length} total</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" aria-hidden="true" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="input-dark text-[10px] pl-6 pr-2 py-1 w-40"
+              placeholder="Search..." aria-label="Search departments"
+              className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
-          <button onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
-            <Plus className="w-3 h-3" />
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Create new department">
+            <Plus className="w-3 h-3" aria-hidden="true" />
             New Department
           </button>
         </div>
@@ -163,8 +179,10 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {/* Departments Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {topLevel.length === 0 && (
-          <div className="col-span-2 text-center py-8 text-rmpg-500 text-xs">
-            No departments found. Create one to get started.
+          <div className="col-span-2 flex flex-col items-center justify-center py-16 text-rmpg-500 text-xs gap-2">
+            <Building2 className="w-7 h-7 text-rmpg-600" aria-hidden="true" />
+            <span className="font-medium text-rmpg-500">No departments found</span>
+            <span className="text-[9px] text-rmpg-600">Create one to organize your personnel structure</span>
           </div>
         )}
         {topLevel.map((dept) => {
@@ -184,8 +202,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => openEdit(dept)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => openEdit(dept)} className="toolbar-btn p-1" aria-label={`Edit ${dept.name}`} title="Edit department"><Edit2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" aria-label={`Delete ${dept.name}`} title="Delete department"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
               <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
@@ -205,8 +223,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] text-rmpg-500">{sub.user_count} personnel</span>
-                        <button onClick={() => openEdit(sub)} className="toolbar-btn p-0.5"><Edit2 className="w-2.5 h-2.5" /></button>
-                        <button onClick={() => setDeleteTarget(sub)} className="toolbar-btn p-0.5 text-red-400"><Trash2 className="w-2.5 h-2.5" /></button>
+                        <button type="button" onClick={() => openEdit(sub)} className="toolbar-btn p-0.5"><Edit2 className="w-2.5 h-2.5" /></button>
+                        <button type="button" onClick={() => setDeleteTarget(sub)} className="toolbar-btn p-0.5 text-red-400"><Trash2 className="w-2.5 h-2.5" /></button>
                       </div>
                     </div>
                   ))}
@@ -219,23 +237,23 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit department' : 'New department'}>
           <div className="bg-surface-base panel-beveled w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#181818]">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Name *</label>
-                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs" placeholder="e.g. Patrol Division" />
+                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Patrol Division" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Code</label>
-                  <input type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} className="input-dark w-full text-xs font-mono" placeholder="e.g. PAT" maxLength={10} />
+                  <input type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} className="input-dark w-full text-xs font-mono min-h-[36px]" placeholder="e.g. PAT" maxLength={10} />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Parent Dept</label>
@@ -262,9 +280,9 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
-              <button onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
-                {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
+              <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+                {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>

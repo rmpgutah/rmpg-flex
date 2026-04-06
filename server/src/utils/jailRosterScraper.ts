@@ -96,6 +96,8 @@ let startupTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // ── HTTP helpers ────────────────────────────────────────────
 
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB — reject oversized responses to prevent memory exhaustion
+
 async function fetchPage(url: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -105,6 +107,10 @@ async function fetchPage(url: string): Promise<string> {
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+    const contentLength = res.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
+      throw new Error(`Response too large (${contentLength} bytes) from ${url}`);
+    }
     return await res.text();
   } finally {
     clearTimeout(timeout);
@@ -690,13 +696,12 @@ async function fetchSaltLakeRoster(): Promise<string> {
   const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
   const allHtml: string[] = [];
   const seen = new Set<string>(); // Deduplicate by booking number
-  const MAX_TOTAL_ROWS = 50_000; // Safety cap to prevent unbounded memory growth
 
   for (const letter of letters) {
     let start = 1;
     let hasMore = true;
 
-    while (hasMore && allHtml.length < MAX_TOTAL_ROWS) {
+    while (hasMore) {
       const body = new URLSearchParams({
         flow_action: 'searchbyname',
         quantity: '500',
@@ -715,6 +720,7 @@ async function fetchSaltLakeRoster(): Promise<string> {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body: body.toString(),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
         if (!res.ok) break;
@@ -776,8 +782,7 @@ async function fetchDavisRoster(): Promise<string> {
 
   // Extract total pages from "Page 1 of 29"
   const pagesMatch = page1.match(/Page\s+\d+\s+of\s+(\d+)/i);
-  const MAX_PAGES = 500; // Safety cap to prevent unbounded pagination
-  const totalPages = Math.min(pagesMatch ? parseInt(pagesMatch[1], 10) : 1, MAX_PAGES);
+  const totalPages = pagesMatch ? parseInt(pagesMatch[1], 10) : 1;
 
   console.log(`[Jail Roster] Davis County: ${totalPages} pages to fetch`);
 
@@ -1040,7 +1045,7 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
   try {
     const infoRes = await fetch(
       `https://omsweb.public-safety-cloud.com/publicroster-api/api/${facilityName}/get-agency-info`,
-      { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } }
+      { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
     );
 
     if (infoRes.ok) {
@@ -1065,6 +1070,7 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
               Accept: 'application/json',
             },
             body: JSON.stringify({}),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           }
         );
 
@@ -1090,6 +1096,7 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
       const pageRes = await fetch(pageUrl, {
         headers: { 'User-Agent': USER_AGENT },
         redirect: 'follow',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       const pageHtml = await pageRes.text();
@@ -1114,6 +1121,7 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
             Accept: 'application/json',
             Referer: pageRes.url,
           },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
         if (apiRes.ok) {
@@ -1290,6 +1298,7 @@ async function fetchUtahCountyRoster(): Promise<string> {
       const url = `https://sheriff.utahcounty.gov/api/search/name/${encodeURIComponent(letter)}`;
       const res = await fetch(url, {
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) continue;
@@ -1409,6 +1418,7 @@ async function fetchTooeleRoster(): Promise<string> {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!res.ok) throw new Error(`Tooele roster HTTP ${res.status}`);
@@ -2222,6 +2232,7 @@ async function fetchMaricopaAzRoster(): Promise<string> {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body: body.toString(),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
         if (!searchRes.ok) continue;

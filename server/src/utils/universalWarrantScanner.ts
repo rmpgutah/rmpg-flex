@@ -29,7 +29,7 @@ export interface ScanSummary {
 interface UnifiedHit {
   external_warrant_id: string;
   external_source_key: string;
-  source: 'utah_api';
+  source: 'utah_api' | 'scraper';
   charge_description: string;
   warrant_type: string;
   issuing_court: string | null;
@@ -257,6 +257,51 @@ export async function universalWarrantCheck(
     errors.push(`Utah API error: ${msg}`);
   }
 
+  // Source 2: Scraped warrants DB
+  try {
+    const scraped = db.prepare(
+      `SELECT * FROM scraped_warrants
+       WHERE (person_id = ? OR (LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)))
+         AND status = 'active'`
+    ).all(personId, person.first_name, person.last_name) as Array<{
+      warrant_id: string;
+      source_key: string;
+      full_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      warrant_type: string | null;
+      charge_description: string | null;
+      court_name: string | null;
+      case_number: string | null;
+      issue_date: string | null;
+      bail_amount: string | null;
+      offense_level: string | null;
+      status: string | null;
+      person_id: number | null;
+    }>;
+
+    for (const s of scraped) {
+      const extId = `scraper:${s.source_key}:${s.warrant_id}`;
+      if (!allHits.has(extId)) {
+        const chargeDesc = s.charge_description || 'Warrant (scraped)';
+        allHits.set(extId, {
+          external_warrant_id: extId,
+          external_source_key: s.source_key,
+          source: 'scraper',
+          charge_description: chargeDesc,
+          warrant_type: s.warrant_type || inferWarrantType(chargeDesc),
+          issuing_court: s.court_name || null,
+          bail_amount: s.bail_amount ? parseFloat(s.bail_amount) : null,
+          offense_level: s.offense_level || inferOffenseLevel(chargeDesc),
+        });
+      }
+    }
+  } catch (err: unknown) {
+    sourceErrors = true;
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`Scraped warrants error: ${msg}`);
+  }
+
   hitsFound = allHits.size;
 
   // ── Create new warrant records ─────────────────────────────
@@ -387,7 +432,7 @@ export async function runUniversalWarrantScan(): Promise<ScanSummary> {
   // Clean up any stuck "running" warrant watch runs from previous crashes
   try {
     const stuck = db.prepare(
-      `UPDATE warrant_watch_runs SET status = 'failed', error_message = 'Server restarted during scan', completed_at = datetime('now', 'localtime')
+      `UPDATE warrant_watch_runs SET status = 'failed', error_message = 'Server restarted during scan', completed_at = datetime('now')
        WHERE status = 'running'`
     ).run();
     if (stuck.changes > 0) {

@@ -104,7 +104,9 @@ function encrypt(plaintext: string): string {
 
 function decrypt(stored: string): string {
   const key = deriveKey();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const parts = stored.split(':');
+  if (parts.length !== 3) throw new Error('Invalid encrypted format — expected iv:authTag:ciphertext');
+  const [ivHex, authTagHex, ciphertext] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -431,59 +433,6 @@ export async function hashEvidenceAttachments(evidenceId: number): Promise<{
   return { hashed, errors, flagged };
 }
 
-// ── Auto-Hash Single Attachment (called on upload) ──────────
-
-/**
- * Automatically compute hashes for a single newly-uploaded evidence attachment,
- * check against loaded hash sets, and persist the results.
- */
-export async function autoHashAttachment(
-  attachmentId: number,
-  evidenceId: number,
-  filePath: string
-): Promise<{ hashes: FileHashes; flagged: boolean; matchInfo: HashSetMatch | null }> {
-  const db = getDb();
-  const now = localNow();
-
-  const hashes = await computeFileHashes(filePath);
-  const matches = checkAgainstHashSets(hashes);
-  const isMatch = matches.length > 0;
-  const flagged = isMatch && matches[0].setCategory === 'known_bad';
-
-  db.prepare(`
-    INSERT INTO digital_evidence_hashes
-      (evidence_id, attachment_id, file_name, file_path,
-       md5, sha1, sha256, sha512,
-       hash_set_match, hash_set_name, hash_set_category, match_confidence,
-       flagged, flag_reason, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    evidenceId,
-    attachmentId,
-    path.basename(filePath),
-    filePath,
-    hashes.md5, hashes.sha1, hashes.sha256, hashes.sha512,
-    isMatch ? 1 : 0,
-    isMatch ? matches[0].setName : null,
-    isMatch ? matches[0].setCategory : null,
-    isMatch ? matches[0].confidence : null,
-    flagged ? 1 : 0,
-    flagged ? `Hash set match: ${matches[0].setName}` : null,
-    now
-  );
-
-  // Update evidence record: increment hash_count, flagged_hash_count, mark processed
-  db.prepare(`
-    UPDATE evidence
-    SET hash_count = COALESCE(hash_count, 0) + 1,
-        flagged_hash_count = COALESCE(flagged_hash_count, 0) + ?,
-        iped_processed = 1
-    WHERE id = ?
-  `).run(flagged ? 1 : 0, evidenceId);
-
-  return { hashes, flagged, matchInfo: isMatch ? matches[0] : null };
-}
-
 // ── Hash Set Management ─────────────────────────────────────
 
 export function importHashSet(
@@ -673,7 +622,12 @@ export async function runIpedProcess(opts: IpedProcessOpts): Promise<void> {
 
   const javaExe = getJavaExecutable(cfg.javaHome);
   const classpath = buildIpedClasspath(cfg.installPath);
-  const profile = opts.profile || cfg.defaultProfile || 'forensic';
+  const rawProfile = opts.profile || cfg.defaultProfile || 'forensic';
+  // Sanitize profile to prevent shell injection — only allow alphanumeric, dash, underscore
+  const profile = rawProfile.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!profile) {
+    throw new Error('Invalid IPED profile name — must contain only alphanumeric characters, dashes, or underscores');
+  }
 
   db.prepare('UPDATE iped_jobs SET status = ?, started_at = ?, updated_at = ? WHERE id = ?')
     .run('running', now, now, opts.jobId);
@@ -695,7 +649,7 @@ export async function runIpedProcess(opts: IpedProcessOpts): Promise<void> {
     'iped.app.processing.Main',
     '-d', escapePath(opts.inputPath),
     '-o', escapePath(opts.outputPath),
-    '-profile', profile,
+    '-profile', escapePath(profile),
     '--nogui',
   ].join(' ');
 
@@ -755,7 +709,7 @@ export async function runIpedProcess(opts: IpedProcessOpts): Promise<void> {
         resolve();
       } else {
         db.prepare("UPDATE iped_jobs SET status = 'failed', completed_at = ?, error_message = ?, updated_at = ? WHERE id = ?")
-          .run(endNow, stderr.substring(0, 2000) || `Exit code: ${code}`, endNow, opts.jobId);
+          .run(endNow, (stderr.substring(0, 2000) || `Exit code: ${code}`).replace(/\/[^\s]+/g, '[path]').replace(/at\s+\S+\s+\([^)]+\)/g, '[stack]'), endNow, opts.jobId);
         reject(new Error(`IPED exited with code ${code}`));
       }
     });
@@ -898,225 +852,5 @@ export function getIpedUsageStats() {
     totalHashes: hashes?.total || 0,
     flaggedHashes: hashes?.flagged || 0,
     hashSetCount: getHashSetSummary().length,
-  };
-}
-
-// ── File Integrity Verification ─────────────────────────────
-
-export interface VerifyFileResult {
-  match: boolean;
-  hashId: number;
-  fileName: string | null;
-  original: { md5: string | null; sha1: string | null; sha256: string | null; sha512: string | null };
-  current: { md5: string | null; sha1: string | null; sha256: string | null; sha512: string | null };
-  mismatches: string[];
-}
-
-export interface VerifyEvidenceResult {
-  evidenceId: number;
-  totalFiles: number;
-  passed: number;
-  failed: number;
-  results: VerifyFileResult[];
-}
-
-export interface DuplicateCluster {
-  hash: string;
-  hashType: 'md5';
-  files: { id: number; fileName: string | null; evidenceId: number | null; evidenceNumber: string | null; createdAt: string | null }[];
-}
-
-/**
- * Verify the integrity of a single hashed file by recomputing its hashes
- * and comparing against the stored values.
- */
-export async function verifyFileIntegrity(hashRowId: number): Promise<VerifyFileResult> {
-  const db = getDb();
-
-  const row = db.prepare(`
-    SELECT id, evidence_id, attachment_id, file_name, file_path,
-           md5, sha1, sha256, sha512
-    FROM digital_evidence_hashes WHERE id = ?
-  `).get(hashRowId) as any;
-
-  if (!row) throw new Error(`Hash record not found: ${hashRowId}`);
-
-  // Resolve the file path — try stored file_path first, then look up attachments table
-  const uploadsDir = process.env.RMPG_UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
-  let filePath = row.file_path ? path.join(uploadsDir, row.file_path) : null;
-
-  if (!filePath || !fs.existsSync(filePath)) {
-    if (row.attachment_id) {
-      const att = db.prepare('SELECT file_path FROM attachments WHERE id = ?').get(row.attachment_id) as any;
-      if (att?.file_path) {
-        filePath = path.join(uploadsDir, att.file_path);
-      }
-    }
-  }
-
-  if (!filePath || !fs.existsSync(filePath)) {
-    throw new Error(`File not found for hash record ${hashRowId}: ${row.file_name || row.file_path}`);
-  }
-
-  const current = await computeFileHashes(filePath);
-  const mismatches: string[] = [];
-
-  if (row.md5 && current.md5 !== row.md5) mismatches.push('md5');
-  if (row.sha1 && current.sha1 !== row.sha1) mismatches.push('sha1');
-  if (row.sha256 && current.sha256 !== row.sha256) mismatches.push('sha256');
-  if (row.sha512 && current.sha512 !== row.sha512) mismatches.push('sha512');
-
-  return {
-    match: mismatches.length === 0,
-    hashId: row.id,
-    fileName: row.file_name,
-    original: { md5: row.md5, sha1: row.sha1, sha256: row.sha256, sha512: row.sha512 },
-    current: { md5: current.md5, sha1: current.sha1, sha256: current.sha256, sha512: current.sha512 },
-    mismatches,
-  };
-}
-
-/**
- * Verify integrity of all hashed files for a given evidence record.
- */
-export async function verifyEvidenceIntegrity(evidenceId: number): Promise<VerifyEvidenceResult> {
-  const db = getDb();
-
-  const rows = db.prepare(
-    'SELECT id FROM digital_evidence_hashes WHERE evidence_id = ?'
-  ).all(evidenceId) as { id: number }[];
-
-  const results: VerifyFileResult[] = [];
-  let passed = 0;
-  let failed = 0;
-
-  for (const row of rows) {
-    try {
-      const result = await verifyFileIntegrity(row.id);
-      results.push(result);
-      if (result.match) passed++;
-      else failed++;
-    } catch (err: any) {
-      results.push({
-        match: false,
-        hashId: row.id,
-        fileName: null,
-        original: { md5: null, sha1: null, sha256: null, sha512: null },
-        current: { md5: null, sha1: null, sha256: null, sha512: null },
-        mismatches: [`error: ${err.message}`],
-      });
-      failed++;
-    }
-  }
-
-  return { evidenceId, totalFiles: rows.length, passed, failed, results };
-}
-
-// ── Duplicate Hash Detection ────────────────────────────────
-
-/**
- * Find files with duplicate MD5 hashes across all evidence,
- * grouped into clusters with evidence details.
- */
-export function findDuplicateHashes(): DuplicateCluster[] {
-  const db = getDb();
-
-  const dupes = db.prepare(`
-    SELECT md5, COUNT(*) as count
-    FROM digital_evidence_hashes
-    WHERE md5 IS NOT NULL
-    GROUP BY md5
-    HAVING COUNT(*) > 1
-  `).all() as { md5: string; count: number }[];
-
-  const clusters: DuplicateCluster[] = [];
-
-  for (const dupe of dupes) {
-    const files = db.prepare(`
-      SELECT deh.id, deh.file_name, deh.evidence_id, deh.created_at,
-             e.evidence_number
-      FROM digital_evidence_hashes deh
-      LEFT JOIN evidence e ON e.id = deh.evidence_id
-      WHERE deh.md5 = ?
-    `).all(dupe.md5) as any[];
-
-    clusters.push({
-      hash: dupe.md5,
-      hashType: 'md5',
-      files: files.map(f => ({
-        id: f.id,
-        fileName: f.file_name,
-        evidenceId: f.evidence_id,
-        evidenceNumber: f.evidence_number || null,
-        createdAt: f.created_at,
-      })),
-    });
-  }
-
-  return clusters;
-}
-
-// ── Enhanced Usage Statistics ────────────────────────────────
-
-/**
- * Extended usage statistics including queue depth, processing speed,
- * 30-day history, and average processing time.
- */
-export function getEnhancedUsageStats() {
-  const db = getDb();
-  const base = getIpedUsageStats();
-
-  // Queue depth
-  const queued = db.prepare(
-    "SELECT COUNT(*) as count FROM iped_jobs WHERE status = 'queued'"
-  ).get() as { count: number };
-
-  // Processing speed for running jobs: items_processed / elapsed seconds
-  const runningRows = db.prepare(`
-    SELECT items_processed, started_at
-    FROM iped_jobs
-    WHERE status = 'running' AND started_at IS NOT NULL AND items_processed > 0
-  `).all() as { items_processed: number; started_at: string }[];
-
-  let processingSpeed: number | null = null;
-  if (runningRows.length > 0) {
-    const nowMs = Date.now();
-    let totalFilesPerSec = 0;
-    let count = 0;
-    for (const row of runningRows) {
-      const startedMs = new Date(row.started_at).getTime();
-      const elapsedSec = (nowMs - startedMs) / 1000;
-      if (elapsedSec > 0) {
-        totalFilesPerSec += row.items_processed / elapsedSec;
-        count++;
-      }
-    }
-    if (count > 0) processingSpeed = Math.round((totalFilesPerSec / count) * 100) / 100;
-  }
-
-  // 30-day history of completed/failed per day
-  const historyRows = db.prepare(`
-    SELECT date(completed_at) as day, status, COUNT(*) as count
-    FROM iped_jobs
-    WHERE completed_at >= date('now', '-30 days')
-    GROUP BY date(completed_at), status
-    ORDER BY day
-  `).all() as { day: string; status: string; count: number }[];
-
-  // Average processing time in seconds for completed jobs
-  const avgRow = db.prepare(`
-    SELECT AVG(
-      (julianday(completed_at) - julianday(started_at)) * 86400
-    ) as avg_seconds
-    FROM iped_jobs
-    WHERE status = 'completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL
-  `).get() as { avg_seconds: number | null };
-
-  return {
-    ...base,
-    queueDepth: queued?.count || 0,
-    processingSpeed,
-    history: historyRows,
-    avgProcessingTime: avgRow?.avg_seconds != null ? Math.round(avgRow.avg_seconds) : null,
   };
 }

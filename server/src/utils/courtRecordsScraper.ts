@@ -83,7 +83,11 @@ function sleep(ms: number): Promise<void> {
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, '').trim();
+    .replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .trim();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -548,9 +552,9 @@ export function scheduleCourtRecordsScan(): void {
     console.log('[Court Records] Running initial court records scan...');
     await runCourtRecordsScan();
 
-    scanInterval = setInterval(async () => {
+    scanInterval = setInterval(() => {
       console.log('[Court Records] Starting scheduled court records scan...');
-      await runCourtRecordsScan();
+      runCourtRecordsScan().catch(err => console.error('[Court Records] Scan error:', err.message || err));
     }, SCAN_INTERVAL_MS);
 
     if (scanInterval.unref) scanInterval.unref();

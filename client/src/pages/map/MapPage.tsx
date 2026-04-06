@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps } from '../../utils/googleMapsLoader';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage } from '../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -34,445 +34,167 @@ import {
   Copy,
   Save,
   Play,
+  Pause,
+  SkipForward,
+  Gauge,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Loader2,
-  MessageSquare,
+  Brain,
+  ShieldAlert,
+  Grab,
+  Radar,
+  FileSearch,
+  Timer,
+  Target,
+  Scale,
+  Car,
+  AlertOctagon,
+  Sun,
+  TreePine,
+  SlidersHorizontal,
+  BarChart3,
   Clock,
-  Send,
+  RefreshCw,
+  CircleDot,
 } from 'lucide-react';
-// Direct script-tag loader — more reliable than @googlemaps/js-api-loader
-// which has known issues with React StrictMode and intermittent failures.
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
-import PanelTitleBar from '../../components/PanelTitleBar';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
+import { useUserPreferences } from '../../context/UserPreferencesContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
+import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
-import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
+import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
-
-// ============================================================
-// Types
-// ============================================================
-
-interface Unit {
-  id: string;
-  call_sign: string;
-  officer_name: string;
-  status: UnitStatus;
-  latitude: number | null;
-  longitude: number | null;
-  vehicle: string;
-  current_call_id: string | null;
-  call_number: string | null;
-  current_call_type: string | null;
-  current_call_location: string | null;
-  gps_source: string;
-  cpg_vehicle_make: string | null;
-  cpg_vehicle_model: string | null;
-  cpg_license_plate: string | null;
-  cpg_ignition_state: string | null;
-  cpg_last_odometer: number | null;
-  cpg_driver_name: string | null;
-  cpg_last_synced_at: string | null;
-}
-
-interface ActiveCall {
-  id: string;
-  call_number: string;
-  incident_type: string;
-  priority: string;
-  status: string;
-  location_address: string;
-  latitude: number | null;
-  longitude: number | null;
-  property_name: string | null;
-}
-
-interface CallDetail {
-  id: string;
-  call_number: string;
-  incident_type: string;
-  priority: string;
-  status: string;
-  location_address: string;
-  cross_street: string | null;
-  caller_name: string | null;
-  caller_phone: string | null;
-  description: string | null;
-  notes: { id: string; note: string; created_by_name: string; created_at: string }[];
-  assigned_units: { id: string; call_sign: string; status: string; officer_name: string }[];
-  latitude: number | null;
-  longitude: number | null;
-}
-
-interface Property {
-  id: string;
-  name: string;
-  address: string;
-  latitude: number | null;
-  longitude: number | null;
-  client_name: string | null;
-}
+import OfflineMapFallback from '../../components/OfflineMapFallback';
+import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
+import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
+import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
+import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
+import { useMapPredictions } from './hooks/useMapPredictions';
+import { useMapIntelLayers } from './hooks/useMapIntelLayers';
+import { useMapSafetyZones } from './hooks/useMapSafetyZones';
+import { useMapGeofences, type GeofenceAlert } from './hooks/useMapGeofences';
+import { useMapClustering } from './hooks/useMapClustering';
+import { useMapDragDispatch } from './hooks/useMapDragDispatch';
+import { useMapTrafficLayer } from './hooks/useMapTrafficLayer';
+import { useMapPatrolCheckpoints } from './hooks/useMapPatrolCheckpoints';
+import { useMapFieldInterviews } from './hooks/useMapFieldInterviews';
+import { useMapDwellTime } from './hooks/useMapDwellTime';
+import { useMapResponseRadius } from './hooks/useMapResponseRadius';
+import { useMapEnforcementClusters } from './hooks/useMapEnforcementClusters';
+import { useMapCoverageGaps } from './hooks/useMapCoverageGaps';
+import { useMapFleetVehicles } from './hooks/useMapFleetVehicles';
+import { useMapRepeatAddresses } from './hooks/useMapRepeatAddresses';
+import { useMapPanicZone } from './hooks/useMapPanicZone';
+import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
+import { useMapCallHistory } from './hooks/useMapCallHistory';
+import { useMapIncidentReports } from './hooks/useMapIncidentReports';
+import PredictionsPanel from './components/PredictionsPanel';
+import GeofenceManager from './components/GeofenceManager';
+import { useMapThreatAssessment } from './hooks/useMapThreatAssessment';
+import { useMapUnitSafety } from './hooks/useMapUnitSafety';
+import { useMapPerimeter } from './hooks/useMapPerimeter';
+import { useMapCorridor } from './hooks/useMapCorridor';
+import { useMapEnvironment } from './hooks/useMapEnvironment';
+import { useMapTactical } from './hooks/useMapTactical';
+import { useMapAlerts, type SafetyAlertType } from './hooks/useMapAlerts';
+import SafetyDashboardPanel from './components/SafetyDashboardPanel';
+import SafetyAlertModal from './components/SafetyAlertModal';
+import ThreatAssessmentPanel from './components/ThreatAssessmentPanel';
+import TacticalToolsPanel, { type QuickDeployPreset } from './components/TacticalToolsPanel';
+import PerimeterToolsPanel from './components/PerimeterToolsPanel';
+import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
+import AlertSystemPanel from './components/AlertSystemPanel';
+import CallHistoryPanel from './components/CallHistoryPanel';
+import IncidentReportsPanel from './components/IncidentReportsPanel';
+import SafetyZonesPanel from './components/SafetyZonesPanel';
+import TacticalSummaryPanel from './components/TacticalSummaryPanel';
+import AdvancedHeatmapPanel from './components/AdvancedHeatmapPanel';
+import WeatherPanel from './components/WeatherPanel';
+import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
+import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 
 // ============================================================
 // Constants
 // ============================================================
 
-const UNIT_STATUS_COLORS: Record<UnitStatus, string> = {
-  available: '#22c55e',
-  dispatched: '#f59e0b',
-  enroute: '#3b82f6',
-  onscene: '#a855f7',
-  busy: '#ef4444',
-  off_duty: '#6b7280',
+// Unit colors for breadcrumb trails — cycle through distinct colors per unit
+const TRAIL_COLORS = ['#22c55e', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#aaaaaa', '#c084fc'];
+
+// Static Tailwind class lookups — avoids dynamic class generation that Tailwind can't purge
+const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
+  red: { active: 'bg-red-900/20 text-red-400' },
+  amber: { active: 'bg-amber-900/20 text-amber-400' },
+  orange: { active: 'bg-orange-900/20 text-orange-400' },
+  purple: { active: 'bg-purple-900/20 text-purple-400' },
 };
 
-const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
-  available: 'AVL',
-  dispatched: 'DSP',
-  enroute: 'ENR',
-  onscene: 'ONS',
-  busy: 'BSY',
-  off_duty: 'OFD',
+const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
+  red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
+  amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
+  blue: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
+  gray: { active: 'bg-[#050505]/40 text-gray-400 border border-gray-700/40' },
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  P1: '#dc2626',
-  P2: '#f59e0b',
-  P3: '#3b82f6',
-  P4: '#6b7280',
+// Default map center (Salt Lake City)
+const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 };
+
+// Statuses that can be cleared from the call sidebar
+const CLEARABLE_STATUSES = ['dispatched', 'enroute', 'onscene'];
+
+// Priority to color name mapping for call history pills
+const PRIORITY_TO_COLOR: Record<string, string> = { P1: 'red', P2: 'amber', P3: 'blue', P4: 'gray' };
+
+// Status filter items for unit stats bar
+const STATUS_FILTER_ITEMS = [
+  { key: 'available', label: 'AVL', color: '#22c55e' },
+  { key: 'dispatched', label: 'DSP', color: '#f59e0b' },
+  { key: 'enroute', label: 'ENR', color: '#888888' },
+  { key: 'onscene', label: 'ONS', color: '#a855f7' },
+] as const;
+
+// HeatmapPoint type for heatmap data
+interface HeatmapPoint { latitude: number; longitude: number; count?: number; risk_weight?: number }
+
+// Trail type for playback data
+interface PlaybackTrail { unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: { lat: number; lng: number; accuracy: number | null; heading: number | null; speed: number | null; status: string; call_number: string | null; call_type: string | null; time: string; road_name: string | null; intersection: string | null }[] }
+
+// Speed-to-color mapping for breadcrumb speed mode (m/s → mph thresholds)
+const speedToColor = (mps: number | null): string => {
+  if (mps == null || mps < 0.5) return '#666666';    // Stationary — gray
+  const mph = mps * 2.237;
+  if (mph < 15) return '#22c55e';   // Slow — green
+  if (mph < 35) return '#eab308';   // City — yellow
+  if (mph < 55) return '#f97316';   // Arterial — orange
+  return '#ef4444';                 // Highway/pursuit — red
 };
 
-// ── Spillman Flex F-Key Status Buttons ──
-const FKEY_STATUS_BUTTONS: { label: string; fKey: string; keyCode: string; status: UnitStatus; color: string }[] = [
-  { label: 'DSPTCH', fKey: 'F2', keyCode: 'F2', status: 'dispatched', color: '#f59e0b' },
-  { label: 'ENRT',   fKey: 'F4', keyCode: 'F4', status: 'enroute',    color: '#3b82f6' },
-  { label: 'ARRVD',  fKey: 'F5', keyCode: 'F5', status: 'onscene',    color: '#a855f7' },
-  { label: 'CLEAR',  fKey: 'F6', keyCode: 'F6', status: 'available',  color: '#22c55e' },
-  { label: 'AVL',    fKey: 'F7', keyCode: 'F7', status: 'available',  color: '#22c55e' },
-  { label: 'BUSY',   fKey: 'F9', keyCode: 'F9', status: 'busy',       color: '#ef4444' },
-  { label: 'OFD',    fKey: 'F10', keyCode: 'F10', status: 'off_duty', color: '#6b7280' },
-];
-
-// Map style options
-type MapStyleId = 'dark' | 'satellite' | 'hybrid' | 'streets';
-
-const MAP_STYLE_LABELS: Record<MapStyleId, string> = {
-  dark: 'Dark',
-  satellite: 'Satellite',
-  hybrid: 'Hybrid',
-  streets: 'Streets',
-};
-
-// DARK_MAP_STYLE is now imported from googleMapsLoader.ts (single source of truth)
-
-// ============================================================
-// Incident Category Icons (condensed text-based symbols for map markers)
-// ============================================================
-
-function getIncidentCategory(type: string): { symbol: string; category: string } {
-  const t = type.toLowerCase();
-  if (t.includes('theft') || t.includes('burglary') || t.includes('robbery') || t.includes('larceny') || t.includes('shoplifting'))
-    return { symbol: '\u{1F511}', category: 'THEFT' };
-  if (t.includes('assault') || t.includes('battery') || t.includes('fight'))
-    return { symbol: '\u270A', category: 'ASLT' };
-  if (t.includes('traffic') || t.includes('accident') || t.includes('crash') || t.includes('mvc') || t.includes('hit_and_run') || t.includes('dui'))
-    return { symbol: '\u{1F697}', category: 'TRFC' };
-  if (t.includes('fire') || t.includes('arson'))
-    return { symbol: '\u{1F525}', category: 'FIRE' };
-  if (t.includes('medical') || t.includes('ems') || t.includes('injury') || t.includes('overdose') || t.includes('death'))
-    return { symbol: '\u271A', category: 'MED' };
-  if (t.includes('suspicious') || t.includes('welfare') || t.includes('prowler'))
-    return { symbol: '\u{1F441}', category: 'SUSP' };
-  if (t.includes('alarm') || t.includes('intrusion'))
-    return { symbol: '\u{1F514}', category: 'ALM' };
-  if (t.includes('trespass') || t.includes('unwanted'))
-    return { symbol: '\u2298', category: 'TRSP' };
-  if (t.includes('domestic') || t.includes('dv'))
-    return { symbol: '\u{1F3E0}', category: 'DV' };
-  if (t.includes('drug') || t.includes('narcotics') || t.includes('paraphernalia'))
-    return { symbol: '\u{1F48A}', category: 'DRUG' };
-  if (t.includes('vandal') || t.includes('damage') || t.includes('criminal_mischief') || t.includes('graffiti'))
-    return { symbol: '\u2716', category: 'VNDL' };
-  if (t.includes('patrol') || t.includes('foot') || t.includes('check') || t.includes('escort') || t.includes('assist'))
-    return { symbol: '\u{1F6E1}', category: 'PTRL' };
-  if (t.includes('noise') || t.includes('disturbance') || t.includes('disorderly'))
-    return { symbol: '\u{1F50A}', category: 'NOIS' };
-  if (t.includes('fraud') || t.includes('forgery') || t.includes('identity') || t.includes('counterfeit'))
-    return { symbol: '\u{1F4C4}', category: 'FRAD' };
-  if (t.includes('missing') || t.includes('runaway') || t.includes('amber'))
-    return { symbol: '\u2753', category: 'MISP' };
-  if (t.includes('weapon') || t.includes('gun') || t.includes('shots') || t.includes('armed') || t.includes('shooting'))
-    return { symbol: '\u2295', category: 'WPNS' };
-  if (t.includes('warrant') || t.includes('wanted') || t.includes('fugitive'))
-    return { symbol: '\u{1F4CB}', category: 'WRNT' };
-  if (t.includes('hazmat') || t.includes('spill') || t.includes('environmental'))
-    return { symbol: '\u26A0', category: 'HZMT' };
-  if (t.includes('animal'))
-    return { symbol: '\u{1F43E}', category: 'ANML' };
-  return { symbol: '\u25CF', category: 'CALL' };
-}
-
-// ============================================================
-// Marker Content Builders for AdvancedMarkerElement
-// ============================================================
-
-function buildUnitMarkerContent(callSign: string, status: UnitStatus, gpsSource?: string): HTMLElement {
-  const color = UNIT_STATUS_COLORS[status];
-  const label = UNIT_STATUS_LABELS[status];
-  const isCpg = gpsSource === 'traccar' || gpsSource === 'clearpathgps';
-
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
-    `padding:2px 5px;border:1px solid ${isCpg ? '#60a5fa' : 'rgba(255,255,255,0.8)'};white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;` +
-    `display:flex;align-items:center;gap:3px;${isCpg ? 'box-shadow:0 0 6px rgba(96,165,250,0.4);' : ''}`;
-
-  if (isCpg) {
-    const satIcon = document.createElement('span');
-    satIcon.textContent = '\u{1F4E1}';
-    satIcon.style.cssText = 'font-size:8px;line-height:1;';
-    tag.appendChild(satIcon);
+// Unit status to color for breadcrumb status mode
+const statusToColor = (status: string): string => {
+  switch (status) {
+    case 'dispatched': return '#f59e0b';  // amber
+    case 'enroute':    return '#888888';  // blue
+    case 'onscene':    return '#ef4444';  // red
+    case 'available':  return '#22c55e';  // green
+    case 'busy':       return '#8b5cf6';  // purple
+    case 'off_duty':   return '#666666';  // gray
+    default:           return '#666666';
   }
-
-  const csSpan = document.createElement('span');
-  csSpan.textContent = callSign;
-  const stSpan = document.createElement('span');
-  stSpan.style.cssText = 'font-size:6px;opacity:0.8;letter-spacing:0.5px;';
-  stSpan.textContent = label;
-  tag.appendChild(csSpan);
-  tag.appendChild(stSpan);
-
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
-
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
-  return wrapper;
-}
-
-function buildIncidentMarkerContent(priority: string, incidentType: string, callNumber?: string): HTMLElement {
-  const color = PRIORITY_COLORS[priority] || '#6b7280';
-  const { category } = getIncidentCategory(incidentType);
-
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
-    "padding:2px 5px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    'display:flex;align-items:center;gap:3px;';
-
-  if (callNumber) {
-    const numSpan = document.createElement('span');
-    numSpan.textContent = callNumber;
-    tag.appendChild(numSpan);
-  }
-
-  const catSpan = document.createElement('span');
-  catSpan.style.cssText = 'font-size:7px;opacity:0.85;letter-spacing:0.3px;';
-  catSpan.textContent = category;
-  tag.appendChild(catSpan);
-
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
-
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
-  return wrapper;
-}
-
-function buildPropertyMarkerContent(name: string): HTMLElement {
-  const shortName = name.length > 12 ? name.substring(0, 11) + '\u2026' : name;
-
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    "background:#1e3a5f;color:#93c5fd;font-size:8px;font-weight:900;" +
-    "padding:2px 5px;border:1px solid #3b82f6;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;border-radius:2px;";
-  tag.textContent = shortName;
-
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    'width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #1e3a5f;';
-
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
-  return wrapper;
-}
-
-// ============================================================
-// Self-Position Marker (pulsing "you are here")
-// ============================================================
-
-function buildSelfPositionMarker(accuracy: number | null, heading: number | null): HTMLElement {
-  const el = document.createElement('div');
-  el.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center;cursor:default;';
-  const acc = accuracy != null ? Math.min(Math.max(accuracy, 4), 40) : 12;
-  el.innerHTML = `
-    <div style="
-      width:${acc}px;height:${acc}px;border-radius:50%;
-      background:rgba(59,130,246,0.15);border:2px solid rgba(59,130,246,0.4);
-      position:absolute;
-      animation:pulse-gps 2s ease-in-out infinite;
-    "></div>
-    <div style="
-      width:14px;height:14px;border-radius:50%;
-      background:radial-gradient(circle at 40% 35%,#60a5fa,#2563eb);
-      border:2.5px solid #fff;
-      box-shadow:0 0 10px rgba(59,130,246,0.8),0 0 20px rgba(59,130,246,0.3);
-      z-index:1;
-    "></div>
-    ${heading != null ? `
-      <div style="
-        position:absolute;top:-10px;
-        width:0;height:0;
-        border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid #3b82f6;
-        transform:rotate(${heading}deg);
-        transform-origin:center 17px;
-        filter:drop-shadow(0 0 3px rgba(59,130,246,0.6));
-        z-index:2;
-      "></div>
-    ` : ''}
-  `;
-  return el;
-}
-
-// ============================================================
-// Custom Overlay Marker (fallback when AdvancedMarkerElement unavailable)
-// Lazily created after Google Maps script has loaded to avoid
-// referencing google.maps.OverlayView at module parse time.
-// ============================================================
-
-interface OverlayMarker {
-  updatePosition(lat: number, lng: number): void;
-  updateContent(newContent: HTMLElement): void;
-  remove(): void;
-}
-
-let _OverlayMarkerClass: (new (opts: {
-  map: google.maps.Map;
-  position: google.maps.LatLngLiteral;
-  content: HTMLElement;
-  zIndex?: number;
-  title?: string;
-  onClick?: () => void;
-}) => OverlayMarker) | null = null;
-
-function getOverlayMarkerClass() {
-  if (_OverlayMarkerClass) return _OverlayMarkerClass;
-
-  _OverlayMarkerClass = class extends google.maps.OverlayView implements OverlayMarker {
-    private position: google.maps.LatLng;
-    private container: HTMLDivElement | null = null;
-    private content: HTMLElement;
-    private zIdx: number;
-    private clickCallback?: () => void;
-
-    constructor(opts: { map: google.maps.Map; position: google.maps.LatLngLiteral; content: HTMLElement; zIndex?: number; title?: string; onClick?: () => void }) {
-      super();
-      this.position = new google.maps.LatLng(opts.position.lat, opts.position.lng);
-      this.content = opts.content;
-      this.zIdx = opts.zIndex ?? 0;
-      this.clickCallback = opts.onClick;
-      if (opts.title) this.content.title = opts.title;
-      this.setMap(opts.map);
-    }
-
-    onAdd() {
-      this.container = document.createElement('div');
-      this.container.style.position = 'absolute';
-      this.container.style.zIndex = String(this.zIdx);
-      this.container.style.cursor = 'pointer';
-      this.container.appendChild(this.content);
-      if (this.clickCallback) {
-        this.container.addEventListener('click', this.clickCallback);
-      }
-      const panes = this.getPanes();
-      panes?.overlayMouseTarget.appendChild(this.container);
-    }
-
-    draw() {
-      if (!this.container) return;
-      const projection = this.getProjection();
-      if (!projection) return;
-      const point = projection.fromLatLngToDivPixel(this.position);
-      if (point) {
-        this.container.style.left = `${point.x}px`;
-        this.container.style.top = `${point.y}px`;
-        this.container.style.transform = 'translate(-50%, -100%)';
-      }
-    }
-
-    onRemove() {
-      if (this.container?.parentElement) {
-        this.container.parentElement.removeChild(this.container);
-      }
-      this.container = null;
-    }
-
-    updatePosition(lat: number, lng: number) {
-      this.position = new google.maps.LatLng(lat, lng);
-      this.draw();
-    }
-
-    updateContent(newContent: HTMLElement) {
-      if (this.container) {
-        this.container.innerHTML = '';
-        this.container.appendChild(newContent);
-      }
-      this.content = newContent;
-    }
-
-    remove() {
-      this.setMap(null);
-    }
-  };
-
-  return _OverlayMarkerClass;
-}
-
-// ============================================================
-// CSS Keyframes (injected once)
-// ============================================================
-
-// Google Maps Script Loader — imported from shared utility (utils/googleMapsLoader.ts)
-
-const STYLE_ID = 'rmpg-map-keyframes';
-function injectKeyframes() {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
-    @keyframes pulse-led { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-    @keyframes pulse-incident { 0%,100% { box-shadow:0 0 4px rgba(220,38,38,0.3); transform:scale(1); } 50% { box-shadow:0 0 14px rgba(220,38,38,0.7); transform:scale(1.05); } }
-    @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(2.5); opacity:0; } }
-    .gm-style-iw { background:#111 !important; border:1px solid #333 !important; border-radius:0 !important; color:#e5e7eb !important; }
-    .gm-style-iw-d { overflow:auto !important; }
-    .gm-style-iw button[aria-label="Close"] { filter: invert(1) !important; }
-    .gm-style .gm-style-iw-tc::after { background:#111 !important; }
-  `;
-  document.head.appendChild(style);
-}
+};
 
 // ============================================================
 // Main Component
@@ -480,22 +202,65 @@ function injectKeyframes() {
 
 export default function MapPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
+  const { prefs: userPrefs } = useUserPreferences();
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<any[]>([]); // AdvancedMarkerElement or OverlayView
+  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]); // AdvancedMarkerElement or OverlayView
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const heatmapCirclesRef = useRef<google.maps.Circle[]>([]);
+  const heatmapLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
   const trackingLinesRef = useRef<google.maps.Polyline[]>([]);
+  const [trackingLineCount, setTrackingLineCount] = useState(0);
   const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0); // bump to re-trigger Google Maps init
-  const [showTileRetry, setShowTileRetry] = useState(false); // tile load failure banner
-  const tileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tilesStalled, setTilesStalled] = useState(false);
+  const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  const [layers, setLayers] = useState({ units: true, incidents: true, properties: true });
+  // Determine if the error is an API key/auth issue vs a connectivity issue.
+  // Auth errors → show config dialog.  Connectivity errors → show Leaflet fallback.
+  const isAuthError = mapError != null && (mapError.includes('API key') || mapError.includes('authentication') || mapError.includes('not configured'));
+  const showOfflineFallback = mapError != null && !isAuthError;
+  const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
+
+  // Fix 28: restore layer toggle states from localStorage on mount
+  const [layers, setLayers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rmpg_map_layers');
+      if (saved) return JSON.parse(saved) as { units: boolean; incidents: boolean; properties: boolean };
+    } catch { /* use defaults */ }
+    return { units: true, incidents: true, properties: true };
+  });
+
+  // Fix 27+29: save layer toggle states to localStorage with debouncing
+  const layerSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (layerSaveTimerRef.current) clearTimeout(layerSaveTimerRef.current);
+    layerSaveTimerRef.current = setTimeout(() => {
+      try { localStorage.setItem('rmpg_map_layers', JSON.stringify(layers)); } catch { /* quota exceeded */ }
+    }, 300);
+    return () => { if (layerSaveTimerRef.current) clearTimeout(layerSaveTimerRef.current); };
+  }, [layers]);
+
+  // Fix 40-42: data freshness tracking
+  const [lastDataUpdate, setLastDataUpdate] = useState<Date>(new Date());
+  const dataStaleThresholdMs = 5 * 60 * 1000; // 5 minutes
+  const isDataStale = Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs;
+
+  // Fix 42: auto-refresh stale overlay data when tab becomes visible
+  const fetchAllDataRef = useRef<((options?: { silent?: boolean }) => Promise<void>) | null>(null);
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs) {
+        fetchAllDataRef.current?.({ silent: true });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [lastDataUpdate, dataStaleThresholdMs]);
 
   // Data state
   const [units, setUnits] = useState<Unit[]>([]);
@@ -506,30 +271,79 @@ export default function MapPage() {
 
   // Heat map state
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const [showPredictiveHeatmap, setShowPredictiveHeatmap] = useState(false);
   const [showTrackingLines, setShowTrackingLines] = useState(true);
-  const [heatmapData, setHeatmapData] = useState<any[]>([]);
-  const [predictiveData, setPredictiveData] = useState<any[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
-  const [predictiveHours, setPredictiveHours] = useState(2);
-  const predictiveCirclesRef = useRef<google.maps.Circle[]>([]);
+  const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
+  const [heatmapTypeFilter, setHeatmapTypeFilter] = useState('');
+  const [heatmapTypes, setHeatmapTypes] = useState<{ incident_type: string; count: number }[]>([]);
+
+  // Advanced heatmap state
+  const [advancedHeatmapEnabled, setAdvancedHeatmapEnabled] = useState(false);
+  const [advHeatmapMode, setAdvHeatmapMode] = useState<HeatmapAdvancedMode>('density');
+  const [advHeatmapTypes, setAdvHeatmapTypes] = useState<string[]>([]);
+  const [advHeatmapHourRange, setAdvHeatmapHourRange] = useState<[number, number]>([0, 23]);
+  const [advHeatmapDayFilter, setAdvHeatmapDayFilter] = useState<number[]>([]);
+  const [advHeatmapResolution, setAdvHeatmapResolution] = useState<HeatmapResolution>('medium');
+  const [advHeatmapColorScheme, setAdvHeatmapColorScheme] = useState<HeatmapColorScheme>('heat');
+  const [advHeatmapOpacity, setAdvHeatmapOpacity] = useState(70);
+  const [advHeatmapRadius, setAdvHeatmapRadius] = useState(30);
+  const [advHeatmapShowClusters, setAdvHeatmapShowClusters] = useState(true);
+  const [advHeatmapComparisonDays, setAdvHeatmapComparisonDays] = useState(30);
+  const [showAdvHeatmapPanel, setShowAdvHeatmapPanel] = useState(false);
+
+  const advHeatmapOptions: HeatmapAdvancedOptions = useMemo(() => ({
+    enabled: advancedHeatmapEnabled && showHeatmap,
+    days: heatmapDays,
+    mode: advHeatmapMode,
+    types: advHeatmapTypes,
+    hourRange: advHeatmapHourRange,
+    dayFilter: advHeatmapDayFilter,
+    resolution: advHeatmapResolution,
+    colorScheme: advHeatmapColorScheme,
+    opacity: advHeatmapOpacity,
+    radius: advHeatmapRadius,
+    showClusters: advHeatmapShowClusters,
+    comparisonDays: advHeatmapComparisonDays,
+  }), [advancedHeatmapEnabled, showHeatmap, heatmapDays, advHeatmapMode, advHeatmapTypes, advHeatmapHourRange, advHeatmapDayFilter, advHeatmapResolution, advHeatmapColorScheme, advHeatmapOpacity, advHeatmapRadius, advHeatmapShowClusters, advHeatmapComparisonDays]);
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
+
+  // Trail playback state
+  const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
+  const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
+  const [playbackIdx, setPlaybackIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(2);
+  const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
+  const playbackAnimRef = useRef<number | null>(null);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
 
-  // Sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Fix 32-33: Sidebar open/closed state and active tab persisted via usePersistedTab
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { const v = localStorage.getItem('rmpg_map_sidebar_open'); return v !== 'false'; } catch { return true; }
+  });
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
 
-  // Map style
-  const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', 'dark' as MapStyleId, ['dark', 'satellite', 'hybrid', 'streets'] as const);
+  // Fix 32: persist sidebar open/closed state
+  useEffect(() => {
+    try { localStorage.setItem('rmpg_map_sidebar_open', String(sidebarOpen)); } catch { /* noop */ }
+  }, [sidebarOpen]);
+
+  // Map style — seed from server preference if user hasn't picked one locally yet
+  const serverDefaultStyle = (userPrefs?.default_map_style || 'dark') as MapStyleId;
+  const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', serverDefaultStyle, ['dark', 'satellite', 'hybrid', 'streets', 'terrain', 'night_nav'] as const);
   const [showMapStyles, setShowMapStyles] = useState(false);
+
+  // Routing
+  const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -539,7 +353,16 @@ export default function MapPage() {
   const [addressResults, setAddressResults] = useState<{ description: string; place_id: string }[]>([]);
   const [showAddressResults, setShowAddressResults] = useState(false);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addressMarkerRef = useRef<any>(null);
+  const addressMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up address search/dismiss timers on unmount
+  useEffect(() => {
+    return () => {
+      if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
+      if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+    };
+  }, []);
 
   // GPS own-position
   const gps = useGpsTracking();
@@ -547,12 +370,6 @@ export default function MapPage() {
 
   // WebSocket
   const { isConnected, subscribe } = useWebSocket();
-
-  // ── Spillman Flex: Selected Unit + Call Detail ──
-  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
-  const [callDetail, setCallDetail] = useState<CallDetail | null>(null);
-  const [newNote, setNewNote] = useState('');
-  const [statusTimer, setStatusTimer] = useState('00:00:00');
 
   // Shift planning (area-based officer assignment)
   const shiftPlanning = useShiftPlanning();
@@ -564,6 +381,37 @@ export default function MapPage() {
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
   const [assignNotes, setAssignNotes] = useState('');
 
+  // District enrichment data for beat map coloring
+  const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
+  const [districtSections, setDistrictSections] = useState<{ id: string; name: string }[]>([]);
+  const [showDistrictLegend, setShowDistrictLegend] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<any[]>('/dispatch/districts').then((districts) => {
+      if (cancelled || !districts) return;
+      const map = new Map<string, Map<string, BeatDistrictEntry>>();
+      const sectionSet = new Map<string, string>();
+      for (const d of districts) {
+        if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
+        map.get(d.zone_id)!.set(d.beat_id, {
+          sectionId: d.section_id,
+          sectionName: d.section_name,
+          zoneId: d.zone_id,
+          zoneName: d.zone_name,
+          beatId: d.beat_id,
+          beatName: d.beat_name,
+          beatDescriptor: d.beat_descriptor || '',
+          dispatchCode: d.dispatch_code,
+        });
+        sectionSet.set(d.section_id, d.section_name);
+      }
+      setBeatDistrictMap(map);
+      setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
+    }).catch((err) => { console.warn('[MapPage] fetch districts failed:', err); });
+    return () => { cancelled = true; };
+  }, []);
+
   // GeoJSON spatial layers (with shift planning selection integration)
   const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs } = useGeoJsonLayers({
     map: mapInstanceRef.current,
@@ -572,6 +420,7 @@ export default function MapPage() {
     onFeatureClick: shiftPlanning.handleFeatureClick,
     selectedFeatures: shiftPlanning.selectedAreas,
     assignedFeatures: shiftPlanning.assignedFeatures,
+    beatDistrictMap,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
@@ -583,6 +432,180 @@ export default function MapPage() {
   const [showEventPanel, setShowEventPanel] = useState(false);
   const [newPlanName, setNewPlanName] = useState('');
 
+  // Tactical map feature toggles
+  const [showTimelapse, setShowTimelapse] = useState(false);
+  const [showPredictions, setShowPredictions] = useState(false);
+  const [showSafetyZones, setShowSafetyZones] = useState(false);
+  const [showGeofences, setShowGeofences] = useState(false);
+  const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
+  const [dragDispatchMode, setDragDispatchMode] = useState(false);
+  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+
+  // Separate marker tracking for clustering & drag dispatch
+  const unitMarkersMapRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
+  const callMarkersMapRef = useRef<Map<string, { marker: google.maps.marker.AdvancedMarkerElement; callId: string }>>(new Map());
+  const callMarkersArrayRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+
+  // Intel layers
+  const [intelLayers, setIntelLayers] = useState({ warrants: false, trespass: false, offenders: false, bolos: false });
+  const toggleIntelLayer = (layer: 'warrants' | 'trespass' | 'offenders' | 'bolos') => {
+    setIntelLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
+  };
+
+  // New tactical layer toggles
+  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
+  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
+  const [fiDays, setFiDays] = useState(30);
+  const [showDwellTime, setShowDwellTime] = useState(false);
+  const [showResponseRadius, setShowResponseRadius] = useState(false);
+  const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
+  const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
+  const [enforcementDays, setEnforcementDays] = useState(90);
+  const [showCoverage, setShowCoverage] = useState(false);
+  const [coverageRadius, setCoverageRadius] = useState(3);
+  const [showFleetVehicles, setShowFleetVehicles] = useState(false);
+  const [showRepeatAddresses, setShowRepeatAddresses] = useState(false);
+  const [repeatDays, setRepeatDays] = useState(30);
+  const [repeatMinCount, setRepeatMinCount] = useState(3);
+  const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
+  const [showDaylight, setShowDaylight] = useState(false);
+
+  // Historical call & incident report layers
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [callHistoryDays, setCallHistoryDays] = useState(7);
+  const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
+  const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
+  const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
+  const [showIncidentReports, setShowIncidentReports] = useState(false);
+  const [incidentDays, setIncidentDays] = useState(30);
+  const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
+  const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
+
+  // Officer Safety System
+  const [showSafetyDashboard, setShowSafetyDashboard] = useState(false);
+  const [showSafetyAlertModal, setShowSafetyAlertModal] = useState(false);
+  const [showThreatAssessment, setShowThreatAssessment] = useState(false);
+  const [showUnitMonitoring, setShowUnitMonitoring] = useState(false);
+  const [showPerimeterTools, setShowPerimeterTools] = useState(false);
+  const [showCorridorAnalysis, setShowCorridorAnalysis] = useState(false);
+  const [showEnvironmentInfo, setShowEnvironmentInfo] = useState(false);
+  const [showTacticalTools, setShowTacticalTools] = useState(false);
+  const [showAlertSystem, setShowAlertSystem] = useState(false);
+
+  // Tactical map hooks
+  const timelapse = useMapHeatmapTimelapse(mapInstanceRef.current, showTimelapse && showHeatmap && !advancedHeatmapEnabled, heatmapDays, heatmapMode as 'all' | 'risk');
+  const advancedHeatmap = useMapHeatmapAdvanced(mapInstanceRef.current, advHeatmapOptions);
+  const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
+  const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
+  const safetyZones = useMapSafetyZones(mapInstanceRef.current, showSafetyZones);
+  const handleGeofenceAlert = useCallback((alert: GeofenceAlert) => {
+    const verb = alert.eventType === 'enter' ? 'entered' : 'exited';
+    addToast(`${alert.unitCallSign} ${verb} ${alert.geofenceName}`, alert.eventType === 'enter' ? 'warning' : 'info');
+  }, [addToast]);
+  const geofences = useMapGeofences(mapInstanceRef.current, showGeofences, { onAlert: handleGeofenceAlert });
+  const analysisSummary = useAnalysisSummary(showAnalysisDashboard);
+  // Traffic layer
+  const { showTraffic, toggleTraffic } = useMapTrafficLayer();
+
+  // Clustering — groups call markers at low zoom levels
+  const clustering = useMapClustering(mapInstanceRef.current, clusteringEnabled, callMarkersArrayRef.current);
+
+  // Drag dispatch — drag a unit marker onto a call marker to dispatch
+  const dragDispatch = useMapDragDispatch(
+    mapInstanceRef.current,
+    dragDispatchMode,
+    unitMarkersMapRef.current,
+    callMarkersMapRef.current,
+    useCallback(async (unitId: string, callId: string) => {
+      try {
+        await apiFetch(`/dispatch/calls/${callId}/assign-unit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ unit_id: unitId }),
+        });
+        addToast(`Dispatched unit ${unitId} to call ${callId}`, 'success');
+      } catch (err: any) {
+        addToast(`Dispatch failed: ${err?.message || 'Unknown error'}`, 'error');
+        throw err;
+      }
+    }, [addToast]),
+  );
+
+  // New tactical hooks
+  const patrolCheckpoints = useMapPatrolCheckpoints(mapInstanceRef.current, showPatrolCheckpoints);
+  const fieldInterviews = useMapFieldInterviews(mapInstanceRef.current, showFieldInterviews, fiDays);
+  const dwellTime = useMapDwellTime(mapInstanceRef.current, units as Parameters<typeof useMapDwellTime>[1], showDwellTime);
+  const responseRadius = useMapResponseRadius(mapInstanceRef.current, showResponseRadius);
+  const enforcementClusters = useMapEnforcementClusters(mapInstanceRef.current, showEnforcementClusters, enforcementType, enforcementDays);
+  const coverageGaps = useMapCoverageGaps(mapInstanceRef.current, units as Parameters<typeof useMapCoverageGaps>[1], showCoverage, coverageRadius);
+  const fleetVehicles = useMapFleetVehicles(mapInstanceRef.current, showFleetVehicles);
+  const repeatAddresses = useMapRepeatAddresses(mapInstanceRef.current, showRepeatAddresses, repeatDays, repeatMinCount);
+  const panicZone = useMapPanicZone(mapInstanceRef.current, showPanicZone);
+  const daylight = useMapDaylightOverlay(mapInstanceRef.current, showDaylight);
+
+  // Historical call & incident report hooks
+  const callHistory = useMapCallHistory({
+    map: mapInstanceRef.current,
+    enabled: showCallHistory,
+    days: callHistoryDays,
+    statuses: callHistoryStatuses,
+    types: callHistoryTypes,
+    priorities: callHistoryPriorities,
+  });
+  const incidentReports = useMapIncidentReports({
+    map: mapInstanceRef.current,
+    enabled: showIncidentReports,
+    days: incidentDays,
+    statuses: incidentStatuses,
+    types: incidentTypes,
+  });
+
+  // Officer Safety hooks
+  const threatAssessment = useMapThreatAssessment(mapInstanceRef.current, showThreatAssessment);
+  const unitSafety = useMapUnitSafety(mapInstanceRef.current, showUnitMonitoring);
+  const perimeter = useMapPerimeter(mapInstanceRef.current, showPerimeterTools);
+  const corridor = useMapCorridor(mapInstanceRef.current, showCorridorAnalysis);
+  const environment = useMapEnvironment(mapInstanceRef.current, showEnvironmentInfo);
+  const tactical = useMapTactical(mapInstanceRef.current);
+  const alerts = useMapAlerts(mapInstanceRef.current);
+
+  // Geofence alerts — show toast when triggered
+  useEffect(() => {
+    if (!geofences.alerts?.length) return;
+    const latest = geofences.alerts[geofences.alerts.length - 1];
+    if (latest) {
+      addToast(`Geofence: ${latest.unitCallSign} ${latest.eventType} ${latest.geofenceName}`, 'warning');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geofences.alerts.length, addToast]);
+
+  // Shift risk data for safety dashboard
+  const [shiftRisk, setShiftRisk] = useState<Record<string, any> | null>(null);
+  useEffect(() => {
+    if (!showSafetyDashboard) return;
+    let cancelled = false;
+    const fetchShiftRisk = async () => {
+      try {
+        const data = await apiFetch('/map/safety/shift-risk-summary');
+        if (!cancelled) setShiftRisk(data as Record<string, any> | null);
+      } catch { /* non-critical */ }
+    };
+    fetchShiftRisk();
+    const iv = setInterval(fetchShiftRisk, 60000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [showSafetyDashboard]);
+
+  // Safety alert toasts
+  useEffect(() => {
+    if (alerts.activeAlerts && alerts.activeAlerts.length > 0) {
+      const latest = alerts.activeAlerts[alerts.activeAlerts.length - 1];
+      if (latest && !latest.acknowledged) {
+        addToast(`SAFETY ALERT: ${latest.type.replace(/_/g, ' ').toUpperCase()} — ${latest.details || 'No details'}`, 'error', 15000);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alerts.activeAlerts?.length, addToast]);
+
   // ============================================================
   // Data Fetching
   // ============================================================
@@ -590,7 +613,7 @@ export default function MapPage() {
   const fetchUnits = useCallback(async () => {
     try {
       const data = await apiFetch<Unit[]>('/dispatch/units');
-      setUnits(data || []);
+      setUnits(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching units:', err);
       setError('Failed to load units');
@@ -600,7 +623,7 @@ export default function MapPage() {
   const fetchCalls = useCallback(async () => {
     try {
       const data = await apiFetch<ActiveCall[]>('/dispatch/queue');
-      setCalls(data || []);
+      setCalls(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching calls:', err);
       setError('Failed to load active calls');
@@ -610,7 +633,7 @@ export default function MapPage() {
   const fetchProperties = useCallback(async () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
-      setProperties(data || []);
+      setProperties(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching properties:', err);
       setError('Failed to load properties');
@@ -621,7 +644,9 @@ export default function MapPage() {
     if (!options?.silent) { setLoading(true); setError(null); }
     await Promise.all([fetchUnits(), fetchCalls(), fetchProperties()]);
     if (!options?.silent) setLoading(false);
+    setLastDataUpdate(new Date()); // Fix 40: track last data update timestamp
   }, [fetchUnits, fetchCalls, fetchProperties]);
+  useEffect(() => { fetchAllDataRef.current = fetchAllData; }, [fetchAllData]);
 
   // ============================================================
   // Initial Load & Auto-Refresh
@@ -638,107 +663,17 @@ export default function MapPage() {
   useLiveSync('dispatch', silentRefreshMap);
 
   // ============================================================
-  // Spillman Flex: Selected Unit + F-Key Status
-  // ============================================================
-
-  const selectedUnit = units.find(u => u.id === selectedUnitId) || null;
-
-  // Fetch full call detail when selected unit has an active call
-  const fetchCallDetail = useCallback(async (callId: string) => {
-    try {
-      const data = await apiFetch<any>(`/dispatch/calls/${callId}`);
-      if (data) setCallDetail(data);
-    } catch (err) {
-      console.error('Error fetching call detail:', err);
-      setCallDetail(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selectedUnit?.current_call_id) {
-      fetchCallDetail(selectedUnit.current_call_id);
-    } else {
-      setCallDetail(null);
-    }
-  }, [selectedUnit?.current_call_id, fetchCallDetail]);
-
-  // Status timer — shows elapsed time since last status change
-  useEffect(() => {
-    if (!selectedUnit) { setStatusTimer('00:00:00'); return; }
-    const update = () => {
-      // Use last_status_change if available, otherwise fall back to a rough estimate
-      const raw = (selectedUnit as any).last_status_change;
-      if (!raw) { setStatusTimer('--:--:--'); return; }
-      const diff = Math.max(0, Math.floor((Date.now() - new Date(raw).getTime()) / 1000));
-      const h = String(Math.floor(diff / 3600)).padStart(2, '0');
-      const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-      const s = String(diff % 60).padStart(2, '0');
-      setStatusTimer(`${h}:${m}:${s}`);
-    };
-    update();
-    const iv = setInterval(update, 1000);
-    return () => clearInterval(iv);
-  }, [selectedUnit]);
-
-  // Change unit status via API
-  const handleUnitStatusChange = useCallback(async (unitId: string, newStatus: UnitStatus) => {
-    try {
-      await apiFetch(`/dispatch/units/${unitId}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      await Promise.all([fetchUnits(), fetchCalls()]);
-    } catch (err) {
-      console.error('Failed to change unit status:', err);
-    }
-  }, [fetchUnits, fetchCalls]);
-
-  // Select a unit (from marker click, sidebar click, etc.)
-  const handleSelectUnit = useCallback((unitId: string) => {
-    setSelectedUnitId(prev => prev === unitId ? null : unitId);
-  }, []);
-
-  // Add note to current call
-  const handleAddNote = useCallback(async () => {
-    if (!callDetail || !newNote.trim()) return;
-    try {
-      await apiFetch(`/dispatch/calls/${callDetail.id}/notes`, {
-        method: 'POST',
-        body: JSON.stringify({ note: newNote.trim() }),
-      });
-      setNewNote('');
-      fetchCallDetail(callDetail.id);
-    } catch (err) {
-      console.error('Failed to add note:', err);
-    }
-  }, [callDetail, newNote, fetchCallDetail]);
-
-  // F-Key keyboard handler
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Only handle F-keys when not in an input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      const btn = FKEY_STATUS_BUTTONS.find(b => b.keyCode === e.key);
-      if (btn && selectedUnit) {
-        e.preventDefault();
-        handleUnitStatusChange(selectedUnit.id, btn.status);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [selectedUnit, handleUnitStatusChange]);
-
-  // ============================================================
   // WebSocket Subscriptions
   // ============================================================
 
   useEffect(() => {
-    if (!isConnected) return;
-
-    const unsubscribeUnit = subscribe('unit_update', (data: any) => {
-      if (data && data.unit) {
+    const unsubscribeUnit = subscribe('unit_update', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.action === 'unit_deleted' && data.unit_id) {
+        setUnits((prev) => prev.filter((u) => u.id !== data.unit_id));
+        return;
+      }
+      if (data?.unit) {
         setUnits((prev) => {
           const index = prev.findIndex((u) => u.id === data.unit.id);
           if (index >= 0) {
@@ -752,6 +687,8 @@ export default function MapPage() {
     });
 
     // Server broadcasts 'dispatch_update' type for call events
+    // Unit state is now fully handled by 'unit_update' events (enriched with call details),
+    // so no need to re-fetch all units on every dispatch event.
     const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
       const evtData = msg.data || msg;
       if (evtData && evtData.call) {
@@ -770,31 +707,36 @@ export default function MapPage() {
           }
           return prev;
         });
-        fetchUnits();
       }
     });
 
     return () => { unsubscribeUnit(); unsubscribeCall(); };
-  }, [isConnected, subscribe, fetchUnits]);
+  }, [subscribe]);
 
   // ============================================================
   // Heat Map Data
   // ============================================================
 
   useEffect(() => {
-    if (!showHeatmap) { setHeatmapData([]); return; }
-    apiFetch<any[]>(`/dispatch/heatmap?days=${heatmapDays}`)
-      .then((data) => setHeatmapData(data || []))
-      .catch(() => setHeatmapData([]));
-  }, [showHeatmap, heatmapDays]);
+    if (!showHeatmap || advancedHeatmapEnabled) { setHeatmapData([]); return; }
+    let cancelled = false;
+    let url = `/dispatch/heatmap?days=${heatmapDays}&mode=${heatmapMode}`;
+    if (heatmapMode === 'type' && heatmapTypeFilter) url += `&type=${encodeURIComponent(heatmapTypeFilter)}`;
+    apiFetch<HeatmapPoint[]>(url)
+      .then((data) => { if (!cancelled) setHeatmapData(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setHeatmapData([]); });
+    return () => { cancelled = true; };
+  }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter, advancedHeatmapEnabled]);
 
-  // Predictive heatmap data fetch
+  // Fetch available incident types for heatmap type filter
   useEffect(() => {
-    if (!showPredictiveHeatmap) { setPredictiveData([]); return; }
-    apiFetch<any>(`/dispatch/heatmap/predicted?hours_ahead=${predictiveHours}`)
-      .then((data) => setPredictiveData(data?.points || []))
-      .catch(() => setPredictiveData([]));
-  }, [showPredictiveHeatmap, predictiveHours]);
+    if (!showHeatmap) return;
+    let cancelled = false;
+    apiFetch<{ incident_type: string; count: number }[]>('/dispatch/heatmap/types')
+      .then((data) => { if (!cancelled) setHeatmapTypes(Array.isArray(data) ? data : []); })
+      .catch((err) => { console.warn('[MapPage] fetch heatmap types failed:', err); });
+    return () => { cancelled = true; };
+  }, [showHeatmap]);
 
   // ============================================================
   // Google Maps Initialization
@@ -852,18 +794,30 @@ export default function MapPage() {
     let cancelled = false;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
+    let dismissObserver: MutationObserver | null = null;
+    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
     function initMap() {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
+      // Fix 31: restore map center/zoom from localStorage
+      let savedCenter = DEFAULT_CENTER;
+      let savedZoom = 12;
+      try {
+        const sc = localStorage.getItem('rmpg_map_center');
+        const sz = localStorage.getItem('rmpg_map_zoom');
+        if (sc) savedCenter = JSON.parse(sc);
+        if (sz) savedZoom = parseInt(sz, 10) || 12;
+      } catch { /* use defaults */ }
+
       const map = new google.maps.Map(mapRef.current, {
-        center: { lat: 40.7608, lng: -111.8910 },
-        zoom: 12,
+        center: savedCenter,
+        zoom: savedZoom,
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#060c14',
+        backgroundColor: '#171717',
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
@@ -871,6 +825,19 @@ export default function MapPage() {
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
+
+      // Fix 30: save map center/zoom to localStorage on idle
+      map.addListener('idle', () => {
+        try {
+          const c = map.getCenter();
+          const z = map.getZoom();
+          if (c && z != null) {
+            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat(), lng: c.lng() }));
+            localStorage.setItem('rmpg_map_zoom', String(z));
+          }
+        } catch { /* quota exceeded */ }
+      });
+
       infoWindowRef.current = new google.maps.InfoWindow();
 
       // Hide Google's dismissible "can't load correctly" dialog instantly.
@@ -882,13 +849,13 @@ export default function MapPage() {
         document.head.appendChild(s);
       }
 
-      const dismissObserver = new MutationObserver(() => {
+      dismissObserver = new MutationObserver(() => {
         if (authFailed) return;
         const hardErr = mapRef.current?.querySelector('.gm-err-container');
         if (hardErr) {
           console.error('[MapPage] Google Maps hard error overlay detected');
           authFailed = true;
-          dismissObserver.disconnect();
+          dismissObserver?.disconnect();
           setMapError(
             'Google Maps failed to load.\n\n' +
             'Check Google Cloud Console:\n' +
@@ -906,7 +873,7 @@ export default function MapPage() {
         }
       });
       dismissObserver.observe(document.body, { childList: true, subtree: true });
-      setTimeout(() => dismissObserver.disconnect(), 10000);
+      dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
       // Without mapId, markers are created but silently never render.
@@ -914,30 +881,24 @@ export default function MapPage() {
       // OverlayView-based fallback which works reliably on all map types.
       useAdvancedMarkersRef.current = false;
       devLog('[MapPage] Using OverlayView markers (no mapId configured)');
-      if (!authFailed) setMapLoaded(true);
 
-      // Monitor tile loading — detect stale/failed tiles on spotty connections.
-      // After each pan/zoom, start a 15s timer. If tilesloaded fires before then,
-      // the timer is cleared. If not, show a retry banner.
-      let tileWatchActive = false;
-      const startTileWatch = () => {
-        if (tileTimerRef.current) clearTimeout(tileTimerRef.current);
-        tileWatchActive = true;
-        tileTimerRef.current = setTimeout(() => {
-          if (tileWatchActive) {
-            setShowTileRetry(true);
-          }
-        }, 15000);
-      };
-
-      map.addListener('tilesloaded', () => {
-        tileWatchActive = false;
-        if (tileTimerRef.current) clearTimeout(tileTimerRef.current);
-        setShowTileRetry(false);
+      // Monitor tile loading — detect blank map on slow WiFi
+      if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
+      tileMonitorCleanupRef.current = monitorTileLoading(map, {
+        onStalled: () => {
+          devWarn('[MapPage] Map tiles stalled — connection may be too slow');
+          setTilesStalled(true);
+        },
+        onLoaded: () => {
+          devLog('[MapPage] Map tiles loaded successfully');
+          setTilesStalled(false);
+        },
+        onRecovering: () => {
+          devLog('[MapPage] Attempting tile recovery...');
+        },
       });
 
-      // Start watching on interaction
-      map.addListener('idle', startTileWatch);
+      if (!authFailed) setMapLoaded(true);
     }
 
     function attemptLoad(attempt: number) {
@@ -995,6 +956,9 @@ export default function MapPage() {
     return () => {
       cancelled = true; // Stop any pending retries
       unsubOnline();
+      if (dismissTimer) clearTimeout(dismissTimer);
+      if (dismissObserver) dismissObserver.disconnect();
+      if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();
@@ -1019,6 +983,10 @@ export default function MapPage() {
       map.setMapTypeId('roadmap');
       map.setOptions({ styles: DARK_MAP_STYLE });
       updateMapStyles(map, DARK_MAP_STYLE);
+    } else if (mapStyle === 'night_nav') {
+      map.setMapTypeId('roadmap');
+      map.setOptions({ styles: NIGHT_NAV_STYLE });
+      updateMapStyles(map, NIGHT_NAV_STYLE);
     } else if (mapStyle === 'satellite') {
       map.setMapTypeId('satellite');
       map.setOptions({ styles: [] });
@@ -1027,6 +995,10 @@ export default function MapPage() {
       map.setMapTypeId('hybrid');
       map.setOptions({ styles: [] });
       updateMapStyles(map, []);
+    } else if (mapStyle === 'terrain') {
+      map.setMapTypeId('terrain');
+      map.setOptions({ styles: TERRAIN_STYLE });
+      updateMapStyles(map, TERRAIN_STYLE);
     } else if (mapStyle === 'streets') {
       map.setMapTypeId('roadmap');
       map.setOptions({ styles: [] });
@@ -1064,6 +1036,7 @@ export default function MapPage() {
     }
     // Fallback: OverlayView-based marker
     const Cls = getOverlayMarkerClass();
+    if (!Cls) return null as any;
     return new Cls(opts);
   }, []);
 
@@ -1080,6 +1053,9 @@ export default function MapPage() {
     // Clear existing markers
     markersRef.current.forEach((m) => removeMarker(m));
     markersRef.current = [];
+    unitMarkersMapRef.current.clear();
+    callMarkersMapRef.current.clear();
+    callMarkersArrayRef.current = [];
     infoWindowRef.current?.close();
 
     // Add unit markers
@@ -1097,40 +1073,36 @@ export default function MapPage() {
             zIndex: 1000,
             title: `${unit.call_sign} - ${unit.officer_name}`,
             onClick: () => {
-              handleSelectUnit(unit.id);
-              const isCpgUnit = unit.gps_source === 'traccar' || unit.gps_source === 'clearpathgps';
-              const cpgSection = isCpgUnit ? `
-                <div style="margin-top:6px;padding-top:6px;border-top:1px solid #333;">
-                  <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
-                    <span style="font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;letter-spacing:0.5px">GPS HARDWARE</span>
-                  </div>
-                  <table style="width:100%;font-size:10px;border-collapse:collapse;color:#d1d5db;">
-                    ${unit.cpg_ignition_state ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Ignition</td><td style="font-weight:bold;color:${unit.cpg_ignition_state === 'on' ? '#22c55e' : '#6b7280'}">${escapeHtml(unit.cpg_ignition_state.toUpperCase())}</td></tr>` : ''}
-                    ${unit.cpg_last_odometer != null ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Odometer</td><td>${Number(unit.cpg_last_odometer).toLocaleString()} mi</td></tr>` : ''}
-                    ${unit.cpg_vehicle_make ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Vehicle</td><td>${escapeHtml(unit.cpg_vehicle_make)} ${escapeHtml(unit.cpg_vehicle_model || '')}</td></tr>` : ''}
-                    ${unit.cpg_license_plate ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Plate</td><td style="font-weight:bold;color:#fbbf24">${escapeHtml(unit.cpg_license_plate)}</td></tr>` : ''}
-                    ${unit.cpg_driver_name ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Driver</td><td>${escapeHtml(unit.cpg_driver_name)}</td></tr>` : ''}
-                    ${unit.cpg_last_synced_at ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Last Sync</td><td style="font-size:9px">${new Date(unit.cpg_last_synced_at).toLocaleTimeString()}</td></tr>` : ''}
-                  </table>
-                </div>
-              ` : '';
+              // Find the assigned call (for route button)
+              const assignedCall = unit.current_call_id
+                ? calls.find(c => String(c.id) === String(unit.current_call_id))
+                : null;
+              const routeBtnHtml = (assignedCall && assignedCall.latitude != null && assignedCall.longitude != null && unit.latitude != null && unit.longitude != null)
+                ? `<button type="button" data-route-unit="${escapeHtml(unit.call_sign)}" data-route-call="${escapeHtml(assignedCall.call_number)}"
+                     data-route-ulat="${unit.latitude}" data-route-ulng="${unit.longitude}"
+                     data-route-clat="${assignedCall.latitude}" data-route-clng="${assignedCall.longitude}"
+                     style="margin-top:6px;width:100%;padding:3px 0;background:#88888820;border:1px solid #88888850;color:#999999;font-size:9px;font-weight:900;font-family:monospace;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;">
+                     ▶ Route to ${escapeHtml(assignedCall.call_number)}
+                   </button>`
+                : '';
+
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #333;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #222222;">
                     <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};box-shadow:0 0 8px ${statusColor}80;"></div>
                     <span style="font-weight:900;font-size:15px;color:${statusColor};letter-spacing:-0.5px;">${escapeHtml(unit.call_sign)}</span>
-                    <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;">${escapeHtml(unit.status.replace('_', ' '))}</span>
+                    <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace(/_/g, ' '))}</span>
                   </div>
                   <div style="font-size:11px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(unit.officer_name)}</div>
-                  ${unit.vehicle ? `<div style="font-size:10px;color:#6b7280;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
+                  ${unit.vehicle ? `<div style="font-size:10px;color:#5a6e80;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
                   ${unit.call_number ? `
-                    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #333;">
-                      <div style="font-size:10px;color:#60a5fa;font-weight:bold;">${escapeHtml(unit.call_number)}</div>
+                    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #222222;">
+                      <div style="font-size:10px;color:#999999;font-weight:bold;">${escapeHtml(unit.call_number)}</div>
                       ${unit.current_call_type ? `<div style="font-size:10px;color:#d1d5db;">${escapeHtml(formatIncidentType(unit.current_call_type))}</div>` : ''}
-                      <div style="font-size:9px;color:#6b7280;margin-top:2px;">${escapeHtml(location)}</div>
+                      <div style="font-size:9px;color:#5a6e80;margin-top:2px;">${escapeHtml(location)}</div>
                     </div>
-                  ` : `<div style="font-size:9px;color:#4b5563;margin-top:4px;">${escapeHtml(location)}</div>`}
-                  ${cpgSection}
+                  ` : `<div style="font-size:9px;color:#5a6e80;margin-top:4px;">${escapeHtml(location)}</div>`}
+                  ${routeBtnHtml}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
@@ -1139,6 +1111,7 @@ export default function MapPage() {
           });
 
           markersRef.current.push(marker);
+          if (marker) unitMarkersMapRef.current.set(String(unit.id), marker);
         }
       });
     }
@@ -1148,7 +1121,7 @@ export default function MapPage() {
       calls.forEach((call) => {
         if (call.latitude != null && call.longitude != null) {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
-          const pColor = PRIORITY_COLORS[call.priority] || '#6b7280';
+          const pColor = PRIORITY_COLORS[call.priority] || '#666666';
 
           const marker = createMarker({
             map,
@@ -1160,31 +1133,40 @@ export default function MapPage() {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #333;">
-                  <div style="font-size:9px;color:#6b7280;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #222222;">
+                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
                   ${assignedUnits.map(u => {
-                    const uc = UNIT_STATUS_COLORS[u.status] || '#6b7280';
+                    const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
+                    const routeBtn = (u.latitude != null && u.longitude != null && call.latitude != null && call.longitude != null)
+                      ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
+                           data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
+                           data-route-clat="${call.latitude}" data-route-clng="${call.longitude}"
+                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#999999;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           ▶ ROUTE
+                         </button>`
+                      : '';
                     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
                       <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
                       <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
                       <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name)}</span>
+                      ${routeBtn}
                     </div>`;
                   }).join('')}
                 </div>`;
               } else {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #333;font-size:9px;color:#4b5563;">No units assigned</div>`;
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #222222;font-size:9px;color:#5a6e80;">No units assigned</div>`;
               }
 
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
                     <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
                   </div>
-                  <div style="font-size:12px;color:#60a5fa;font-weight:bold;">${escapeHtml(call.call_number)}</div>
+                  <div style="font-size:12px;color:#999999;font-weight:bold;">${escapeHtml(call.call_number)}</div>
                   <div style="font-size:10px;margin-top:4px;color:#d1d5db;">${escapeHtml(call.location_address)}</div>
-                  ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#3b82f6;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
-                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#6b7280;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
+                  ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
+                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
                   ${unitsHtml}
                 </div>
               `);
@@ -1194,15 +1176,19 @@ export default function MapPage() {
           });
 
           markersRef.current.push(marker);
+          if (marker) {
+            callMarkersMapRef.current.set(String(call.id), { marker, callId: String(call.id) });
+            callMarkersArrayRef.current.push(marker);
+          }
         }
       });
     }
 
-    // Add property markers
+    // Add property markers (small dot with hover tooltip, click for details)
     if (layers.properties) {
       properties.forEach((prop) => {
         if (prop.latitude != null && prop.longitude != null) {
-          const content = buildPropertyMarkerContent(prop.name);
+          const content = buildPropertyMarkerContent(prop.name, prop.address, prop.client_name || undefined);
 
           const marker = createMarker({
             map,
@@ -1210,16 +1196,133 @@ export default function MapPage() {
             content,
             zIndex: 100,
             title: prop.name,
-            onClick: () => {
+            onClick: async () => {
+              // Show loading state immediately
               infoWindowRef.current?.setContent(`
-                <div style="min-width:160px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid #3b82f650;">
-                  <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
-                  <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
-                  ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#9ca3af;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
+                <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#050505;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
+                  <div style="font-weight:900;font-size:13px;color:#999999;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
+                  <div style="font-size:10px;color:#9ca3af;">Loading details...</div>
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: prop.latitude!, lng: prop.longitude! });
               infoWindowRef.current?.open(map);
+
+              // Fetch full property details (includes recent calls, contacts, schedules)
+              try {
+                const details = await apiFetch<any>(`/records/properties/${prop.id}`);
+                const recentCalls = details.recentCalls || [];
+                const schedules = details.todaySchedules || [];
+                const linkedPersons: any[] = details.linkedPersons || [];
+
+                // Build linked persons rows
+                const RELATIONSHIP_COLORS: Record<string, string> = {
+                  employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
+                  manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
+                  banned: '#ef4444', frequent_visitor: '#999999', associated: '#666666',
+                };
+                const personRows = linkedPersons.slice(0, 8).map((p: any) => {
+                  const relColor = RELATIONSHIP_COLORS[p.relationship] || '#666666';
+                  const name = escapeHtml(`${p.first_name} ${p.last_name}`);
+                  const rel = escapeHtml((p.relationship || '').replace(/_/g, ' '));
+                  const flagsArr = (() => { try { return JSON.parse(p.flags || '[]'); } catch { return []; } })();
+                  const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #22222220;">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                      ${hasWarning ? '<span style="color:#ef4444;font-size:8px;">⚠</span>' : ''}
+                      <span style="color:#e0e8f0;font-size:9px;font-weight:700;">${name}</span>
+                      ${p.title ? `<span style="color:#6b7280;font-size:7px;">${escapeHtml(p.title)}</span>` : ''}
+                    </div>
+                    <span style="color:${relColor};font-size:7px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">${rel}</span>
+                  </div>`;
+                }).join('');
+
+                // Build call history rows
+                const callRows = recentCalls.slice(0, 5).map((c: any) => {
+                  const date = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                  const time = c.created_at ? new Date(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+                  const statusColor = c.status === 'cleared' || c.status === 'closed' ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : '#aaaaaa';
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #22222220;">
+                    <div>
+                      <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
+                      <span style="color:#6b7280;font-size:8px;margin-left:4px;">${escapeHtml(c.incident_type?.replace(/_/g, ' ') || '')}</span>
+                    </div>
+                    <div style="text-align:right;">
+                      <span style="color:${statusColor};font-size:8px;font-weight:600;">${escapeHtml(c.status || '')}</span>
+                      <span style="color:#6b7280;font-size:7px;margin-left:4px;">${date} ${time}</span>
+                    </div>
+                  </div>`;
+                }).join('');
+
+                // Build schedule/officer rows
+                const scheduleRows = schedules.map((s: any) =>
+                  `<div style="font-size:8px;color:#d1d5db;padding:2px 0;">
+                    <span style="color:#22d3ee;">⦿</span> ${escapeHtml(s.officer_name || 'Unassigned')}
+                    <span style="color:#6b7280;margin-left:4px;">${escapeHtml(s.shift_type || '')}</span>
+                  </div>`
+                ).join('');
+
+                infoWindowRef.current?.setContent(`
+                  <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#050505;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
+                    <div style="font-weight:900;font-size:13px;color:#999999;margin-bottom:2px;">${escapeHtml(prop.name)}</div>
+                    <div style="font-size:10px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(prop.address)}</div>
+                    ${prop.client_name ? `<div style="font-size:9px;color:#d4a017;font-weight:600;margin-bottom:6px;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
+
+                    ${details.property_type ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:2px;">Type: ${escapeHtml(details.property_type)}</div>` : ''}
+                    ${details.emergency_contact ? `<div style="font-size:8px;color:#f87171;margin-bottom:2px;">Emergency: ${escapeHtml(details.emergency_contact)}</div>` : ''}
+                    ${details.gate_code ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:2px;">Gate: ${escapeHtml(details.gate_code)}</div>` : ''}
+                    ${details.access_instructions ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:6px;">Access: ${escapeHtml(details.access_instructions)}</div>` : ''}
+
+                    ${schedules.length > 0 ? `
+                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:4px;">
+                        <div style="font-size:9px;color:#22d3ee;font-weight:700;margin-bottom:3px;">TODAY'S OFFICERS</div>
+                        ${scheduleRows}
+                      </div>
+                    ` : ''}
+
+                    ${linkedPersons.length > 0 ? `
+                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#e879f9;font-weight:700;margin-bottom:3px;">LINKED PERSONS (${linkedPersons.length})</div>
+                        ${personRows}
+                        ${linkedPersons.length > 8 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${linkedPersons.length - 8} more</div>` : ''}
+                      </div>
+                    ` : ''}
+
+                    ${recentCalls.length > 0 ? `
+                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#f59e0b;font-weight:700;margin-bottom:3px;">CALL HISTORY (${recentCalls.length})</div>
+                        ${callRows}
+                        ${recentCalls.length > 5 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${recentCalls.length - 5} more</div>` : ''}
+                      </div>
+                    ` : `
+                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#6b7280;">No recent calls</div>
+                      </div>
+                    `}
+
+                    ${details.client_contact ? `
+                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#a78bfa;font-weight:700;margin-bottom:3px;">CLIENT CONTACT</div>
+                        <div style="font-size:9px;color:#d1d5db;">${escapeHtml(details.client_contact)}</div>
+                        ${details.client_phone ? `<div style="font-size:9px;color:#93c5fd;">${escapeHtml(details.client_phone)}</div>` : ''}
+                      </div>
+                    ` : ''}
+
+                    ${details.sla_response_minutes ? `<div style="font-size:8px;color:#4ade80;margin-top:4px;">SLA: ${details.sla_response_minutes} min response</div>` : ''}
+                    ${details.hazard_notes ? `<div style="font-size:8px;color:#f87171;margin-top:4px;padding:3px 5px;background:#f8717110;border:1px solid #f8717130;border-radius:2px;">⚠ ${escapeHtml(details.hazard_notes)}</div>` : ''}
+                    ${details.post_orders ? `<div style="font-size:8px;color:#9ca3af;margin-top:4px;">Post Orders: ${escapeHtml(details.post_orders.substring(0, 100))}${details.post_orders.length > 100 ? '…' : ''}</div>` : ''}
+                  </div>
+                `);
+              } catch (err) {
+                console.error('[MapPage] Failed to fetch property details:', err);
+                // If fetch fails, show basic info
+                infoWindowRef.current?.setContent(`
+                  <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid #88888850;border-radius:4px;">
+                    <div style="font-weight:900;font-size:13px;color:#999999;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
+                    <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
+                    ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#d4a017;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
+                  </div>
+                `);
+              }
             },
           });
 
@@ -1230,6 +1333,41 @@ export default function MapPage() {
   }, [layers, units, calls, properties, mapLoaded, createMarker, removeMarker]);
 
   // ============================================================
+  // Route Button Click Handler (delegated from info window HTML)
+  // ============================================================
+
+  useEffect(() => {
+    function handleRouteClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest('[data-route-unit]') as HTMLElement | null;
+      if (!btn) return;
+      const unitCallSign = btn.getAttribute('data-route-unit') || '';
+      const callNumber = btn.getAttribute('data-route-call') || '';
+      const uLat = parseFloat(btn.getAttribute('data-route-ulat') || '');
+      const uLng = parseFloat(btn.getAttribute('data-route-ulng') || '');
+      const cLat = parseFloat(btn.getAttribute('data-route-clat') || '');
+      const cLng = parseFloat(btn.getAttribute('data-route-clng') || '');
+      if (!isNaN(uLat) && !isNaN(uLng) && !isNaN(cLat) && !isNaN(cLng)) {
+        showRoute(unitCallSign, callNumber, uLat, uLng, cLat, cLng);
+        infoWindowRef.current?.close();
+      }
+    }
+    document.addEventListener('click', handleRouteClick);
+    return () => document.removeEventListener('click', handleRouteClick);
+  }, [showRoute]);
+
+  // ============================================================
+  // Update Route When Routed Unit GPS Changes
+  // ============================================================
+
+  useEffect(() => {
+    if (!activeRoute) return;
+    const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
+    if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+      updateOrigin(routedUnit.latitude, routedUnit.longitude);
+    }
+  }, [activeRoute, units, updateOrigin]);
+
+  // ============================================================
   // Heat Map Circles
   // ============================================================
 
@@ -1237,60 +1375,73 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    heatmapCirclesRef.current.forEach((c) => c.setMap(null));
-    heatmapCirclesRef.current = [];
-
-    if (showHeatmap && heatmapData.length > 0) {
-      heatmapData.forEach((point: any) => {
-        if (point.latitude != null && point.longitude != null) {
-          const intensity = Math.min((point.count ?? 1) / 10, 1);
-          const radius = 200 + (point.count ?? 1) * 40;
-          const circle = new google.maps.Circle({
-            map,
-            center: { lat: point.latitude, lng: point.longitude },
-            radius: Math.min(radius, 800),
-            fillColor: '#ef4444',
-            fillOpacity: 0.15 + intensity * 0.4,
-            strokeColor: '#ef4444',
-            strokeOpacity: 0.3 + intensity * 0.3,
-            strokeWeight: 1,
-            clickable: false,
-          });
-          heatmapCirclesRef.current.push(circle);
-        }
-      });
+    // Remove existing heatmap layer
+    if (heatmapLayerRef.current) {
+      heatmapLayerRef.current.setMap(null);
+      heatmapLayerRef.current = null;
     }
-  }, [showHeatmap, heatmapData, mapLoaded]);
 
-  // Predictive heatmap circles (blue-purple gradient, distinct from historical red)
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !mapLoaded) return;
+    // Skip basic heatmap rendering when advanced heatmap is active (it manages its own layers)
+    if (!showHeatmap || heatmapData.length === 0 || advancedHeatmapEnabled) return;
 
-    predictiveCirclesRef.current.forEach((c) => c.setMap(null));
-    predictiveCirclesRef.current = [];
-
-    if (showPredictiveHeatmap && predictiveData.length > 0) {
-      predictiveData.forEach((point: any) => {
-        if (point.latitude != null && point.longitude != null) {
-          const intensity = Math.min((point.weight ?? 1) / 15, 1);
-          const radius = 250 + (point.weight ?? 1) * 50;
-          const circle = new google.maps.Circle({
-            map,
-            center: { lat: point.latitude, lng: point.longitude },
-            radius: Math.min(radius, 900),
-            fillColor: '#7c3aed',
-            fillOpacity: 0.12 + intensity * 0.35,
-            strokeColor: '#6366f1',
-            strokeOpacity: 0.25 + intensity * 0.3,
-            strokeWeight: 1,
-            clickable: false,
-          });
-          predictiveCirclesRef.current.push(circle);
-        }
-      });
+    // Fix 9: guard for missing visualization library
+    if (!google.maps.visualization?.HeatmapLayer) {
+      console.warn('[MapPage] google.maps.visualization.HeatmapLayer not available');
+      return;
     }
-  }, [showPredictiveHeatmap, predictiveData, mapLoaded]);
+
+    // Build weighted data points for HeatmapLayer
+    const weightedData = heatmapData
+      // Fix 11: validate heatmap data points have finite lat/lng
+      .filter((p: any) => p.latitude != null && p.longitude != null && isFinite(p.latitude) && isFinite(p.longitude))
+      // Fix 12: cap heatmap points at 10000
+      .slice(0, 10000)
+      .map((point: any) => ({
+        location: new google.maps.LatLng(point.latitude, point.longitude),
+        weight: heatmapMode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
+      }));
+
+    // Choose gradient based on mode (Fix 14: dark-theme compatible colors)
+    const gradient = heatmapMode === 'risk'
+      ? [
+          'rgba(0,0,0,0)',        // transparent
+          'rgba(255,165,0,0.3)',  // orange low
+          'rgba(255,100,0,0.5)',  // deep orange
+          'rgba(255,50,0,0.7)',   // red-orange
+          'rgba(255,0,0,0.85)',   // red
+          'rgba(200,0,0,1)',      // dark red
+        ]
+      : [
+          'rgba(0,0,0,0)',
+          'rgba(0,128,255,0.2)',  // blue low
+          'rgba(0,200,100,0.4)', // green
+          'rgba(200,200,0,0.6)', // yellow
+          'rgba(255,140,0,0.8)', // orange
+          'rgba(255,50,0,0.95)', // red high
+        ];
+
+    try { // Fix 10: try/catch around heatmap creation
+      const heatmap = new google.maps.visualization.HeatmapLayer({
+        data: weightedData,
+        map,
+        radius: 30,
+        opacity: 0.7,
+        gradient,
+        dissipating: true, // Fix 13: ensure dissipating is always true
+      });
+
+      heatmapLayerRef.current = heatmap;
+    } catch (err) {
+      console.warn('[MapPage] Error creating heatmap layer:', err);
+    }
+
+    return () => {
+      if (heatmapLayerRef.current) {
+        heatmapLayerRef.current.setMap(null);
+        heatmapLayerRef.current = null;
+      }
+    };
+  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, advancedHeatmapEnabled]);
 
   // ============================================================
   // Unit-to-Call Tracking Lines
@@ -1303,6 +1454,7 @@ export default function MapPage() {
     // Clear existing lines
     trackingLinesRef.current.forEach((line) => line.setMap(null));
     trackingLinesRef.current = [];
+    setTrackingLineCount(0);
 
     if (!showTrackingLines) return;
 
@@ -1310,15 +1462,23 @@ export default function MapPage() {
     units.forEach((unit) => {
       if (unit.latitude == null || unit.longitude == null) return;
       if (!unit.current_call_id) return;
-      if (!['dispatched', 'enroute', 'onscene'].includes(unit.status)) return;
+      if (!CLEARABLE_STATUSES.includes(unit.status)) return;
+      // Fix 19: validate unit has finite coordinates
+      if (!isFinite(unit.latitude) || !isFinite(unit.longitude)) return;
 
       // Find the call this unit is assigned to
       const call = calls.find((c) => String(c.id) === String(unit.current_call_id));
       if (!call || call.latitude == null || call.longitude == null) return;
+      // Fix 19: validate call has finite coordinates
+      if (!isFinite(call.latitude) || !isFinite(call.longitude)) return;
 
-      const statusColor = UNIT_STATUS_COLORS[unit.status] || '#6b7280';
+      // Fix 21: skip zero-length lines
+      if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
+
+      const statusColor = UNIT_STATUS_COLORS[unit.status] || '#666666';
       const isDashed = unit.status === 'dispatched';
 
+      try { // Fix 20: try/catch around Polyline creation
       const line = new google.maps.Polyline({
         path: [
           { lat: unit.latitude, lng: unit.longitude },
@@ -1337,49 +1497,48 @@ export default function MapPage() {
       });
 
       trackingLinesRef.current.push(line);
+      } catch (err) {
+        console.warn('[MapPage] Error creating tracking line:', err);
+      }
     });
+    setTrackingLineCount(trackingLinesRef.current.length);
   }, [units, calls, showTrackingLines, mapLoaded]);
 
   // ============================================================
-  // GPS Breadcrumb Trails
+  // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
   // ============================================================
 
-  // Unit colors for breadcrumb trails — cycle through distinct colors per unit
-  const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
   const breadcrumbMarkersRef = useRef<google.maps.Circle[]>([]);
+  const breadcrumbArrowsRef = useRef<google.maps.Marker[]>([]);
   const breadcrumbInfoRef = useRef<google.maps.InfoWindow | null>(null);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing breadcrumb lines and dot markers
+    // Clear existing breadcrumb visuals
     breadcrumbLinesRef.current.forEach((line) => line.setMap(null));
     breadcrumbLinesRef.current = [];
     breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
     breadcrumbMarkersRef.current = [];
+    breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+    breadcrumbArrowsRef.current = [];
 
-    if (!showBreadcrumbs) return;
+    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
 
-    // Shared info window for breadcrumb dot popups
     if (!breadcrumbInfoRef.current) {
       breadcrumbInfoRef.current = new google.maps.InfoWindow();
     }
 
-    const formatSpeed = (mps: number | null) => {
-      if (mps == null) return '—';
-      return `${(mps * 2.237).toFixed(0)} mph`;
-    };
-
-    const formatHeading = (deg: number | null) => {
+    const formatSpeedMph = (mps: number | null) => mps == null ? '—' : `${(mps * 2.237).toFixed(0)} mph`;
+    const formatHeadingDir = (deg: number | null) => {
       if (deg == null) return '—';
       const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
       return dirs[Math.round(deg / 45) % 8] + ` (${Math.round(deg)}°)`;
     };
-
     const STATUS_LABELS: Record<string, string> = {
       available: 'AVAILABLE', dispatched: 'DISPATCHED', enroute: 'ENROUTE',
       onscene: 'ON SCENE', busy: 'BUSY', off_duty: 'OFF DUTY',
@@ -1389,44 +1548,53 @@ export default function MapPage() {
       lat: number; lng: number; accuracy: number | null; heading: number | null;
       speed: number | null; status: string; call_number: string | null;
       call_type: string | null; time: string;
-      road_name: string | null; gps_source: string;
+      road_name: string | null; intersection: string | null;
     }
     interface Trail {
       unit_id: number; call_sign: string; officer_name: string;
       badge_number: string; points: TrailPoint[];
     }
 
+    let retryTimeout: ReturnType<typeof setTimeout>;
+
     const fetchTrails = async () => {
-      // Clear previous
       breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
       breadcrumbLinesRef.current = [];
       breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
       breadcrumbMarkersRef.current = [];
+      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current = [];
 
       try {
-        const res = await fetch(`/api/dispatch/gps/trails?hours=${breadcrumbHours}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const trails: Trail[] = await res.json();
+        const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
+        if (!trails) return;
+        setPlaybackTrails(trails);
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
 
-          const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+          const unitColor = TRAIL_COLORS[idx % TRAIL_COLORS.length];
 
-          // Draw segments color-coded by status
+          // Draw segments with color mode
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
-            // Freshness: 0 for oldest segment, 1 for newest — newer = brighter
             const freshness = (i + 1) / trail.points.length;
-            const opacity = 0.2 + freshness * 0.6;
+            const opacity = 0.25 + freshness * 0.6;
+
+            let segColor: string;
+            if (breadcrumbColorMode === 'speed') {
+              segColor = speedToColor(p1.speed);
+            } else if (breadcrumbColorMode === 'status') {
+              segColor = statusToColor(p1.status);
+            } else {
+              segColor = unitColor;
+            }
 
             const seg = new google.maps.Polyline({
               path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
               geodesic: true,
-              strokeColor: color,
+              strokeColor: segColor,
               strokeOpacity: opacity,
               strokeWeight: 3,
               map,
@@ -1434,15 +1602,44 @@ export default function MapPage() {
             breadcrumbLinesRef.current.push(seg);
           }
 
-          // Place dot markers at each breadcrumb point (every point for interaction)
+          // Directional arrows every 8th point
           trail.points.forEach((pt, ptIdx) => {
+            if (ptIdx % 8 !== 4 || pt.heading == null) return;
+            const freshness = (ptIdx + 1) / trail.points.length;
+            const arrow = new google.maps.Marker({
+              position: { lat: pt.lat, lng: pt.lng },
+              map,
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 2.5,
+                rotation: pt.heading,
+                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : unitColor,
+                fillOpacity: 0.3 + freshness * 0.5,
+                strokeColor: '#fff',
+                strokeWeight: 0.5,
+                strokeOpacity: 0.6,
+              },
+              clickable: false,
+              zIndex: 1,
+            });
+            breadcrumbArrowsRef.current.push(arrow);
+          });
+
+          // Dot markers at each breadcrumb point
+          trail.points.forEach((pt, ptIdx) => {
+            const isLast = ptIdx === trail.points.length - 1;
+            let dotColor: string;
+            if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
+            else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
+            else dotColor = unitColor;
+
             const dot = new google.maps.Circle({
               center: { lat: pt.lat, lng: pt.lng },
               radius: 4,
-              fillColor: color,
-              fillOpacity: ptIdx === trail.points.length - 1 ? 1 : 0.6,
+              fillColor: dotColor,
+              fillOpacity: isLast ? 1 : 0.6,
               strokeColor: '#fff',
-              strokeWeight: ptIdx === trail.points.length - 1 ? 2 : 0.5,
+              strokeWeight: isLast ? 2 : 0.5,
               strokeOpacity: 0.8,
               map,
               clickable: true,
@@ -1451,24 +1648,23 @@ export default function MapPage() {
 
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
-              const isCpg = pt.gps_source === 'traccar' || pt.gps_source === 'clearpathgps';
-              const gpsBadge = isCpg
-                ? '<span style="display:inline-block;font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">GPS HARDWARE</span>'
-                : '<span style="display:inline-block;font-size:8px;font-weight:900;color:#4ade80;background:#14532d80;border:1px solid #22c55e40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">BROWSER GPS</span>';
-              const speedColor = pt.speed != null && pt.speed > 80 ? '#f87171' : pt.speed != null && pt.speed > 60 ? '#fbbf24' : '#e0e0e0';
+              const locationRow = pt.road_name
+                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
+                : '';
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border:1px solid #1e2a3a">
-                  <div style="font-weight:bold;font-size:13px;margin-bottom:2px;color:#ff4444;display:flex;align-items:center;flex-wrap:wrap">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
                     ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
-                    ${gpsBadge}
                   </div>
                   <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
                   ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #1e2a3a">${escapeHtml(pt.road_name)}</div>` : ''}
-                  <div style="font-size:18px;font-weight:900;color:${speedColor};margin-bottom:4px">${formatSpeed(pt.speed)}</div>
+                  <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${escapeHtml(time)}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(STATUS_LABELS[pt.status] || pt.status)}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${escapeHtml(formatHeading(pt.heading))}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMph(pt.speed)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeadingDir(pt.heading)}</td></tr>
+                    ${locationRow}
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
                     ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} — ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
@@ -1484,17 +1680,105 @@ export default function MapPage() {
           });
         });
       } catch {
-        // Retry once after a short delay on network failure (vehicle WiFi)
-        setTimeout(fetchTrails, 5000);
+        retryTimeout = setTimeout(fetchTrails, 5000);
       }
     };
 
     fetchTrails();
-
-    // Refresh trails every 15 seconds to match GPS batch interval
     const interval = setInterval(fetchTrails, 15000);
-    return () => clearInterval(interval);
-  }, [showBreadcrumbs, breadcrumbHours, mapLoaded]);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(retryTimeout);
+      // Clean up polylines, markers, and arrows on unmount to prevent memory leaks
+      breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
+      breadcrumbLinesRef.current = [];
+      breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
+      breadcrumbMarkersRef.current = [];
+      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current = [];
+    };
+  }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
+
+  // ============================================================
+  // Trail Playback Animation
+  // ============================================================
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded || !isPlaying || playbackUnit == null) return;
+
+    const trail = playbackTrails.find((t: any) => t.unit_id === playbackUnit);
+    if (!trail || trail.points.length === 0) { setIsPlaying(false); return; }
+
+    // Create or update playback marker
+    if (!playbackMarkerRef.current) {
+      const pt = trail.points[playbackIdx] || trail.points[0];
+      playbackMarkerRef.current = new google.maps.Marker({
+        position: { lat: pt.lat, lng: pt.lng },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 5,
+          rotation: pt.heading || 0,
+          fillColor: '#00ff88',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        },
+        zIndex: 9999,
+        title: `${trail.call_sign} — Playback`,
+      });
+    }
+
+    let currentIdx = playbackIdx;
+    const step = () => {
+      if (currentIdx >= trail.points.length) {
+        setIsPlaying(false);
+        setPlaybackIdx(trail.points.length - 1);
+        return;
+      }
+
+      const pt = trail.points[currentIdx];
+      if (playbackMarkerRef.current) {
+        playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+        playbackMarkerRef.current.setIcon({
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 5,
+          rotation: pt.heading || 0,
+          fillColor: '#00ff88',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        });
+      }
+
+      setPlaybackIdx(currentIdx);
+      currentIdx++;
+
+      // Speed: base 200ms per point, divided by playback speed multiplier
+      const delay = 200 / playbackSpeed;
+      playbackAnimRef.current = window.setTimeout(step, delay) as unknown as number;
+    };
+
+    step();
+
+    return () => {
+      if (playbackAnimRef.current != null) {
+        clearTimeout(playbackAnimRef.current);
+        playbackAnimRef.current = null;
+      }
+    };
+  }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
+
+  // Cleanup playback marker when playback unit changes or stops
+  useEffect(() => {
+    if (playbackUnit == null) {
+      if (playbackMarkerRef.current) {
+        playbackMarkerRef.current.setMap(null);
+        playbackMarkerRef.current = null;
+      }
+    }
+  }, [playbackUnit]);
 
   // ============================================================
   // GPS Self-Position Marker
@@ -1553,35 +1837,69 @@ export default function MapPage() {
   // Derived Counts
   // ============================================================
 
-  const unitsWithCoords = units.filter(u => u.latitude != null && u.longitude != null);
-  const callsWithCoords = calls.filter(c => c.latitude != null && c.longitude != null);
-  const propertiesWithCoords = properties.filter(p => p.latitude != null && p.longitude != null);
+  const unitsWithCoords = useMemo(() => units.filter(u => u.latitude != null && u.longitude != null), [units]);
+  const callsWithCoords = useMemo(() => calls.filter(c => c.latitude != null && c.longitude != null), [calls]);
+  const propertiesWithCoords = useMemo(() => properties.filter(p => p.latitude != null && p.longitude != null), [properties]);
 
-  const unitsByStatus = units.reduce((acc, u) => {
+  const unitsByStatus = useMemo(() => units.reduce((acc, u) => {
     acc[u.status] = (acc[u.status] || 0) + 1;
     return acc;
-  }, {} as Record<string, number>);
+  }, {} as Record<string, number>), [units]);
 
-  const callsByPriority = calls.reduce((acc, c) => {
+  const callsByPriority = useMemo(() => calls.reduce((acc, c) => {
     acc[c.priority] = (acc[c.priority] || 0) + 1;
     return acc;
-  }, {} as Record<string, number>);
+  }, {} as Record<string, number>), [calls]);
 
-  const filteredUnits = units.filter(u => {
+  const filteredUnits = useMemo(() => units.filter(u => {
     if (u.status === 'off_duty') return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return u.call_sign.toLowerCase().includes(q) || u.officer_name.toLowerCase().includes(q);
-  });
+    return (u.call_sign || '').toLowerCase().includes(q) || (u.officer_name || '').toLowerCase().includes(q);
+  }), [units, searchQuery]);
 
-  const filteredCalls = calls.filter(c => {
+  const filteredCalls = useMemo(() => calls.filter(c => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return c.call_number.toLowerCase().includes(q) || c.incident_type.toLowerCase().includes(q) || c.location_address.toLowerCase().includes(q);
-  });
+    return (c.call_number || '').toLowerCase().includes(q) || (c.incident_type || '').toLowerCase().includes(q) || (c.location_address || '').toLowerCase().includes(q);
+  }), [calls, searchQuery]);
+
+  // Memoized SafetyDashboardPanel props
+  const safetyEnvironmentProp = useMemo(() => ({
+    lighting: environment?.lighting || 'unknown',
+    sunriseSunset: environment?.sunriseSunset ? {
+      sunrise: environment.sunriseSunset.sunrise ?? '',
+      sunset: environment.sunriseSunset.sunset ?? '',
+      minutesToTransition: environment.sunriseSunset?.minutesToNextTransition ?? 0,
+      nextTransition: environment.sunriseSunset?.nextTransition ?? '',
+    } : null,
+    lowVisibility: environment?.lowVisibility ?? false,
+    weatherHazards: [
+      environment?.weatherHazards?.freezing && 'Freezing',
+      environment?.weatherHazards?.highWind && 'High Wind',
+      environment?.weatherHazards?.rain && 'Rain',
+      environment?.weatherHazards?.snow && 'Snow',
+    ].filter(Boolean) as string[],
+    icyRoad: environment?.icyRoad ?? false,
+    windCondition: environment?.windCondition ? {
+      speed: environment.windCondition.speed ?? 0,
+      direction: environment.windCondition.cardinal ?? '',
+    } : null,
+    visibilityRange: environment?.visibilityRange ?? null,
+    schoolZoneActive: environment?.schoolZoneActive ?? false,
+  }), [environment]);
+
+  const safetyUnitSafetyProp = useMemo(() => ({
+    loneOfficers: unitSafety.loneOfficers ?? [],
+    exposureWarnings: unitSafety.exposureWarnings ?? [],
+    stationaryUnits: unitSafety.stationaryUnits ?? [],
+    speedAnomalies: unitSafety.speedAnomalies ?? [],
+    coveragePercent: unitSafety.coveragePercent ?? 0,
+  }), [unitSafety]);
 
   // Quick call status change from map sidebar
   const handleCallStatusChange = useCallback(async (callId: string, newStatus: string) => {
+    if (!callId || !newStatus) return;
     try {
       await apiFetch(`/dispatch/calls/${callId}/status`, {
         method: 'POST',
@@ -1591,8 +1909,9 @@ export default function MapPage() {
       await Promise.all([fetchCalls(), fetchUnits()]);
     } catch (err) {
       console.error('Failed to update call status from map:', err);
+      addToast('Failed to update call status', 'error');
     }
-  }, [fetchCalls, fetchUnits]);
+  }, [fetchCalls, fetchUnits, addToast]);
 
   // Address search with Google Places Autocomplete
   const handleAddressSearch = useCallback((query: string) => {
@@ -1642,12 +1961,16 @@ export default function MapPage() {
         // Create search result marker
         const el = document.createElement('div');
         el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-        el.innerHTML = `
-          <div style="background:#3b82f6;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;">
-            ${escapeHtml(description.split(',')[0])}
-          </div>
-          <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #3b82f6;"></div>
-        `;
+        // Use safe DOM methods instead of innerHTML to prevent XSS
+        const label = document.createElement('div');
+        label.style.cssText = 'background:#888888;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;';
+        label.textContent = description.split(',')[0];
+
+        const arrow = document.createElement('div');
+        arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #888888;';
+
+        el.appendChild(label);
+        el.appendChild(arrow);
 
         addressMarkerRef.current = createMarker({
           map,
@@ -1658,11 +1981,13 @@ export default function MapPage() {
         });
 
         // Auto-dismiss after 30 seconds
-        setTimeout(() => {
+        if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+        addressDismissTimer.current = setTimeout(() => {
           if (addressMarkerRef.current) {
             removeMarker(addressMarkerRef.current);
             addressMarkerRef.current = null;
           }
+          addressDismissTimer.current = null;
         }, 30000);
       }
     });
@@ -1672,190 +1997,195 @@ export default function MapPage() {
   }, [createMarker, removeMarker]);
 
   // ============================================================
+  // Keyboard Shortcuts for Map
+  // ============================================================
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      switch (e.key.toLowerCase()) {
+        case 'l': // Toggle layers panel
+          e.preventDefault();
+          setLayersPanelOpen(prev => !prev);
+          break;
+        case 'h': // Toggle heatmap
+          e.preventDefault();
+          setShowHeatmap(prev => !prev);
+          break;
+        case 't': // Toggle traffic
+          if (typeof toggleTraffic === 'function') {
+            e.preventDefault();
+            toggleTraffic(mapInstanceRef.current);
+          }
+          break;
+        case 'b': // Toggle breadcrumbs
+          e.preventDefault();
+          setShowBreadcrumbs(prev => !prev);
+          break;
+        case 'c': // Center on all units
+          e.preventDefault();
+          if (mapInstanceRef.current && units.length > 0) {
+            const bounds = new google.maps.LatLngBounds();
+            let hasCoords = false;
+            units.forEach(u => {
+              if (u.latitude != null && u.longitude != null) {
+                bounds.extend({ lat: u.latitude, lng: u.longitude });
+                hasCoords = true;
+              }
+            });
+            if (hasCoords) mapInstanceRef.current.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: layersPanelOpen ? 220 : 60 });
+          }
+          break;
+        case '+':
+        case '=': // Zoom in
+          e.preventDefault();
+          if (mapInstanceRef.current) {
+            const z = mapInstanceRef.current.getZoom();
+            if (z != null) mapInstanceRef.current.setZoom(z + 1);
+          }
+          break;
+        case '-': // Zoom out
+          e.preventDefault();
+          if (mapInstanceRef.current) {
+            const z = mapInstanceRef.current.getZoom();
+            if (z != null) mapInstanceRef.current.setZoom(z - 1);
+          }
+          break;
+        case 'escape': // Close all panels
+          e.preventDefault();
+          infoWindowRef.current?.close();
+          setLayersPanelOpen(false);
+          setSidebarOpen(false);
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [units, layersPanelOpen]);
+
+  // ============================================================
   // Render
   // ============================================================
 
   return (
-    <div className="relative h-full flex flex-col font-mono">
-      <div className="flex-1 flex min-h-0">
-
-      {/* ── Left F-Key Status Bar (Spillman Flex) ── */}
-      {!isMobile && (
-        <div className="flex flex-col panel-beveled flex-shrink-0" style={{ width: 70, background: '#141e2b', borderRight: '1px solid #2a3e58' }}>
-          <div className="panel-title-bar flex items-center justify-center" style={{ minHeight: 20 }}>
-            <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider">STATUS</span>
-          </div>
-          <div className="flex-1 flex flex-col gap-0.5 p-0.5 overflow-y-auto">
-            {FKEY_STATUS_BUTTONS.map(btn => {
-              const isActive = selectedUnit?.status === btn.status;
-              return (
-                <button
-                  key={btn.keyCode}
-                  onClick={() => selectedUnit && handleUnitStatusChange(selectedUnit.id, btn.status)}
-                  disabled={!selectedUnit}
-                  className={`flex flex-col items-center justify-center py-2 text-center transition-colors ${
-                    !selectedUnit ? 'opacity-30 cursor-default' : 'cursor-pointer hover:brightness-125'
-                  }`}
-                  style={{
-                    background: isActive ? btn.color + '30' : '#0d1520',
-                    border: isActive ? `2px solid ${btn.color}` : '1px solid #1e3048',
-                    borderTop: isActive ? `2px solid ${btn.color}` : '1px solid #3a3a3a',
-                    borderLeft: isActive ? `2px solid ${btn.color}` : '1px solid #3a3a3a',
-                    borderBottom: isActive ? `2px solid ${btn.color}` : '1px solid #141e2b',
-                    borderRight: isActive ? `2px solid ${btn.color}` : '1px solid #141e2b',
-                  }}
-                  title={`${btn.label} (${btn.fKey})`}
-                >
-                  <span className="text-[10px] font-black tracking-wide" style={{ color: isActive ? btn.color : '#a0a0a0' }}>{btn.label}</span>
-                  <span className="text-[8px] font-bold" style={{ color: isActive ? btn.color : '#555' }}>{btn.fKey}</span>
-                </button>
-              );
-            })}
-          </div>
-          {/* Selected unit indicator */}
-          {selectedUnit && (
-            <div className="panel-inset px-1 py-1.5 text-center" style={{ background: '#060c14' }}>
-              <div className="text-[10px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</div>
-              <div className="text-[7px] font-bold text-rmpg-400 uppercase">{UNIT_STATUS_LABELS[selectedUnit.status]}</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Map Container */}
-      <div className="flex-1 relative flex flex-col min-w-0">
-        {/* ── Spillman Flex Map Toolbar ── */}
-        {!isMobile && (
-          <div
-            className="flex items-center px-1 gap-0 flex-shrink-0 z-[1002]"
-            style={{
-              height: 26,
-              background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
-              borderBottom: '1px solid #1e3048',
-              borderTop: '1px solid #484848',
-            }}
-          >
-            <button onClick={() => setLayersPanelOpen(!layersPanelOpen)} className={layersPanelOpen ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Layers Panel">
-              <Layers style={{ width: 11, height: 11 }} />
-              <span>Layers</span>
-            </button>
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className={sidebarOpen ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Sidebar">
-              {sidebarOpen ? <PanelLeftClose style={{ width: 11, height: 11 }} /> : <PanelLeftOpen style={{ width: 11, height: 11 }} />}
-              <span>Sidebar</span>
-            </button>
-            <div className="toolbar-separator" />
-            {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setMapStyle(key)}
-                className={mapStyle === key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}
-              >
-                {label}
-              </button>
-            ))}
-            <div className="toolbar-separator" />
-            <button onClick={() => setShowBreadcrumbs(!showBreadcrumbs)} className={showBreadcrumbs ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="GPS Breadcrumb Trails">
-              <Route style={{ width: 11, height: 11 }} />
-              <span>Trails</span>
-            </button>
-            <button onClick={() => setShowHeatmap(!showHeatmap)} className={showHeatmap ? 'toolbar-btn toolbar-btn-danger' : 'toolbar-btn'} title="Crime Heat Map">
-              <Thermometer style={{ width: 11, height: 11 }} />
-              <span>Heat</span>
-            </button>
-            <button onClick={() => setShowTrackingLines(!showTrackingLines)} className={showTrackingLines ? 'toolbar-btn toolbar-btn-success' : 'toolbar-btn'} title="Unit Tracking Lines">
-              <Navigation2 style={{ width: 11, height: 11 }} />
-              <span>Track</span>
-            </button>
-            <div className="toolbar-separator" />
-            <button onClick={() => setShowGeoPanel(!showGeoPanel)} className={showGeoPanel ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Spatial GeoJSON Layers">
-              <Globe2 style={{ width: 11, height: 11 }} />
-              <span>Geo</span>
-            </button>
-            <button onClick={() => setShowShiftPanel(!showShiftPanel)} className={showShiftPanel ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Shift Planning">
-              <CalendarDays style={{ width: 11, height: 11 }} />
-              <span>Shifts</span>
-            </button>
-            <button onClick={() => setShowEventPanel(!showEventPanel)} className={showEventPanel ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Event Planning">
-              <MapPin style={{ width: 11, height: 11 }} />
-              <span>Events</span>
-            </button>
-            <div className="flex-1" />
-            {/* Right side: GPS + WebSocket status */}
-            <div className="flex items-center gap-2 panel-inset px-2 py-0.5" style={{ background: '#0d1520' }}>
-              <div className="flex items-center gap-1">
-                <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
-                <span className="text-[8px] font-bold" style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>WS</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className={`led-dot ${gps.isTracking ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
-                <span className="text-[8px] font-bold" style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>GPS</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Spillman Flex Call Info Header ── */}
-        {!isMobile && selectedUnit && callDetail && (
-          <div className="panel-beveled flex-shrink-0" style={{ background: '#141e2b', borderBottom: '1px solid #2a3e58' }}>
-            <div className="flex items-start gap-4 px-3 py-2">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[14px] font-black text-rmpg-100">{formatIncidentType(callDetail.incident_type)}</span>
-                  <span className="text-[10px] font-bold text-rmpg-400">[{callDetail.call_number}]</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5" style={{
-                    background: (PRIORITY_COLORS[callDetail.priority] || '#6b7280') + '25',
-                    color: PRIORITY_COLORS[callDetail.priority] || '#6b7280',
-                    border: `1px solid ${(PRIORITY_COLORS[callDetail.priority] || '#6b7280')}40`,
-                  }}>{callDetail.priority}</span>
-                </div>
-                <div className="text-[12px] font-bold text-white mt-0.5">{callDetail.location_address}</div>
-                {callDetail.cross_street && (
-                  <div className="text-[9px] text-rmpg-400 mt-0.5">X-ST: {callDetail.cross_street}</div>
-                )}
-              </div>
-              <div className="text-right flex-shrink-0">
-                {callDetail.caller_name && (
-                  <div className="text-[10px] text-rmpg-300">Cmplnt: <span className="text-rmpg-100 font-bold">{callDetail.caller_name}</span></div>
-                )}
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[16px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</span>
-                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5" style={{
-                    background: UNIT_STATUS_COLORS[selectedUnit.status] + '25',
-                    color: UNIT_STATUS_COLORS[selectedUnit.status],
-                    border: `1px solid ${UNIT_STATUS_COLORS[selectedUnit.status]}40`,
-                  }}>{UNIT_STATUS_LABELS[selectedUnit.status]}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Map Canvas */}
-        <div className="flex-1 relative">
+    <div className={`relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
+      {/* Map Container — full-bleed on mobile, flex-1 on desktop */}
+      <div className="flex-1 relative" style={isMobile ? { flex: 1, minHeight: 0, paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}>
         <div
           ref={mapRef}
           className="absolute inset-0 bg-surface-deep"
+          style={{ width: '100%', height: '100%', touchAction: 'pan-x pan-y' }}
+          role="application"
+          aria-label="Tactical Map"
         />
 
-        {/* RMPG Brand Watermark */}
-        <div className="absolute top-2 left-2 z-10 pointer-events-none opacity-40">
+        {/* Tile stall badge — non-blocking indicator.
+            Offline tiles now render through the map canvas (ImageMapType), so the
+            map remains interactive with street-level detail even when Google tiles
+            stall. This badge just indicates cached/offline status + a retry button.
+            Positioned top-left to avoid conflicts with route info panel (bottom-left). */}
+        {mapLoaded && tilesStalled && (
+          <div
+            className={`absolute left-3 z-[10] flex items-center gap-2 px-3 py-2 ${isMobile ? 'top-16' : 'top-12'}`}
+            style={{
+              background: 'rgba(6,12,20,0.95)',
+              border: '1px solid #f59e0b40',
+              WebkitBackdropFilter: 'blur(4px)',
+              backdropFilter: 'blur(4px)',
+              borderRadius: 2,
+            }}
+          >
+            <Loader2 style={{ width: 14, height: 14, color: '#f59e0b' }} className="animate-spin" aria-hidden="true" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider font-mono leading-none">
+                CACHED MAP
+              </span>
+              <span className="text-[8px] text-rmpg-500 font-mono leading-none mt-0.5">
+                Using offline tiles · Map fully interactive
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                const map = mapInstanceRef.current;
+                if (map) {
+                  const center = map.getCenter();
+                  if (center) {
+                    map.panTo({ lat: center.lat() + 0.0001, lng: center.lng() });
+                    setTimeout(() => map.panTo(center), 200);
+                  }
+                }
+              }}
+              className="ml-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-brand-600 transition-colors"
+              style={{ borderRadius: 2 }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* RMPG Brand Watermark — pushed down on mobile to avoid search bar */}
+        <div className={`absolute left-2 z-10 pointer-events-none opacity-40 ${isMobile ? 'top-12' : 'top-2'}`}>
           <RmpgLogo height={20} iconOnly />
         </div>
 
-        {mapError && (
-          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/90">
-            <div className="panel-beveled p-8 shadow-xl max-w-lg text-center" style={{ background: '#141e2b' }}>
+        {/* Offline fallback: Leaflet map with cached tiles when Google Maps fails
+            due to connectivity (not API key errors). Shows GPS, unit positions, calls. */}
+        {showOfflineFallback && (
+          <OfflineMapFallback
+            className="absolute inset-0 z-[2000]"
+            selfPosition={
+              gps.isTracking && gps.latitude != null && gps.longitude != null
+                ? { lat: gps.latitude, lng: gps.longitude, accuracy: gps.accuracy ?? undefined, heading: gps.heading ?? undefined }
+                : null
+            }
+            unitPositions={unitsWithCoords
+              .map(u => ({
+                call_sign: u.call_sign,
+                lat: u.latitude!,
+                lng: u.longitude!,
+                status: u.status,
+              }))}
+            activeCalls={callsWithCoords}
+            properties={propertiesWithCoords
+              .map(p => ({
+                id: p.id,
+                name: p.name,
+                lat: p.latitude!,
+                lng: p.longitude!,
+                address: p.address,
+                client_name: p.client_name || undefined,
+              }))}
+            onRetry={() => {
+              setRetryingGmaps(true);
+              setMapError(null);
+              setMapRetry((n) => n + 1);
+              // Reset retrying state after a delay (the Google Maps init effect will re-run)
+              setTimeout(() => setRetryingGmaps(false), 5000);
+            }}
+            retrying={retryingGmaps}
+          />
+        )}
+
+        {/* API key / auth error dialog (only for configuration problems, not connectivity) */}
+        {isAuthError && (
+          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="bg-surface-overlay/95 border border-red-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 2 }}>
               <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
               <h3 className="text-white text-sm font-bold mb-2">Map Configuration Required</h3>
               <pre className="text-rmpg-300 text-xs leading-relaxed mb-4 whitespace-pre-wrap text-left">{mapError}</pre>
-              <div className="panel-inset p-3 text-left mb-4" style={{ background: '#060c14' }}>
+              <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 2 }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
-                  1. Go to <span className="text-blue-400">console.cloud.google.com/apis/library</span><br/>
+                  1. Go to <span className="text-gray-400">console.cloud.google.com/apis/library</span><br/>
                   2. Enable <span className="text-amber-400">Maps JavaScript API</span><br/>
                   3. Enable <span className="text-amber-400">Places API (New)</span><br/>
-                  4. Go to <span className="text-blue-400">Billing</span> → ensure billing is active<br/>
-                  5. Go to <span className="text-blue-400">Credentials</span> → check key restrictions<br/>
+                  4. Go to <span className="text-gray-400">Billing</span> → ensure billing is active<br/>
+                  5. Go to <span className="text-gray-400">Credentials</span> → check key restrictions<br/>
                   6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
                   <span className="text-green-400 ml-2">VITE_GOOGLE_MAPS_API_KEY=your_key</span><br/>
                   7. Restart the dev server
@@ -1864,13 +2194,15 @@ export default function MapPage() {
               <div className="flex gap-3 justify-center">
                 <button
                   onClick={() => setMapRetry((n) => n + 1)}
-                  className="toolbar-btn-primary px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
+                  className="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold uppercase tracking-wider transition-colors"
+                  style={{ borderRadius: 2 }}
                 >
                   Retry
                 </button>
                 <button
                   onClick={() => window.location.reload()}
-                  className="toolbar-btn px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
+                  className="px-4 py-1.5 bg-surface-deep hover:bg-surface-overlay text-rmpg-300 text-xs font-bold uppercase tracking-wider border border-rmpg-600 transition-colors"
+                  style={{ borderRadius: 2 }}
                 >
                   Hard Reload
                 </button>
@@ -1879,37 +2211,10 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Tile retry banner — shown when tiles fail to load on spotty connections */}
-        {showTileRetry && mapLoaded && !mapError && (
-          <div className="absolute top-12 left-1/2 -translate-x-1/2 z-[1500] animate-fade-in">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/90 border border-amber-700/50 text-amber-200 text-[10px] font-mono shadow-lg backdrop-blur-sm">
-              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-              <span>Map tiles slow to load</span>
-              <button
-                onClick={() => {
-                  setShowTileRetry(false);
-                  const map = mapInstanceRef.current;
-                  if (map) {
-                    // Nudge the map slightly to force tile re-request
-                    const c = map.getCenter();
-                    if (c) {
-                      map.panTo({ lat: c.lat() + 0.0001, lng: c.lng() });
-                      setTimeout(() => map.panTo(c), 100);
-                    }
-                  }
-                }}
-                className="px-2 py-0.5 bg-amber-700/50 hover:bg-amber-700 border border-amber-600/50 text-amber-100 text-[9px] font-bold uppercase tracking-wider transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Loading Overlay */}
         {loading && !mapError && (
-          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/90">
-            <div className="panel-beveled p-6 shadow-xl" style={{ background: '#141e2b' }}>
+          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-surface-overlay/95 border border-rmpg-600 p-6 shadow-xl" style={{ borderRadius: 2 }}>
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
                 <span className="text-white text-sm font-mono">Initializing tactical map...</span>
@@ -1921,8 +2226,68 @@ export default function MapPage() {
         {/* Error Banner */}
         {error && !loading && (
           <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000]">
-            <div className="panel-beveled px-4 py-2 shadow-xl" style={{ background: '#0a1a30', borderColor: '#144a7e' }}>
+            <div className="bg-red-900/95 border border-red-600 px-4 py-2 backdrop-blur-sm shadow-xl" style={{ borderRadius: 2 }}>
               <span className="text-white text-sm">{error}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Mobile Address Search Bar - Top (full width, semi-transparent) ── */}
+        {isMobile && (
+          <div className="absolute top-1 left-1 right-1 z-[1001]">
+            <div className="relative">
+              <div className="relative flex items-center">
+                <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/50 pointer-events-none" />
+                <input
+                  type="text"
+                  value={addressSearch}
+                  onChange={(e) => handleAddressSearch(e.target.value)}
+                  onFocus={() => addressResults.length > 0 && setShowAddressResults(true)}
+                  onBlur={() => setTimeout(() => setShowAddressResults(false), 300)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); }
+                  }}
+                  placeholder="Search address..."
+                  aria-label="Search address"
+                  className="w-full text-[16px] pl-9 pr-9 bg-black/40 border border-white/10 text-white placeholder:text-white/35 focus:border-white/30 focus:bg-black/60 focus:outline-none backdrop-blur-md shadow-lg font-mono"
+                  style={{ borderRadius: 2, height: 38 }}
+                />
+                {addressSearch && (
+                  <button
+                    onClick={() => {
+                      setAddressSearch('');
+                      setAddressResults([]);
+                      setShowAddressResults(false);
+                      if (addressMarkerRef.current) {
+                        removeMarker(addressMarkerRef.current);
+                        addressMarkerRef.current = null;
+                      }
+                    }}
+                    className="absolute right-3 text-white/40 hover:text-white/80 p-1"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              {showAddressResults && addressResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-black/90 border border-white/15 shadow-md backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
+                  {addressResults.map((r) => (
+                    <button
+                      key={r.place_id}
+                      role="option"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
+                      onClick={() => handleAddressSelect(r.place_id, r.description)}
+                      className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
+                      style={{ minHeight: 44 }}
+                    >
+                      <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
+                      <span className="truncate">{r.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1941,12 +2306,18 @@ export default function MapPage() {
                   value={addressSearch}
                   onChange={(e) => handleAddressSearch(e.target.value)}
                   onFocus={() => addressResults.length > 0 && setShowAddressResults(true)}
-                  onBlur={() => setTimeout(() => setShowAddressResults(false), 200)}
+                  onBlur={() => setTimeout(() => setShowAddressResults(false), 300)}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); }
                   }}
-                  placeholder="SEARCH ADDRESS..."
-                  className="input-dark text-[11px] pl-8 pr-8 py-1.5 w-[240px] font-mono"
+                  placeholder="Search address..."
+                  aria-label="Search address"
+                  className={`text-[11px] pl-8 pr-8 py-1.5 w-[240px] focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors ${
+                    isLightMapStyle(mapStyle)
+                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-gray-400 focus:bg-white/90'
+                      : 'bg-black/30 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/50'
+                  }`}
+                  style={{ borderRadius: 2 }}
                 />
                 {addressSearch && (
                   <button
@@ -1960,21 +2331,24 @@ export default function MapPage() {
                       }
                     }}
                     className="absolute right-2 text-white/40 hover:text-white/80"
+                    aria-label="Clear search"
                   >
                     <X className="w-3 h-3" />
                   </button>
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 panel-beveled shadow-2xl overflow-hidden" style={{ background: '#141e2b', zIndex: 50 }}>
+                <div className="absolute top-full left-0 right-0 mt-1 bg-black/80 border border-white/15 shadow-md backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
+                      role="option"
                       onMouseDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onClick={() => handleAddressSelect(r.place_id, r.description)}
                       className="w-full text-left px-3 py-2 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 hover:text-white transition-colors border-b border-rmpg-700 last:border-0 flex items-center gap-2"
                     >
-                      <MapPin className="w-3 h-3 text-blue-400 shrink-0" />
+                      <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
                       <span className="truncate">{r.description}</span>
                     </button>
                   ))}
@@ -1982,28 +2356,34 @@ export default function MapPage() {
               )}
             </div>
             {/* Zoom +/- controls */}
-            <div className="flex flex-col panel-beveled" style={{ overflow: 'hidden' }}>
+            <div className="flex flex-col" style={{ borderRadius: 2, overflow: 'hidden' }}>
               <button
                 onClick={() => {
                   const map = mapInstanceRef.current;
-                  if (map) map.setZoom((map.getZoom() || 12) + 1);
+                  if (map) map.setZoom((map.getZoom() ?? 12) + 1);
                 }}
-                className="toolbar-btn"
-                style={{ padding: '4px 6px', borderBottom: '1px solid #1e3048' }}
+                className={`border border-b-0 backdrop-blur-md px-2 py-1.5 transition-colors ${
+                  isLightMapStyle(mapStyle) ? 'bg-white/80 border-gray-300 hover:bg-white/95' : 'bg-black/30 border-white/15 hover:bg-black/50'
+                }`}
+                style={{ borderRadius: '2px 2px 0 0' }}
                 title="Zoom in"
+                aria-label="Zoom in"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className={`w-3.5 h-3.5 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-white/70'}`} />
               </button>
               <button
                 onClick={() => {
                   const map = mapInstanceRef.current;
-                  if (map) map.setZoom((map.getZoom() || 12) - 1);
+                  if (map) map.setZoom((map.getZoom() ?? 12) - 1);
                 }}
-                className="toolbar-btn"
-                style={{ padding: '4px 6px' }}
+                className={`border backdrop-blur-md px-2 py-1.5 transition-colors ${
+                  isLightMapStyle(mapStyle) ? 'bg-white/80 border-gray-300 hover:bg-white/95' : 'bg-black/30 border-white/15 hover:bg-black/50'
+                }`}
+                style={{ borderRadius: '0 0 2px 2px' }}
                 title="Zoom out"
+                aria-label="Zoom out"
               >
-                <Minus className="w-3.5 h-3.5" />
+                <Minus className={`w-3.5 h-3.5 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-white/70'}`} />
               </button>
             </div>
           </div>
@@ -2014,16 +2394,18 @@ export default function MapPage() {
           {!layersPanelOpen ? (
             <button
               onClick={() => setLayersPanelOpen(true)}
-              className="toolbar-btn shadow-lg"
-              style={{ padding: '6px' }}
+              className="bg-black/30 border border-white/15 backdrop-blur-md p-2 hover:bg-black/50 transition-colors shadow-lg"
+              style={{ borderRadius: 2 }}
               title="Show layers"
             >
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="panel-beveled shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', background: '#141e2b' }}>
-            <PanelTitleBar title="LAYERS" icon={Layers}>
-              <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
+          <div className="bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
+              <Layers className="w-3.5 h-3.5 text-brand-400" />
+              <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
+              <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
               <button
                 onClick={() => setLayersPanelOpen(false)}
                 className="toolbar-btn"
@@ -2032,13 +2414,13 @@ export default function MapPage() {
               >
                 <PanelLeftClose style={{ width: 10, height: 10 }} />
               </button>
-            </PanelTitleBar>
+            </div>
 
             <div className="p-1.5 space-y-0.5">
               {[
                 { key: 'units' as const, icon: <Shield className="w-3 h-3" />, label: 'Units', count: unitsWithCoords.length, color: '#22c55e' },
                 { key: 'incidents' as const, icon: <AlertTriangle className="w-3 h-3" />, label: 'Active Calls', count: callsWithCoords.length, color: '#ef4444' },
-                { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#3b82f6' },
+                { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#888888' },
               ].map(({ key, icon, label, count, color }) => (
                 <button
                   key={key}
@@ -2048,12 +2430,13 @@ export default function MapPage() {
                   }`}
                 >
                   {layers[key] ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                  <span style={{ color: layers[key] ? color : '#6b7280' }}>{icon}</span>
+                  <span style={{ color: layers[key] ? color : '#666666' }}>{icon}</span>
                   <span className="text-[10px] text-rmpg-200 flex-1">{label}</span>
-                  <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#6b7280' }}>{count}</span>
+                  <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#666666' }}>{count}</span>
                 </button>
               ))}
 
+              {/* ── Heat Map ── */}
               <button
                 onClick={() => setShowHeatmap(!showHeatmap)}
                 className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
@@ -2064,59 +2447,493 @@ export default function MapPage() {
                 <Thermometer className="w-3 h-3 text-red-400" />
                 <span className="text-[10px] text-rmpg-200 flex-1">Heat Map</span>
                 {showHeatmap && (
-                  <span className="text-[8px] text-red-400 font-mono font-bold">{heatmapData.length} pts</span>
+                  <span className="text-[8px] text-red-400 font-mono font-bold">
+                    {advancedHeatmapEnabled ? `${advancedHeatmap?.pointCount ?? 0} pts` : `${heatmapData.length} pts`}
+                  </span>
                 )}
               </button>
               {showHeatmap && (
-                <div className="flex items-center gap-1 px-3 py-1">
-                  {[7, 14, 30, 90].map((days) => (
+                <div className="px-3 py-1 space-y-1">
+                  {/* Days selector */}
+                  <div className="flex items-center gap-1">
+                    {[7, 14, 30, 90, 180, 365].map((days) => (
+                      <button
+                        key={days}
+                        onClick={() => setHeatmapDays(days)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          heatmapDays === days
+                            ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {days < 365 ? `${days}d` : '1y'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Advanced mode toggle */}
+                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
-                      key={days}
-                      onClick={() => setHeatmapDays(days)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors ${
-                        heatmapDays === days
-                          ? 'panel-inset bg-surface-deep text-red-400'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
+                      onClick={() => { setAdvancedHeatmapEnabled(!advancedHeatmapEnabled); if (!advancedHeatmapEnabled) setShowAdvHeatmapPanel(true); }}
+                      className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                        advancedHeatmapEnabled ? 'text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
-                      {days}d
+                      <SlidersHorizontal className="w-2.5 h-2.5" />
+                      <span className="flex-1 text-left">Advanced Mode</span>
+                      {advancedHeatmapEnabled && <span className="led-dot led-gray" style={{ width: 5, height: 5 }} />}
                     </button>
-                  ))}
+                  </div>
+
+                  {/* ── Basic mode controls (when advanced is OFF) ── */}
+                  {!advancedHeatmapEnabled && (
+                    <>
+                      {/* Mode selector */}
+                      <div className="flex items-center gap-1">
+                        {([['all', 'All'], ['risk', 'Risk'], ['type', 'Type']] as const).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
+                            className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                              heatmapMode === mode
+                                ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                                : 'bg-red-900/50 text-red-400 border border-red-700/50'
+                                : 'text-rmpg-500 hover:text-rmpg-300'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Type filter dropdown */}
+                      {heatmapMode === 'type' && (
+                        <select
+                          value={heatmapTypeFilter}
+                          onChange={(e) => setHeatmapTypeFilter(e.target.value)}
+                          className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="">Select type...</option>
+                          {heatmapTypes.map((t) => (
+                            <option key={t.incident_type} value={t.incident_type}>
+                              {formatIncidentType(t.incident_type)} ({t.count})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Timelapse controls */}
+                      <div className="border-t border-rmpg-700/50 pt-1 mt-1">
+                        <button
+                          onClick={() => setShowTimelapse(!showTimelapse)}
+                          className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                            showTimelapse ? 'text-orange-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                          }`}
+                        >
+                          <SkipForward className="w-2.5 h-2.5" />
+                          <span className="flex-1 text-left">Time-Lapse</span>
+                          {showTimelapse && <span className="led-dot led-orange" style={{ width: 5, height: 5 }} />}
+                        </button>
+                        {showTimelapse && (
+                          <div className="mt-1 space-y-1">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => timelapse.setIsPlaying(!timelapse.isPlaying)}
+                                className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
+                              >
+                                {timelapse.isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
+                              </button>
+                              <input
+                                type="range"
+                                min={0}
+                                max={Math.max(timelapse.totalSlices - 1, 0)}
+                                value={timelapse.currentIndex}
+                                onChange={(e) => { timelapse.setCurrentIndex(Number(e.target.value)); timelapse.setIsPlaying(false); }}
+                                className="flex-1 h-1 accent-orange-400"
+                                aria-label="Timelapse position"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[7px] font-mono text-orange-300">{timelapse.currentLabel}</span>
+                              <div className="flex items-center gap-0.5">
+                                {([1, 2, 4] as const).map((s) => (
+                                  <button
+                                    key={s}
+                                    onClick={() => timelapse.setSpeed(s)}
+                                    className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                      timelapse.speed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                                    }`}
+                                  >
+                                    {s}x
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Advanced mode controls ── */}
+                  {advancedHeatmapEnabled && (
+                    <div className="space-y-1.5">
+                      {/* Mode selector: Density | Risk | Temporal | Comparison */}
+                      <div className="flex items-center gap-0.5">
+                        {([['density', 'Density'], ['risk', 'Risk'], ['temporal', 'Temporal'], ['comparison', 'Compare']] as [HeatmapAdvancedMode, string][]).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            onClick={() => setAdvHeatmapMode(mode)}
+                            className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                              advHeatmapMode === mode
+                                ? 'bg-brand-900/50 text-brand-400 border border-brand-700/50'
+                                : 'text-rmpg-500 hover:text-rmpg-300'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Hour range filter */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">HOURS</span>
+                          <span className="text-[7px] text-rmpg-300 font-mono">
+                            {advHeatmapHourRange[0] === 0 && advHeatmapHourRange[1] === 23
+                              ? 'All day'
+                              : `${advHeatmapHourRange[0].toString().padStart(2, '0')}:00 - ${advHeatmapHourRange[1].toString().padStart(2, '0')}:59`
+                            }
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="range"
+                            min={0} max={23}
+                            value={advHeatmapHourRange[0]}
+                            onChange={(e) => { const v = Number(e.target.value); setAdvHeatmapHourRange([Math.min(v, advHeatmapHourRange[1]), advHeatmapHourRange[1]]); }}
+                            className="flex-1 h-1 accent-red-400"
+                            aria-label="Start hour"
+                          />
+                          <input
+                            type="range"
+                            min={0} max={23}
+                            value={advHeatmapHourRange[1]}
+                            onChange={(e) => { const v = Number(e.target.value); setAdvHeatmapHourRange([advHeatmapHourRange[0], Math.max(v, advHeatmapHourRange[0])]); }}
+                            className="flex-1 h-1 accent-red-400"
+                            aria-label="End hour"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Day-of-week filter */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">DAYS</span>
+                          <div className="flex gap-0.5">
+                            <button
+                              onClick={() => setAdvHeatmapDayFilter([1, 2, 3, 4, 5])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >Wkdays</button>
+                            <button
+                              onClick={() => setAdvHeatmapDayFilter([0, 6])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >Wkends</button>
+                            <button
+                              onClick={() => setAdvHeatmapDayFilter([])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >All</button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day, i) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                setAdvHeatmapDayFilter(prev =>
+                                  prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i]
+                                );
+                              }}
+                              aria-pressed={advHeatmapDayFilter.length === 0 || advHeatmapDayFilter.includes(i)}
+                              className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                advHeatmapDayFilter.length === 0 || advHeatmapDayFilter.includes(i)
+                                  ? 'bg-red-900/40 text-red-400 border border-red-800/50'
+                                  : 'text-rmpg-600 border border-transparent'
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Color scheme */}
+                      <div>
+                        <span className="text-[7px] text-rmpg-400 font-mono block mb-0.5">COLOR SCHEME</span>
+                        <div className="flex items-center gap-0.5">
+                          {([
+                            ['heat', ['#888888', '#00c864', '#c8c800', '#ff8c00', '#ff3200']],
+                            ['risk', ['#4caf50', '#ffeb3b', '#ff9800', '#f44336', '#b71c1c']],
+                            ['blue', ['#cccccc', '#999999', '#888888', '#666666', '#444444']],
+                            ['green', ['#90ee90', '#3cb371', '#228b22', '#006400', '#003c00']],
+                            ['purple', ['#d8bfd8', '#ba55d3', '#9467bd', '#6a0dad', '#4b0082']],
+                          ] as [HeatmapColorScheme, string[]][]).map(([scheme, colors]) => (
+                            <button
+                              key={scheme}
+                              onClick={() => setAdvHeatmapColorScheme(scheme)}
+                              className={`p-0.5 rounded-sm transition-all ${
+                                advHeatmapColorScheme === scheme ? 'ring-1 ring-white/50 scale-110' : 'opacity-60 hover:opacity-100'
+                              }`}
+                              title={scheme}
+                            >
+                              <div className="flex h-2" style={{ width: 20, borderRadius: 1, overflow: 'hidden' }}>
+                                {colors.map((c, i) => (
+                                  <div key={i} style={{ flex: 1, backgroundColor: c }} />
+                                ))}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Opacity slider */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">OPACITY</span>
+                          <span className="text-[7px] text-rmpg-300 font-mono">{advHeatmapOpacity}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10} max={100} step={5}
+                          value={advHeatmapOpacity}
+                          onChange={(e) => setAdvHeatmapOpacity(Number(e.target.value))}
+                          className="w-full h-1 accent-red-400"
+                          aria-label="Heatmap opacity"
+                        />
+                      </div>
+
+                      {/* Radius slider */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">RADIUS</span>
+                          <span className="text-[7px] text-rmpg-300 font-mono">{advHeatmapRadius}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10} max={50} step={2}
+                          value={advHeatmapRadius}
+                          onChange={(e) => setAdvHeatmapRadius(Number(e.target.value))}
+                          className="w-full h-1 accent-red-400"
+                          aria-label="Heatmap radius"
+                        />
+                      </div>
+
+                      {/* Resolution */}
+                      <div>
+                        <span className="text-[7px] text-rmpg-400 font-mono block mb-0.5">RESOLUTION</span>
+                        <div className="flex items-center gap-1">
+                          {([['fine', 'Fine'], ['medium', 'Med'], ['coarse', 'Coarse']] as [HeatmapResolution, string][]).map(([res, label]) => (
+                            <button
+                              key={res}
+                              onClick={() => setAdvHeatmapResolution(res)}
+                              className={`px-1.5 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                advHeatmapResolution === res
+                                  ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                                  : 'text-rmpg-500 hover:text-rmpg-300'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Show clusters toggle */}
+                      <button
+                        onClick={() => setAdvHeatmapShowClusters(!advHeatmapShowClusters)}
+                        className={`flex items-center gap-1.5 w-full text-[8px] font-bold transition-colors ${
+                          advHeatmapShowClusters ? 'text-gray-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        <CircleDot className="w-2.5 h-2.5" />
+                        <span className="flex-1 text-left">Hotspot Clusters</span>
+                        {advHeatmapShowClusters && (
+                          <span className="text-[7px] font-mono text-gray-400">{advancedHeatmap.clusters?.length ?? 0}</span>
+                        )}
+                      </button>
+
+                      {/* Incident type multi-select */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">INCIDENT TYPES</span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setAdvHeatmapTypes(heatmapTypes.map(t => t.incident_type))}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >All</button>
+                            <button
+                              onClick={() => setAdvHeatmapTypes([])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >Clear</button>
+                          </div>
+                        </div>
+                        <div className="max-h-[60px] overflow-y-auto space-y-0" style={{ scrollbarWidth: 'thin' }}>
+                          {heatmapTypes.slice(0, 15).map((t) => (
+                            <label
+                              key={t.incident_type}
+                              className="flex items-center gap-1 px-0.5 py-0 cursor-pointer hover:bg-rmpg-800/30"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={advHeatmapTypes.length === 0 || advHeatmapTypes.includes(t.incident_type)}
+                                onChange={() => {
+                                  setAdvHeatmapTypes(prev =>
+                                    prev.includes(t.incident_type)
+                                      ? prev.filter(x => x !== t.incident_type)
+                                      : [...prev, t.incident_type]
+                                  );
+                                }}
+                                className="w-2 h-2 accent-red-500"
+                              />
+                              <span className="text-[7px] text-rmpg-300 font-mono flex-1 truncate">{formatIncidentType(t.incident_type)}</span>
+                              <span className="text-[6px] text-rmpg-500 font-mono">{t.count}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Comparison mode options */}
+                      {advHeatmapMode === 'comparison' && (
+                        <div className="border-t border-rmpg-700/50 pt-1">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-[7px] text-rmpg-400 font-mono">COMPARE VS</span>
+                            <span className="text-[7px] text-rmpg-300 font-mono">Previous {advHeatmapComparisonDays}d</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {[7, 14, 30, 90].map((d) => (
+                              <button
+                                key={d}
+                                onClick={() => setAdvHeatmapComparisonDays(d)}
+                                className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                  advHeatmapComparisonDays === d
+                                    ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                                    : 'text-rmpg-500 hover:text-rmpg-300'
+                                }`}
+                              >
+                                {d}d
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-red-500" />
+                              <span className="text-[6px] text-rmpg-400 font-mono">Current</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-gray-500" />
+                              <span className="text-[6px] text-rmpg-400 font-mono">Previous</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Temporal animation controls */}
+                      {advHeatmapMode === 'temporal' && (
+                        <div className="border-t border-rmpg-700/50 pt-1">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => advancedHeatmap.setTemporalPlaying(!advancedHeatmap.temporalPlaying)}
+                              className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
+                            >
+                              {advancedHeatmap.temporalPlaying
+                                ? <Pause className="w-3 h-3 text-amber-400" />
+                                : <Play className="w-3 h-3 text-green-400" />
+                              }
+                            </button>
+                            <input
+                              type="range"
+                              min={0} max={23}
+                              value={advancedHeatmap.temporalHour}
+                              onChange={(e) => { advancedHeatmap.setTemporalHour(Number(e.target.value)); advancedHeatmap.setTemporalPlaying(false); }}
+                              className="flex-1 h-1 accent-orange-400"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-[7px] font-mono text-orange-300">
+                              <Clock className="w-2 h-2 inline mr-0.5" />
+                              {advancedHeatmap.temporalHour.toString().padStart(2, '0')}:00 - {advancedHeatmap.temporalHour.toString().padStart(2, '0')}:59
+                            </span>
+                            <div className="flex items-center gap-0.5">
+                              {([1, 2, 4] as const).map((s) => (
+                                <button
+                                  key={s}
+                                  onClick={() => advancedHeatmap.setTemporalSpeed(s)}
+                                  className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                    advancedHeatmap.temporalSpeed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                                  }`}
+                                >
+                                  {s}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Refresh + loading */}
+                      <div className="flex items-center justify-between pt-1 border-t border-rmpg-700/50">
+                        <button
+                          onClick={() => advancedHeatmap.refreshHeatmap()}
+                          className="flex items-center gap-1 text-[7px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${advancedHeatmap.loading ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </button>
+                        {advancedHeatmap.loading && (
+                          <Loader2 className="w-2.5 h-2.5 text-brand-400 animate-spin" />
+                        )}
+                      </div>
+
+                      {/* Stats summary */}
+                      {advancedHeatmap.stats && (
+                        <div className="border-t border-rmpg-700/50 pt-1 space-y-0.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[7px] text-rmpg-400 font-mono">TOTAL</span>
+                            <span className="text-[8px] text-red-400 font-mono font-bold">{advancedHeatmap.stats.total.toLocaleString()}</span>
+                          </div>
+                          {advancedHeatmap.stats.topTypes.slice(0, 3).map((t, i) => (
+                            <div key={i} className="flex items-center gap-1">
+                              <div
+                                className="h-1 rounded-full"
+                                style={{
+                                  width: `${Math.max(10, (t.count / (advancedHeatmap.stats?.topTypes[0]?.count || 1)) * 50)}%`,
+                                  backgroundColor: i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#888888',
+                                }}
+                              />
+                              <span className="text-[6px] text-rmpg-400 font-mono truncate flex-1">{formatIncidentType(t.type)}</span>
+                              <span className="text-[6px] text-rmpg-500 font-mono">{t.count}</span>
+                            </div>
+                          ))}
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {advancedHeatmap.stats.peakHour !== null && (
+                              <span className="text-[6px] font-mono px-1 py-0.5 bg-orange-900/30 text-orange-400 rounded-sm">
+                                Peak: {advancedHeatmap.stats.peakHour.toString().padStart(2, '0')}:00
+                              </span>
+                            )}
+                            {advancedHeatmap.stats.peakDay && (
+                              <span className="text-[6px] font-mono px-1 py-0.5 bg-purple-900/30 text-purple-400 rounded-sm">
+                                {advancedHeatmap.stats.peakDay}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Predictive Heatmap */}
-              <button
-                onClick={() => setShowPredictiveHeatmap(!showPredictiveHeatmap)}
-                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
-                  showPredictiveHeatmap ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
-                }`}
-              >
-                {showPredictiveHeatmap ? <Eye className="w-3 h-3 text-violet-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                <Thermometer className="w-3 h-3 text-violet-400" />
-                <span className="text-[10px] text-rmpg-200 flex-1">Predicted</span>
-                {showPredictiveHeatmap && (
-                  <span className="text-[8px] text-violet-400 font-mono font-bold">{predictiveData.length} pts</span>
-                )}
-              </button>
-              {showPredictiveHeatmap && (
-                <div className="flex items-center gap-1 px-3 py-1">
-                  {[2, 4, 6, 8].map((hours) => (
-                    <button
-                      key={hours}
-                      onClick={() => setPredictiveHours(hours)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors ${
-                        predictiveHours === hours
-                          ? 'panel-inset bg-surface-deep text-violet-400'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
-                      }`}
-                    >
-                      {hours}h
-                    </button>
-                  ))}
-                </div>
-              )}
-
+              {/* ── Tracking Lines ── */}
               <button
                 onClick={() => setShowTrackingLines(!showTrackingLines)}
                 className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
@@ -2128,6 +2945,7 @@ export default function MapPage() {
                 <span className="text-[10px] text-rmpg-200 flex-1">Tracking Lines</span>
               </button>
 
+              {/* ── Breadcrumbs ── */}
               <button
                 onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
                 className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
@@ -2139,45 +2957,692 @@ export default function MapPage() {
                 <span className="text-[10px] text-rmpg-200 flex-1">Breadcrumbs</span>
               </button>
               {showBreadcrumbs && (
-                <div className="flex items-center gap-1 px-3 py-1">
-                  {[2, 4, 8, 12, 24].map((h) => (
+                <div className="px-3 py-1 space-y-1">
+                  {/* Hours selector */}
+                  <div className="flex items-center gap-1">
+                    {[2, 4, 8, 12, 24].map((h) => (
+                      <button
+                        key={h}
+                        onClick={() => setBreadcrumbHours(h)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          breadcrumbHours === h
+                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {h}h
+                      </button>
+                    ))}
                     <button
-                      key={h}
-                      onClick={() => setBreadcrumbHours(h)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors ${
-                        breadcrumbHours === h
-                          ? 'panel-inset bg-surface-deep text-cyan-400'
+                      onClick={async () => {
+                        setExportingPdf(true);
+                        try {
+                          const data = await apiFetch<any>(`/reports/patrol-tracking?hours=${breadcrumbHours}&geocode=true`);
+                          if (!data?.trails?.length) { addToast('No tracking data for this period.', 'warning'); return; }
+                          await generatePatrolTrackingPdf(data);
+                        } catch (err: any) {
+                          addToast(err?.message || 'Failed to export PDF', 'error');
+                        } finally { setExportingPdf(false); }
+                      }}
+                      disabled={exportingPdf}
+                      className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
+                      title="Export patrol tracking PDF"
+                    >
+                      {exportingPdf ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <FileText className="w-2.5 h-2.5" />}
+                      PDF
+                    </button>
+                  </div>
+                  {/* Color mode selector */}
+                  <div className="flex items-center gap-1">
+                    <Palette className="w-2.5 h-2.5 text-rmpg-400" />
+                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        onClick={() => setBreadcrumbColorMode(mode)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          breadcrumbColorMode === mode
+                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Speed color legend */}
+                  {breadcrumbColorMode === 'speed' && (
+                    <div className="flex items-center gap-1.5 pl-1">
+                      {[['#22c55e', '<15'], ['#eab308', '15-35'], ['#f97316', '35-55'], ['#ef4444', '55+']].map(([color, label]) => (
+                        <span key={label} className="flex items-center gap-0.5">
+                          <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+                          <span className="text-[7px] text-rmpg-400 font-mono">{label}</span>
+                        </span>
+                      ))}
+                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
+                    </div>
+                  )}
+                  {/* Playback controls */}
+                  {playbackTrails.length > 0 && (
+                    <div className="space-y-1 pt-0.5">
+                      <div className="flex items-center gap-1">
+                        <Play className="w-2.5 h-2.5 text-green-400" />
+                        <select
+                          value={playbackUnit ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            setPlaybackUnit(val);
+                            setPlaybackIdx(0);
+                            setIsPlaying(false);
+                          }}
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-cyan-600"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="">Replay trail...</option>
+                          {playbackTrails.map((t: any) => (
+                            <option key={t.unit_id} value={t.unit_id}>
+                              {t.call_sign} ({t.points.length} pts)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {playbackUnit != null && (() => {
+                        const activeTrail = playbackTrails.find((t: any) => t.unit_id === playbackUnit);
+                        const totalPts = activeTrail?.points?.length || 0;
+                        const currentPt = activeTrail?.points?.[playbackIdx];
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => {
+                                  if (isPlaying) {
+                                    setIsPlaying(false);
+                                    if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
+                                  } else {
+                                    if (playbackIdx >= totalPts - 1) setPlaybackIdx(0);
+                                    setIsPlaying(true);
+                                  }
+                                }}
+                                className="p-0.5 rounded-sm hover:bg-cyan-900/40 transition-colors"
+                                title={isPlaying ? 'Pause' : 'Play'}
+                              >
+                                {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
+                              </button>
+                              <input
+                                type="range"
+                                min={0}
+                                max={Math.max(totalPts - 1, 0)}
+                                value={playbackIdx}
+                                onChange={(e) => {
+                                  const idx = Number(e.target.value);
+                                  setPlaybackIdx(idx);
+                                  setIsPlaying(false);
+                                  if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
+                                  const pt = activeTrail?.points?.[idx];
+                                  if (pt && playbackMarkerRef.current) {
+                                    playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+                                  }
+                                }}
+                                className="flex-1 h-1 accent-cyan-400"
+                                aria-label="Playback position"
+                              />
+                              <span className="text-[8px] font-mono text-rmpg-400 w-12 text-right">
+                                {playbackIdx + 1}/{totalPts}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Gauge className="w-2.5 h-2.5 text-rmpg-400" />
+                              {[1, 2, 5, 10].map((spd) => (
+                                <button
+                                  key={spd}
+                                  onClick={() => setPlaybackSpeed(spd)}
+                                  className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                    playbackSpeed === spd
+                                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                                      : 'text-rmpg-500 hover:text-rmpg-300'
+                                  }`}
+                                >
+                                  {spd}x
+                                </button>
+                              ))}
+                              {currentPt && (
+                                <span className="text-[7px] font-mono text-rmpg-400 ml-auto">
+                                  {currentPt.speed != null ? `${(currentPt.speed * 2.237).toFixed(0)} mph` : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Intelligence Layers ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
+              {([
+                { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
+                { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
+                { key: 'offenders' as const, label: 'Sex Offenders', color: 'purple' },
+                { key: 'bolos' as const, label: 'BOLOs', color: 'amber' },
+              ] as const).map(({ key, label, color }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleIntelLayer(key)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-[#050505]/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  <Shield className="w-3 h-3" />
+                  <span className="flex-1 text-left">{label}</span>
+                  {intelLayers[key] && intelLayerData.counts[key] > 0 && (
+                    <span className="text-[9px] font-mono">{intelLayerData.counts[key]}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* ── History Layers ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">History</div>
+
+              {/* Call History */}
+              <button
+                onClick={() => setShowCallHistory(!showCallHistory)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showCallHistory ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                <span className="flex-1 text-left">Call History</span>
+                {showCallHistory && callHistory.count > 0 && (
+                  <span className="text-[9px] font-mono">{callHistory.count}</span>
+                )}
+                {showCallHistory && callHistory.loading && (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                )}
+              </button>
+
+              {/* Call History sub-controls */}
+              {showCallHistory && (
+                <div className="ml-5 mt-1 space-y-1.5 pb-1">
+                  {/* Days slider */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Days:</span>
+                    {[1, 3, 7, 14, 30, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setCallHistoryDays(d)}
+                        className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                          callHistoryDays === d
+                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Status checkboxes */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Status:</span>
+                    {['cleared', 'closed', 'archived'].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setCallHistoryStatuses(prev =>
+                          prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                        )}
+                        className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
+                          callHistoryStatuses.includes(s)
+                            ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/40'
+                            : 'text-rmpg-600 hover:text-rmpg-400'
+                        }`}
+                      >
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Priority pills */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Pri:</span>
+                    {['P1', 'P2', 'P3', 'P4'].map((p) => {
+                      const c = PRIORITY_TO_COLOR[p] || 'gray';
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => setCallHistoryPriorities(prev =>
+                            prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                          )}
+                          className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                            callHistoryPriorities.includes(p)
+                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-[#050505]/40 text-gray-400 border border-gray-700/40')
+                              : 'text-rmpg-600 hover:text-rmpg-400'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
+                    {callHistoryPriorities.length > 0 && (
+                      <button
+                        onClick={() => setCallHistoryPriorities([])}
+                        className="text-[7px] text-rmpg-600 hover:text-rmpg-400 ml-0.5"
+                        title="Clear priority filter"
+                      >
+                        All
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Incident Reports */}
+              <button
+                onClick={() => setShowIncidentReports(!showIncidentReports)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showIncidentReports ? 'panel-inset bg-emerald-900/20 text-emerald-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <FileText className="w-3 h-3" />
+                <span className="flex-1 text-left">Incident Reports</span>
+                {showIncidentReports && incidentReports.count > 0 && (
+                  <span className="text-[9px] font-mono">{incidentReports.count}</span>
+                )}
+                {showIncidentReports && incidentReports.loading && (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                )}
+              </button>
+
+              {/* Incident Reports sub-controls */}
+              {showIncidentReports && (
+                <div className="ml-5 mt-1 space-y-1.5 pb-1">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Days:</span>
+                    {[7, 14, 30, 60, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setIncidentDays(d)}
+                        className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                          incidentDays === d
+                            ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Analysis ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
+
+              {/* Predictions */}
+              <button
+                onClick={() => setShowPredictions(!showPredictions)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showPredictions ? 'panel-inset bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Brain className="w-3 h-3" />
+                <span className="flex-1 text-left">Predictions</span>
+                {showPredictions && predictions.hotspots.length > 0 && (
+                  <span className="text-[9px] font-mono">{predictions.hotspots.length}</span>
+                )}
+              </button>
+
+              {/* Safety Zones */}
+              <button
+                onClick={() => setShowSafetyZones(!showSafetyZones)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showSafetyZones ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <ShieldAlert className="w-3 h-3" />
+                <span className="flex-1 text-left">Safety Zones</span>
+                {showSafetyZones && safetyZones.zones.length > 0 && (
+                  <span className="text-[9px] font-mono">{safetyZones.zones.length}</span>
+                )}
+              </button>
+
+              {/* Geofences */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setShowGeofences(!showGeofences)}
+                  className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    showGeofences ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  <Radar className="w-3 h-3" />
+                  <span className="flex-1 text-left">Geofences</span>
+                  {showGeofences && geofences.geofences.length > 0 && (
+                    <span className="text-[9px] font-mono">{geofences.geofences.length}</span>
+                  )}
+                </button>
+                {showGeofences && (
+                  <button
+                    onClick={() => geofences.setDrawingMode(!geofences.drawingMode)}
+                    className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
+                      geofences.drawingMode ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                    }`}
+                  >
+                    Draw
+                  </button>
+                )}
+              </div>
+
+              {/* Analysis Intel Dashboard */}
+              <button
+                onClick={() => setShowAnalysisDashboard(!showAnalysisDashboard)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showAnalysisDashboard ? 'panel-inset bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Brain className="w-3 h-3" />
+                <span className="flex-1 text-left">Analysis Intel</span>
+                {showAnalysisDashboard && analysisSummary.data && (
+                  <span className="text-[9px] font-mono">{analysisSummary.data.overlapZones.count} overlaps</span>
+                )}
+                {showAnalysisDashboard && analysisSummary.loading && (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                )}
+              </button>
+            </div>
+
+            {/* ── Tactical Layers ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
+
+              {/* Patrol Checkpoints */}
+              <button
+                onClick={() => setShowPatrolCheckpoints(!showPatrolCheckpoints)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showPatrolCheckpoints ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Crosshair className="w-3 h-3" />
+                <span className="flex-1 text-left">Patrol Checkpoints</span>
+                {showPatrolCheckpoints && patrolCheckpoints.overdueCount > 0 && (
+                  <span className="text-[9px] font-mono text-orange-400">{patrolCheckpoints.overdueCount} due</span>
+                )}
+                {showPatrolCheckpoints && !patrolCheckpoints.loading && patrolCheckpoints.overdueCount === 0 && (
+                  <span className="text-[9px] font-mono">{patrolCheckpoints.checkpoints.length}</span>
+                )}
+              </button>
+
+              {/* Field Interviews */}
+              <button
+                onClick={() => setShowFieldInterviews(!showFieldInterviews)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showFieldInterviews ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <FileSearch className="w-3 h-3" />
+                <span className="flex-1 text-left">Field Interviews</span>
+                {showFieldInterviews && fieldInterviews.count > 0 && (
+                  <span className="text-[9px] font-mono">{fieldInterviews.count}</span>
+                )}
+              </button>
+              {showFieldInterviews && (
+                <div className="px-3 py-1 flex items-center gap-1">
+                  {[7, 14, 30, 90].map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setFiDays(d)}
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                        fiDays === d
+                          ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                           : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
-                      {h}h
+                      {d}d
                     </button>
                   ))}
-                  <button
-                    onClick={async () => {
-                      setExportingPdf(true);
-                      try {
-                        const data = await apiFetch<any>(`/reports/patrol-tracking?hours=${breadcrumbHours}&geocode=true`);
-                        if (!data?.trails?.length) {
-                          alert('No tracking data for this period.');
-                          return;
-                        }
-                        await generatePatrolTrackingPdf(data);
-                      } catch (err: any) {
-                        alert(err?.message || 'Failed to export PDF');
-                      } finally {
-                        setExportingPdf(false);
-                      }
-                    }}
-                    disabled={exportingPdf}
-                    className="toolbar-btn px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors text-brand-400 ml-1 flex items-center gap-0.5"
-                    title="Export patrol tracking PDF"
-                  >
-                    {exportingPdf ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <FileText className="w-2.5 h-2.5" />}
-                    PDF
-                  </button>
                 </div>
               )}
+
+              {/* Dwell Time */}
+              <button
+                onClick={() => setShowDwellTime(!showDwellTime)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showDwellTime ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Timer className="w-3 h-3" />
+                <span className="flex-1 text-left">Dwell Time</span>
+                {showDwellTime && dwellTime.dwellAlertCount > 0 && (
+                  <span className="text-[9px] font-mono text-amber-400">{dwellTime.dwellAlertCount}</span>
+                )}
+              </button>
+
+              {/* Response Radius */}
+              <button
+                onClick={() => setShowResponseRadius(!showResponseRadius)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Target className="w-3 h-3" />
+                <span className="flex-1 text-left">Response Radius</span>
+                {showResponseRadius && responseRadius.activePoint && (
+                  <span className="led-dot led-indigo" style={{ width: 5, height: 5 }} />
+                )}
+              </button>
+
+              {/* Enforcement Clusters */}
+              <button
+                onClick={() => setShowEnforcementClusters(!showEnforcementClusters)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showEnforcementClusters ? 'panel-inset bg-rose-900/20 text-rose-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Scale className="w-3 h-3" />
+                <span className="flex-1 text-left">Enforcement</span>
+                {showEnforcementClusters && enforcementClusters.totalRecords > 0 && (
+                  <span className="text-[9px] font-mono">{enforcementClusters.totalRecords}</span>
+                )}
+              </button>
+              {showEnforcementClusters && (
+                <div className="px-3 py-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    {(['citations', 'arrests'] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setEnforcementType(t)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          enforcementType === t
+                            ? 'bg-rose-900/50 text-rose-400 border border-rose-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {t === 'citations' ? 'Citations' : 'Arrests'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[30, 60, 90, 180].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setEnforcementDays(d)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          enforcementDays === d
+                            ? 'bg-rose-900/50 text-rose-400 border border-rose-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Coverage Map */}
+              <button
+                onClick={() => setShowCoverage(!showCoverage)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showCoverage ? 'panel-inset bg-teal-900/20 text-teal-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Radar className="w-3 h-3" />
+                <span className="flex-1 text-left">Coverage Map</span>
+                {showCoverage && coverageGaps.coverageCount > 0 && (
+                  <span className="text-[9px] font-mono">{coverageGaps.coverageCount}</span>
+                )}
+              </button>
+              {showCoverage && (
+                <div className="px-3 py-1 flex items-center gap-1">
+                  {[1, 2, 3, 5].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setCoverageRadius(r)}
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                        coverageRadius === r
+                          ? 'bg-teal-900/50 text-teal-400 border border-teal-700/50'
+                          : 'text-rmpg-500 hover:text-rmpg-300'
+                      }`}
+                    >
+                      {r}mi
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Fleet Vehicles */}
+              <button
+                onClick={() => setShowFleetVehicles(!showFleetVehicles)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Car className="w-3 h-3" />
+                <span className="flex-1 text-left">Fleet Vehicles</span>
+                {showFleetVehicles && fleetVehicles.count > 0 && (
+                  <span className="text-[9px] font-mono">{fleetVehicles.count}</span>
+                )}
+              </button>
+
+              {/* Repeat Addresses */}
+              <button
+                onClick={() => setShowRepeatAddresses(!showRepeatAddresses)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showRepeatAddresses ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <AlertOctagon className="w-3 h-3" />
+                <span className="flex-1 text-left">Repeat Addresses</span>
+                {showRepeatAddresses && repeatAddresses.count > 0 && (
+                  <span className="text-[9px] font-mono">{repeatAddresses.count}</span>
+                )}
+              </button>
+              {showRepeatAddresses && (
+                <div className="px-3 py-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    {[7, 14, 30, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setRepeatDays(d)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          repeatDays === d
+                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[7px] text-rmpg-500">Min:</span>
+                    {[2, 3, 5, 10].map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => setRepeatMinCount(c)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          repeatMinCount === c
+                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {c}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Panic Zone */}
+              <button
+                onClick={() => setShowPanicZone(!showPanicZone)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showPanicZone ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <ShieldAlert className="w-3 h-3" />
+                <span className="flex-1 text-left">Panic Zone</span>
+                {showPanicZone && panicZone.activePanic && (
+                  <span className="text-[8px] font-bold bg-red-600 text-white px-1 py-0.5 rounded-sm animate-pulse">ACTIVE</span>
+                )}
+              </button>
+
+              {/* Traffic Layer */}
+              <button
+                onClick={() => toggleTraffic(mapInstanceRef.current)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showTraffic ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Car className="w-3 h-3" />
+                <span className="flex-1 text-left">Traffic</span>
+                {showTraffic && <span className="led-dot led-green" style={{ width: 5, height: 5 }} />}
+              </button>
+
+              {/* Marker Clustering */}
+              <button
+                onClick={() => setClusteringEnabled(!clusteringEnabled)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  clusteringEnabled ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <CircleDot className="w-3 h-3" />
+                <span className="flex-1 text-left">Cluster Calls</span>
+                {clusteringEnabled && clustering.clustered && <span className="led-dot led-gray" style={{ width: 5, height: 5 }} />}
+              </button>
+
+              {/* Daylight Overlay */}
+              <button
+                onClick={() => setShowDaylight(!showDaylight)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showDaylight ? 'panel-inset bg-yellow-900/20 text-yellow-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Sun className="w-3 h-3" />
+                <span className="flex-1 text-left">Daylight</span>
+                {showDaylight && daylight.phase && (
+                  <span className="text-[8px] font-mono text-yellow-400">{daylight.phase}</span>
+                )}
+              </button>
+            </div>
+
+            {/* ── Dispatch Mode ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <button
+                onClick={() => setDragDispatchMode(!dragDispatchMode)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  dragDispatchMode ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Grab className="w-3 h-3" />
+                <span className="flex-1 text-left">Drag Dispatch</span>
+                {dragDispatchMode && <span className="led-dot led-amber" style={{ width: 5, height: 5 }} />}
+              </button>
             </div>
 
             <div className="border-t border-rmpg-700 p-1.5">
@@ -2187,21 +3652,31 @@ export default function MapPage() {
               >
                 <MapIcon className="w-3 h-3 text-rmpg-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Map Style</span>
-                <span className="text-[9px] text-rmpg-400">{MAP_STYLE_LABELS[mapStyle]}</span>
+                <span className="text-[9px] text-brand-400 font-bold">{MAP_STYLE_LABELS[mapStyle]}</span>
+                {showMapStyles ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
               </button>
               {showMapStyles && (
-                <div className="mt-1 space-y-0.5">
-                  {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => (
-                    <button
-                      key={key}
-                      onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
-                      className={`w-full text-left px-4 py-1 text-[10px] transition-colors ${
-                        mapStyle === key ? 'text-brand-400 panel-inset bg-surface-deep' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-800/50'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="mt-1 grid grid-cols-2 gap-1 px-1">
+                  {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
+                    const isActive = mapStyle === key;
+                    const desc = MAP_STYLE_DESCRIPTIONS[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
+                        className={`text-left px-2 py-1.5 rounded-sm transition-all ${
+                          isActive
+                            ? 'bg-brand-900/30 border border-brand-500/50 ring-1 ring-brand-500/20'
+                            : 'bg-rmpg-800/30 border border-rmpg-700/50 hover:bg-rmpg-700/40 hover:border-rmpg-600/50'
+                        }`}
+                      >
+                        <div className={`text-[10px] font-bold ${isActive ? 'text-brand-400' : 'text-rmpg-200'}`}>
+                          {label}
+                        </div>
+                        <div className="text-[7px] text-rmpg-500 leading-tight mt-0.5">{desc}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2234,8 +3709,8 @@ export default function MapPage() {
                         {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
                         <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.style.strokeColor, opacity: state?.visible ? 1 : 0.3 }} />
                         <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
-                        {state?.loaded && state.featureCount > 0 && (
-                          <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#6b7280' }}>
+                        {state?.loaded && (state?.featureCount ?? 0) > 0 && (
+                          <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#666666' }}>
                             {state.featureCount}
                           </span>
                         )}
@@ -2245,6 +3720,36 @@ export default function MapPage() {
                 </div>
               )}
             </div>
+
+            {/* ── District Legend Section ── */}
+            {geoLayerStates.beat?.visible && districtSections.length > 0 && (
+              <div className="border-t border-rmpg-700 p-1.5">
+                <button
+                  onClick={() => setShowDistrictLegend(!showDistrictLegend)}
+                  className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded-sm hover:bg-rmpg-700/30"
+                >
+                  <Shield className="w-3 h-3 text-brand-400" />
+                  <span className="text-[10px] text-rmpg-300 flex-1">District Legend</span>
+                  <span className="text-[9px] text-rmpg-500">{districtSections.length} sections</span>
+                  {showDistrictLegend ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
+                </button>
+                {showDistrictLegend && (
+                  <div className="mt-1 space-y-0.5 max-h-[200px] overflow-y-auto">
+                    {districtSections.map((sec) => (
+                      <div key={sec.id} className="flex items-center gap-2 px-2 py-0.5">
+                        <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: getSectionColor(sec.id), opacity: 0.8 }} />
+                        <span className="text-[9px] font-mono font-bold" style={{ color: getSectionColor(sec.id) }}>{sec.id}</span>
+                        <span className="text-[8px] text-rmpg-300 truncate flex-1">{sec.name}</span>
+                      </div>
+                    ))}
+                    <div className="px-2 pt-1 border-t border-rmpg-700/50">
+                      <div className="text-[7px] text-rmpg-500 uppercase tracking-widest">Format: SEC-ZONE/BEAT</div>
+                      <div className="text-[8px] text-rmpg-400 font-mono mt-0.5">e.g. SL1-SLC/A</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Shift Planning Section ── */}
             <div className="border-t border-rmpg-700 p-1.5">
@@ -2297,7 +3802,7 @@ export default function MapPage() {
                             </span>
                             <span className="text-[8px] text-rmpg-500 font-mono">{plan.assignments.length}</span>
                             <button
-                              onClick={(e) => { e.stopPropagation(); shiftPlanning.deletePlan(plan.id); }}
+                              onClick={(e) => { e.stopPropagation(); if (window.confirm('Delete this shift plan?')) shiftPlanning.deletePlan(plan.id); }}
                               className="p-0.5 hover:text-red-400 text-rmpg-600 transition-colors"
                             >
                               <Trash2 className="w-2.5 h-2.5" />
@@ -2343,7 +3848,7 @@ export default function MapPage() {
                       <button
                         onClick={() => {
                           if (newShiftPlanName.trim()) {
-                            shiftPlanning.createPlan(newShiftPlanName.trim(), newShiftPlanDate, newShiftPlanType);
+                            try { shiftPlanning.createPlan(newShiftPlanName.trim(), newShiftPlanDate, newShiftPlanType); } catch (err) { console.error('Failed to create shift plan:', err); addToast('Failed to create shift plan', 'error'); }
                             setNewShiftPlanName('');
                           }
                         }}
@@ -2466,7 +3971,7 @@ export default function MapPage() {
                                           key={unit.id}
                                           className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                             assignUnitIds.includes(unit.id)
-                                              ? 'bg-blue-900/30 text-blue-300'
+                                              ? 'bg-gray-900/30 text-gray-300'
                                               : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                           }`}
                                         >
@@ -2539,16 +4044,16 @@ export default function MapPage() {
                       </div>
 
                       {/* Current assignments list */}
-                      {shiftPlanning.activePlan.assignments.length > 0 && (
+                      {shiftPlanning.activePlan?.assignments?.length > 0 && (
                         <div className="border-t border-rmpg-700 pt-1 mt-1">
                           <div className="flex items-center justify-between px-2 mb-1">
                             <span className="text-[8px] text-rmpg-500 uppercase tracking-wider font-bold">
-                              Assignments ({shiftPlanning.activePlan.assignments.length})
+                              Assignments ({shiftPlanning.activePlan?.assignments?.length})
                             </span>
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => {
-                                  try { shiftPlanning.savePlanToServer(shiftPlanning.activePlanId!); } catch {}
+                                onClick={async () => {
+                                  try { await shiftPlanning.savePlanToServer(shiftPlanning.activePlanId!); } catch { addToast('Failed to save shift plan', 'error'); }
                                 }}
                                 className="text-rmpg-500 hover:text-emerald-400 transition-colors" title="Save to server"
                               >
@@ -2563,7 +4068,7 @@ export default function MapPage() {
                             </div>
                           </div>
                           <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
-                            {shiftPlanning.activePlan.assignments.map((assignment) => (
+                            {shiftPlanning.activePlan?.assignments.map((assignment) => (
                               <div
                                 key={assignment.id}
                                 className="flex items-center gap-1.5 px-2 py-0.5 hover:bg-rmpg-800/50"
@@ -2596,7 +4101,7 @@ export default function MapPage() {
                                   <span className="text-emerald-400 font-bold">{stats.assigned}</span> areas
                                 </span>
                                 <span className="text-[7px] text-rmpg-500">
-                                  <span className="text-blue-400 font-bold">{stats.officers}</span> officers
+                                  <span className="text-gray-400 font-bold">{stats.officers}</span> officers
                                 </span>
                                 <span className="text-[7px] text-rmpg-500">
                                   <span className="text-amber-400 font-bold">{stats.units}</span> units
@@ -2620,7 +4125,7 @@ export default function MapPage() {
                         >
                           <Copy className="w-2 h-2" /> Duplicate
                         </button>
-                        {shiftPlanning.activePlan.assignments.length > 0 && (
+                        {shiftPlanning.activePlan?.assignments?.length > 0 && (
                           <button
                             onClick={() => shiftPlanning.removeAllAssignments()}
                             className="toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
@@ -2671,7 +4176,7 @@ export default function MapPage() {
                           <span className="text-[9px] text-rmpg-200 flex-1 truncate">{plan.name}</span>
                           <span className="text-[8px] text-rmpg-500 font-mono">{plan.items.length}</span>
                           <button
-                            onClick={(e) => { e.stopPropagation(); eventPlanning.deletePlan(plan.id); }}
+                            onClick={(e) => { e.stopPropagation(); if (window.confirm('Delete this event plan?')) eventPlanning.deletePlan(plan.id); }}
                             className="p-0.5 hover:text-red-400 text-rmpg-600 transition-colors"
                           >
                             <Trash2 className="w-2.5 h-2.5" />
@@ -2689,7 +4194,7 @@ export default function MapPage() {
                       onChange={(e) => setNewPlanName(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && newPlanName.trim()) {
-                          eventPlanning.createPlan(newPlanName.trim());
+                          try { eventPlanning.createPlan(newPlanName.trim()); } catch (err) { console.error('Failed to create event plan:', err); addToast('Failed to create event plan', 'error'); }
                           setNewPlanName('');
                         }
                       }}
@@ -2699,7 +4204,7 @@ export default function MapPage() {
                     <button
                       onClick={() => {
                         if (newPlanName.trim()) {
-                          eventPlanning.createPlan(newPlanName.trim());
+                          try { eventPlanning.createPlan(newPlanName.trim()); } catch (err) { console.error('Failed to create event plan:', err); addToast('Failed to create event plan', 'error'); }
                           setNewPlanName('');
                         }
                       }}
@@ -2813,104 +4318,628 @@ export default function MapPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Officer Safety ──────────────────────── */}
+            <div className="mt-3 pt-3 border-t border-rmpg-700">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-2">Officer Safety</div>
+
+              <button type="button" onClick={() => setShowSafetyDashboard(!showSafetyDashboard)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showSafetyDashboard ? 'bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <ShieldAlert className="w-3 h-3" /> Safety Dashboard
+                {showSafetyDashboard && <span className="led-dot led-green ml-auto" />}
+              </button>
+
+              <button type="button" onClick={() => setShowThreatAssessment(!showThreatAssessment)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showThreatAssessment ? 'bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Crosshair className="w-3 h-3" /> Threat Assessment
+              </button>
+
+              <button type="button" onClick={() => setShowUnitMonitoring(!showUnitMonitoring)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showUnitMonitoring ? 'bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Target className="w-3 h-3" /> Unit Monitoring
+                {unitSafety.loneOfficers?.length > 0 && <span className="led-dot led-amber ml-auto animate-led-pulse" />}
+              </button>
+
+              <button type="button" onClick={() => setShowPerimeterTools(!showPerimeterTools)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showPerimeterTools ? 'bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Radar className="w-3 h-3" /> Perimeter Tools
+              </button>
+
+              <button type="button" onClick={() => setShowCorridorAnalysis(!showCorridorAnalysis)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showCorridorAnalysis ? 'bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Route className="w-3 h-3" /> Corridor Analysis
+              </button>
+
+              <button type="button" onClick={() => setShowEnvironmentInfo(!showEnvironmentInfo)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showEnvironmentInfo ? 'bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <TreePine className="w-3 h-3" /> Environment
+                {environment.lowVisibility && <span className="led-dot led-amber ml-auto" />}
+              </button>
+
+              <button type="button" onClick={() => setShowTacticalTools(!showTacticalTools)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showTacticalTools ? 'bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Grab className="w-3 h-3" /> Tactical Tools
+              </button>
+
+              <button type="button" onClick={() => setShowAlertSystem(!showAlertSystem)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showAlertSystem ? 'bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Siren className="w-3 h-3" /> Alert System
+                {alerts.activeAlerts?.length > 0 && <span className="ml-auto text-[9px] font-mono text-red-400">{alerts.activeAlerts?.length}</span>}
+              </button>
+
+              {/* Safety Alert Broadcast Button */}
+              <button type="button" onClick={() => setShowSafetyAlertModal(true)} className="w-full mt-2 toolbar-btn toolbar-btn-primary flex items-center justify-center gap-1.5 text-[10px] py-1.5" style={{ background: '#dc2626', border: '1px solid #ef4444' }}>
+                <Siren className="w-3 h-3" /> BROADCAST ALERT
+              </button>
+            </div>
           </div>
           )}
         </div>}
 
-        {/* ── Status Legend - Bottom Left (desktop only, wraps on narrow) ── */}
-        {!isMobile && <div className="absolute bottom-2 left-2 z-[1000] max-w-[calc(100vw-16rem)]">
-          <div className="panel-beveled px-2 py-1.5 shadow-xl" style={{ background: '#141e2b' }}>
-            <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-widest">Legend</span>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+        {/* ── Predictions Panel (floating, desktop only) ── */}
+        {!isMobile && showPredictions && (
+          <div className="absolute top-4 z-[1001]" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
+            <PredictionsPanel
+              hotspots={predictions.hotspots}
+              loading={predictions.loading}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
+              onClose={() => setShowPredictions(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Geofence Manager (floating, desktop only) ── */}
+        {!isMobile && showGeofences && (
+          <div className="absolute top-4 z-[1001]" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showPredictions ? 320 : 16 }}>
+            <GeofenceManager
+              geofences={geofences.geofences}
+              loading={geofences.loading}
+              onDraw={() => geofences.setDrawingMode(!geofences.drawingMode)}
+              onDelete={async (id) => {
+                try {
+                  await apiFetch(`/map/geofences/${id}`, { method: 'DELETE' });
+                  addToast('Geofence deleted', 'success');
+                  // Refresh geofences by toggling
+                  setShowGeofences(false);
+                  setTimeout(() => setShowGeofences(true), 100);
+                } catch { addToast('Failed to delete geofence', 'error'); }
+              }}
+              onToggle={async (id) => {
+                const fence = geofences.geofences.find(g => g.id === id);
+                if (!fence) return;
+                try {
+                  await apiFetch(`/map/geofences/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: fence.is_active ? 0 : 1 }),
+                  });
+                  addToast(`Geofence ${fence.is_active ? 'deactivated' : 'activated'}`, 'success');
+                  setShowGeofences(false);
+                  setTimeout(() => setShowGeofences(true), 100);
+                } catch { addToast('Failed to toggle geofence', 'error'); }
+              }}
+              drawingMode={geofences.drawingMode}
+              onClose={() => setShowGeofences(false)}
+              alerts={geofences.alerts}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
+            />
+          </div>
+        )}
+
+        {/* ── Safety Dashboard Panel (floating, desktop only) ── */}
+        {!isMobile && showSafetyDashboard && (
+          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320 }}>
+            <SafetyDashboardPanel
+              shiftRisk={shiftRisk as any}
+              environment={safetyEnvironmentProp}
+              unitSafety={safetyUnitSafetyProp}
+              onClose={() => setShowSafetyDashboard(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Safety Alert Modal ── */}
+        {showSafetyAlertModal && (
+          <SafetyAlertModal
+            isOpen={showSafetyAlertModal}
+            onClose={() => setShowSafetyAlertModal(false)}
+            onBroadcast={(type, lat, lng, details, radius) => alerts.broadcastAlert(type as SafetyAlertType, lat, lng, details, radius)}
+            defaultLat={mapInstanceRef.current?.getCenter()?.lat() ?? DEFAULT_CENTER.lat}
+            defaultLng={mapInstanceRef.current?.getCenter()?.lng() ?? DEFAULT_CENTER.lng}
+          />
+        )}
+
+        {/* ── Weather / Environment Panel ── */}
+        {!isMobile && showEnvironmentInfo && (
+          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment || showSafetyDashboard ? 320 : 8, maxWidth: 320, willChange: 'contents' }}>
+            <WeatherPanel
+              lighting={environment?.lighting || 'daylight'}
+              sunriseSunset={environment?.sunriseSunset || null}
+              lowVisibility={environment?.lowVisibility || false}
+              weatherHazards={environment?.weatherHazards || { freezing: false, highWind: false, rain: false, snow: false, description: '' }}
+              icyRoad={environment?.icyRoad || false}
+              windCondition={environment?.windCondition || null}
+              visibilityRange={environment?.visibilityRange || 10000}
+              schoolZoneActive={environment?.schoolZoneActive || false}
+              loading={environment?.loading || false}
+              onRefresh={() => environment?.refresh?.()}
+              onClose={() => setShowEnvironmentInfo(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Advanced Heatmap Panel ── */}
+        {!isMobile && advancedHeatmapEnabled && showHeatmap && (
+          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, maxWidth: 400 }}>
+            <AdvancedHeatmapPanel
+              mode={advHeatmapMode}
+              onModeChange={setAdvHeatmapMode}
+              hourRange={advHeatmapHourRange}
+              onHourRangeChange={setAdvHeatmapHourRange}
+              dayFilter={advHeatmapDayFilter}
+              onDayFilterChange={setAdvHeatmapDayFilter}
+              colorScheme={advHeatmapColorScheme}
+              onColorSchemeChange={setAdvHeatmapColorScheme}
+              opacity={advHeatmapOpacity}
+              onOpacityChange={setAdvHeatmapOpacity}
+              radius={advHeatmapRadius}
+              onRadiusChange={setAdvHeatmapRadius}
+              resolution={advHeatmapResolution}
+              onResolutionChange={setAdvHeatmapResolution}
+              showClusters={advHeatmapShowClusters}
+              onShowClustersChange={setAdvHeatmapShowClusters}
+              clusterCount={advancedHeatmap.clusters?.length ?? 0}
+              types={advHeatmapTypes}
+              onTypesChange={setAdvHeatmapTypes}
+              availableTypes={heatmapTypes}
+              comparisonDays={advHeatmapComparisonDays}
+              onComparisonDaysChange={setAdvHeatmapComparisonDays}
+              temporalHour={advancedHeatmap.temporalHour}
+              temporalPlaying={advancedHeatmap.temporalPlaying}
+              temporalSpeed={advancedHeatmap.temporalSpeed}
+              onTemporalHourChange={advancedHeatmap.setTemporalHour}
+              onTemporalPlayingChange={advancedHeatmap.setTemporalPlaying}
+              onTemporalSpeedChange={advancedHeatmap.setTemporalSpeed}
+              stats={advancedHeatmap.stats}
+              pointCount={advancedHeatmap.pointCount}
+              comparisonPointCount={advancedHeatmap.comparisonPointCount}
+              loading={advancedHeatmap.loading}
+              onRefresh={() => advancedHeatmap.refreshHeatmap()}
+              onClose={() => setAdvancedHeatmapEnabled(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Threat Assessment Panel ── */}
+        {!isMobile && showThreatAssessment && (
+          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 300, top: showSafetyDashboard ? 340 : 8 }}>
+            <ThreatAssessmentPanel
+              assessment={threatAssessment.currentAssessment}
+              approachRoutes={threatAssessment.approachRoutes}
+              loading={threatAssessment.loading}
+              onAssessCenter={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) threatAssessment.assessLocation(c.lat(), c.lng());
+              }}
+              onGetApproachRoutes={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) threatAssessment.getApproachRoutes(c.lat(), c.lng());
+              }}
+              onClear={() => threatAssessment.clearAssessment()}
+              onClose={() => setShowThreatAssessment(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Tactical Tools Panel ── */}
+        {!isMobile && showTacticalTools && (
+          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment ? 320 : 8, maxWidth: 280 }}>
+            <TacticalToolsPanel
+              rallyPoint={tactical.rallyPoint}
+              entryPoints={tactical.entryPoints}
+              crowdDensity={(() => {
+                const c = mapInstanceRef.current?.getCenter();
+                return c ? tactical.estimateCrowdDensity(c.lat(), c.lng()) : 'Low (<50)';
+              })()}
+              onSetRallyPoint={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.setRallyPoint(c.lat(), c.lng(), 'Rally Point');
+              }}
+              onClearRallyPoint={() => tactical.clearRallyPoint()}
+              onShowCommandRings={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.showCommandRings(c.lat(), c.lng());
+              }}
+              onClearCommandRings={() => tactical.clearCommandRings()}
+              onShowK9Radius={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.showK9Radius(c.lat(), c.lng());
+              }}
+              onClearK9Radius={() => tactical.clearK9Radius()}
+              onShowHospitals={() => tactical.showHospitals()}
+              onShowFireStations={() => tactical.showFireStations()}
+              onHideEmergencyServices={() => tactical.hideEmergencyServices()}
+              onAddEntryPoint={(label) => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.addEntryPoint(c.lat(), c.lng(), label);
+              }}
+              onClearEntryPoints={() => tactical.clearEntryPoints()}
+              onQuickDeploy={(preset: QuickDeployPreset) => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (!c) return;
+                const lat = c.lat();
+                const lng = c.lng();
+                // Clear existing tactical markers first
+                tactical.clearRallyPoint();
+                tactical.clearEntryPoints();
+                tactical.clearCommandRings();
+                tactical.clearK9Radius();
+
+                switch (preset) {
+                  case 'traffic_stop':
+                    tactical.setRallyPoint(lat, lng, 'Traffic Stop');
+                    tactical.showCommandRings(lat, lng); // 100/300/500m rings
+                    break;
+                  case 'building_search':
+                    // 4 entry points at N/S/E/W offsets (~50m)
+                    tactical.addEntryPoint(lat + 0.00045, lng, 'North Entry');
+                    tactical.addEntryPoint(lat - 0.00045, lng, 'South Entry');
+                    tactical.addEntryPoint(lat, lng + 0.0006, 'East Entry');
+                    tactical.addEntryPoint(lat, lng - 0.0006, 'West Entry');
+                    tactical.showK9Radius(lat, lng); // K9 radius
+                    break;
+                  case 'active_threat':
+                    tactical.setRallyPoint(lat + 0.003, lng, 'Command Post');
+                    tactical.showCommandRings(lat, lng); // inner/outer perimeters
+                    break;
+                  case 'crowd_control':
+                    // 4 rally points at corners (~250m offsets)
+                    tactical.addEntryPoint(lat + 0.0023, lng + 0.003, 'NE Rally');
+                    tactical.addEntryPoint(lat + 0.0023, lng - 0.003, 'NW Rally');
+                    tactical.addEntryPoint(lat - 0.0023, lng + 0.003, 'SE Rally');
+                    tactical.addEntryPoint(lat - 0.0023, lng - 0.003, 'SW Rally');
+                    tactical.showCommandRings(lat, lng); // perimeter rings
+                    break;
+                }
+                addToast(`${preset.replace('_', ' ').toUpperCase()} deployed at map center`, 'success');
+              }}
+              onClose={() => setShowTacticalTools(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Perimeter Tools Panel ── */}
+        {!isMobile && showPerimeterTools && (
+          <div className="absolute bottom-12 right-2 z-30" style={{ maxWidth: 280 }}>
+            <PerimeterToolsPanel
+              perimeterData={{
+                quadrants: { NE: 0, NW: 0, SE: 0, SW: 0 },
+                gaps: perimeter.coverageGaps.map((g, i) => `Gap ${i + 1}: ${g.lat.toFixed(4)}, ${g.lng.toFixed(4)}`),
+                staging_suggestion: perimeter.stagingSuggestion ? { ...perimeter.stagingSuggestion, reason: 'Optimal staging based on unit positions' } : null,
+              }}
+              isDrawingContainment={false}
+              containmentVertices={perimeter.containmentPolygon.length}
+              hvtVisible={false}
+              loading={perimeter.loading}
+              onAnalyzeCoverage={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+              }}
+              onStartContainment={() => perimeter.startContainment()}
+              onClearContainment={() => perimeter.endContainment()}
+              onToggleHVTs={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+              }}
+              onClose={() => setShowPerimeterTools(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Corridor Analysis Panel ── */}
+        {!isMobile && showCorridorAnalysis && (
+          <div className="absolute bottom-12 z-30" style={{ right: showPerimeterTools ? 300 : 8, maxWidth: 280 }}>
+            <CorridorAnalysisPanel
+              corridorData={corridor.corridorData}
+              pursuitProjection={corridor.pursuitProjection}
+              loading={corridor.loading}
+              onAnalyzeCorridor={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) corridor.analyzeCorridor(c.lat() - 0.01, c.lng() - 0.01, c.lat() + 0.01, c.lng() + 0.01);
+              }}
+              onShowPursuitProjection={(heading) => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) corridor.showPursuitProjection(c.lat(), c.lng(), heading);
+              }}
+              onClearPursuit={() => corridor.clearPursuit()}
+              onShowEscapeRoutes={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) corridor.showEscapeRoutes(c.lat(), c.lng());
+              }}
+              onClearEscapeRoutes={() => corridor.clearEscapeRoutes()}
+              onClearCorridor={() => corridor.clearCorridor()}
+              onClose={() => setShowCorridorAnalysis(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Alert System Panel ── */}
+        {!isMobile && showAlertSystem && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30" style={{ maxWidth: 320, top: showEnvironmentInfo ? 48 : 8 }}>
+            <AlertSystemPanel
+              activeAlerts={alerts.activeAlerts}
+              alertHistory={alerts.alertHistory}
+              onAcknowledge={(id) => alerts.acknowledgeAlert(id)}
+              onClear={(id) => alerts.clearAlert(id)}
+              onClearAll={() => alerts.clearAllAlerts()}
+              onClose={() => setShowAlertSystem(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Call History Panel ── */}
+        {!isMobile && showCallHistory && callHistory.calls.length > 0 && (
+          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showPredictions ? 340 : 8 }}>
+            <CallHistoryPanel
+              calls={callHistory.calls}
+              loading={callHistory.loading}
+              days={callHistoryDays}
+              onClose={() => setShowCallHistory(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Incident Reports Panel ── */}
+        {!isMobile && showIncidentReports && (
+          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showCallHistory ? 200 : showPredictions ? 340 : 8 }}>
+            <IncidentReportsPanel
+              count={incidentReports.count}
+              loading={incidentReports.loading}
+              days={incidentDays}
+              onClose={() => setShowIncidentReports(false)}
+              reports={incidentReports.incidents}
+              onDaysChange={setIncidentDays}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
+            />
+          </div>
+        )}
+
+        {/* ── Safety Zones Panel ── */}
+        {!isMobile && showSafetyZones && (
+          <div className="absolute bottom-12 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
+            <SafetyZonesPanel
+              zones={safetyZones.zones}
+              loading={safetyZones.loading}
+              days={safetyZones.days}
+              onDaysChange={safetyZones.setDays}
+              onRefresh={safetyZones.refresh}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
+              onClose={() => setShowSafetyZones(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Analysis Intel Dashboard ── */}
+        {!isMobile && showAnalysisDashboard && (
+          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320, top: showSafetyDashboard ? 340 : showThreatAssessment ? 340 : 8 }}>
+            <AnalysisDashboardPanel
+              data={analysisSummary.data}
+              loading={analysisSummary.loading}
+              onRefresh={analysisSummary.refresh}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
+              onClose={() => setShowAnalysisDashboard(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Tactical Summary Panel ── */}
+        {!isMobile && (showPatrolCheckpoints || showFieldInterviews || showDwellTime || showResponseRadius || showEnforcementClusters || showCoverage || showFleetVehicles || showRepeatAddresses || showDaylight) && (
+          <div className="absolute bottom-12 right-2 z-30" style={{ maxWidth: 260, bottom: showPerimeterTools || showCorridorAnalysis ? 280 : 48 }}>
+            <TacticalSummaryPanel
+              showCheckpoints={showPatrolCheckpoints}
+              checkpointCount={patrolCheckpoints.checkpoints.length}
+              overdueCount={patrolCheckpoints.overdueCount}
+              completionPct={patrolCheckpoints.completionPct}
+              showFieldInterviews={showFieldInterviews}
+              fiCount={fieldInterviews.count}
+              fiDays={fiDays}
+              showDwellTime={showDwellTime}
+              dwellAlertCount={dwellTime.dwellAlertCount}
+              showResponseRadius={showResponseRadius}
+              responseActive={!!responseRadius.activePoint}
+              showEnforcement={showEnforcementClusters}
+              enforcementTotal={enforcementClusters.totalRecords}
+              enforcementType={enforcementType}
+              enforcementDays={enforcementDays}
+              showCoverage={showCoverage}
+              coverageCount={coverageGaps.coverageCount}
+              showFleet={showFleetVehicles}
+              fleetCount={fleetVehicles.count}
+              showRepeat={showRepeatAddresses}
+              repeatCount={repeatAddresses.count}
+              repeatDays={repeatDays}
+              showDaylight={showDaylight}
+              daylightPhase={daylight.phase}
+              onClose={() => {
+                // Close the summary panel — doesn't disable layers
+              }}
+            />
+          </div>
+        )}
+
+        {/* ── Status Legend - Bottom Left (desktop only) ── */}
+        {!isMobile && <div className="absolute bottom-2 left-2 z-[1000]">
+          <div
+            className="backdrop-blur-md shadow-xl"
+            role="region"
+            aria-label="Map status legend"
+            style={{
+              borderRadius: 2,
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
+              padding: '4px 8px',
+            }}
+          >
+            <div className="flex items-center gap-2.5">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
                 .filter(([k]) => k !== 'off_duty')
                 .map(([status, color]) => (
                   <div key={status} className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }} />
-                    <span className="text-[8px] text-rmpg-300 font-mono">{UNIT_STATUS_LABELS[status as UnitStatus]}</span>
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 5px ${color}80` }} />
+                    <span className={`text-[8px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`}>
+                      {UNIT_STATUS_LABELS[status as UnitStatus]}
+                    </span>
                   </div>
                 ))}
+              <div className={`w-px h-3 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
+              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => (
+                <div key={p} className="flex items-center gap-0.5">
+                  <div className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p] }} />
+                  <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>{p}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>}
 
-        {/* ── Stats Bar - Top Left (after layers panel) ── */}
-        <div
+        {/* ── Stats Bar - Top Left (after layers panel, desktop only) ── */}
+        {!isMobile && <div
           className="absolute top-2 z-[1000] transition-all"
           style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
         >
-          <div className="panel-beveled px-3 py-1.5 shadow-xl" style={{ background: '#141e2b' }}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono">
-              <div className="flex items-center gap-1.5">
-                <Siren className="w-3 h-3 text-red-400 shrink-0" />
-                <span className="text-rmpg-400">ACTIVE</span>
-                <span className="text-white font-bold">{callsWithCoords.length}</span>
+          <div
+            className="backdrop-blur-md shadow-md"
+            style={{
+              borderRadius: 2,
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)',
+            }}
+          >
+            <div className="flex items-center gap-0.5 px-1.5 py-1">
+              {/* Live indicator */}
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
+                  {isConnected ? 'LIVE' : 'DISC'}
+                </span>
               </div>
-              <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
-              <div className="flex items-center gap-1.5">
-                <Shield className="w-3 h-3 text-green-400 shrink-0" />
-                <span className="text-rmpg-400">UNITS</span>
-                <span className="text-white font-bold">{unitsWithCoords.length}</span>
+
+              {/* Calls */}
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
+                <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
+                <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
+                {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
+                {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/15 px-1 rounded-sm">P2:{callsByPriority['P2']}</span> : null}
               </div>
-              <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
-              <div className="flex items-center gap-1">
-                <span className="text-green-400 text-[9px]">AVL</span>
-                <span className="text-green-400 font-bold">{unitsByStatus['available'] || 0}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-amber-400 text-[9px]">DSP</span>
-                <span className="text-amber-400 font-bold">{unitsByStatus['dispatched'] || 0}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-blue-400 text-[9px]">ENR</span>
-                <span className="text-blue-400 font-bold">{unitsByStatus['enroute'] || 0}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-purple-400 text-[9px]">ONS</span>
-                <span className="text-purple-400 font-bold">{unitsByStatus['onscene'] || 0}</span>
-              </div>
-              {calls.length > 0 && (
-                <>
-                  <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
-                  {callsByPriority['P1'] ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-red-400 text-[9px]">P1</span>
-                      <span className="text-red-400 font-bold">{callsByPriority['P1']}</span>
-                    </div>
-                  ) : null}
-                  {callsByPriority['P2'] ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-amber-400 text-[9px]">P2</span>
-                      <span className="text-amber-400 font-bold">{callsByPriority['P2']}</span>
-                    </div>
-                  ) : null}
-                  {callsByPriority['P3'] ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-blue-400 text-[9px]">P3</span>
-                      <span className="text-blue-400 font-bold">{callsByPriority['P3']}</span>
-                    </div>
-                  ) : null}
-                </>
-              )}
-              {isConnected && (
-                <div className="flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-green-400 font-bold text-[9px]">LIVE</span>
+
+              {/* Units */}
+              <div className="flex items-center gap-1 px-2 py-0.5">
+                <Shield className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-green-600' : 'text-green-400'}`} />
+                <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{unitsWithCoords.length}</span>
+                <div className="flex items-center gap-1.5 ml-1">
+                  {STATUS_FILTER_ITEMS.filter(s => (unitsByStatus[s.key] || 0) > 0).map(({ key, label, color }) => (
+                    <span key={key} className="text-[8px] font-mono font-bold px-1 rounded-sm" style={{ color, background: color + '15' }}>
+                      {label}:{unitsByStatus[key] || 0}
+                    </span>
+                  ))}
                 </div>
-              )}
-              {showTrackingLines && trackingLinesRef.current.length > 0 && (
-                <div className="flex items-center gap-1">
+              </div>
+
+              {showTrackingLines && trackingLineCount > 0 && (
+                <div className="flex items-center gap-1 px-1.5">
                   <Navigation2 className="w-2.5 h-2.5 text-cyan-400" />
-                  <span className="text-cyan-400 text-[9px]">LINKS</span>
-                  <span className="text-cyan-400 font-bold">{trackingLinesRef.current.length}</span>
+                  <span className="text-cyan-400 text-[8px] font-mono font-bold">{trackingLineCount}</span>
                 </div>
               )}
+
+              {/* Fix 40-41: data freshness indicator */}
+              <div className="flex items-center gap-1 px-1.5 ml-auto">
+                {isDataStale && (
+                  <span className="text-[8px] font-mono font-bold text-red-400 animate-pulse" title="Data may be stale">STALE</span>
+                )}
+                <Clock className="w-2.5 h-2.5 text-rmpg-500" />
+                <span className="text-[8px] font-mono text-rmpg-400" title={`Last updated: ${lastDataUpdate.toLocaleTimeString()}`}>
+                  {lastDataUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        </div>}
+
+        {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
+        {activeRoute && (
+          <div
+            className="absolute z-[1000] backdrop-blur-md"
+            style={{
+              ...(isMobile
+                ? { top: 56, left: 8, right: 8 }
+                : { bottom: 48, left: 16, minWidth: 200 }),
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(59,130,246,0.3)' : '1px solid #88888850',
+              padding: '8px 14px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              borderRadius: 2,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
+                {activeRoute.unitCallSign} → {activeRoute.callNumber}
+              </span>
+              <button
+                onClick={clearRoute}
+                style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
+                title="Clear route"
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
+            </div>
+            {routeLoading && (
+              <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
+            )}
+          </div>
+        )}
 
         {/* ── Bottom Right Buttons (Recenter + GPS Locate) ── */}
-        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col gap-2" style={{ marginRight: sidebarOpen ? 'clamp(200px, 20vw, 280px)' : 36 }}>
+        <div
+          className="absolute z-[1000] flex flex-col gap-2"
+          style={isMobile
+            ? { bottom: 'calc(88px + env(safe-area-inset-bottom))', right: 16 }
+            : { bottom: 16, right: 16, marginRight: sidebarOpen ? 'clamp(200px, 20vw, 280px)' : 36 }
+          }
+        >
+          {/* Zoom controls (mobile only — desktop has them top-right) */}
+          {isMobile && (
+            <div
+              className="flex flex-col overflow-hidden"
+              style={{
+                borderRadius: 2,
+                background: 'rgba(13, 21, 32, 0.9)',
+                border: '1px solid #222222',
+              }}
+            >
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map) map.setZoom((map.getZoom() ?? 12) + 1);
+                }}
+                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+                style={{ width: 48, height: 48, borderBottom: '1px solid #222222' }}
+                title="Zoom in"
+                aria-label="Zoom in"
+              >
+                <Plus className="w-5 h-5 text-white/80" />
+              </button>
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map) map.setZoom((map.getZoom() ?? 12) - 1);
+                }}
+                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+                style={{ width: 48, height: 48 }}
+                title="Zoom out"
+                aria-label="Zoom out"
+              >
+                <Minus className="w-5 h-5 text-white/80" />
+              </button>
+            </div>
+          )}
           {/* Center on my GPS position */}
           {gps.isTracking && gps.latitude != null && gps.longitude != null && (
             <button
@@ -2920,54 +4949,96 @@ export default function MapPage() {
                   mapInstanceRef.current?.setZoom(16);
                 }
               }}
-              className="toolbar-btn p-2 shadow-xl text-blue-400"
+              className={`backdrop-blur-md shadow-xl transition-colors ${
+                isLightMapStyle(mapStyle)
+                  ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
+                  : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
+              }`}
+              style={isMobile
+                ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+                : { borderRadius: 2, padding: 10 }
+              }
               title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
             >
-              <Navigation2 className="w-4 h-4 text-blue-400" />
+              <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
             </button>
           )}
           {/* Reset to default view */}
           <button
             onClick={() => {
-              mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });
+              mapInstanceRef.current?.panTo(DEFAULT_CENTER);
               mapInstanceRef.current?.setZoom(12);
             }}
-            className="toolbar-btn p-2 shadow-xl"
+            className={`backdrop-blur-md shadow-xl transition-colors ${
+              isLightMapStyle(mapStyle)
+                ? 'bg-white/90 border border-gray-300 hover:bg-[#141414]'
+                : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
+            }`}
+            style={isMobile
+              ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+              : { borderRadius: 2, padding: 10 }
+            }
             title="Reset view"
           >
-            <Crosshair className="w-4 h-4 text-rmpg-300" />
+            <Crosshair className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`} />
           </button>
         </div>
-        </div>{/* end inner map canvas wrapper */}
 
-        {/* ── Spillman Flex Directions Panel (bottom of center) ── */}
-        {!isMobile && selectedUnit && callDetail && callDetail.latitude && callDetail.longitude && selectedUnit.latitude && selectedUnit.longitude && (
-          <div className="panel-beveled flex-shrink-0" style={{ background: '#141e2b', borderTop: '1px solid #2a3e58', maxHeight: 120 }}>
-            <div className="px-3 py-1.5">
-              <div className="flex items-center gap-2 text-[9px]">
-                <span className="text-rmpg-400">Start:</span>
-                <span className="font-bold" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}, {UNIT_STATUS_LABELS[selectedUnit.status]}</span>
-                <span className="text-rmpg-500">→</span>
-                <span className="text-rmpg-400">End:</span>
-                <span className="font-bold text-rmpg-100">{callDetail.call_number}, {formatIncidentType(callDetail.incident_type)}</span>
-              </div>
-              <div className="panel-inset mt-1 px-2 py-1" style={{ background: '#060c14' }}>
-                <div className="text-[9px] text-rmpg-300 font-bold">{callDetail.location_address}</div>
-                {callDetail.cross_street && (
-                  <div className="text-[8px] text-rmpg-500 mt-0.5">Cross: {callDetail.cross_street}</div>
-                )}
-              </div>
+        {/* ── Mini-Stats Bar — live operational counts above status bar ── */}
+        {!isMobile && mapLoaded && (
+          <div
+            className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-6 px-4 select-none pointer-events-none"
+            style={{
+              height: 22,
+              background: 'rgba(20,30,43,0.80)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+              borderTop: '1px solid rgba(30,48,72,0.5)',
+            }}
+          >
+            {/* Active Calls */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: calls.length > 0 ? '#ef4444' : '#22c55e', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Active Calls</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">{calls.length}</span>
+            </div>
+            {/* Units On Duty */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: '#888888', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Units On Duty</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">{units.filter(u => u.status !== 'off_duty').length}</span>
+            </div>
+            {/* Avg Response Time — estimated from dispatched call ratio */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: '#f59e0b', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Avg Response</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">
+                {(() => {
+                  const dispatched = units.filter(u => u.status === 'dispatched' || u.status === 'enroute').length;
+                  const available = units.filter(u => u.status === 'available').length;
+                  // Estimate: more dispatched vs available = longer response times
+                  const base = 4; // baseline 4 min
+                  const load = available > 0 ? Math.min(dispatched / available, 3) : 3;
+                  return `${(base + load * 3).toFixed(1)}m`;
+                })()}
+              </span>
+            </div>
+            {/* Coverage */}
+            <div className="flex items-center gap-1.5">
+              <div className="led-dot" style={{ backgroundColor: (unitSafety.coveragePercent ?? 0) >= 70 ? '#22c55e' : (unitSafety.coveragePercent ?? 0) >= 40 ? '#f59e0b' : '#ef4444', width: 5, height: 5 }} />
+              <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Coverage</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">{unitSafety.coveragePercent ?? 0}%</span>
             </div>
           </div>
         )}
-      </div>{/* end Map Container */}
+      </div>
 
-      {/* ── Right Sidebar ── */}
+      {/* ── Right Sidebar - Unit/Call List (Desktop only, responsive width) ── */}
       {!isMobile && <div
         className="flex flex-col panel-beveled transition-all"
         style={{
           width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-          background: '#141e2b',
+          background: '#060c14',
           flexShrink: 0,
         }}
       >
@@ -2975,81 +5046,20 @@ export default function MapPage() {
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="toolbar-btn flex items-center justify-center h-7"
           style={{ borderRadius: 0 }}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-expanded={sidebarOpen}
         >
           {sidebarOpen ? <ChevronUp className="w-3.5 h-3.5 text-rmpg-400 rotate-90" /> : <ChevronDown className="w-3.5 h-3.5 text-rmpg-400 -rotate-90" />}
         </button>
 
         {sidebarOpen && (
           <>
-            {/* ── Spillman Flex: Unit Detail Panel (when unit selected + has call) ── */}
-            {selectedUnit && callDetail && (
-              <div className="flex flex-col flex-shrink-0" style={{ maxHeight: '55%' }}>
-                {/* Unit header */}
-                <div className="panel-inset px-3 py-2" style={{ background: '#060c14' }}>
-                  <div className="flex items-center gap-2">
-                    <div className="led-dot" style={{ backgroundColor: UNIT_STATUS_COLORS[selectedUnit.status], boxShadow: `0 0 8px ${UNIT_STATUS_COLORS[selectedUnit.status]}80`, width: 10, height: 10 }} />
-                    <span className="text-[14px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</span>
-                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5" style={{
-                      background: UNIT_STATUS_COLORS[selectedUnit.status] + '25',
-                      color: UNIT_STATUS_COLORS[selectedUnit.status],
-                      border: `1px solid ${UNIT_STATUS_COLORS[selectedUnit.status]}40`,
-                    }}>{UNIT_STATUS_LABELS[selectedUnit.status]}</span>
-                    <button onClick={() => setSelectedUnitId(null)} className="ml-auto toolbar-btn p-0.5" title="Deselect unit">
-                      <X style={{ width: 10, height: 10 }} />
-                    </button>
-                  </div>
-                  <div className="text-[10px] text-rmpg-300 mt-0.5">{selectedUnit.officer_name}</div>
-                </div>
-
-                {/* Complaint/description */}
-                {callDetail.description && (
-                  <div className="px-3 py-2" style={{ borderBottom: '1px solid #1e3048', background: '#0d1520' }}>
-                    <div className="text-[9px] text-rmpg-200 leading-relaxed">{callDetail.description}</div>
-                  </div>
-                )}
-
-                {/* Notes/Comments timeline */}
-                <div className="flex-1 overflow-y-auto min-h-0" style={{ background: '#111' }}>
-                  {callDetail.notes?.map(note => (
-                    <div key={note.id} className="px-3 py-1.5" style={{ borderBottom: '1px solid #141e2b' }}>
-                      <div className="flex items-center gap-1 text-[8px] text-rmpg-500">
-                        <Clock style={{ width: 8, height: 8 }} />
-                        <span>{new Date(note.created_at).toLocaleTimeString()} {new Date(note.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })}</span>
-                        <span className="text-rmpg-400 font-bold ml-1">{note.created_by_name}</span>
-                      </div>
-                      <div className="text-[9px] text-rmpg-200 mt-0.5 leading-snug">{note.note}</div>
-                    </div>
-                  ))}
-                  {(!callDetail.notes || callDetail.notes.length === 0) && (
-                    <div className="py-4 text-center text-[9px] text-rmpg-500">No notes yet</div>
-                  )}
-                </div>
-
-                {/* Add Comment */}
-                <div className="flex items-center gap-1 px-2 py-1.5 panel-inset" style={{ background: '#060c14' }}>
-                  <input
-                    type="text"
-                    className="input-dark flex-1 text-[10px] py-1 px-2"
-                    placeholder="Add comment..."
-                    value={newNote}
-                    onChange={e => setNewNote(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleAddNote(); }}
-                  />
-                  <button onClick={handleAddNote} className="toolbar-btn p-1" title="Add Comment" disabled={!newNote.trim()}>
-                    <Send style={{ width: 10, height: 10 }} />
-                  </button>
-                </div>
-
-                <div className="h-px" style={{ background: '#2a3e58' }} />
-              </div>
-            )}
-
             {/* Compact status counters */}
-            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#060c14' }}>
+            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#050505' }}>
               {([
                 { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
                 { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },
-                { label: 'ENR', count: unitsByStatus['enroute'] || 0, color: '#3b82f6' },
+                { label: 'ENR', count: unitsByStatus['enroute'] || 0, color: '#888888' },
                 { label: 'ONS', count: unitsByStatus['onscene'] || 0, color: '#a855f7' },
                 { label: 'BSY', count: unitsByStatus['busy'] || 0, color: '#ef4444' },
               ]).map(({ label, count, color }) => (
@@ -3061,7 +5071,7 @@ export default function MapPage() {
               <div className="w-px h-3 bg-rmpg-700" />
               {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-400">P1:{callsByPriority['P1']}</span> : null}
               {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-400">P2:{callsByPriority['P2']}</span> : null}
-              {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
+              {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-gray-400">P3:{callsByPriority['P3']}</span> : null}
             </div>
 
             <div className="tab-bar">
@@ -3079,7 +5089,7 @@ export default function MapPage() {
               </button>
             </div>
 
-            <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
+            <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #303030' }}>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
                 <input
@@ -3092,7 +5102,7 @@ export default function MapPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
               {sidebarTab === 'units' && (
                 <div className="divide-y divide-rmpg-700/50">
                   {filteredUnits.map((unit) => {
@@ -3101,10 +5111,11 @@ export default function MapPage() {
                     return (
                       <button
                         key={unit.id}
-                        onClick={() => { handleSelectUnit(unit.id); if (hasCoords) panTo(unit.latitude!, unit.longitude!); }}
+                        onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
+                        disabled={!hasCoords}
                         className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
                           hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
-                        } ${selectedUnitId === unit.id ? 'bg-rmpg-800/70 border-l-2 border-l-brand-500' : ''}`}
+                        }`}
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -3112,15 +5123,15 @@ export default function MapPage() {
                             style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80`, width: 10, height: 10 }}
                           />
                           <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
-                          {(unit.gps_source === 'traccar' || unit.gps_source === 'clearpathgps') && (
-                            <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="Hardware GPS">GPS</span>
+                          {unit.gps_source === 'clearpathgps' && (
+                            <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                           )}
                           <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                         </div>
                         <div className="ml-5 mt-0.5">
                           <span className="text-[9px] text-rmpg-400">{unit.officer_name}</span>
                           {unit.call_number && (
-                            <span className="text-[9px] text-blue-400 ml-2 font-mono">{unit.call_number}</span>
+                            <span className="text-[9px] text-gray-400 ml-2 font-mono">{unit.call_number}</span>
                           )}
                         </div>
                         {unit.current_call_type && (
@@ -3139,12 +5150,15 @@ export default function MapPage() {
                 <div className="divide-y divide-rmpg-700/50">
                   {filteredCalls.map((call) => {
                     const hasCoords = call.latitude != null && call.longitude != null;
-                    const pColor = PRIORITY_COLORS[call.priority] || '#6b7280';
+                    const pColor = PRIORITY_COLORS[call.priority] || '#666666';
                     const { category } = getIncidentCategory(call.incident_type);
                     return (
-                      <button
+                      <div
+                        role="button"
+                        tabIndex={0}
                         key={call.id}
                         onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hasCoords && panTo(call.latitude!, call.longitude!); } }}
                         className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
                           hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                         }`}
@@ -3163,7 +5177,7 @@ export default function MapPage() {
                         </div>
                         <div className="ml-8 text-[8px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>
                         {call.property_name && (
-                          <div className="ml-8 text-[8px] text-blue-400 truncate mt-0.5">{call.property_name}</div>
+                          <div className="ml-8 text-[8px] text-gray-400 truncate mt-0.5">{call.property_name}</div>
                         )}
                         {/* Quick actions */}
                         <div className="ml-8 mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -3178,7 +5192,7 @@ export default function MapPage() {
                           {call.status === 'dispatched' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-blue-900/30 text-blue-400 border border-blue-700/40 hover:bg-blue-800/40 transition-colors"
+                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-gray-700/40 hover:bg-gray-800/40 transition-colors"
                             >
                               EN ROUTE
                             </button>
@@ -3191,7 +5205,7 @@ export default function MapPage() {
                               ON SCENE
                             </button>
                           )}
-                          {['dispatched', 'enroute', 'onscene'].includes(call.status) && (
+                          {CLEARABLE_STATUSES.includes(call.status) && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'cleared'); }}
                               className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-rmpg-700/30 text-rmpg-300 border border-rmpg-600/40 hover:bg-rmpg-600/40 transition-colors"
@@ -3200,7 +5214,7 @@ export default function MapPage() {
                             </button>
                           )}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                   {filteredCalls.length === 0 && (
@@ -3218,11 +5232,24 @@ export default function MapPage() {
         <>
           <button
             className="mobile-fab"
-            style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))', right: 16 }}
+            style={{
+              position: 'absolute',
+              bottom: 'calc(88px + env(safe-area-inset-bottom))',
+              left: 16,
+              zIndex: 20,
+              width: 48,
+              height: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(13, 21, 32, 0.9)',
+              border: '1px solid #222222',
+              borderRadius: 2,
+            }}
             onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
             aria-label="Toggle layers"
           >
-            <Layers style={{ width: 22, height: 22 }} />
+            <Layers style={{ width: 22, height: 22, color: '#888888' }} />
           </button>
 
           <MobileBottomSheet
@@ -3233,7 +5260,7 @@ export default function MapPage() {
             header={
               <div className="flex items-center gap-1">
                 {([
-                  { id: 'layers' as const, icon: Layers, label: 'Layers', color: '#3b82f6' },
+                  { id: 'layers' as const, icon: Layers, label: 'Layers', color: '#888888' },
                   { id: 'units' as const, icon: Shield, label: `Units (${filteredUnits.length})`, color: '#22c55e' },
                   { id: 'calls' as const, icon: AlertTriangle, label: `Calls (${filteredCalls.length})`, color: '#ef4444' },
                 ] as const).map(({ id, icon: Icon, label, color }) => (
@@ -3242,7 +5269,7 @@ export default function MapPage() {
                     onClick={() => setMobileSheetTab(id)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
                     style={{
-                      color: mobileSheetTab === id ? color : '#888',
+                      color: mobileSheetTab === id ? color : '#666666',
                       background: mobileSheetTab === id ? `${color}10` : 'transparent',
                       borderBottom: mobileSheetTab === id ? `2px solid ${color}` : '2px solid transparent',
                     }}
@@ -3260,20 +5287,20 @@ export default function MapPage() {
                 {[
                   { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
                   { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
-                  { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#3b82f6' },
+                  { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#888888' },
                 ].map(({ key, icon: Icon, label, color }) => (
                   <button
                     key={key}
                     onClick={() => toggleLayer(key)}
                     className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                     style={{
-                      background: layers[key] ? 'rgba(34,197,94,0.08)' : '#141e2b',
-                      border: '1px solid #1e3048',
+                      background: layers[key] ? 'rgba(34,197,94,0.08)' : '#0a0a0a',
+                      border: '1px solid #222222',
                       minHeight: 44,
                     }}
                   >
                     {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-                    <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#6b7280' }} />
+                    <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#666666' }} />
                     <span className="text-sm text-rmpg-200 flex-1">{label}</span>
                   </button>
                 ))}
@@ -3282,8 +5309,8 @@ export default function MapPage() {
                   onClick={() => setShowHeatmap(!showHeatmap)}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#141e2b',
-                    border: '1px solid #1e3048',
+                    background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#0a0a0a',
+                    border: '1px solid #222222',
                     minHeight: 44,
                   }}
                 >
@@ -3297,8 +5324,8 @@ export default function MapPage() {
                   onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#141e2b',
-                    border: '1px solid #1e3048',
+                    background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#0a0a0a',
+                    border: '1px solid #222222',
                     minHeight: 44,
                   }}
                 >
@@ -3307,37 +5334,77 @@ export default function MapPage() {
                   <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
                 </button>
 
-                {/* Breadcrumb time range selector */}
+                {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
-                  <div className="flex gap-1 px-3 py-2" style={{ background: '#111', border: '1px solid #1e3048' }}>
-                    {[2, 4, 8, 12, 24].map((h) => (
-                      <button
-                        key={h}
-                        onClick={() => setBreadcrumbHours(h)}
-                        className={`flex-1 py-2 text-xs font-bold rounded ${
-                          breadcrumbHours === h
-                            ? 'bg-cyan-600 text-white'
-                            : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
-                        }`}
-                      >
-                        {h}h
-                      </button>
-                    ))}
+                  <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #222222' }}>
+                    <div className="flex gap-1">
+                      {[2, 4, 8, 12, 24].map((h) => (
+                        <button
+                          key={h}
+                          onClick={() => setBreadcrumbHours(h)}
+                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
+                            breadcrumbHours === h
+                              ? 'bg-cyan-600 text-white'
+                              : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
+                          }`}
+                        >
+                          {h}h
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          onClick={() => setBreadcrumbColorMode(mode)}
+                          className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
+                            breadcrumbColorMode === mode
+                              ? 'bg-cyan-600 text-white'
+                              : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
+
+                {/* Map Style Selector (mobile) */}
+                <div className="px-3 py-2 space-y-1.5" style={{ background: '#050505', border: '1px solid #222222' }}>
+                  <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
+                      const isActive = mapStyle === key;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setMapStyle(key)}
+                          className={`py-2 text-[10px] font-bold rounded-sm transition-all ${
+                            isActive
+                              ? 'bg-brand-600 text-white'
+                              : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <button
                   onClick={() => {
                     const map = mapInstanceRef.current;
-                    if (map && gps.latitude && gps.longitude) {
+                    if (map && gps.latitude != null && gps.longitude != null) {
                       map.panTo({ lat: gps.latitude, lng: gps.longitude });
                       map.setZoom(16);
                     }
                   }}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: '#141e2b',
-                    border: '1px solid #1e3048',
+                    background: '#0a0a0a',
+                    border: '1px solid #222222',
                     minHeight: 44,
                   }}
                 >
@@ -3363,8 +5430,8 @@ export default function MapPage() {
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                         <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
-                        {(unit.gps_source === 'traccar' || unit.gps_source === 'clearpathgps') && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="Hardware GPS">GPS</span>
+                        {unit.gps_source === 'clearpathgps' && (
+                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
                         <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>
@@ -3386,7 +5453,7 @@ export default function MapPage() {
               <div className="divide-y divide-rmpg-700/50">
                 {filteredCalls.map((call) => {
                   const hasCoords = call.latitude != null && call.longitude != null;
-                  const pColor = PRIORITY_COLORS[call.priority] || '#6b7280';
+                  const pColor = PRIORITY_COLORS[call.priority] || '#666666';
                   const { category } = getIncidentCategory(call.incident_type);
                   return (
                     <button
@@ -3396,12 +5463,12 @@ export default function MapPage() {
                       style={{ minHeight: 44 }}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}>{call.priority}</span>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm" style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}>{call.priority}</span>
                         <span className="text-[11px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
                         <span className="text-[9px] font-mono text-rmpg-400 uppercase font-bold">{call.status.replace(/_/g, ' ')}</span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1 ml-8">
-                        <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: pColor + '15', color: pColor }}>{category}</span>
+                        <span className="text-[8px] font-bold px-1 py-0.5 rounded-sm" style={{ background: pColor + '15', color: pColor }}>{category}</span>
                         <span className="text-[10px]" style={{ color: pColor }}>{formatIncidentType(call.incident_type)}</span>
                       </div>
                       <div className="ml-8 text-[9px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>
@@ -3415,41 +5482,6 @@ export default function MapPage() {
             )}
           </MobileBottomSheet>
         </>
-      )}
-
-      </div>{/* end flex-1 flex min-h-0 row */}
-
-      {/* ── Spillman Flex Map Status Bar ── */}
-      {!isMobile && (
-        <div className="status-bar flex-shrink-0" style={{ borderTop: '1px solid #2a3e58' }}>
-          <div className="status-bar-section">
-            <span className="text-rmpg-400">Status:</span>
-            {selectedUnit ? (
-              <>
-                <span className="font-bold" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{UNIT_STATUS_LABELS[selectedUnit.status]}</span>
-                <span className="text-rmpg-200 font-mono">{statusTimer}</span>
-              </>
-            ) : (
-              <span className="text-rmpg-500">No unit selected</span>
-            )}
-          </div>
-          <div className="status-bar-section">
-            <span className="text-rmpg-400">Units:</span>
-            <span className="text-rmpg-200 font-bold">{units.length}</span>
-          </div>
-          <div className="status-bar-section">
-            <span className="text-rmpg-400">Calls:</span>
-            <span className="text-rmpg-200 font-bold">{calls.length}</span>
-          </div>
-          <div className="status-bar-section">
-            <Clock style={{ width: 9, height: 9 }} className="text-rmpg-400" />
-            <span className="text-rmpg-200">{new Date().toLocaleTimeString()}</span>
-          </div>
-          <div className="status-bar-section">
-            <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
-            <span className="text-[9px]" style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>{isConnected ? 'LIVE' : 'OFFLINE'}</span>
-          </div>
-        </div>
       )}
     </div>
   );

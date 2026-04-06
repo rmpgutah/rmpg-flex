@@ -552,7 +552,7 @@ const fbiWantedParser: WarrantParser = {
           state: 'US',
           warrant_type: item.person_classification === 'Main' ? 'fugitive' : 'arrest',
           case_number: item.ncic || '',
-          court_name: 'Federal -- FBI',
+          court_name: 'Federal — FBI',
           issue_date: item.publication || '',
           charge_description: item.description
             ? stripHtml(item.description).substring(0, 500)
@@ -638,6 +638,7 @@ const pimaWarrantParser: WarrantParser = {
       if (!titleMatch) continue;
 
       const fullName = stripHtml(titleMatch[2]);
+      // Skip non-person entries (e.g., "Armed Robbery at..." or "Homicide on...")
       if (/^(armed|robbery|homicide|shooting|burglary|theft|assault)/i.test(fullName)) continue;
       if (fullName.length < 3 || fullName.length > 80) continue;
 
@@ -681,6 +682,7 @@ const denverCrimeStoppersParser: WarrantParser = {
   parseWarrants(html: string): WarrantEntry[] {
     const entries: WarrantEntry[] = [];
 
+    // Try WordPress article pattern first
     const postPattern = /<article[^>]*>[\s\S]*?<\/article>/gi;
     const posts = html.match(postPattern) || [];
 
@@ -692,6 +694,7 @@ const denverCrimeStoppersParser: WarrantParser = {
       if (!titleMatch) continue;
 
       const fullName = stripHtml(titleMatch[2]);
+      // Skip non-person titles (incident descriptions, case numbers, etc.)
       if (/^(armed|robbery|homicide|shooting|burglary|theft|assault|case|incident)/i.test(fullName)) continue;
       if (fullName.length < 3 || fullName.length > 80) continue;
 
@@ -724,6 +727,7 @@ const denverCrimeStoppersParser: WarrantParser = {
       });
     }
 
+    // Fallback to generic card pattern if no articles matched
     if (entries.length === 0) {
       return createGenericWarrantParser('co_denver_warrants').parseWarrants(html);
     }
@@ -750,8 +754,10 @@ const flatheadWarrantParser: WarrantParser = {
       }
       if (cells.length < 2) continue;
 
+      // Skip header rows
       if (cells[0].match(/^(Name|Defendant|Last|First|Warrant|#|ID)$/i)) continue;
 
+      // Flathead table typically has: Name, Age/DOB, City, Charges
       let nameCell = '';
       let charges = '';
       let caseNum = '';
@@ -779,6 +785,7 @@ const flatheadWarrantParser: WarrantParser = {
         } else if (cell.match(/(case|CR|CF|MC|CV|DR)-?\d/i) || cell.match(/^\d{2,4}-[A-Z]{1,3}-\d+$/i)) {
           caseNum = cell;
         } else if (cell.match(/^[A-Z][a-z]+(\s[A-Z][a-z]+)?$/)) {
+          // Likely a city name
           if (!city) city = cell;
         } else if (cell.length > 10 && !charges) {
           charges = cell;
@@ -1062,7 +1069,7 @@ async function scrapeSource(sourceKey: string): Promise<{
   }
 
   // API sources without a dedicated parser (like Utah warrants.utah.gov)
-  // are handled by utahWarrantScraper -- skip them here.
+  // are handled by utahWarrantScraper — skip them here.
   // API sources WITH a registered parser (e.g. FBI API) get fetched + parsed normally.
   if (config.source_type === 'api' && !WARRANT_PARSERS[sourceKey]) {
     return { records_found: 0, inserted: 0, updated: 0, cleared: 0 };

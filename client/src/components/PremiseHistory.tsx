@@ -9,6 +9,7 @@ import { AlertTriangle, Clock, Shield, ShieldBan, MapPin, X } from 'lucide-react
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { safeDateStr } from '../utils/dateUtils';
 
 interface PremiseCall {
   id: number;
@@ -105,7 +106,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           }
         }
       } catch (err: any) {
-        setError(err.message || 'Failed to load premise history');
+        setError(err?.message || 'Failed to load premise history');
       } finally {
         setLoading(false);
       }
@@ -124,7 +125,17 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       </div>
     );
   }
-  if (error) return null;
+  if (error) {
+    return (
+      <div className={`premise-history ${compact ? 'premise-compact' : ''}`}>
+        <div className="flex items-center gap-2 px-2 py-1.5 text-[10px] text-amber-400 bg-amber-900/30 border border-amber-700/50">
+          <AlertTriangle style={{ width: 11, height: 11, flexShrink: 0 }} />
+          <span className="font-bold">PREMISE CHECK FAILED</span>
+          <span className="text-amber-500">{error}</span>
+        </div>
+      </div>
+    );
+  }
   if ((!data || data.total === 0) && trespassOrders.length === 0) return null;
 
   const hasTrespassOrders = trespassOrders.length > 0;
@@ -134,7 +145,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#6b7280';
+      default: return '#666666';
     }
   };
 
@@ -154,7 +165,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </span>
         </div>
         {onClose && (
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white">
             <X style={{ width: 12, height: 12 }} />
           </button>
         )}
@@ -165,8 +176,8 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
         <div
           className="flex items-center gap-2 px-2 py-1.5 text-[10px] font-bold animate-emergency-blink"
           style={{
-            background: 'rgba(26, 90, 158, 0.3)',
-            borderBottom: '1px solid #164d88',
+            background: 'rgba(220, 38, 38, 0.3)',
+            borderBottom: '1px solid #991b1b',
             color: '#ff6b6b',
           }}
         >
@@ -174,7 +185,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           <span>ACTIVE TRESPASS ORDER{trespassOrders.length > 1 ? 'S' : ''}:</span>
           {trespassOrders.map(to => (
             <span key={to.id} className="px-1.5 py-0.5" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #ef4444' }}>
-              {to.subject_last_name?.toUpperCase()}, {to.subject_first_name} — {to.order_type?.replace(/_/g, ' ').toUpperCase()}
+              {(to.subject_last_name || '').toUpperCase()}, {to.subject_first_name || ''} — {(to.order_type || '').replace(/_/g, ' ').toUpperCase()}
             </span>
           ))}
         </div>
@@ -223,8 +234,8 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
             </div>
             <div className="flex items-center gap-2 text-[9px] text-rmpg-500">
               <Clock style={{ width: 9, height: 9 }} />
-              <span>{new Date(call.created_at).toLocaleDateString()}</span>
-              {call.disposition && <span>• {call.disposition}</span>}
+              <span>{safeDateStr(call.created_at)}</span>
+              {call.disposition && <span>• {call.disposition.replace(/_/g, ' ')}</span>}
               {call.weapons_involved && <span className="text-red-500 font-bold">WEAPONS</span>}
               {call.domestic_violence && <span className="text-orange-500 font-bold">DV</span>}
             </div>

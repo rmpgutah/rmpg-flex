@@ -4,6 +4,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 interface VehicleFormModalProps {
   isOpen: boolean;
@@ -178,7 +179,7 @@ export default function VehicleFormModal({
         snapshot(EMPTY_FORM);
       }
     }
-  }, [isOpen, editingVehicle]);
+  }, [isOpen, editingVehicle, snapshot]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -191,6 +192,13 @@ export default function VehicleFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate year if provided
+    if (form.year) {
+      const yearNum = parseInt(form.year, 10);
+      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) return;
+    }
+    // Validate VIN length if provided
+    if (form.vin && form.vin.length !== 17) return;
     onSubmit(form);
   };
 
@@ -309,7 +317,7 @@ export default function VehicleFormModal({
           {/* VIN */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">VIN</label>
-            <input name="vin" type="text" maxLength={17} className="input-dark mt-1 font-mono" placeholder="17-character VIN" value={form.vin} onChange={handleChange} />
+            <input name="vin" type="text" maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
           </div>
         </>
       )}
@@ -405,7 +413,7 @@ export default function VehicleFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Phone</label>
-                <input name="owner_phone" type="text" className="input-dark mt-1" value={form.owner_phone} onChange={handleChange} />
+                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
               </div>
             </div>
           </div>
@@ -479,7 +487,8 @@ export default function VehicleFormModal({
           {/* Notes */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <textarea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
+            <textarea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
+            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>
       )}

@@ -18,6 +18,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -27,6 +28,7 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
+import { titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType, cleanDisplay } from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -110,10 +112,10 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
   if (!value) return null;
   const Icon = icon;
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-xs group">
       {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
-      <span className="text-rmpg-200">{value}</span>
+      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
+      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
 }
@@ -203,7 +205,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
   useEffect(() => {
     if (!selectedVehicle) { setVehicleAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedVehicle.flags.map(f => f.toLowerCase());
+    const flagsLower = selectedVehicle.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
     if (flagsLower.some(f => f.includes('stolen'))) {
       alerts.push({ type: 'flag', priority: 'critical', title: 'STOLEN VEHICLE', description: 'Vehicle reported stolen — do not approach alone' });
     }
@@ -288,10 +290,162 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
 }
 
 // ════════════════════════════════════════════════════
+// Feature 22: Plate Lookup Panel
+// ════════════════════════════════════════════════════
+
+function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>) => void }) {
+  const [plate, setPlate] = useState('');
+  const [plateState, setPlateState] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  // Feature 32: BOLO matches
+  const [boloMatches, setBoloMatches] = useState<any[]>([]);
+  // Multi-source plate check results
+  const [plateCheckResults, setPlateCheckResults] = useState<any[]>([]);
+  const [plateCheckSources, setPlateCheckSources] = useState<string[]>([]);
+
+  const handleLookup = async () => {
+    if (plate.trim().length < 2) return;
+    setLoading(true);
+    try {
+      const [vehicleRes, boloRes, plateCheckRes] = await Promise.all([
+        apiFetch<any[]>(`/records/vehicles/plate-lookup?plate=${encodeURIComponent(plate.trim())}${plateState ? `&state=${encodeURIComponent(plateState)}` : ''}`),
+        apiFetch<any>(`/records/vehicles/bolo-check?plate=${encodeURIComponent(plate.trim())}`),
+        apiFetch<any>('/records/plate-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plate: plate.trim(), state: plateState || undefined }),
+        }).catch(() => null),
+      ]);
+      setResults(Array.isArray(vehicleRes) ? vehicleRes : []);
+      setBoloMatches(boloRes?.matches || []);
+      setPlateCheckResults(plateCheckRes?.results || []);
+      setPlateCheckSources(plateCheckRes?.sources || []);
+    } catch {
+      setResults([]);
+      setBoloMatches([]);
+      setPlateCheckResults([]);
+      setPlateCheckSources([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAutoFillFromResult = (v: any) => {
+    if (!onAutoFill) return;
+    onAutoFill({
+      license_plate: v.plate_number || v.license_plate || '',
+      plate_state: v.state || v.plate_state || '',
+      make: v.make || '',
+      model: v.model || '',
+      year: v.year || 0,
+      color: v.color || '',
+      vin: v.vin || '',
+      owner_name: v.registered_owner || (v.owner_first_name ? `${v.owner_first_name} ${v.owner_last_name || ''}`.trim() : ''),
+      body_style: v.vehicle_type || v.body_style || '',
+      notes: v.source ? `Auto-filled from ${v.source}` : '',
+    } as Partial<Vehicle>);
+  };
+
+  // Merge all results for display, dedup by plate+source
+  const allDisplayResults = [...results.map(r => ({ ...r, source: 'local' })), ...plateCheckResults.filter(pc => pc.source !== 'local_vehicles')];
+
+  return (
+    <div className="border-b border-rmpg-600">
+      <button type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3 py-1.5 flex items-center gap-2 text-[10px] text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30 transition-colors"
+      >
+        <Shield className="w-3 h-3" />
+        <span className="font-bold">Plate Check / BOLO Check</span>
+        {plateCheckSources.length > 0 && (
+          <span className="text-[8px] px-1 py-0.5 bg-green-900/30 text-green-400 rounded-sm">{plateCheckSources.length} sources</span>
+        )}
+        <span className="ml-auto">{expanded ? '−' : '+'}</span>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2 space-y-2">
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              className="input-dark flex-1 text-[10px] min-h-[36px]"
+              placeholder="Plate number..."
+              value={plate}
+              onChange={(e) => setPlate(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(); }}
+            />
+            <input
+              type="text"
+              className="input-dark text-[10px] min-h-[36px]"
+              style={{ width: 40 }}
+              placeholder="ST"
+              maxLength={2}
+              value={plateState}
+              onChange={(e) => setPlateState(e.target.value.toUpperCase())}
+            />
+            <button type="button" onClick={handleLookup} className="toolbar-btn text-[9px]" disabled={loading || plate.trim().length < 2}>
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Search'}
+            </button>
+          </div>
+          {/* BOLO Warning */}
+          {boloMatches.length > 0 && (
+            <div className="p-2 bg-red-950/40 border border-red-700/50 text-[10px]">
+              <div className="flex items-center gap-1.5 text-red-400 font-bold mb-1">
+                <AlertTriangle className="w-3.5 h-3.5" /> BOLO MATCH ({boloMatches.length})
+              </div>
+              {boloMatches.map((b: any) => (
+                <div key={b.id} className="text-red-300 text-[9px] mt-0.5">
+                  {b.bolo_number}: {b.vehicle_description} — {b.suspect_name || 'Unknown'}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Multi-source Results */}
+          {allDisplayResults.length > 0 && (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {allDisplayResults.map((v: any, idx: number) => (
+                <div key={`${v.source}-${v.id || idx}`} className="text-[10px] p-1.5 bg-surface-sunken border border-rmpg-600 rounded-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[8px] px-1 py-0.5 bg-[#141414] text-rmpg-400 rounded-sm">{v.source}</span>
+                      {onAutoFill && (
+                        <button
+                          type="button"
+                          onClick={() => handleAutoFillFromResult(v)}
+                          className="text-[8px] px-1.5 py-0.5 bg-brand-600/30 hover:bg-brand-600/50 text-brand-300 rounded-sm transition-colors"
+                          title="Auto-fill new vehicle form with this data"
+                        >
+                          Auto-Fill
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-rmpg-300">{v.year} {v.make} {v.model} {v.color}</div>
+                  {(v.registered_owner || v.owner_first_name) && (
+                    <div className="text-rmpg-400">Owner: {v.registered_owner || `${v.owner_first_name} ${v.owner_last_name || ''}`}</div>
+                  )}
+                  {v.vin && <div className="text-rmpg-500 font-mono text-[9px]">VIN: {v.vin}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+          {allDisplayResults.length === 0 && plate.trim().length >= 2 && !loading && (
+            <div className="text-[9px] text-rmpg-500">No records found across any source</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════
 // LIST — VehiclesTabList (left panel content)
 // ════════════════════════════════════════════════════
 
 export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
+  const { user } = useAuth();
   const {
     filteredVehicles, selectedVehicle, setSelectedVehicle,
     searchQuery, setSearchQuery, showArchived,
@@ -302,46 +456,68 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
-      <div className="p-3 border-b border-rmpg-600">
+      <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
           <input
             type="text"
-            className="input-dark pl-9 w-full text-[11px]"
-            placeholder="Search by plate, make, model, VIN, owner..."
+            className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
+            placeholder="Search by plate, make, model, VIN, owner..." aria-label="Search by plate, make, model, VIN, owner..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
         </div>
       </div>
 
+      {/* Feature 22: Plate Lookup / Plate Check Section */}
+      <PlateLookupPanel onAutoFill={(data) => {
+        // Open the vehicle form modal pre-filled with plate check data
+        openEditVehicle({
+          id: '', license_plate: data.license_plate || '', plate_state: data.plate_state || 'UT',
+          make: data.make || '', model: data.model || '', year: data.year || 0,
+          color: data.color || '', vin: data.vin || '',
+          notes: data.notes || '',
+          secondary_color: '', body_style: (data as any).vehicle_type || '',
+          incident_ids: [], flags: [], created_at: '', updated_at: '',
+        } as Vehicle);
+      }} />
+
       {/* Vehicle List */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Vehicle records">
         {filteredVehicles.length === 0 && (
-          <div className="text-center py-12">
-            <Car className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No vehicles match your search.' : 'No vehicle records found.'}</p>
+          <div className="text-center py-16">
+            <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No vehicles match your search.' : 'No vehicle records found.'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery ? 'Try adjusting your search terms.' : 'Click "New Vehicle" to add a record.'}
+            </p>
           </div>
         )}
-        {filteredVehicles.map((v) => (
+        {filteredVehicles.map((v, idx) => (
           <div
             key={v.id}
+            role="listitem"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedVehicle(selectedVehicle?.id === v.id ? null : v); } }}
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
             className={`
-              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
-              ${selectedVehicle?.id === v.id
-                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
+              ${v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
+                ? 'bg-red-950/30 border-l-2 border-l-red-500'
+                : selectedVehicle?.id === v.id
+                  ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                  : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
               }
             `}
+            aria-selected={selectedVehicle?.id === v.id}
           >
             <div className="flex items-center gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded flex items-center justify-center text-[10px] font-bold font-mono border ${
+              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center text-[10px] font-bold font-mono border ${
                 v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
                   ? 'bg-red-900/40 text-red-400 border-red-700/50'
                   : 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
@@ -351,7 +527,13 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
-                  <span className="text-[10px] text-rmpg-400">{v.plate_state}</span>
+                  {v.plate_state && (
+                    <span className={`px-1 py-0 text-[8px] font-bold border rounded-sm ${
+                      v.plate_state === 'UT' ? 'bg-gray-900/40 text-gray-300 border-gray-700/50' :
+                      v.plate_state === 'CA' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
+                      'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
+                    }`}>{v.plate_state}</span>
+                  )}
                   {v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered' && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50 animate-pulse">STOLEN</span>
                   )}
@@ -374,34 +556,37 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               <div className="flex flex-col items-end gap-1">
                 {v.flags.length > 0 && (
                   <div className="flex gap-1">
-                    {v.flags.slice(0, 2).map((flag) => (
-                      <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                        {flag}
-                      </span>
-                    ))}
+                    {v.flags.slice(0, 2).map((flag, i) => {
+                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                      return (
+                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="flex items-center gap-1">
-                  {!showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
                   )}
-                  <button onClick={(e) => { e.stopPropagation(); openRecordWindow('vehicle', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Open in Window">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); openRecordWindow('vehicle', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Open in Window">
                     <ExternalLink className="w-3 h-3" />
                   </button>
-                  {!showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vehicle', id: v.id, label: `${v.license_plate} ${v.make} ${v.model}` }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vehicle', id: v.id, label: `${v.license_plate} ${v.make} ${v.model}` }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   )}
-                  {!showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); handleArchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
                       <Archive className="w-3 h-3" />
                     </button>
                   )}
                   {showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); handleUnarchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUnarchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
                       <RotateCcw className="w-3 h-3" />
                     </button>
                   )}
@@ -435,6 +620,28 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
     linkRefreshKey, openLinkModal,
   } = state;
 
+  // ── Feature 41: Vehicle History Report ──
+  const [vehicleHistory, setVehicleHistory] = React.useState<any>(null);
+  const handleLoadHistory = async (vId: string) => {
+    try {
+      const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
+      setVehicleHistory(data?.data || data);
+    } catch { /* ignore */ }
+  };
+
+  // ── Feature 44: Stolen Vehicle Check ──
+  const [stolenCheckResult, setStolenCheckResult] = React.useState<any>(null);
+  const handleStolenCheck = async () => {
+    if (!selectedVehicle) return;
+    try {
+      const data = await apiFetch<any>('/records/vehicles/stolen-check', {
+        method: 'POST',
+        body: JSON.stringify({ plate_number: selectedVehicle.license_plate, vin: selectedVehicle.vin }),
+      });
+      setStolenCheckResult(data?.data || data);
+    } catch { /* ignore */ }
+  };
+
   if (!selectedVehicle) return null;
 
   return (
@@ -449,14 +656,45 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           {selectedVehicle.body_style && <span>{selectedVehicle.body_style}</span>}
           <span>({selectedVehicle.plate_state})</span>
         </div>
+        {/* Feature 41+44 Action Buttons */}
+        <div className="flex gap-1 mt-1">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
+            <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
+          </button>
+          <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
+            <Shield style={{ width: 10, height: 10, display: 'inline' }} /> Stolen Check
+          </button>
+        </div>
+        {/* Feature 44: Stolen Check Result */}
+        {stolenCheckResult && (
+          <div className={`mt-1 p-1.5 text-[10px] border ${stolenCheckResult.status === 'HIT' ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
+            <span className="font-bold">{stolenCheckResult.status}</span> — {stolenCheckResult.message}
+            <button type="button" onClick={() => setStolenCheckResult(null)} className="ml-2 text-rmpg-500">x</button>
+          </div>
+        )}
+        {/* Feature 41: History Panel */}
+        {vehicleHistory && (
+          <div className="mt-1 p-1.5 text-[10px] bg-gray-900/10 border border-gray-700/30">
+            <div className="flex justify-between">
+              <span className="text-gray-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
+              <button type="button" onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
+            </div>
+            {vehicleHistory.incidents?.length > 0 && <div className="text-rmpg-400 mt-0.5">{vehicleHistory.incidents.length} incidents</div>}
+            {vehicleHistory.citations?.length > 0 && <div className="text-rmpg-400">{vehicleHistory.citations.length} citations</div>}
+            {vehicleHistory.tows?.length > 0 && <div className="text-rmpg-400">{vehicleHistory.tows.length} tows</div>}
+          </div>
+        )}
         {/* Flags */}
         {selectedVehicle.flags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {selectedVehicle.flags.map((flag) => (
-              <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                {flag}
-              </span>
-            ))}
+            {selectedVehicle.flags.map((flag, i) => {
+              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+              return (
+                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                  {label}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -471,8 +709,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('State', selectedVehicle.plate_state)}
             {renderInfoRow('Plate Type', selectedVehicle.plate_type)}
             {renderInfoRow('Year', selectedVehicle.year ? String(selectedVehicle.year) : null)}
-            {renderInfoRow('Make', selectedVehicle.make)}
-            {renderInfoRow('Model', selectedVehicle.model)}
+            {renderInfoRow('Make', selectedVehicle.make ? titleCase(selectedVehicle.make) : undefined)}
+            {renderInfoRow('Model', selectedVehicle.model ? titleCase(selectedVehicle.model) : undefined)}
             {renderInfoRow('Trim', selectedVehicle.trim)}
             {renderInfoRow('Color', `${selectedVehicle.color}${selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}`)}
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
@@ -484,7 +722,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           )}
           {(selectedVehicle.commercial_vehicle || selectedVehicle.hazmat) && (
             <div className="flex gap-2 mt-2">
-              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">COMMERCIAL</span>}
+              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">COMMERCIAL</span>}
               {selectedVehicle.hazmat && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">HAZMAT</span>}
             </div>
           )}
@@ -510,8 +748,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
-            {renderInfoRow('Owner Address', selectedVehicle.owner_address, MapPin)}
-            {renderInfoRow('Owner Phone', selectedVehicle.owner_phone, Phone)}
+            {renderInfoRow('Owner Address', selectedVehicle.owner_address ? formatAddressDisplay(selectedVehicle.owner_address) : undefined, MapPin)}
+            {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
           </div>
         </CollapsibleSection>
 
@@ -557,16 +795,16 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Incident History ─────────────────── */}
         <CollapsibleSection title={`Incident History (${vehicleIncidents.length})`} icon={FileText}>
           {loadingVehicleIncidents ? (
-            <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
+            <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
           ) : vehicleIncidents.length > 0 ? (
             <div className="space-y-1">
               {vehicleIncidents.map((inc: any) => (
                 <div key={inc.id} className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700">
                   <span className="text-white font-mono font-bold">{inc.incident_number}</span>
                   <span className="px-1 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold">
-                    {(inc.role || '').replace(/_/g, ' ')}
+                    {cleanDisplay(inc.role)}
                   </span>
-                  <span className="text-rmpg-300">{(inc.incident_type || '').replace(/_/g, ' ')}</span>
+                  <span className="text-rmpg-300">{humanizeType(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
                   <span className="text-rmpg-400 ml-auto">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</span>
                 </div>
@@ -600,7 +838,12 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
 export default function VehiclesTab(props: VehiclesTabProps) {
   const state = useVehiclesTab(props);
+
+  // Set document title
+  useEffect(() => { document.title = 'Records - Vehicles \u2014 RMPG Flex'; }, []);
+
   if (props.loadingVehicles) return null;
+
   return (
     <>
       <div className={`${state.selectedVehicle ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

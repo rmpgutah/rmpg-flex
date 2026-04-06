@@ -62,7 +62,10 @@ export function isValidZip(zip: string): boolean {
 export function isValidDate(dateStr: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
   const d = new Date(dateStr + 'T00:00:00');
-  return !isNaN(d.getTime()) && d.toISOString().startsWith(dateStr);
+  if (isNaN(d.getTime())) return false;
+  // Verify the date components match (catches invalid dates like Feb 30)
+  const [y, m, day] = dateStr.split('-').map(Number);
+  return d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day;
 }
 
 /** Validate that a date is not in the future. */
@@ -75,7 +78,7 @@ export function isNotFutureDate(dateStr: string): boolean {
 /** Validate that a date range is valid (start <= end). */
 export function isValidDateRange(start: string, end: string): boolean {
   if (!isValidDate(start) || !isValidDate(end)) return false;
-  return new Date(start) <= new Date(end);
+  return new Date(start + 'T00:00:00') <= new Date(end + 'T00:00:00');
 }
 
 /** Validate an incident/case number format (e.g., RKY26-00001-BURG). */
@@ -120,7 +123,7 @@ export function isValidState(state: string): boolean {
  */
 export function calculateAge(dob: string): number | null {
   if (!isValidDate(dob)) return null;
-  const birth = new Date(dob);
+  const birth = new Date(dob + 'T00:00:00');
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
   const monthDiff = today.getMonth() - birth.getMonth();
@@ -177,4 +180,77 @@ export function validateField(
   }
 
   return { valid: true };
+}
+
+// ============================================================
+// Input format patterns (for HTML pattern attribute)
+// ============================================================
+
+/** Regex pattern strings for use with HTML input `pattern` attribute */
+export const INPUT_PATTERNS = {
+  /** US phone: (801) 555-1234 or 8015551234 or 801-555-1234 */
+  phone: '[0-9()\\-\\s+]{7,20}',
+  /** Email: simple pattern for HTML validation */
+  email: '[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}',
+  /** Badge number: 1-10 alphanumeric */
+  badge: '[A-Za-z0-9]{1,10}',
+  /** ZIP code: 5 digits or ZIP+4 */
+  zip: '\\d{5}(-\\d{4})?',
+  /** VIN: 17 alphanumeric (no I, O, Q) */
+  vin: '[A-HJ-NPR-Za-hj-npr-z0-9]{17}',
+  /** License plate: 2-8 alphanumeric */
+  plate: '[A-Za-z0-9\\s-]{2,8}',
+  /** Date: YYYY-MM-DD */
+  date: '\\d{4}-\\d{2}-\\d{2}',
+  /** Currency amount: optional decimals */
+  currency: '\\d+(\\.\\d{1,2})?',
+  /** Percentage: 0-100 with optional decimal */
+  percentage: '(100(\\.0{1,2})?|\\d{1,2}(\\.\\d{1,2})?)',
+} as const;
+
+/** Placeholder hints for common field types */
+export const INPUT_PLACEHOLDERS = {
+  phone: '(801) 555-1234',
+  email: 'user@example.com',
+  badge: 'e.g. B1234',
+  zip: 'e.g. 84101',
+  vin: '17-character VIN',
+  plate: 'e.g. ABC 1234',
+  date: 'YYYY-MM-DD',
+  currency: 'e.g. 1500.00',
+  ssn: 'XXX-XX-XXXX',
+} as const;
+
+// ============================================================
+// Compound validators
+// ============================================================
+
+/** Validate that a string is a valid non-negative number */
+export function isValidPositiveNumber(value: string): boolean {
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n >= 0;
+}
+
+/** Validate that a string is a valid integer within range */
+export function isValidIntegerInRange(value: string, min: number, max: number): boolean {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && Number.isInteger(n) && n >= min && n <= max;
+}
+
+/** Validate a Tax ID / EIN format (XX-XXXXXXX) */
+export function isValidTaxId(taxId: string): boolean {
+  return /^\d{2}-\d{7}$/.test(taxId.trim());
+}
+
+/** Validate required fields in a form object. Returns array of missing field names. */
+export function getMissingRequiredFields(
+  data: Record<string, any>,
+  requiredFields: string[],
+): string[] {
+  return requiredFields.filter((field) => {
+    const val = data[field];
+    if (val == null) return true;
+    if (typeof val === 'string' && val.trim() === '') return true;
+    return false;
+  });
 }

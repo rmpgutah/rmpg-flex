@@ -32,7 +32,9 @@ function encrypt(plaintext: string): string {
 
 function decrypt(stored: string): string {
   const key = deriveKey();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const parts = stored.split(':');
+  if (parts.length !== 3) throw new Error('Invalid encrypted format');
+  const [ivHex, authTagHex, ciphertext] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -171,6 +173,7 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string): 
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    signal: AbortSignal.timeout(15_000),
   });
 
   const data = await res.json();
@@ -197,7 +200,7 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string): 
   try {
     const parts = (data.access_token || '').split('.');
     if (parts.length >= 2 && parts[1]) {
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
       mailbox = payload.upn || payload.preferred_username || payload.unique_name || '';
     }
   } catch { /* token decode is best-effort */ }
@@ -240,6 +243,7 @@ export async function ensureValidToken(): Promise<string> {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const data = await res.json();
@@ -340,7 +344,7 @@ export function getStatus(): {
     authorized: isAuthorized(),
     mailbox: getConfigValue(CONFIG_KEYS.mailbox),
     lastSync: getConfigValue(CONFIG_KEYS.lastSync),
-    pollInterval: parseInt(getConfigValue(CONFIG_KEYS.pollInterval, 10) || '300', 10),
+    pollInterval: parseInt(getConfigValue(CONFIG_KEYS.pollInterval) || '300', 10),
     smtpFallback: getConfigValue(CONFIG_KEYS.smtpFallback) === 'true',
   };
 }

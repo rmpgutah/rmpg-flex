@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import { isOfflineDbReady } from '../services/offlineDb';
 import { handle as browserOfflineHandle, isOfflineCapableEndpoint } from '../services/offlineRouter';
 import { hasActiveSession } from '../services/offlinePin';
+import { uploadWithProgress } from '../utils/uploadWithProgress';
+import type { UploadProgress } from '../utils/uploadWithProgress';
 
 // ─── Offline Error Classes ───────────────────────────────────
 // Thrown when an offline write is attempted without PIN authorization.
@@ -139,6 +141,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
       const token = getToken();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
         ...customHeaders,
       };
 
@@ -237,7 +240,7 @@ async function tryRefreshToken(): Promise<string | null> {
 
       const res = await fetch('/api/auth/refresh', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ refreshToken }),
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout));
@@ -263,8 +266,8 @@ async function tryRefreshToken(): Promise<string | null> {
       localStorage.removeItem('rmpg_session_id');
       window.location.href = '/login';
       return null;
-    } catch {
-      // Network error during refresh — can't recover online, but offline mode may work
+    } catch (err) {
+      console.warn('[useApi] Token refresh network error:', err);
       return null;
     } finally {
       _refreshPromise = null;
@@ -296,10 +299,7 @@ export async function apiFetch<T>(
         }
 
         // Route through local SQLite via IPC
-        let body: any;
-        if (options?.body) {
-          try { body = JSON.parse(options.body as string); } catch { throw new Error('Cannot queue non-JSON body for offline'); }
-        }
+        const body = options?.body ? JSON.parse(options.body as string) : undefined;
         const result = await electron.localApi(method, url, body);
 
         if (result.status >= 400) {
@@ -324,10 +324,7 @@ export async function apiFetch<T>(
         throw new OfflineUnauthorizedError();
       }
 
-      let body: any;
-      if (options?.body) {
-        try { body = JSON.parse(options.body as string); } catch { throw new Error('Cannot queue non-JSON body for offline'); }
-      }
+      const body = options?.body ? JSON.parse(options.body as string) : undefined;
       const result = await browserOfflineHandle(method, url, body);
 
       if (result.status >= 400) {
@@ -351,6 +348,7 @@ export async function apiFetch<T>(
   const token = localStorage.getItem('rmpg_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
     ...(options?.headers as Record<string, string>),
   };
 
@@ -400,7 +398,7 @@ export async function apiUploadFiles(
   if (entityType) formData.append('entity_type', entityType);
   if (entityId) formData.append('entity_id', String(entityId));
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -417,6 +415,47 @@ export async function apiUploadFiles(
   }
 
   return res.json();
+}
+
+// Upload files with per-file progress tracking via XHR
+export async function apiUploadFilesWithProgress(
+  files: File[],
+  entityType?: string,
+  entityId?: string | number,
+  onProgress?: (progress: UploadProgress, fileIndex: number, totalFiles: number) => void,
+): Promise<any[]> {
+  // If no progress callback, fall back to the simpler fetch-based upload
+  if (!onProgress) {
+    return apiUploadFiles(files, entityType, entityId);
+  }
+
+  const token = localStorage.getItem('rmpg_token') || '';
+  const results: any[] = [];
+
+  // Upload files one at a time so progress tracks per-file
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const formData = new FormData();
+    formData.append('files', file);
+    if (entityType) formData.append('entity_type', entityType);
+    if (entityId) formData.append('entity_id', String(entityId));
+
+    const result = await uploadWithProgress(
+      '/api/uploads',
+      formData,
+      token,
+      (progress) => onProgress(progress, i, files.length),
+    );
+
+    // Server returns an array of uploaded file records
+    if (Array.isArray(result)) {
+      results.push(...result);
+    } else {
+      results.push(result);
+    }
+  }
+
+  return results;
 }
 
 // Fetch attachments for an entity
@@ -457,5 +496,7 @@ export async function apiUpdateCompanyDocument(id: number, data: Record<string, 
 export async function apiDeleteCompanyDocument(id: number): Promise<void> {
   await apiFetch(`/company-documents/${id}`, { method: 'DELETE' });
 }
+
+export type { UploadProgress };
 
 export default useApi;

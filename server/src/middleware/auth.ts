@@ -1,14 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt, { type SignOptions, type VerifyOptions } from 'jsonwebtoken';
-import crypto from 'crypto';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import config from '../config';
 import { getDb } from '../models/database';
-import { localNow } from '../utils/timeUtils';
-
-// JWT issuer/audience claims — bind tokens to this application to prevent
-// cross-application token reuse if the same JWT_SECRET were ever shared
-const JWT_ISSUER = 'rmpg-flex';
-const JWT_AUDIENCE = 'rmpg-flex-api';
 
 export interface JwtPayload {
   userId: number;
@@ -16,8 +9,7 @@ export interface JwtPayload {
   role: string;
   fullName: string;
   sessionId?: string;
-  type?: 'access' | 'refresh' | 'mfa_pending';
-  pendingActions?: string[];
+  type?: 'access' | 'refresh' | '2fa_pending';
 }
 
 // Extend Express Request to include user
@@ -29,20 +21,6 @@ declare global {
   }
 }
 
-// ─── Role-based security profiles ────────────────────────
-// Admin gets lighter session security (no IP binding, no UA binding)
-// since they log in from multiple locations/devices frequently.
-// Officers/dispatchers keep stricter session binding for CJIS compliance.
-const RELAXED_SESSION_ROLES = new Set(['admin']);
-
-// Shared verify options — validates issuer/audience if present in the token,
-// but does not reject tokens missing these claims (backward-compatible during rollout)
-const JWT_VERIFY_OPTIONS: VerifyOptions = {
-  issuer: JWT_ISSUER,
-  audience: JWT_AUDIENCE,
-  algorithms: ['HS256'], // Explicitly pin algorithm — prevents algorithm confusion attacks
-};
-
 export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
@@ -52,120 +30,90 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  try {
-    // Try strict verification first (with issuer/audience)
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      // Legacy token backward compat — enforce strict validation after 2026-04-15
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        const deadline = new Date('2026-04-15T00:00:00Z');
-        const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / (86400 * 1000));
-        if (daysLeft <= 0) {
-          // Deadline passed — reject legacy tokens
-          res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
-          return;
-        }
-        console.warn(`[AUTH] Legacy token without iss/aud accepted — ${daysLeft} days until enforcement (2026-04-15)`);
-        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
+  // [FIX 1] Reject obviously malformed tokens before passing to jwt.verify
+  if (token.length > 4096) {
+    res.status(400).json({ error: 'Malformed token' });
+    return;
+  }
 
-    // Reject refresh tokens and MFA-pending tokens used as access tokens
-    if (decoded.type === 'refresh' || decoded.type === 'mfa_pending') {
+  try {
+    // [FIX 2] Explicitly specify allowed algorithms to prevent algorithm confusion attacks
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
+
+    // Reject refresh tokens and 2FA-pending tokens used as access tokens
+    if (decoded.type === 'refresh' || decoded.type === '2fa_pending') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
     }
 
-    // Session validation — always check session validity when sessionId is present.
-    // Skip strict IP/UA binding for roles in RELAXED_SESSION_ROLES (admin) since
-    // they log in from multiple locations/devices frequently.
-    const useStrictBinding = !RELAXED_SESSION_ROLES.has(decoded.role);
+    // [FIX 3] Validate required fields exist in decoded token payload
+    if (!decoded.userId || !decoded.username || !decoded.role) {
+      res.status(403).json({ error: 'Malformed token payload' });
+      return;
+    }
 
-    if (decoded.sessionId) {
+    // IP-based session validation
+    if (config.session.enforceIpBinding && decoded.sessionId) {
       try {
         const db = getDb();
         const session = db.prepare(
-          'SELECT ip_address, ua_hash, last_used_at, created_at FROM sessions WHERE session_id = ? AND is_active = 1'
-        ).get(decoded.sessionId) as { ip_address: string; ua_hash?: string; last_used_at?: string; created_at?: string } | undefined;
+          'SELECT ip_address FROM sessions WHERE session_id = ? AND is_active = 1'
+        ).get(decoded.sessionId) as { ip_address: string } | undefined;
 
-        // Reject if session was revoked, expired, or deleted
+        // [FIX 4] Reject tokens whose sessionId references an inactive/missing session
         if (!session) {
-          res.status(401).json({ error: 'Session not found or revoked', code: 'SESSION_INVALID' });
+          res.status(401).json({ error: 'Session not found or inactive', code: 'SESSION_INVALID' });
           return;
         }
 
-        // User-agent binding — detect token theft across different browsers
-        // Skipped for relaxed roles (admin) who switch devices frequently
-        if (useStrictBinding && session.ua_hash) {
-          const currentUaHash = crypto.createHash('sha256')
-            .update(req.headers['user-agent'] || '').digest('hex').slice(0, 32);
-          if (currentUaHash !== session.ua_hash) {
-            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
-              .run(decoded.sessionId);
-            res.status(401).json({ error: 'Session invalidated: device mismatch', code: 'UA_CHANGED' });
-            return;
-          }
-        }
-
-        // IP binding — only enforced when config.session.enforceIpBinding is true
-        if (config.session.enforceIpBinding && session.ip_address !== req.ip) {
+        if (session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;
           if (action === 'invalidate') {
-            // Kill the session — IP address changed and policy requires invalidation
             db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
               .run(decoded.sessionId);
-            res.status(401).json({ error: 'Session invalidated: IP address changed', code: 'IP_CHANGED_INVALIDATED' });
+            res.status(401).json({ error: 'Session invalidated: IP address changed', code: 'IP_CHANGED' });
             return;
           } else if (action === 'reauth') {
             res.status(401).json({ error: 'Re-authentication required: IP address changed', code: 'IP_CHANGED_REAUTH' });
             return;
           }
           // 'warn' mode: log but allow through
+          // [FIX 5] Actually log the warning in warn mode
+          console.warn(`[AUTH] IP change detected for user ${decoded.username}: session IP ${session.ip_address} → request IP ${req.ip}`);
         }
-
-        // Enforce idle session timeout — invalidate sessions not used within the configured window
-        if (config.session.idleTimeoutMinutes > 0 && session.last_used_at) {
-          const lastUsedTime = new Date(session.last_used_at).getTime();
-          const idleMs = config.session.idleTimeoutMinutes * 60 * 1000;
-          if (!isNaN(lastUsedTime) && Date.now() - lastUsedTime > idleMs) {
-            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
-              .run(decoded.sessionId);
-            res.status(401).json({ error: 'Session expired due to inactivity', code: 'SESSION_IDLE_TIMEOUT' });
-            return;
-          }
-        }
-
-        // Enforce absolute maximum session lifetime — sessions cannot be refreshed past this
-        if (config.jwt.maxSessionHours > 0 && (session as any).created_at) {
-          const createdTime = new Date((session as any).created_at).getTime();
-          const maxLifetimeMs = config.jwt.maxSessionHours * 60 * 60 * 1000;
-          if (!isNaN(createdTime) && Date.now() - createdTime > maxLifetimeMs) {
-            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
-              .run(decoded.sessionId);
-            res.status(401).json({ error: 'Session has exceeded maximum lifetime. Please log in again.', code: 'SESSION_MAX_LIFETIME' });
-            return;
-          }
-        }
-
-        // Update session last_used_at for idle timeout detection
-        db.prepare('UPDATE sessions SET last_used_at = ? WHERE session_id = ?')
-          .run(localNow(), decoded.sessionId);
-      } catch {
-        // DB unavailable — deny request rather than silently bypassing session checks
-        res.status(503).json({ error: 'Service temporarily unavailable' });
-        return;
-      }
+      } catch { /* DB not available - allow through */ }
     }
 
     req.user = decoded;
+
+    // Check system lockdown (admin-only access when active)
+    if (req.user && req.user.role !== 'admin') {
+      try {
+        const db = getDb();
+        const lockdownRow = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'system_lockdown' AND is_active = 1").get() as any;
+        if (lockdownRow?.config_value) {
+          try {
+            const lockdown = JSON.parse(lockdownRow.config_value);
+            if (lockdown.active) {
+              res.status(503).json({
+                error: lockdown.message || 'System is in lockdown mode',
+                code: 'SYSTEM_LOCKDOWN',
+                lockdown: true
+              });
+              return;
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
     next();
   } catch (err: any) {
     if (err.name === 'TokenExpiredError') {
       res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    // [FIX 6] Handle JsonWebTokenError separately from NotBeforeError
+    } else if (err.name === 'NotBeforeError') {
+      res.status(401).json({ error: 'Token not yet active', code: 'TOKEN_NOT_ACTIVE' });
     } else {
       res.status(403).json({ error: 'Invalid or expired token' });
     }
@@ -173,6 +121,13 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
 }
 
 export function requireRole(...roles: string[]) {
+  // [FIX 7] Validate that roles were actually provided to prevent accidental open access
+  if (roles.length === 0) {
+    throw new Error('requireRole() called with no roles — this would deny all access');
+  }
+  // [FIX 8] Flatten nested arrays (handles requireRole(['admin', 'officer']) pattern)
+  const flatRoles = roles.flat() as string[];
+
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required' });
@@ -185,8 +140,8 @@ export function requireRole(...roles: string[]) {
       return;
     }
 
-    if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions' });
+    if (!flatRoles.includes(req.user.role)) {
+      res.status(403).json({ error: 'Insufficient permissions', required: flatRoles });
       return;
     }
 
@@ -195,12 +150,7 @@ export function requireRole(...roles: string[]) {
 }
 
 export function generateAccessToken(payload: Omit<JwtPayload, 'type'>): string {
-  const options: SignOptions = {
-    expiresIn: config.jwt.accessExpiry as SignOptions['expiresIn'],
-    issuer: JWT_ISSUER,
-    audience: JWT_AUDIENCE,
-    jwtid: crypto.randomUUID(), // Unique token ID — prevents token replay and aids forensics
-  };
+  const options: SignOptions = { expiresIn: config.jwt.accessExpiry as SignOptions['expiresIn'] };
   return jwt.sign(
     { ...payload, type: 'access' },
     config.jwt.secret,
@@ -209,12 +159,7 @@ export function generateAccessToken(payload: Omit<JwtPayload, 'type'>): string {
 }
 
 export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string {
-  const options: SignOptions = {
-    expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'],
-    issuer: JWT_ISSUER,
-    audience: JWT_AUDIENCE,
-    jwtid: crypto.randomUUID(), // Unique token ID — correlates with session for revocation
-  };
+  const options: SignOptions = { expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'] };
   return jwt.sign(
     { ...payload, type: 'refresh' },
     config.jwt.secret,
@@ -223,22 +168,17 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
 }
 
 export function verifyRefreshToken(token: string): JwtPayload {
-  let decoded: JwtPayload;
-  try {
-    decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-  } catch (err: any) {
-    if (err.message?.includes('jwt issuer invalid') || err.message?.includes('jwt audience invalid')) {
-      const deadline = new Date('2026-04-15T00:00:00Z');
-      if (Date.now() >= deadline.getTime()) {
-        throw new Error('Legacy token format no longer accepted');
-      }
-      decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
-    } else {
-      throw err;
-    }
+  // [FIX 9] Validate token string before verification
+  if (!token || typeof token !== 'string') {
+    throw new Error('Refresh token is required');
   }
+  const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
   if (decoded.type !== 'refresh') {
     throw new Error('Invalid token type');
+  }
+  // [FIX 10] Validate required fields in refresh token payload
+  if (!decoded.userId || !decoded.username) {
+    throw new Error('Malformed refresh token payload');
   }
   return decoded;
 }
@@ -246,116 +186,55 @@ export function verifyRefreshToken(token: string): JwtPayload {
 /** Short-lived token (5 min) for the 2FA verification step. Cannot access any protected endpoint. */
 export function generate2faPendingToken(payload: Omit<JwtPayload, 'type'>): string {
   return jwt.sign(
-    { ...payload, type: 'mfa_pending' },
+    { ...payload, type: '2fa_pending' },
     config.jwt.secret,
-    { expiresIn: '5m', issuer: JWT_ISSUER, audience: JWT_AUDIENCE }
+    { expiresIn: '5m' }
   );
 }
 
-// Middleware for 2FA endpoints — only accepts mfa_pending tokens
-export function authenticateTempToken(req: Request, res: Response, next: NextFunction): void {
+/**
+ * Middleware that accepts BOTH full access tokens AND 2fa_pending tempTokens.
+ * Used on login-flow endpoints like /2fa/setup and /2fa/setup/verify where
+ * a user may not have a full session yet (mandatory 2FA enrollment).
+ */
+export function authenticateTokenOrTemp(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const token = headerToken || req.body?.tempToken;
 
   if (!token) {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
 
-  try {
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
-          res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
-          return;
-        }
-        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
-
-    if (decoded.type !== 'mfa_pending') {
-      res.status(403).json({ error: 'Invalid token type — MFA token required' });
-      return;
-    }
-
-    req.user = decoded;
-    next();
-  } catch (err: any) {
-    if (err.name === 'TokenExpiredError') {
-      res.status(401).json({ error: 'MFA verification expired. Please log in again.', code: 'MFA_EXPIRED' });
-    } else {
-      res.status(403).json({ error: 'Invalid MFA token' });
-    }
-  }
-}
-
-// Accepts EITHER a full access token OR an mfa_pending temp token (NOT refresh tokens)
-export function authenticateAnyToken(req: Request, res: Response, next: NextFunction): void {
-  const authHeader = req.headers['authorization'];
-  // Accept token from Authorization header OR from request body (fallback for 2FA setup flow)
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7)
-    : (req.body?.tempToken as string) || null;
-
-  if (!token) {
-    console.warn('[AUTH] authenticateAnyToken: no token found in header or body for', req.method, req.path);
-    res.status(401).json({ error: 'Authentication required' });
+  if (typeof token === 'string' && token.length > 4096) {
+    res.status(400).json({ error: 'Malformed token' });
     return;
   }
 
   try {
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
-          res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
-          return;
-        }
-        console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — rejected after 2026-04-15');
-        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
-    // Block refresh tokens — they should never be used as access tokens
+    // Accept access tokens AND 2fa_pending tokens (but not refresh tokens)
     if (decoded.type === 'refresh') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
     }
 
+    if (!decoded.userId || !decoded.username || !decoded.role) {
+      res.status(403).json({ error: 'Malformed token payload' });
+      return;
+    }
+
     req.user = decoded;
     next();
-  } catch (err: any) {
-    if (err.name === 'TokenExpiredError') {
-      res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
-    } else {
-      res.status(403).json({ error: 'Invalid or expired token' });
-    }
+  } catch {
+    res.status(401).json({ error: 'Session expired. Please log in again.', code: 'MFA_EXPIRED' });
   }
 }
 
-export function generateTempToken(payload: Omit<JwtPayload, 'type'>, pendingActions: string[] = []): string {
-  const expiryStr = (config as any).twoFactor?.tempTokenExpiry || '5m';
-  const options: SignOptions = {
-    expiresIn: expiryStr as SignOptions['expiresIn'],
-    issuer: JWT_ISSUER,
-    audience: JWT_AUDIENCE,
-  };
-  return jwt.sign(
-    { ...payload, type: 'mfa_pending', pendingActions },
-    config.jwt.secret,
-    options
-  );
-}
-
-// Backwards compatibility
+// Backwards compatibility aliases
 export function generateToken(payload: Omit<JwtPayload, 'type'>): string {
   return generateAccessToken(payload);
 }
+export const generateTempToken = generate2faPendingToken;

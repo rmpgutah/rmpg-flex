@@ -16,11 +16,6 @@ VPS_IP="194.113.64.90"
 VPS_USER="root"
 APP_DIR="/opt/rmpg-flex"
 DOMAIN="rmpgutah.us"
-SSH_KEY="$HOME/.ssh/id_ed25519_deploy"
-
-# Use deploy key for all SSH/rsync/scp commands
-export GIT_SSH_COMMAND="ssh -i $SSH_KEY"
-SSH_OPTS="-i $SSH_KEY"
 
 # Get the project root (parent of deploy/)
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -65,7 +60,7 @@ echo ""
 
 # ─── Test SSH Connection ──────────────────────────────────
 echo ">>> Testing SSH connection..."
-if ! ssh $SSH_OPTS -o ConnectTimeout=5 -o BatchMode=yes "$VPS_USER@$VPS_IP" "echo ok" >/dev/null 2>&1; then
+if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$VPS_USER@$VPS_IP" "echo ok" >/dev/null 2>&1; then
   echo ""
   echo "ERROR: Cannot connect to $VPS_USER@$VPS_IP"
   echo ""
@@ -102,43 +97,25 @@ fi
 if [ "$FULL_SETUP" = true ]; then
   echo ""
   echo ">>> [SETUP] Running first-time VPS setup..."
-  ssh $SSH_OPTS "$VPS_USER@$VPS_IP" bash << 'SETUPEOF'
+  ssh "$VPS_USER@$VPS_IP" bash << 'SETUPEOF'
     set -e
-
-    # Node.js 22 LTS
+    echo ">>> Installing Node.js 22 LTS..."
     if ! command -v node &>/dev/null; then
-      echo ">>> Installing Node.js 22..."
       curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      apt-get install -y nodejs
     fi
+    echo "Node: $(node --version), npm: $(npm --version)"
 
-    # All system packages in one pass
-    echo ">>> Installing packages..."
-    apt-get install -y -qq nodejs ffmpeg fonts-dejavu-core ufw default-jre-headless unzip 2>&1 | tail -1
-    echo "    Node $(node --version)  npm $(npm --version)"
-
-    # Firewall
     echo ">>> Configuring firewall..."
-    ufw allow OpenSSH >/dev/null 2>&1
-    ufw allow 80/tcp  >/dev/null 2>&1
-    ufw allow 443/tcp >/dev/null 2>&1
-    ufw allow 5138/udp >/dev/null 2>&1   # Traccar XT2400 GPS
-    ufw --force enable >/dev/null 2>&1
+    apt-get install -y ufw >/dev/null 2>&1 || true
+    ufw allow OpenSSH >/dev/null 2>&1 || true
+    ufw allow 80/tcp >/dev/null 2>&1 || true
+    ufw allow 443/tcp >/dev/null 2>&1 || true
+    ufw --force enable >/dev/null 2>&1 || true
 
-    # Traccar GPS Server
-    if [ ! -f /opt/traccar/conf/traccar.xml ]; then
-      echo ">>> Installing Traccar 6.5..."
-      wget -q -P /tmp "https://github.com/traccar/traccar/releases/download/v6.5/traccar-linux-64-6.5.zip" -O /tmp/traccar.zip
-      cd /tmp && unzip -o traccar.zip >/dev/null && chmod +x traccar.run && ./traccar.run >/dev/null
-      rm -f traccar.zip traccar.run
-      systemctl enable --now traccar
-      echo "    Traccar 6.5 installed"
-    else
-      echo "    Traccar already installed"
-      systemctl start traccar 2>/dev/null || true
-    fi
-
+    echo ">>> Creating app directory..."
     mkdir -p /opt/rmpg-flex
-    echo ">>> Setup complete"
+    echo ">>> First-time setup complete"
 SETUPEOF
 fi
 
@@ -146,7 +123,7 @@ fi
 if [ "$SSL_SETUP" = true ]; then
   echo ""
   echo ">>> [SSL] Setting up Let's Encrypt certificates..."
-  ssh $SSH_OPTS "$VPS_USER@$VPS_IP" bash << 'SSLEOF'
+  ssh "$VPS_USER@$VPS_IP" bash << 'SSLEOF'
     set -e
     DOMAIN="rmpgutah.us"
     APP_DIR="/opt/rmpg-flex"
@@ -208,13 +185,13 @@ SSLEOF
 fi
 
 # ─── Ensure remote directory exists ──────────────────────
-ssh $SSH_OPTS "$VPS_USER@$VPS_IP" "mkdir -p $APP_DIR/server/downloads"
+ssh "$VPS_USER@$VPS_IP" "mkdir -p $APP_DIR/server/downloads"
 
 # ─── Upload Code ──────────────────────────────────────────
 if [ "$UPLOAD_CODE" = true ]; then
   echo ""
   echo ">>> Uploading RMPG Flex code..."
-  rsync -avz --progress -e "ssh $SSH_OPTS" \
+  rsync -avz --progress \
     --exclude='node_modules' \
     --exclude='.git' \
     --exclude='server/data' \
@@ -234,7 +211,7 @@ fi
 if [ "$UPLOAD_DOWNLOADS" = true ]; then
   echo ""
   echo ">>> Uploading installers (.exe, .dmg, .apk)..."
-  rsync -avz --progress -e "ssh $SSH_OPTS" \
+  rsync -avz --progress \
     "$PROJECT_DIR/server/downloads/" "$VPS_USER@$VPS_IP:$APP_DIR/server/downloads/"
   echo ""
   echo ">>> Installer upload complete!"
@@ -243,7 +220,7 @@ fi
 # ─── Create deploy script + systemd service + run deploy ──
 echo ""
 echo ">>> Setting up and deploying on VPS..."
-ssh $SSH_OPTS "$VPS_USER@$VPS_IP" bash << 'REMOTEEOF'
+ssh "$VPS_USER@$VPS_IP" bash << 'REMOTEEOF'
   set -e
   APP_DIR="/opt/rmpg-flex"
   DOMAIN="rmpgutah.us"
@@ -317,7 +294,7 @@ WantedBy=multi-user.target
 SVCEOF
     echo "    Service configured for HTTPS (port 443 + HTTP redirect on 80)"
   else
-    # No SSL: listen on port 3001 behind nginx
+    # No SSL: listen on port 80
     cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
 [Unit]
 Description=RMPG Flex CAD/RMS Server
@@ -329,7 +306,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/rmpg-flex
 Environment=NODE_ENV=production
-Environment=PORT=3001
+Environment=PORT=80
 ExecStart=/usr/bin/npx tsx server/src/index.ts
 Restart=always
 RestartSec=1

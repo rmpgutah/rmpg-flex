@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
+import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
     // Today's calls
     const todayCalls = db.prepare(`
       SELECT COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
     `).get() as any;
 
     // Units on duty
@@ -55,20 +56,20 @@ router.get('/dashboard', (req: Request, res: Response) => {
         (julianday(onscene_at) - julianday(created_at)) * 24 * 60
       ) as avg_minutes
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
+      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')
     `).get() as any;
 
     // Calls by priority today
     const callsByPriority = db.prepare(`
       SELECT priority, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
       GROUP BY priority ORDER BY priority
     `).all();
 
     // Calls by status
     const callsByStatus = db.prepare(`
       SELECT status, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
       GROUP BY status
     `).all();
 
@@ -88,132 +89,36 @@ router.get('/dashboard', (req: Request, res: Response) => {
       FROM units un
       JOIN users u ON un.officer_id = u.id
       WHERE un.status != 'off_duty'
+    
+      LIMIT 1000
     `).all();
 
     // Call volume by hour (today)
     const callsByHour = db.prepare(`
       SELECT strftime('%H', created_at) as hour, COUNT(*) as count
       FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
       GROUP BY hour ORDER BY hour
     `).all();
 
-    // ── PSO (Process Service Officer) Metrics ──
-    const psoActive = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND status IN ('pending', 'dispatched', 'enroute', 'onscene')
-    `).get() as any;
-
-    const psoToday = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND DATE(created_at) = DATE('now', 'localtime')
-    `).get() as any;
-
-    const psoThisMonth = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    const psoCompleted = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND status IN ('cleared', 'closed', 'archived')
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    // Process service success rate (served vs total attempts this month)
-    const psoServeResults = db.prepare(`
-      SELECT
-        COUNT(*) as total,
-        SUM(CASE WHEN process_service_result = 'served' THEN 1 ELSE 0 END) as served,
-        SUM(CASE WHEN process_service_result = 'not_served' THEN 1 ELSE 0 END) as not_served,
-        SUM(CASE WHEN process_service_result = 'refused' THEN 1 ELSE 0 END) as refused,
-        SUM(CASE WHEN process_service_result IS NULL OR process_service_result = '' THEN 1 ELSE 0 END) as pending_result
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND process_service_type IS NOT NULL AND process_service_type != ''
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    // Average attempts per process serve
-    const psoAvgAttempts = db.prepare(`
-      SELECT AVG(CAST(process_attempts AS REAL)) as avg_attempts
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND process_attempts IS NOT NULL AND process_attempts > 0
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    // PSO calls by service type (this month)
-    const psoByServiceType = db.prepare(`
-      SELECT pso_service_type, COUNT(*) as count
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND pso_service_type IS NOT NULL AND pso_service_type != ''
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-      GROUP BY pso_service_type ORDER BY count DESC
-    `).all();
-
-    // ServeManager sync stats (if tables exist)
-    let smStats = { totalJobs: 0, pendingJobs: 0, completedJobs: 0 };
-    try {
-      const smTotal = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs`).get() as any;
-      const smPending = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('pending', 'assigned', 'in_progress')`).get() as any;
-      const smCompleted = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('completed', 'served')`).get() as any;
-      smStats = { totalJobs: smTotal?.count ?? 0, pendingJobs: smPending?.count ?? 0, completedJobs: smCompleted?.count ?? 0 };
-    } catch { /* sm_jobs table may not exist */ }
-
-    // PSO avg response time (separate from general)
-    const psoAvgResponse = db.prepare(`
-      SELECT AVG(
-        (julianday(onscene_at) - julianday(created_at)) * 24 * 60
-      ) as avg_minutes
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND onscene_at IS NOT NULL
-        AND DATE(created_at) = DATE('now', 'localtime')
-    `).get() as any;
-
-    const pso = {
-      activeCalls: psoActive?.count ?? 0,
-      todayCalls: psoToday?.count ?? 0,
-      monthCalls: psoThisMonth?.count ?? 0,
-      monthCompleted: psoCompleted?.count ?? 0,
-      avgResponseMinutes: psoAvgResponse?.avg_minutes ? Math.round(psoAvgResponse.avg_minutes * 10) / 10 : null,
-      avgAttempts: psoAvgAttempts?.avg_attempts ? Math.round(psoAvgAttempts.avg_attempts * 10) / 10 : null,
-      serveResults: {
-        total: psoServeResults?.total || 0,
-        served: psoServeResults?.served || 0,
-        notServed: psoServeResults?.not_served || 0,
-        refused: psoServeResults?.refused || 0,
-        pendingResult: psoServeResults?.pending_result || 0,
-      },
-      byServiceType: psoByServiceType,
-      serveManager: smStats,
-    };
-
     res.json({
-      activeCalls: activeCalls?.count ?? 0,
-      todayCalls: todayCalls?.count ?? 0,
-      unitsOnDuty: unitsOnDuty?.count ?? 0,
-      totalUnits: totalUnits?.count ?? 0,
-      pendingReports: pendingReports?.count ?? 0,
-      activeBolos: activeBolos?.count ?? 0,
-      unreadMessages: unreadMessages?.count ?? 0,
-      avgResponseMinutes: avgResponse?.avg_minutes ? Math.round(avgResponse.avg_minutes * 10) / 10 : null,
+      activeCalls: activeCalls.count,
+      todayCalls: todayCalls.count,
+      unitsOnDuty: unitsOnDuty.count,
+      totalUnits: totalUnits.count,
+      pendingReports: pendingReports.count,
+      activeBolos: activeBolos.count,
+      unreadMessages: unreadMessages.count,
+      avgResponseMinutes: avgResponse.avg_minutes ? Math.round(avgResponse.avg_minutes * 10) / 10 : null,
       callsByPriority,
       callsByStatus,
       recentActivity,
       officersOnDuty,
       callsByHour,
-      pso,
     });
   } catch (error: any) {
-    console.error('Get dashboard error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get dashboard error:', error);
+    res.status(500).json({ error: 'Failed to get dashboard', code: 'GET_DASHBOARD_ERROR' });
   }
 });
 
@@ -241,7 +146,8 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
       priority: 'priority',
       officer: 'officer_id',
     };
-    const groupColumn = columnMap[groupBy as string] || 'incident_type';
+    const validGroupBy = typeof groupBy === 'string' && groupBy in columnMap ? groupBy : 'type';
+    const groupColumn = columnMap[validGroupBy];
 
     const summary = db.prepare(`
       SELECT ${groupColumn} as group_key, COUNT(*) as count
@@ -274,8 +180,8 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
       total: total.count,
     });
   } catch (error: any) {
-    console.error('Get incidents summary error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get incidents summary error:', error);
+    res.status(500).json({ error: 'Failed to get incidents summary', code: 'GET_INCIDENTS_SUMMARY_ERROR' });
   }
 });
 
@@ -305,31 +211,27 @@ router.get('/response-times', (req: Request, res: Response) => {
       params.push(propertyId);
     }
 
-    // Response time = (dispatched_at → onscene_at) minus hold time
-    // Excludes: pending→dispatched wait, and any on_hold pauses
-    //   active_response = (onscene_at - dispatched_at) * 24 * 60 - COALESCE(total_hold_minutes, 0)
-
     // Overall average response times
     const overall = db.prepare(`
       SELECT
         AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60) as avg_dispatch_minutes,
-        AVG((julianday(enroute_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_enroute_minutes,
-        AVG((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_total_response_minutes,
-        MIN((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as min_response_minutes,
-        MAX((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as max_response_minutes,
+        AVG((julianday(enroute_at) - julianday(dispatched_at)) * 24 * 60) as avg_enroute_minutes,
+        AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_total_response_minutes,
+        MIN((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as min_response_minutes,
+        MAX((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as max_response_minutes,
         COUNT(*) as total_calls
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL AND dispatched_at IS NOT NULL ${dateFilter}
+      WHERE onscene_at IS NOT NULL ${dateFilter}
     `).get(...params) as any;
 
     // By priority
     const byPriority = db.prepare(`
       SELECT
         priority,
-        AVG((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_response_minutes,
+        AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_response_minutes,
         COUNT(*) as count
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL AND dispatched_at IS NOT NULL ${dateFilter}
+      WHERE onscene_at IS NOT NULL ${dateFilter}
       GROUP BY priority ORDER BY priority
     `).all(...params);
 
@@ -337,11 +239,11 @@ router.get('/response-times', (req: Request, res: Response) => {
     const byProperty = db.prepare(`
       SELECT
         p.name as property_name,
-        AVG((julianday(c.onscene_at) - julianday(c.dispatched_at)) * 24 * 60 - COALESCE(c.total_hold_minutes, 0)) as avg_response_minutes,
+        AVG((julianday(c.onscene_at) - julianday(c.created_at)) * 24 * 60) as avg_response_minutes,
         COUNT(*) as count
       FROM calls_for_service c
       JOIN properties p ON c.property_id = p.id
-      WHERE c.onscene_at IS NOT NULL AND c.dispatched_at IS NOT NULL ${dateFilterAliased}
+      WHERE c.onscene_at IS NOT NULL ${dateFilterAliased}
       GROUP BY c.property_id
       ORDER BY avg_response_minutes
     `).all(...params);
@@ -350,10 +252,10 @@ router.get('/response-times', (req: Request, res: Response) => {
     const dailyTrend = db.prepare(`
       SELECT
         DATE(created_at) as date,
-        AVG((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_response_minutes,
+        AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_response_minutes,
         COUNT(*) as count
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL AND dispatched_at IS NOT NULL ${dateFilter}
+      WHERE onscene_at IS NOT NULL ${dateFilter}
       GROUP BY DATE(created_at)
       ORDER BY date DESC
       LIMIT 30
@@ -385,8 +287,8 @@ router.get('/response-times', (req: Request, res: Response) => {
       })),
     });
   } catch (error: any) {
-    console.error('Get response times error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get response times error:', error);
+    res.status(500).json({ error: 'Failed to get response times', code: 'GET_RESPONSE_TIMES_ERROR' });
   }
 });
 
@@ -408,17 +310,16 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       params.push(endDate);
     }
 
-    // Get all active personnel (admins, managers, officers, supervisors)
-    // Exclude only those with zero call involvement
-    const allUsers = db.prepare(`
+    // Get all active officers
+    const officers = db.prepare(`
       SELECT id, full_name, badge_number, role FROM users
-      WHERE role IN ('admin', 'manager', 'officer', 'supervisor') AND status = 'active'
+      WHERE role IN ('officer', 'supervisor') AND status = 'active'
       ORDER BY full_name
+    
+      LIMIT 1000
     `).all() as any[];
 
-    const metrics: any[] = [];
-
-    for (const officer of allUsers) {
+    const metrics = officers.map((officer) => {
       // Incidents written
       const incidents = db.prepare(`
         SELECT COUNT(*) as count FROM incidents
@@ -435,7 +336,7 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       // Total hours worked
       const hours = db.prepare(`
         SELECT SUM(total_hours) as total FROM time_entries
-        WHERE officer_id = ? AND status = 'completed' ${dateFilter.replaceAll('created_at', 'clock_in')}
+        WHERE officer_id = ? AND status = 'completed' ${dateFilter.replace('created_at', 'clock_in')}
       `).get(officer.id, ...params) as any;
 
       // Calls responded to (via unit assignment)
@@ -449,25 +350,22 @@ router.get('/officer-activity', (req: Request, res: Response) => {
         callsResponded = callCount.count;
       }
 
-      // Only include if they have been involved in calls or written incidents
-      if (callsResponded > 0 || incidents.count > 0) {
-        metrics.push({
-          officer_id: officer.id,
-          full_name: officer.full_name,
-          badge_number: officer.badge_number,
-          role: officer.role,
-          incidents_written: incidents.count,
-          incidents_by_status: incidentsByStatus,
-          calls_responded: callsResponded,
-          total_hours: hours.total ? Math.round(hours.total * 100) / 100 : 0,
-        });
-      }
-    }
+      return {
+        officer_id: officer.id,
+        full_name: officer.full_name,
+        badge_number: officer.badge_number,
+        role: officer.role,
+        incidents_written: incidents.count,
+        incidents_by_status: incidentsByStatus,
+        calls_responded: callsResponded,
+        total_hours: hours.total ? Math.round(hours.total * 100) / 100 : 0,
+      };
+    });
 
     res.json(metrics);
   } catch (error: any) {
-    console.error('Get officer activity error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get officer activity error:', error);
+    res.status(500).json({ error: 'Failed to get officer activity', code: 'GET_OFFICER_ACTIVITY_ERROR' });
   }
 });
 
@@ -479,7 +377,7 @@ router.get('/client/:clientId', (req: Request, res: Response) => {
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.clientId) as any;
     if (!client) {
-      res.status(404).json({ error: 'Client not found' });
+      res.status(404).json({ error: 'Client not found', code: 'CLIENT_NOT_FOUND' });
       return;
     }
 
@@ -585,8 +483,8 @@ router.get('/client/:clientId', (req: Request, res: Response) => {
       slaTargetMinutes: client.sla_response_minutes,
     });
   } catch (error: any) {
-    console.error('Get client report error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get client report error:', error);
+    res.status(500).json({ error: 'Failed to get client report', code: 'GET_CLIENT_REPORT_ERROR' });
   }
 });
 
@@ -595,18 +493,11 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officerId } = req.params;
-    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
-
-    // Authorization: officers can only view their own shift data
-    const privilegedRoles = ['admin', 'manager', 'supervisor'];
-    if (!privilegedRoles.includes(req.user!.role) && String(req.user!.userId) !== String(officerId)) {
-      res.status(403).json({ error: 'You can only view your own shift activity' });
-      return;
-    }
+    const date = (req.query.date as string) || localToday();
 
     // Officer info
     const officer = db.prepare('SELECT id, full_name, badge_number, email, role FROM users WHERE id = ?').get(officerId) as any;
-    if (!officer) return res.status(404).json({ error: 'Officer not found' });
+    if (!officer) return res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' });
 
     // Calls handled today — find calls where this officer's unit was assigned
     // assigned_unit_ids is a JSON array stored as TEXT, and units.officer_id links to users
@@ -619,6 +510,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
         c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ?
       )
       ORDER BY c.created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId, `%${unitId}%`) as any[];
 
     // Incidents authored today
@@ -627,6 +520,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       FROM incidents
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     // Patrol scans today
@@ -636,6 +531,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       LEFT JOIN patrol_checkpoints pc ON pc.id = ps.checkpoint_id
       WHERE DATE(ps.scanned_at) = ? AND ps.officer_id = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     // Citations issued today
@@ -644,14 +541,18 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       FROM citations
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     // Field interviews today
     const fieldInterviews = db.prepare(`
-      SELECT id, fi_number, (subject_first_name || ' ' || subject_last_name) AS subject_name, location, contact_reason, created_at
+      SELECT id, subject_name, location, reason, created_at
       FROM field_interviews
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     res.json({
@@ -671,8 +572,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get shift activity error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get shift activity error:', error);
+    res.status(500).json({ error: 'Failed to get shift activity', code: 'GET_SHIFT_ACTIVITY_ERROR' });
   }
 });
 
@@ -682,11 +583,11 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
     const db = getDb();
     const users = db.prepare("SELECT id, full_name, badge_number, role FROM users WHERE role IN ('officer','manager','admin') AND status = 'active'").all() as any[];
     const requirements = db.prepare('SELECT * FROM training_requirements WHERE is_active = 1').all() as any[];
-    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC LIMIT 10000').all() as any[];
+    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC').all() as any[];
     res.json({ users, requirements, records });
   } catch (error: any) {
-    console.error('Training compliance error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Training compliance error:', error);
+    res.status(500).json({ error: 'Failed to training compliance', code: 'TRAINING_COMPLIANCE_ERROR' });
   }
 });
 
@@ -694,7 +595,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
 router.get('/call-density', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string, 10) || 30;
+    const days = parseInt(req.query.days as string) || 30;
     const incidentType = req.query.type as string;
 
     const safeDays = Math.max(1, Math.min(365, Math.floor(days) || 30));
@@ -702,7 +603,7 @@ router.get('/call-density', (req: Request, res: Response) => {
       SELECT latitude, longitude, priority, incident_type, zone_beat, created_at
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND created_at >= datetime('now', 'localtime', ?)
+        AND created_at >= datetime('now', ?)
     `;
     const params: any[] = [`-${safeDays} days`];
     if (incidentType) {
@@ -713,8 +614,8 @@ router.get('/call-density', (req: Request, res: Response) => {
     const points = db.prepare(sql).all(...params) as any[];
     res.json({ points, count: points.length });
   } catch (error: any) {
-    console.error('Call density error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Call density error:', error);
+    res.status(500).json({ error: 'Failed to call density', code: 'CALL_DENSITY_ERROR' });
   }
 });
 
@@ -722,7 +623,7 @@ router.get('/call-density', (req: Request, res: Response) => {
 router.get('/statute-analytics', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 90));
     const offset = `-${days} days`;
 
     // Top cited statutes
@@ -730,7 +631,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.citation AS statute_number, us.short_title AS title, us.offense_level, COUNT(*) as count
       FROM citations c
       JOIN utah_statutes us ON us.id = c.statute_id
-      WHERE c.created_at >= datetime('now', 'localtime', ?)
+      WHERE c.created_at >= datetime('now', ?)
       GROUP BY c.statute_id
       ORDER BY count DESC
       LIMIT 20
@@ -741,7 +642,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.offense_level, COUNT(*) as count
       FROM citations c
       JOIN utah_statutes us ON us.id = c.statute_id
-      WHERE c.created_at >= datetime('now', 'localtime', ?)
+      WHERE c.created_at >= datetime('now', ?)
       GROUP BY us.offense_level
       ORDER BY count DESC
     `).all(offset) as any[];
@@ -750,7 +651,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
     const trend = db.prepare(`
       SELECT strftime('%Y-%m', c.created_at) as month, COUNT(*) as count
       FROM citations c
-      WHERE c.created_at >= datetime('now', 'localtime', ?)
+      WHERE c.created_at >= datetime('now', ?)
       GROUP BY month
       ORDER BY month ASC
     `).all(offset) as any[];
@@ -760,7 +661,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.citation AS statute_number, us.short_title AS title, us.offense_level, COUNT(*) as count
       FROM incidents i
       JOIN utah_statutes us ON us.id = i.statute_id
-      WHERE i.created_at >= datetime('now', 'localtime', ?) AND i.statute_id IS NOT NULL
+      WHERE i.created_at >= datetime('now', ?) AND i.statute_id IS NOT NULL
       GROUP BY i.statute_id
       ORDER BY count DESC
       LIMIT 20
@@ -768,8 +669,8 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 
     res.json({ topStatutes, byLevel, trend, incidentStatutes });
   } catch (error: any) {
-    console.error('Statute analytics error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Statute analytics error:', error);
+    res.status(500).json({ error: 'Failed to statute analytics', code: 'STATUTE_ANALYTICS_ERROR' });
   }
 });
 
@@ -777,12 +678,12 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 router.get('/patrol-compliance', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
     const offset = `-${days} days`;
 
     // Overall scan stats
     const totalScans = db.prepare(`
-      SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= datetime('now', 'localtime', ?)
+      SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= datetime('now', ?)
     `).get(offset) as any;
 
     const activeCheckpoints = db.prepare(`
@@ -795,7 +696,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
         COUNT(DISTINCT DATE(ps.scanned_at)) as active_days
       FROM patrol_scans ps
       JOIN users u ON u.id = ps.officer_id
-      WHERE ps.scanned_at >= datetime('now', 'localtime', ?)
+      WHERE ps.scanned_at >= datetime('now', ?)
       GROUP BY ps.officer_id
       ORDER BY scan_count DESC
     `).all(offset) as any[];
@@ -806,7 +707,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
         MAX(ps.scanned_at) as last_scan
       FROM patrol_checkpoints pc
       LEFT JOIN patrol_scans ps ON ps.checkpoint_id = pc.id
-        AND ps.scanned_at >= datetime('now', 'localtime', ?)
+        AND ps.scanned_at >= datetime('now', ?)
       WHERE pc.is_active = 1
       GROUP BY pc.id
       ORDER BY scan_count DESC
@@ -816,7 +717,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
     const byHour = db.prepare(`
       SELECT CAST(strftime('%H', scanned_at) AS INTEGER) as hour, COUNT(*) as count
       FROM patrol_scans
-      WHERE scanned_at >= datetime('now', 'localtime', ?)
+      WHERE scanned_at >= datetime('now', ?)
       GROUP BY hour
       ORDER BY hour ASC
     `).all(offset) as any[];
@@ -829,8 +730,8 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
       byHour,
     });
   } catch (error: any) {
-    console.error('Patrol compliance error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Patrol compliance error:', error);
+    res.status(500).json({ error: 'Failed to patrol compliance', code: 'PATROL_COMPLIANCE_ERROR' });
   }
 });
 
@@ -844,56 +745,48 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     const ALLOWED_SOURCES: Record<string, string[]> = {
       calls_for_service: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'section_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
       incidents: ['id', 'incident_number', 'incident_type', 'priority', 'status', 'location_address', 'narrative', 'officer_id', 'created_at', 'occurred_date', 'zone_beat', 'beat_id', 'zone_id', 'disposition', 'domestic_violence', 'weapons_involved'],
-      citations: ['id', 'citation_number', 'type', 'violation_description', 'statute_citation', 'offense_level', 'location', 'status', 'fine_amount', 'issuing_officer_id', 'violation_date', 'created_at'],
-      warrants: ['id', 'warrant_number', 'type', 'status', 'offense_level', 'charge_description', 'statute_citation', 'issuing_court', 'issuing_judge', 'bail_amount', 'expires_at', 'served_at', 'created_at'],
-      bolos: ['id', 'title', 'description', 'subject_description', 'vehicle_description', 'priority', 'status', 'issued_by', 'created_at', 'expires_at'],
-      evidence: ['id', 'evidence_number', 'incident_id', 'description', 'category', 'storage_location', 'chain_of_custody', 'collected_by', 'collected_date', 'created_at'],
-      time_entries: ['id', 'officer_id', 'clock_in', 'clock_out', 'total_hours', 'break_minutes', 'status', 'created_at'],
-      training_records: ['id', 'officer_id', 'course_name', 'category', 'status', 'hours', 'completed_date', 'expiry_date', 'score', 'created_at'],
-      field_interviews: ['id', 'fi_number', 'subject_first_name', 'subject_last_name', 'location', 'contact_reason', 'officer_id', 'created_at'],
-      patrol_scans: ['id', 'checkpoint_id', 'officer_id', 'scanned_at', 'latitude', 'longitude'],
-      schedules: ['id', 'officer_id', 'property_id', 'shift_date', 'start_time', 'end_time', 'status', 'notes', 'created_at'],
+      citations: ['id', 'citation_number', 'type', 'violation_description', 'statute_citation', 'offense_level', 'location', 'status', 'fine_amount', 'officer_id', 'violation_date', 'created_at'],
+      warrants: ['id', 'warrant_number', 'type', 'status', 'offense_level', 'charge_description', 'statute_citation', 'court_name', 'bail_amount', 'date_issued', 'expires_at', 'served_at', 'created_at'],
+      bolos: ['id', 'subject_name', 'description', 'priority', 'status', 'category', 'vehicle_info', 'location_last_seen', 'issued_by', 'created_at', 'expires_at'],
+      evidence: ['id', 'evidence_number', 'incident_id', 'description', 'category', 'storage_location', 'chain_of_custody', 'collected_by', 'collected_at', 'created_at'],
+      time_entries: ['id', 'officer_id', 'shift_date', 'clock_in', 'clock_out', 'hours_worked', 'overtime_hours', 'status', 'notes', 'approved_by'],
+      training_records: ['id', 'officer_id', 'title', 'category', 'status', 'hours', 'completed_date', 'expiry_date', 'instructor', 'score'],
+      field_interviews: ['id', 'subject_name', 'location', 'reason', 'officer_id', 'created_at'],
+      patrol_scans: ['id', 'checkpoint_id', 'officer_id', 'scanned_at', 'gps_latitude', 'gps_longitude'],
     };
 
     if (!source || !ALLOWED_SOURCES[source]) {
-      return res.status(400).json({ error: 'Invalid data source' });
+      return res.status(400).json({ error: 'Invalid data source', code: 'INVALID_DATA_SOURCE' });
     }
 
     const allowedCols = ALLOWED_SOURCES[source];
     const selectedCols = (columns || allowedCols).filter((c: string) => allowedCols.includes(c));
-    if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected' });
+    if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected', code: 'NO_VALID_COLUMNS_SELECTED' });
 
-    // Quote SQL identifiers to prevent injection even if allowlists are modified
-    const q = (id: string) => `"${id.replace(/"/g, '')}"`;
-
-    let sql = `SELECT ${selectedCols.map(q).join(', ')} FROM ${q(source)}`;
+    let sql = `SELECT ${selectedCols.join(', ')} FROM ${source}`;
     const params: any[] = [];
     const conditions: string[] = [];
 
     if (filters && Array.isArray(filters)) {
       for (const f of filters) {
         if (!allowedCols.includes(f.column)) continue;
-        const col = q(f.column);
-        if (f.operator === 'eq') { conditions.push(`${col} = ?`); params.push(f.value); }
-        else if (f.operator === 'contains') { conditions.push(`${col} LIKE ?`); params.push(`%${f.value}%`); }
-        else if (f.operator === 'gte') { conditions.push(`${col} >= ?`); params.push(f.value); }
-        else if (f.operator === 'lte') { conditions.push(`${col} <= ?`); params.push(f.value); }
+        if (f.operator === 'eq') { conditions.push(`${f.column} = ?`); params.push(f.value); }
+        else if (f.operator === 'contains') { conditions.push(`${f.column} LIKE ?`); params.push(`%${f.value}%`); }
+        else if (f.operator === 'gte') { conditions.push(`${f.column} >= ?`); params.push(f.value); }
+        else if (f.operator === 'lte') { conditions.push(`${f.column} <= ?`); params.push(f.value); }
       }
     }
 
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
-    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${q(groupBy)}`;
-    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${q(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
-    const parsedLimit = parseInt(queryLimit, 10);
-    const safeLimit = Math.min(isNaN(parsedLimit) ? 500 : parsedLimit, 2000);
-    sql += ` LIMIT ?`;
-    params.push(safeLimit);
+    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${groupBy}`;
+    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${sortBy} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
+    sql += ` LIMIT ${Math.min(parseInt(queryLimit) || 500, 2000)}`;
 
     const rows = db.prepare(sql).all(...params);
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
   } catch (error: any) {
-    console.error('Custom report error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Custom report error:', error);
+    res.status(500).json({ error: 'Failed to generate custom report', code: 'CUSTOM_REPORT_ERROR' });
   }
 });
 
@@ -909,28 +802,28 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
     // Top offenses by incident type
     const topOffenses = db.prepare(`
       SELECT incident_type, COUNT(*) as count FROM incidents
-      WHERE created_at >= DATE('now', 'localtime', ?) AND status != 'draft'
+      WHERE created_at >= DATE('now', ?) AND status != 'draft'
       GROUP BY incident_type ORDER BY count DESC LIMIT 10
     `).all(offset);
 
     // Monthly trend (last 12 months)
     const trendData = db.prepare(`
       SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
-      FROM incidents WHERE created_at >= DATE('now', 'localtime', '-12 months') AND status != 'draft'
+      FROM incidents WHERE created_at >= DATE('now', '-12 months') AND status != 'draft'
       GROUP BY month ORDER BY month
     `).all();
 
     // Time of day distribution
     const timeOfDay = db.prepare(`
       SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
-      FROM calls_for_service WHERE created_at >= DATE('now', 'localtime', ?)
+      FROM calls_for_service WHERE created_at >= DATE('now', ?)
       GROUP BY hour ORDER BY hour
     `).all(offset);
 
     // Day of week distribution
     const dayOfWeek = db.prepare(`
       SELECT CAST(strftime('%w', created_at) AS INTEGER) as day, COUNT(*) as count
-      FROM calls_for_service WHERE created_at >= DATE('now', 'localtime', ?)
+      FROM calls_for_service WHERE created_at >= DATE('now', ?)
       GROUP BY day ORDER BY day
     `).all(offset);
 
@@ -939,7 +832,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
       SELECT location_address, COUNT(*) as count,
         GROUP_CONCAT(DISTINCT incident_type) as types
       FROM calls_for_service
-      WHERE created_at >= DATE('now', 'localtime', ?) AND location_address IS NOT NULL
+      WHERE created_at >= DATE('now', ?) AND location_address IS NOT NULL
       GROUP BY location_address ORDER BY count DESC LIMIT 15
     `).all(offset);
 
@@ -951,7 +844,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
       FROM persons p
       JOIN incident_persons ip ON p.id = ip.person_id
       JOIN incidents i ON ip.incident_id = i.id
-      WHERE i.created_at >= DATE('now', 'localtime', ?)
+      WHERE i.created_at >= DATE('now', ?)
       GROUP BY p.id HAVING incident_count >= 3
       ORDER BY incident_count DESC LIMIT 20
     `).all(offset);
@@ -964,7 +857,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
         ), 1) as avg_response_min,
         COUNT(*) as count
       FROM calls_for_service
-      WHERE created_at >= DATE('now', 'localtime', ?) AND onscene_at IS NOT NULL
+      WHERE created_at >= DATE('now', ?) AND onscene_at IS NOT NULL
       GROUP BY priority
     `).all(offset);
 
@@ -973,7 +866,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as cleared
-      FROM incidents WHERE created_at >= DATE('now', 'localtime', ?)
+      FROM incidents WHERE created_at >= DATE('now', ?)
     `).get(offset) as any;
 
     res.json({
@@ -996,8 +889,60 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Crime analysis error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Crime analysis error:', error);
+    res.status(500).json({ error: 'Failed to crime analysis', code: 'CRIME_ANALYSIS_ERROR' });
+  }
+});
+
+// ─── GET /crime-analysis/export ──────────────────────────────
+// Export crime analysis incident-type breakdown as CSV
+router.get('/crime-analysis/export', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days, start_date, end_date } = req.query;
+
+    let whereClause: string;
+    let params: any[];
+
+    if (start_date && end_date) {
+      whereClause = `created_at >= ? AND created_at <= ? AND status != 'draft'`;
+      params = [start_date as string, end_date as string];
+    } else {
+      const daysNum = Math.max(1, Math.min(365, parseInt(days as string, 10) || 90));
+      whereClause = `created_at >= DATE('now', ?) AND status != 'draft'`;
+      params = [`-${daysNum} days`];
+    }
+
+    const rows = db.prepare(`
+      SELECT incident_type, COUNT(*) as count
+      FROM incidents WHERE ${whereClause}
+      GROUP BY incident_type ORDER BY count DESC
+    `).all(...params) as { incident_type: string; count: number }[];
+
+    const total = rows.reduce((s, r) => s + r.count, 0);
+    const data = rows.map(r => ({
+      incident_type: r.incident_type || 'Unknown',
+      count: r.count,
+      percentage: total > 0 ? Math.round((r.count / total) * 10000) / 100 : 0,
+    }));
+
+    const headers = ['incident_type', 'count', 'percentage'];
+    const csvRows = [headers.join(',')];
+    for (const row of data) {
+      csvRows.push([
+        `"${(row.incident_type).replace(/"/g, '""')}"`,
+        row.count,
+        row.percentage,
+      ].join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename="crime-analysis_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csvRows.join('\r\n'));
+  } catch (error: any) {
+    console.error('Crime analysis export error:', error);
+    res.status(500).json({ error: 'Failed to export crime analysis', code: 'CRIME_ANALYSIS_EXPORT_ERROR' });
   }
 });
 
@@ -1016,7 +961,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const officerId = req.query.officerId as string;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
-    const hours = Math.max(1, Math.min(72, parseInt(req.query.hours as string, 10) || 8));
+    const hours = parseInt(req.query.hours as string) || 8;
     const includeGeocode = req.query.geocode === 'true'; // opt-in (costs API calls)
 
     // ── Haversine distance (meters) ──────────────────────
@@ -1053,11 +998,11 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     let whereExtra = '';
     if (unitId) {
       whereExtra += ' AND b.unit_id = ?';
-      params.push(parseInt(unitId, 10));
+      params.push(parseInt(unitId));
     }
     if (officerId) {
       whereExtra += ' AND b.officer_id = ?';
-      params.push(parseInt(officerId, 10));
+      params.push(parseInt(officerId));
     }
 
     const rows = db.prepare(`
@@ -1069,6 +1014,8 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       FROM gps_breadcrumbs b
       WHERE ${dateClause} ${whereExtra}
       ORDER BY b.unit_id, b.recorded_at ASC
+    
+      LIMIT 1000
     `).all(...params) as any[];
 
     // ── Constants for filtering ─────────────────────────
@@ -1158,7 +1105,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const trails: UnitTrail[] = [];
 
     for (const [uid, trail] of Object.entries(trailMap)) {
-      const unitId = parseInt(uid, 10);
+      const unitId = parseInt(uid);
       const points: ProcessedPoint[] = [];
       let totalDistance = 0;
       let maxSpeed = 0;
@@ -1175,7 +1122,6 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
           distFromPrev = haversineM(prevAccepted.latitude, prevAccepted.longitude, row.latitude, row.longitude);
           const prevTime = new Date(prevAccepted.recorded_at).getTime();
           const curTime = new Date(row.recorded_at).getTime();
-          if (isNaN(prevTime) || isNaN(curTime)) continue; // skip points with invalid timestamps
           timeDelta = (curTime - prevTime) / 1000;
 
           // Jump detection
@@ -1274,9 +1220,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         if (call.dispatched_at) {
           const dispatchTime = new Date(call.dispatched_at).getTime();
           const firstBcTime = new Date(firstPoint.time).getTime();
-          if (!isNaN(dispatchTime) && !isNaN(firstBcTime)) {
-            timeToFirstBreadcrumb = Math.round((firstBcTime - dispatchTime) / 1000);
-          }
+          timeToFirstBreadcrumb = Math.round((firstBcTime - dispatchTime) / 1000);
         }
 
         // Time from dispatch to onscene
@@ -1284,9 +1228,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         if (call.dispatched_at && call.onscene_at) {
           const dispatchTime = new Date(call.dispatched_at).getTime();
           const onsceneTime = new Date(call.onscene_at).getTime();
-          if (!isNaN(dispatchTime) && !isNaN(onsceneTime)) {
-            timeToOnscene = Math.round((onsceneTime - dispatchTime) / 1000);
-          }
+          timeToOnscene = Math.round((onsceneTime - dispatchTime) / 1000);
         }
 
         responseSegments.push({
@@ -1308,9 +1250,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       if (points.length >= 2) {
         const first = new Date(points[0].time).getTime();
         const last = new Date(points[points.length - 1].time).getTime();
-        if (!isNaN(first) && !isNaN(last)) {
-          durationMinutes = Math.round((last - first) / 60000);
-        }
+        durationMinutes = Math.round((last - first) / 60000);
       }
 
       // ── Zone coverage summary ────────────────────────────
@@ -1406,8 +1346,8 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       total_points: trails.reduce((s, t) => s + t.points.length, 0),
     });
   } catch (error: any) {
-    console.error('Patrol tracking report error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Patrol tracking report error:', error);
+    res.status(500).json({ error: 'Failed to patrol tracking report', code: 'PATROL_TRACKING_REPORT_ERROR' });
   }
 });
 
@@ -1419,8 +1359,8 @@ router.get('/daily-reports', requireRole('admin', 'manager', 'supervisor'), (req
     const reports = listDailyReports();
     res.json({ reports });
   } catch (error: any) {
-    console.error('List daily reports error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('List daily reports error:', error);
+    res.status(500).json({ error: 'Failed to list daily reports', code: 'LIST_DAILY_REPORTS_ERROR' });
   }
 });
 
@@ -1432,16 +1372,15 @@ router.get('/daily-reports/:filename', requireRole('admin', 'manager', 'supervis
     const filename = req.params.filename as string;
     const filepath = getReportPath(filename);
     if (!filepath) {
-      res.status(404).json({ error: 'Report not found' });
+      res.status(404).json({ error: 'Report not found', code: 'REPORT_NOT_FOUND' });
       return;
     }
     res.setHeader('Content-Type', 'application/pdf');
-    const safeName = filename.replace(/[\r\n\0"]/g, '_');
-    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
     res.sendFile(filepath);
   } catch (error: any) {
-    console.error('Download daily report error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Download daily report error:', error);
+    res.status(500).json({ error: 'Failed to download daily report', code: 'DOWNLOAD_DAILY_REPORT_ERROR' });
   }
 });
 
@@ -1458,359 +1397,1325 @@ router.post('/daily-reports/generate', requireRole('admin'), async (req: Request
     }
     res.json({ ok: true, filename });
   } catch (error: any) {
-    console.error('Generate daily report error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Generate daily report error:', error);
+    res.status(500).json({ error: 'Failed to generate daily report', code: 'GENERATE_DAILY_REPORT_ERROR' });
   }
 });
 
-// ─── SHIFT NOTES CRUD ──────────────────────────────────────
-
-// POST /api/reports/shift-notes
-router.post('/shift-notes', (req: Request, res: Response) => {
+// ═══════════════════════════════════════════════════════════════
+// Feature 1: Monthly Incident Report
+// ═══════════════════════════════════════════════════════════════
+router.get('/monthly-incident-report', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { content, category } = req.body;
-    if (!content) { res.status(400).json({ error: 'Content is required' }); return; }
+    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const month = parseInt(req.query.month as string) || (new Date().getMonth() + 1);
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, '0')}-01`;
 
-    const shiftDate = new Date().toISOString().split('T')[0];
-    const result = db.prepare(`
-      INSERT INTO shift_notes (officer_id, shift_date, content, category)
-      VALUES (?, ?, ?, ?)
-    `).run(req.user!.userId, shiftDate, content, category || 'general');
+    const byType = db.prepare(`
+      SELECT incident_type, COUNT(*) as count,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2_count,
+        SUM(CASE WHEN priority = 'P3' THEN 1 ELSE 0 END) as p3_count,
+        SUM(CASE WHEN priority = 'P4' THEN 1 ELSE 0 END) as p4_count
+      FROM incidents
+      WHERE created_at >= ? AND created_at < ?
+      GROUP BY incident_type ORDER BY count DESC
+    `).all(startDate, endDate);
 
-    const note = db.prepare('SELECT * FROM shift_notes WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(note);
+    const byStatus = db.prepare(`
+      SELECT status, COUNT(*) as count FROM incidents
+      WHERE created_at >= ? AND created_at < ?
+      GROUP BY status ORDER BY count DESC
+    `).all(startDate, endDate);
+
+    const byDay = db.prepare(`
+      SELECT DATE(created_at) as day, COUNT(*) as count FROM incidents
+      WHERE created_at >= ? AND created_at < ?
+      GROUP BY day ORDER BY day
+    `).all(startDate, endDate);
+
+    const byHour = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+      FROM incidents WHERE created_at >= ? AND created_at < ?
+      GROUP BY hour ORDER BY hour
+    `).all(startDate, endDate);
+
+    const total = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE created_at >= ? AND created_at < ?
+    `).get(startDate, endDate) as any;
+
+    // Comparison with previous month
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
+    const prevEnd = startDate;
+    const prevTotal = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE created_at >= ? AND created_at < ?
+    `).get(prevStart, prevEnd) as any;
+
+    // Same month last year
+    const lastYearStart = `${year - 1}-${String(month).padStart(2, '0')}-01`;
+    const lastYearEnd = month === 12
+      ? `${year}-01-01`
+      : `${year - 1}-${String(month + 1).padStart(2, '0')}-01`;
+    const lastYearTotal = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE created_at >= ? AND created_at < ?
+    `).get(lastYearStart, lastYearEnd) as any;
+
+    res.json({
+      year, month,
+      total: total.count,
+      prevMonthTotal: prevTotal.count,
+      lastYearTotal: lastYearTotal.count,
+      changeFromPrevMonth: total.count - prevTotal.count,
+      changeFromLastYear: total.count - lastYearTotal.count,
+      byType, byStatus, byDay, byHour,
+    });
   } catch (error: any) {
-    console.error('Shift note create error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Monthly incident report error:', error);
+    res.status(500).json({ error: 'Failed to monthly incident report', code: 'MONTHLY_INCIDENT_REPORT_ERROR' });
   }
 });
 
-// GET /api/reports/shift-notes
-router.get('/shift-notes', (req: Request, res: Response) => {
+// ═══════════════════════════════════════════════════════════════
+// Feature 2: Officer Performance Scorecard
+// ═══════════════════════════════════════════════════════════════
+router.get('/officer-scorecard/:officerId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const officerId = req.query.officer_id || req.user!.userId;
-    const shiftDate = (req.query.shift_date as string) || new Date().toISOString().split('T')[0];
+    const { officerId } = req.params;
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
+    const offset = `-${days} days`;
 
-    const notes = db.prepare(`
-      SELECT sn.*, u.full_name as officer_name
-      FROM shift_notes sn
-      LEFT JOIN users u ON sn.officer_id = u.id
-      WHERE sn.officer_id = ? AND sn.shift_date = ?
-      ORDER BY sn.created_at DESC
-    `).all(officerId, shiftDate);
+    const officer = db.prepare('SELECT id, full_name, badge_number, role, rank FROM users WHERE id = ?').get(officerId) as any;
+    if (!officer) return res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' });
 
-    res.json(notes);
-  } catch (error: any) {
-    console.error('Shift notes list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    const unit = db.prepare('SELECT id FROM units WHERE officer_id = ?').get(officerId) as any;
+    const unitId = unit ? String(unit.id) : '-1';
 
-// DELETE /api/reports/shift-notes/:id
-router.delete('/shift-notes/:id', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const note = db.prepare('SELECT * FROM shift_notes WHERE id = ?').get(req.params.id) as any;
-    if (!note) { res.status(404).json({ error: 'Note not found' }); return; }
-    if (note.officer_id !== req.user!.userId) { res.status(403).json({ error: 'Cannot delete another officer\'s notes' }); return; }
-
-    db.prepare('DELETE FROM shift_notes WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Shift note delete error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── SHIFT HANDOFF REPORT ──────────────────────────────────
-
-// GET /api/reports/shift-handoff
-router.get('/shift-handoff', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const officerId = req.query.officer_id || req.user!.userId;
-    const shiftStart = (req.query.shift_start as string) || new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-    const shiftEnd = (req.query.shift_end as string) || new Date().toISOString();
-
-    // 1. Calls handled during shift
     const callsHandled = db.prepare(`
-      SELECT c.call_number, c.incident_type, c.priority, c.status, c.disposition,
-        c.location_address, c.risk_score, c.created_at, c.cleared_at
-      FROM calls_for_service c
-      WHERE c.created_at BETWEEN ? AND ?
-        AND c.assigned_unit_ids LIKE '%' || (SELECT id FROM units WHERE officer_id = ?) || '%'
-      ORDER BY c.created_at DESC
-    `).all(shiftStart, shiftEnd, officerId);
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE assigned_unit_ids LIKE ? AND created_at >= DATE('now', ?)
+    `).get(`%${unitId}%`, offset) as any;
 
-    // 2. Open/pending calls
-    const openCalls = db.prepare(`
-      SELECT call_number, incident_type, priority, status, location_address, risk_score, created_at
+    const incidents = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents
+      WHERE officer_id = ? AND created_at >= DATE('now', ?)
+    `).get(officerId, offset) as any;
+
+    const citations = db.prepare(`
+      SELECT COUNT(*) as count FROM citations
+      WHERE officer_id = ? AND created_at >= DATE('now', ?)
+    `).get(officerId, offset) as any;
+
+    const arrests = db.prepare(`
+      SELECT COUNT(*) as count FROM arrest_records
+      WHERE officer_id = ? AND created_at >= DATE('now', ?)
+    `).get(officerId, offset) as any;
+
+    const avgResponse = db.prepare(`
+      SELECT AVG((julianday(onscene_at) - julianday(created_at)) * 1440) as avg_min
       FROM calls_for_service
-      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
-      ORDER BY priority, created_at
+      WHERE assigned_unit_ids LIKE ? AND onscene_at IS NOT NULL AND created_at >= DATE('now', ?)
+    `).get(`%${unitId}%`, offset) as any;
+
+    const fieldInterviews = db.prepare(`
+      SELECT COUNT(*) as count FROM field_interviews
+      WHERE officer_id = ? AND created_at >= DATE('now', ?)
+    `).get(officerId, offset) as any;
+
+    const patrolScans = db.prepare(`
+      SELECT COUNT(*) as count FROM patrol_scans
+      WHERE officer_id = ? AND scanned_at >= DATE('now', ?)
+    `).get(officerId, offset) as any;
+
+    const hoursWorked = db.prepare(`
+      SELECT SUM(total_hours) as total FROM time_entries
+      WHERE officer_id = ? AND status = 'completed' AND clock_in >= DATE('now', ?)
+    `).get(officerId, offset) as any;
+
+    res.json({
+      officer,
+      period_days: days,
+      metrics: {
+        calls_handled: callsHandled.count,
+        incidents_written: incidents.count,
+        citations_issued: citations.count,
+        arrests_made: arrests?.count || 0,
+        avg_response_minutes: avgResponse.avg_min ? Math.round(avgResponse.avg_min * 10) / 10 : null,
+        field_interviews: fieldInterviews.count,
+        patrol_scans: patrolScans.count,
+        hours_worked: hoursWorked.total ? Math.round(hoursWorked.total * 10) / 10 : 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('Officer scorecard error:', error);
+    res.status(500).json({ error: 'Failed to officer scorecard', code: 'OFFICER_SCORECARD_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 3: Crime Trend Analysis (month-over-month comparison)
+// ═══════════════════════════════════════════════════════════════
+router.get('/crime-trends', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    const lastYearDate = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+    const lastYearMonth = `${lastYearDate.getFullYear()}-${String(lastYearDate.getMonth() + 1).padStart(2, '0')}`;
+
+    const getMonthData = (monthStr: string) => db.prepare(`
+      SELECT incident_type, COUNT(*) as count FROM incidents
+      WHERE strftime('%Y-%m', created_at) = ?
+      GROUP BY incident_type ORDER BY count DESC
+    `).all(monthStr) as any[];
+
+    const current = getMonthData(currentMonth);
+    const previous = getMonthData(prevMonth);
+    const lastYear = getMonthData(lastYearMonth);
+
+    const allTypes = new Set<string>();
+    [current, previous, lastYear].forEach(data => data.forEach((r: any) => allTypes.add(r.incident_type)));
+
+    const trends = Array.from(allTypes).map(type => {
+      const cur = current.find((r: any) => r.incident_type === type)?.count || 0;
+      const prev = previous.find((r: any) => r.incident_type === type)?.count || 0;
+      const ly = lastYear.find((r: any) => r.incident_type === type)?.count || 0;
+      const momChange = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0;
+      const yoyChange = ly > 0 ? Math.round(((cur - ly) / ly) * 100) : cur > 0 ? 100 : 0;
+      return { type, current: cur, previous: prev, lastYear: ly, momChange, yoyChange };
+    }).sort((a, b) => b.current - a.current);
+
+    const monthlyTrend = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+      FROM incidents WHERE created_at >= DATE('now', '-12 months')
+      GROUP BY month ORDER BY month
     `).all();
 
-    // 3. Active BOLOs
-    const bolos = db.prepare(`
-      SELECT * FROM bolos WHERE status = 'active' ORDER BY created_at DESC
-    `).all();
+    res.json({ currentMonth, prevMonth, lastYearMonth, trends, monthlyTrend });
+  } catch (error: any) {
+    console.error('Crime trends error:', error);
+    res.status(500).json({ error: 'Failed to crime trends', code: 'CRIME_TRENDS_ERROR' });
+  }
+});
 
-    // 4. Shift notes
-    const shiftDate = new Date().toISOString().split('T')[0];
-    const notes = db.prepare(`
-      SELECT * FROM shift_notes WHERE officer_id = ? AND shift_date = ? ORDER BY created_at DESC
-    `).all(officerId, shiftDate);
+// ═══════════════════════════════════════════════════════════════
+// Feature 4: Beat Activity Report
+// ═══════════════════════════════════════════════════════════════
+router.get('/beat-activity', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
+    const offset = `-${days} days`;
 
-    // 5. GPS summary — total miles patrolled
-    const breadcrumbs = db.prepare(`
-      SELECT latitude, longitude FROM gps_breadcrumbs
-      WHERE user_id = ? AND recorded_at BETWEEN ? AND ?
-      ORDER BY recorded_at ASC
-    `).all(officerId, shiftStart, shiftEnd) as any[];
+    const incidentsByBeat = db.prepare(`
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, incident_type, COUNT(*) as count
+      FROM incidents WHERE created_at >= DATE('now', ?)
+      GROUP BY beat, incident_type ORDER BY beat, count DESC
+    `).all(offset) as any[];
 
-    let totalMiles = 0;
-    for (let i = 1; i < breadcrumbs.length; i++) {
-      const R = 3959;
-      const dLat = (breadcrumbs[i].latitude - breadcrumbs[i - 1].latitude) * Math.PI / 180;
-      const dLon = (breadcrumbs[i].longitude - breadcrumbs[i - 1].longitude) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(breadcrumbs[i - 1].latitude * Math.PI / 180) * Math.cos(breadcrumbs[i].latitude * Math.PI / 180) *
-        Math.sin(dLon / 2) ** 2;
-      totalMiles += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const callsByBeat = db.prepare(`
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count,
+        AVG(CASE WHEN onscene_at IS NOT NULL THEN (julianday(onscene_at) - julianday(created_at)) * 1440 END) as avg_response_min
+      FROM calls_for_service WHERE created_at >= DATE('now', ?)
+      GROUP BY beat ORDER BY count DESC
+    `).all(offset) as any[];
+
+    const citationsByBeat = db.prepare(`
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count
+      FROM citations WHERE created_at >= DATE('now', ?)
+      GROUP BY beat ORDER BY count DESC
+    `).all(offset) as any[];
+
+    const arrestsByBeat = db.prepare(`
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count
+      FROM arrest_records WHERE created_at >= DATE('now', ?)
+      GROUP BY beat ORDER BY count DESC
+    `).all(offset) as any[];
+
+    const beatMap: Record<string, any> = {};
+    for (const row of callsByBeat) {
+      if (!beatMap[row.beat]) beatMap[row.beat] = { beat: row.beat, calls: 0, incidents: 0, citations: 0, arrests: 0, avg_response_min: null, incident_types: [] };
+      beatMap[row.beat].calls = row.count;
+      beatMap[row.beat].avg_response_min = row.avg_response_min ? Math.round(row.avg_response_min * 10) / 10 : null;
+    }
+    for (const row of incidentsByBeat) {
+      if (!beatMap[row.beat]) beatMap[row.beat] = { beat: row.beat, calls: 0, incidents: 0, citations: 0, arrests: 0, avg_response_min: null, incident_types: [] };
+      beatMap[row.beat].incidents += row.count;
+      beatMap[row.beat].incident_types.push({ type: row.incident_type, count: row.count });
+    }
+    for (const row of citationsByBeat) {
+      if (!beatMap[row.beat]) beatMap[row.beat] = { beat: row.beat, calls: 0, incidents: 0, citations: 0, arrests: 0, avg_response_min: null, incident_types: [] };
+      beatMap[row.beat].citations = row.count;
+    }
+    for (const row of arrestsByBeat) {
+      if (!beatMap[row.beat]) beatMap[row.beat] = { beat: row.beat, calls: 0, incidents: 0, citations: 0, arrests: 0, avg_response_min: null, incident_types: [] };
+      beatMap[row.beat].arrests = row.count;
     }
 
-    // 6. Call stats
-    const stats = {
-      calls_handled: callsHandled.length,
-      open_calls: openCalls.length,
-      active_bolos: bolos.length,
-      miles_patrolled: Math.round(totalMiles * 10) / 10,
-      shift_notes_count: notes.length,
+    res.json({ period_days: days, beats: Object.values(beatMap).sort((a: any, b: any) => b.calls - a.calls) });
+  } catch (error: any) {
+    console.error('Beat activity error:', error);
+    res.status(500).json({ error: 'Failed to get beat activity report', code: 'BEAT_ACTIVITY_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 5: Use of Force Tracking
+// ═══════════════════════════════════════════════════════════════
+router.get('/use-of-force', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 90));
+    const offset = `-${days} days`;
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS use_of_force (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id TEXT, officer_id TEXT NOT NULL,
+      date_of_incident TEXT NOT NULL, force_type TEXT NOT NULL,
+      force_level TEXT DEFAULT 'level_1', subject_name TEXT,
+      subject_injury TEXT, officer_injury TEXT, circumstances TEXT,
+      weapons_used TEXT, outcome TEXT, review_status TEXT DEFAULT 'pending',
+      reviewed_by TEXT, reviewed_at TEXT, notes TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+
+    const incidents = db.prepare(`
+      SELECT uof.*, u.full_name as officer_name, u.badge_number
+      FROM use_of_force uof
+      LEFT JOIN users u ON uof.officer_id = u.id
+      WHERE uof.created_at >= DATE('now', ?)
+      ORDER BY uof.created_at DESC
+    
+      LIMIT 1000
+    `).all(offset);
+
+    const byType = db.prepare(`
+      SELECT force_type, COUNT(*) as count FROM use_of_force
+      WHERE created_at >= DATE('now', ?) GROUP BY force_type ORDER BY count DESC
+    `).all(offset);
+
+    const byLevel = db.prepare(`
+      SELECT force_level, COUNT(*) as count FROM use_of_force
+      WHERE created_at >= DATE('now', ?) GROUP BY force_level ORDER BY count DESC
+    `).all(offset);
+
+    const byReviewStatus = db.prepare(`
+      SELECT review_status, COUNT(*) as count FROM use_of_force
+      WHERE created_at >= DATE('now', ?) GROUP BY review_status
+    `).all(offset);
+
+    const total = db.prepare(`SELECT COUNT(*) as count FROM use_of_force WHERE created_at >= DATE('now', ?)`).get(offset) as any;
+
+    res.json({ period_days: days, total: total.count, incidents, byType, byLevel, byReviewStatus });
+  } catch (error: any) {
+    console.error('Use of force error:', error);
+    res.status(500).json({ error: 'Failed to use of force', code: 'USE_OF_FORCE_ERROR' });
+  }
+});
+
+router.post('/use-of-force', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS use_of_force (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id TEXT, officer_id TEXT NOT NULL,
+      date_of_incident TEXT NOT NULL, force_type TEXT NOT NULL, force_level TEXT DEFAULT 'level_1',
+      subject_name TEXT, subject_injury TEXT, officer_injury TEXT, circumstances TEXT,
+      weapons_used TEXT, outcome TEXT, review_status TEXT DEFAULT 'pending',
+      reviewed_by TEXT, reviewed_at TEXT, notes TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    const { incident_id, date_of_incident, force_type, force_level, subject_name, subject_injury, officer_injury, circumstances, weapons_used, outcome, notes } = req.body;
+    const result = db.prepare(`
+      INSERT INTO use_of_force (incident_id, officer_id, date_of_incident, force_type, force_level, subject_name, subject_injury, officer_injury, circumstances, weapons_used, outcome, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(incident_id, req.user!.userId, date_of_incident, force_type, force_level || 'level_1', subject_name, subject_injury, officer_injury, circumstances, weapons_used, outcome, notes);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Create use of force error:', error);
+    res.status(500).json({ error: 'Failed to create use of force', code: 'CREATE_USE_OF_FORCE' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 6: Vehicle Pursuit Log
+// ═══════════════════════════════════════════════════════════════
+router.get('/vehicle-pursuits', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 90));
+    const offset = `-${days} days`;
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS vehicle_pursuits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id TEXT, officer_id TEXT NOT NULL,
+      pursuit_date TEXT NOT NULL, reason TEXT NOT NULL,
+      max_speed_mph REAL, duration_minutes REAL,
+      distance_miles REAL, weather_conditions TEXT,
+      road_conditions TEXT, traffic_density TEXT,
+      suspect_vehicle TEXT, outcome TEXT NOT NULL,
+      property_damage INTEGER DEFAULT 0,
+      injuries INTEGER DEFAULT 0,
+      review_status TEXT DEFAULT 'pending',
+      reviewed_by TEXT, reviewed_at TEXT, supervisor_notes TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+
+    const pursuits = db.prepare(`
+      SELECT vp.*, u.full_name as officer_name, u.badge_number
+      FROM vehicle_pursuits vp
+      LEFT JOIN users u ON vp.officer_id = u.id
+      WHERE vp.created_at >= DATE('now', ?)
+      ORDER BY vp.created_at DESC
+    
+      LIMIT 1000
+    `).all(offset);
+
+    const byOutcome = db.prepare(`
+      SELECT outcome, COUNT(*) as count FROM vehicle_pursuits
+      WHERE created_at >= DATE('now', ?) GROUP BY outcome ORDER BY count DESC
+    `).all(offset);
+
+    const total = db.prepare(`SELECT COUNT(*) as count FROM vehicle_pursuits WHERE created_at >= DATE('now', ?)`).get(offset) as any;
+
+    res.json({ period_days: days, total: total.count, pursuits, byOutcome });
+  } catch (error: any) {
+    console.error('Vehicle pursuits error:', error);
+    res.status(500).json({ error: 'Failed to vehicle pursuits', code: 'VEHICLE_PURSUITS_ERROR' });
+  }
+});
+
+router.post('/vehicle-pursuits', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS vehicle_pursuits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id TEXT, officer_id TEXT NOT NULL,
+      pursuit_date TEXT NOT NULL, reason TEXT NOT NULL, max_speed_mph REAL, duration_minutes REAL,
+      distance_miles REAL, weather_conditions TEXT, road_conditions TEXT, traffic_density TEXT,
+      suspect_vehicle TEXT, outcome TEXT NOT NULL, property_damage INTEGER DEFAULT 0,
+      injuries INTEGER DEFAULT 0, review_status TEXT DEFAULT 'pending',
+      reviewed_by TEXT, reviewed_at TEXT, supervisor_notes TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    const b = req.body;
+    const result = db.prepare(`
+      INSERT INTO vehicle_pursuits (incident_id, officer_id, pursuit_date, reason, max_speed_mph, duration_minutes, distance_miles, weather_conditions, road_conditions, traffic_density, suspect_vehicle, outcome, property_damage, injuries)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(b.incident_id, req.user!.userId, b.pursuit_date, b.reason, b.max_speed_mph, b.duration_minutes, b.distance_miles, b.weather_conditions, b.road_conditions, b.traffic_density, b.suspect_vehicle, b.outcome, b.property_damage ? 1 : 0, b.injuries ? 1 : 0);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Create vehicle pursuit error:', error);
+    res.status(500).json({ error: 'Failed to create vehicle pursuit', code: 'CREATE_VEHICLE_PURSUIT_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 7: Property Crime Trends
+// ═══════════════════════════════════════════════════════════════
+router.get('/property-crime-trends', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.max(1, Math.min(24, parseInt(req.query.months as string) || 12));
+
+    const propertyCrimeTypes = ['burglary', 'theft', 'larceny', 'robbery', 'vandalism', 'auto_theft', 'shoplifting', 'trespass', 'property_damage'];
+    const placeholders = propertyCrimeTypes.map(() => '?').join(',');
+
+    const monthlyTrend = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as month, incident_type, COUNT(*) as count
+      FROM incidents
+      WHERE incident_type IN (${placeholders})
+        AND created_at >= DATE('now', '-' || ? || ' months')
+      GROUP BY month, incident_type ORDER BY month
+    `).all(...propertyCrimeTypes, months) as any[];
+
+    const totals = db.prepare(`
+      SELECT incident_type, COUNT(*) as count FROM incidents
+      WHERE incident_type IN (${placeholders})
+        AND created_at >= DATE('now', '-' || ? || ' months')
+      GROUP BY incident_type ORDER BY count DESC
+    `).all(...propertyCrimeTypes, months);
+
+    res.json({ months, monthlyTrend, totals });
+  } catch (error: any) {
+    console.error('Property crime trends error:', error);
+    res.status(500).json({ error: 'Failed to property crime trends', code: 'PROPERTY_CRIME_TRENDS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 8: Arrest Demographics Report
+// ═══════════════════════════════════════════════════════════════
+router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 90));
+    const offset = `-${days} days`;
+
+    const byCharge = db.prepare(`
+      SELECT charge_description, COUNT(*) as count FROM arrest_records
+      WHERE created_at >= DATE('now', ?) GROUP BY charge_description ORDER BY count DESC LIMIT 20
+    `).all(offset);
+
+    const byTimeOfDay = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY hour ORDER BY hour
+    `).all(offset);
+
+    const byDayOfWeek = db.prepare(`
+      SELECT CAST(strftime('%w', created_at) AS INTEGER) as day, COUNT(*) as count
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY day ORDER BY day
+    `).all(offset);
+
+    const byLocation = db.prepare(`
+      SELECT COALESCE(zone_beat, 'Unknown') as location, COUNT(*) as count FROM arrest_records
+      WHERE created_at >= DATE('now', ?) GROUP BY location ORDER BY count DESC LIMIT 15
+    `).all(offset);
+
+    const monthlyTrend = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY month ORDER BY month
+    `).all(offset);
+
+    const total = db.prepare(`SELECT COUNT(*) as count FROM arrest_records WHERE created_at >= DATE('now', ?)`).get(offset) as any;
+
+    res.json({ period_days: days, total: total.count, byCharge, byTimeOfDay, byDayOfWeek, byLocation, monthlyTrend });
+  } catch (error: any) {
+    console.error('Arrest demographics error:', error);
+    res.status(500).json({ error: 'Failed to arrest demographics', code: 'ARREST_DEMOGRAPHICS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 9: Citation Revenue Report
+// ═══════════════════════════════════════════════════════════════
+router.get('/citation-revenue', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.max(1, Math.min(24, parseInt(req.query.months as string) || 12));
+
+    const monthlyRevenue = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as month,
+        COUNT(*) as total_citations,
+        COALESCE(SUM(fine_amount), 0) as total_fines,
+        COALESCE(SUM(CASE WHEN status = 'paid' THEN fine_amount ELSE 0 END), 0) as collected,
+        COALESCE(SUM(CASE WHEN status != 'paid' AND status != 'dismissed' THEN fine_amount ELSE 0 END), 0) as outstanding
+      FROM citations
+      WHERE created_at >= DATE('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(months);
+
+    const byType = db.prepare(`
+      SELECT type, COUNT(*) as count, COALESCE(SUM(fine_amount), 0) as total_fines
+      FROM citations WHERE created_at >= DATE('now', '-' || ? || ' months')
+      GROUP BY type ORDER BY total_fines DESC
+    `).all(months);
+
+    const summary = db.prepare(`
+      SELECT
+        COUNT(*) as total_citations,
+        COALESCE(SUM(fine_amount), 0) as total_fines,
+        COALESCE(SUM(CASE WHEN status = 'paid' THEN fine_amount ELSE 0 END), 0) as collected,
+        COALESCE(SUM(CASE WHEN status != 'paid' AND status != 'dismissed' THEN fine_amount ELSE 0 END), 0) as outstanding,
+        COALESCE(SUM(CASE WHEN status = 'dismissed' THEN fine_amount ELSE 0 END), 0) as dismissed
+      FROM citations WHERE created_at >= DATE('now', '-' || ? || ' months')
+    `).get(months) as any;
+
+    res.json({ months, summary, monthlyRevenue, byType });
+  } catch (error: any) {
+    console.error('Citation revenue error:', error);
+    res.status(500).json({ error: 'Failed to citation revenue', code: 'CITATION_REVENUE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 10: Response Time Analysis (enhanced)
+// ═══════════════════════════════════════════════════════════════
+router.get('/response-time-analysis', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
+    const offset = `-${days} days`;
+
+    const overall = db.prepare(`
+      SELECT
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as avg_min,
+        ROUND(MIN((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as min_min,
+        ROUND(MAX((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as max_min,
+        COUNT(*) as total_calls
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= DATE('now', ?)
+    `).get(offset) as any;
+
+    const allTimes = db.prepare(`
+      SELECT ROUND((julianday(onscene_at) - julianday(created_at)) * 1440, 1) as response_min
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= DATE('now', ?)
+      ORDER BY response_min
+    
+      LIMIT 1000
+    `).all(offset) as any[];
+    const p50Idx = Math.floor(allTimes.length * 0.5);
+    const p95Idx = Math.floor(allTimes.length * 0.95);
+    const median = allTimes.length > 0 ? allTimes[p50Idx]?.response_min : null;
+    const p95 = allTimes.length > 0 ? allTimes[Math.min(p95Idx, allTimes.length - 1)]?.response_min : null;
+
+    const byPriority = db.prepare(`
+      SELECT priority,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as avg_min,
+        COUNT(*) as count
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= DATE('now', ?)
+      GROUP BY priority ORDER BY priority
+    `).all(offset);
+
+    const byBeat = db.prepare(`
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as avg_min,
+        COUNT(*) as count
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= DATE('now', ?)
+      GROUP BY beat ORDER BY avg_min
+    `).all(offset);
+
+    const byHour = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as avg_min,
+        COUNT(*) as count
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= DATE('now', ?)
+      GROUP BY hour ORDER BY hour
+    `).all(offset);
+
+    res.json({
+      period_days: days,
+      overall: { ...overall, median, p95 },
+      byPriority, byBeat, byHour,
+    });
+  } catch (error: any) {
+    console.error('Response time analysis error:', error);
+    res.status(500).json({ error: 'Failed to response time analysis', code: 'RESPONSE_TIME_ANALYSIS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 11: Daily Briefing Generator
+// ═══════════════════════════════════════════════════════════════
+router.get('/daily-briefing', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const date = (req.query.date as string) || localToday();
+
+    const activeBolos = db.prepare(`
+      SELECT id, bolo_number, type, title, description, priority, subject_description, vehicle_description
+      FROM bolos WHERE status = 'active' ORDER BY priority, created_at DESC LIMIT 10
+    `).all();
+
+    const activeWarrants = db.prepare(`
+      SELECT id, warrant_number, type, charge_description, offense_level, bail_amount, subject_name
+      FROM warrants WHERE status = 'active' ORDER BY offense_level DESC, created_at DESC LIMIT 10
+    `).all();
+
+    const recentIncidents = db.prepare(`
+      SELECT id, incident_number, incident_type, priority, status, location_address, narrative
+      FROM incidents WHERE DATE(created_at) = ? ORDER BY priority, created_at DESC LIMIT 15
+    `).all(date);
+
+    const prevDayStats = db.prepare(`
+      SELECT COUNT(*) as total_calls,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_calls,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2_calls,
+        ROUND(AVG(CASE WHEN onscene_at IS NOT NULL THEN (julianday(onscene_at) - julianday(created_at)) * 1440 END), 1) as avg_response
+      FROM calls_for_service WHERE DATE(created_at) = DATE(?, '-1 day')
+    `).get(date) as any;
+
+    const trendingIncidents = db.prepare(`
+      SELECT incident_type, COUNT(*) as count FROM incidents
+      WHERE created_at >= DATE('now', '-7 days')
+      GROUP BY incident_type ORDER BY count DESC LIMIT 5
+    `).all();
+
+    const personnelOnDuty = db.prepare(`
+      SELECT u.full_name, u.badge_number, un.call_sign, un.status
+      FROM units un JOIN users u ON un.officer_id = u.id
+      WHERE un.status != 'off_duty'
+    
+      LIMIT 1000
+    `).all();
+
+    res.json({ date, activeBolos, activeWarrants, recentIncidents, prevDayStats, trendingIncidents, personnelOnDuty });
+  } catch (error: any) {
+    console.error('Daily briefing error:', error);
+    res.status(500).json({ error: 'Failed to daily briefing', code: 'DAILY_BRIEFING_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 12: Weekly Activity Digest
+// ═══════════════════════════════════════════════════════════════
+router.get('/weekly-digest', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const totalCalls = db.prepare(`SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= DATE('now', '-7 days')`).get() as any;
+    const totalIncidents = db.prepare(`SELECT COUNT(*) as count FROM incidents WHERE created_at >= DATE('now', '-7 days')`).get() as any;
+    const totalCitations = db.prepare(`SELECT COUNT(*) as count FROM citations WHERE created_at >= DATE('now', '-7 days')`).get() as any;
+    const totalArrests = db.prepare(`SELECT COUNT(*) as count FROM arrest_records WHERE created_at >= DATE('now', '-7 days')`).get() as any;
+
+    const avgResponse = db.prepare(`
+      SELECT ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as avg_min
+      FROM calls_for_service WHERE onscene_at IS NOT NULL AND created_at >= DATE('now', '-7 days')
+    `).get() as any;
+
+    const byDay = db.prepare(`
+      SELECT DATE(created_at) as day, COUNT(*) as count FROM calls_for_service
+      WHERE created_at >= DATE('now', '-7 days') GROUP BY day ORDER BY day
+    `).all();
+
+    const topIncidentTypes = db.prepare(`
+      SELECT incident_type, COUNT(*) as count FROM incidents
+      WHERE created_at >= DATE('now', '-7 days')
+      GROUP BY incident_type ORDER BY count DESC LIMIT 10
+    `).all();
+
+    const topOfficers = db.prepare(`
+      SELECT u.full_name, u.badge_number, COUNT(i.id) as incident_count
+      FROM incidents i JOIN users u ON i.officer_id = u.id
+      WHERE i.created_at >= DATE('now', '-7 days')
+      GROUP BY i.officer_id ORDER BY incident_count DESC LIMIT 10
+    `).all();
+
+    res.json({
+      period: '7 days',
+      summary: { totalCalls: totalCalls.count, totalIncidents: totalIncidents.count, totalCitations: totalCitations.count, totalArrests: totalArrests?.count || 0, avgResponseMinutes: avgResponse.avg_min },
+      byDay, topIncidentTypes, topOfficers,
+    });
+  } catch (error: any) {
+    console.error('Weekly digest error:', error);
+    res.status(500).json({ error: 'Failed to weekly digest', code: 'WEEKLY_DIGEST_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 14: Report Scheduling (CRUD)
+// ═══════════════════════════════════════════════════════════════
+router.get('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS report_schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, report_type TEXT NOT NULL,
+      frequency TEXT NOT NULL DEFAULT 'weekly', parameters TEXT DEFAULT '{}', recipients TEXT DEFAULT '[]',
+      last_run TEXT, next_run TEXT, is_active INTEGER DEFAULT 1, created_by TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    const schedules = db.prepare(`
+      SELECT rs.*, u.full_name as created_by_name FROM report_schedules rs
+      LEFT JOIN users u ON rs.created_by = u.id ORDER BY rs.created_at DESC
+    
+      LIMIT 1000
+    `).all();
+    res.json(schedules);
+  } catch (error: any) {
+    console.error('Report schedules error:', error);
+    res.status(500).json({ error: 'Failed to report schedules', code: 'REPORT_SCHEDULES_ERROR' });
+  }
+});
+
+router.post('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS report_schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, report_type TEXT NOT NULL,
+      frequency TEXT NOT NULL DEFAULT 'weekly', parameters TEXT DEFAULT '{}', recipients TEXT DEFAULT '[]',
+      last_run TEXT, next_run TEXT, is_active INTEGER DEFAULT 1, created_by TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    const { name, report_type, frequency, parameters, recipients } = req.body;
+    const result = db.prepare(`
+      INSERT INTO report_schedules (name, report_type, frequency, parameters, recipients, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, report_type, frequency || 'weekly', JSON.stringify(parameters || {}), JSON.stringify(recipients || []), req.user!.userId);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Create schedule error:', error);
+    res.status(500).json({ error: 'Failed to create schedule', code: 'CREATE_SCHEDULE_ERROR' });
+  }
+});
+
+router.delete('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM report_schedules WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete schedule error:', error);
+    res.status(500).json({ error: 'Failed to delete schedule', code: 'DELETE_SCHEDULE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 15: Report Template Library
+// ═══════════════════════════════════════════════════════════════
+router.get('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS report_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
+      report_type TEXT NOT NULL, configuration TEXT NOT NULL DEFAULT '{}',
+      is_default INTEGER DEFAULT 0, created_by TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    const templates = db.prepare(`
+      SELECT rt.*, u.full_name as created_by_name FROM report_templates rt
+      LEFT JOIN users u ON rt.created_by = u.id ORDER BY rt.is_default DESC, rt.name
+    
+      LIMIT 1000
+    `).all();
+    res.json(templates);
+  } catch (error: any) {
+    console.error('Report templates error:', error);
+    res.status(500).json({ error: 'Failed to report templates', code: 'REPORT_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS report_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
+      report_type TEXT NOT NULL, configuration TEXT NOT NULL DEFAULT '{}',
+      is_default INTEGER DEFAULT 0, created_by TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    const { name, description, report_type, configuration } = req.body;
+    const result = db.prepare(`
+      INSERT INTO report_templates (name, description, report_type, configuration, created_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name, description, report_type, JSON.stringify(configuration || {}), req.user!.userId);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Create template error:', error);
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM report_templates WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete template error:', error);
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_TEMPLATE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Dashboard Widget Endpoints (Features 31-45)
+// ═══════════════════════════════════════════════════════════════
+
+// Feature 33: Shift Performance Comparison
+router.get('/shift-comparison', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string) || 30));
+    const offset = `-${days} days`;
+
+    const shifts = [
+      { name: 'Day', startHour: 6, endHour: 14 },
+      { name: 'Swing', startHour: 14, endHour: 22 },
+      { name: 'Night', startHour: 22, endHour: 6 },
+    ];
+
+    const results = shifts.map(shift => {
+      const hourCondition = shift.name === 'Night'
+        ? `(CAST(strftime('%H', created_at) AS INTEGER) >= ${shift.startHour} OR CAST(strftime('%H', created_at) AS INTEGER) < ${shift.endHour})`
+        : `CAST(strftime('%H', created_at) AS INTEGER) >= ${shift.startHour} AND CAST(strftime('%H', created_at) AS INTEGER) < ${shift.endHour}`;
+
+      const stats = db.prepare(`
+        SELECT COUNT(*) as calls,
+          ROUND(AVG(CASE WHEN onscene_at IS NOT NULL THEN (julianday(onscene_at) - julianday(created_at)) * 1440 END), 1) as avg_response
+        FROM calls_for_service
+        WHERE created_at >= DATE('now', ?) AND ${hourCondition}
+      `).get(offset) as any;
+
+      const incidents = db.prepare(`
+        SELECT COUNT(*) as count FROM incidents
+        WHERE created_at >= DATE('now', ?) AND ${hourCondition}
+      `).get(offset) as any;
+
+      return { shift: shift.name, hours: `${String(shift.startHour).padStart(2, '0')}00-${String(shift.endHour).padStart(2, '0')}00`, calls: stats.calls, avgResponseMin: stats.avg_response, incidents: incidents.count };
+    });
+
+    res.json({ period_days: days, shifts: results });
+  } catch (error: any) {
+    console.error('Shift comparison error:', error);
+    res.status(500).json({ error: 'Failed to shift comparison', code: 'SHIFT_COMPARISON_ERROR' });
+  }
+});
+
+// Feature 38: Clearance Rate
+router.get('/clearance-rate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
+    const offset = `-${days} days`;
+
+    const result = db.prepare(`
+      SELECT COUNT(*) as total,
+        SUM(CASE WHEN status IN ('approved', 'closed') THEN 1 ELSE 0 END) as cleared,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN status IN ('submitted', 'under_review') THEN 1 ELSE 0 END) as pending
+      FROM incidents WHERE created_at >= DATE('now', ?)
+    `).get(offset) as any;
+
+    res.json({ total: result.total, cleared: result.cleared, active: result.active, pending: result.pending, rate: result.total > 0 ? Math.round((result.cleared / result.total) * 100) : 0 });
+  } catch (error: any) {
+    console.error('Clearance rate error:', error);
+    res.status(500).json({ error: 'Failed to clearance rate', code: 'CLEARANCE_RATE_ERROR' });
+  }
+});
+
+// Feature 39: Patrol Coverage
+router.get('/patrol-coverage', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const totalBeats = db.prepare(`SELECT COUNT(DISTINCT property_id) as count FROM patrol_checkpoints WHERE is_active = 1`).get() as any;
+    const coveredBeats = db.prepare(`
+      SELECT COUNT(DISTINCT pc.property_id) as count
+      FROM patrol_scans ps JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
+      WHERE ps.scanned_at >= datetime('now', '-8 hours')
+    `).get() as any;
+
+    const activeUnits = db.prepare(`
+      SELECT u.call_sign, u.status, u.latitude, u.longitude, us.full_name as officer_name, us.badge_number
+      FROM units u LEFT JOIN users us ON u.officer_id = us.id
+      WHERE u.status NOT IN ('off_duty', 'out_of_service')
+    
+      LIMIT 1000
+    `).all();
+
+    res.json({ totalBeats: totalBeats.count || 0, coveredBeats: coveredBeats.count || 0, coverage: totalBeats.count > 0 ? Math.round((coveredBeats.count / totalBeats.count) * 100) : 0, activeUnits });
+  } catch (error: any) {
+    console.error('Patrol coverage error:', error);
+    res.status(500).json({ error: 'Failed to patrol coverage', code: 'PATROL_COVERAGE_ERROR' });
+  }
+});
+
+// Feature 41: Evidence Pending Count
+router.get('/evidence-pending', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const pending = db.prepare(`SELECT COUNT(*) as count FROM evidence WHERE status IN ('collected', 'pending', 'in_lab')`).get() as any;
+    const byStatus = db.prepare(`SELECT status, COUNT(*) as count FROM evidence WHERE status IN ('collected', 'pending', 'in_lab', 'released', 'destroyed') GROUP BY status ORDER BY count DESC`).all();
+    res.json({ pending: pending.count, byStatus });
+  } catch (error: any) {
+    console.error('Evidence pending error:', error);
+    res.status(500).json({ error: 'Failed to evidence pending', code: 'EVIDENCE_PENDING_ERROR' });
+  }
+});
+
+// Feature 42: Upcoming Court Dates
+router.get('/upcoming-court', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const upcoming = db.prepare(`
+      SELECT ce.*, u.full_name as officer_name FROM court_events ce
+      LEFT JOIN users u ON ce.created_by = u.id
+      WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now', '+7 days') ORDER BY ce.event_date ASC
+    
+      LIMIT 1000
+    `).all();
+    res.json({ count: upcoming.length, upcoming });
+  } catch (error: any) {
+    console.error('Upcoming court error:', error);
+    res.status(500).json({ error: 'Failed to upcoming court', code: 'UPCOMING_COURT_ERROR' });
+  }
+});
+
+// Feature 43: Overdue Reports Count
+router.get('/overdue-reports', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const overdue = db.prepare(`SELECT COUNT(*) as count FROM incidents WHERE status = 'draft' AND created_at <= DATE('now', '-3 days')`).get() as any;
+    const overdueList = db.prepare(`
+      SELECT i.id, i.incident_number, i.incident_type, i.created_at, u.full_name as officer_name
+      FROM incidents i LEFT JOIN users u ON i.officer_id = u.id
+      WHERE i.status = 'draft' AND i.created_at <= DATE('now', '-3 days') ORDER BY i.created_at ASC LIMIT 20
+    `).all();
+    res.json({ count: overdue.count, overdueList });
+  } catch (error: any) {
+    console.error('Overdue reports error:', error);
+    res.status(500).json({ error: 'Failed to overdue reports', code: 'OVERDUE_REPORTS_ERROR' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// REPORT UPGRADES
+// ══════════════════════════════════════════════════════════════════
+
+// ── Upgrade 26: Report templates CRUD ───────────────────────────
+router.get('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templates = db.prepare(`
+      SELECT config_key, config_value, created_at, updated_at
+      FROM system_config
+      WHERE category = 'report_template' AND is_active = 1
+      ORDER BY sort_order ASC
+    `).all() as any[];
+
+    const parsed = templates.map(t => {
+      try {
+        return { id: t.config_key, ...JSON.parse(t.config_value), created_at: t.created_at, updated_at: t.updated_at };
+      } catch {
+        return { id: t.config_key, name: t.config_key, config: {}, created_at: t.created_at };
+      }
+    });
+
+    res.json({ data: parsed });
+  } catch (error: any) {
+    console.error('Get report templates error:', error);
+    res.status(500).json({ error: 'Failed to get report templates', code: 'GET_REPORT_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, description, source, columns, filters, groupBy, sortBy, sortDir, schedule } = req.body;
+    if (!name) { res.status(400).json({ error: 'name is required', code: 'NAME_REQUIRED' }); return; }
+
+    const now = localNow();
+    const key = `rpt_${Date.now()}`;
+    const value = JSON.stringify({ name, description, source, columns, filters, groupBy, sortBy, sortDir, schedule });
+
+    const maxOrder = db.prepare(
+      "SELECT MAX(sort_order) as mx FROM system_config WHERE category = 'report_template'"
+    ).get() as any;
+
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, sort_order, created_at, updated_at)
+      VALUES (?, ?, 'report_template', ?, ?, ?)
+    `).run(key, value, (maxOrder?.mx ?? -1) + 1, now, now);
+
+    res.status(201).json({ id: key, name, description });
+  } catch (error: any) {
+    console.error('Create report template error:', error);
+    res.status(500).json({ error: 'Failed to create report template', code: 'CREATE_REPORT_TEMPLATE_ERROR' });
+  }
+});
+
+router.put('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare(
+      "SELECT * FROM system_config WHERE config_key = ? AND category = 'report_template'"
+    ).get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    const value = JSON.stringify(req.body);
+    db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = ? AND category = 'report_template'")
+      .run(value, now, req.params.id);
+
+    res.json({ id: req.params.id, ...req.body });
+  } catch (error: any) {
+    console.error('Update report template error:', error);
+    res.status(500).json({ error: 'Failed to update report template', code: 'UPDATE_REPORT_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare("UPDATE system_config SET is_active = 0 WHERE config_key = ? AND category = 'report_template'")
+      .run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete report template error:', error);
+    res.status(500).json({ error: 'Failed to delete report template', code: 'DELETE_REPORT_TEMPLATE_ERROR' });
+  }
+});
+
+// ── Upgrade 27: Report scheduling (save schedule configs) ───────
+router.get('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const schedules = db.prepare(`
+      SELECT config_key, config_value, created_at, updated_at
+      FROM system_config
+      WHERE category = 'report_schedule' AND is_active = 1
+      ORDER BY created_at DESC
+    `).all() as any[];
+
+    const parsed = schedules.map(s => {
+      try {
+        return { id: s.config_key, ...JSON.parse(s.config_value), created_at: s.created_at };
+      } catch {
+        return { id: s.config_key, name: 'Unknown', created_at: s.created_at };
+      }
+    });
+
+    res.json({ data: parsed });
+  } catch (error: any) {
+    console.error('Get report schedules error:', error);
+    res.status(500).json({ error: 'Failed to get report schedules', code: 'GET_REPORT_SCHEDULES_ERROR' });
+  }
+});
+
+router.post('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, template_id, frequency, day_of_week, day_of_month, time_of_day, recipients, enabled } = req.body;
+    if (!name || !frequency) { res.status(400).json({ error: 'name and frequency required', code: 'NAME_FREQUENCY_REQUIRED' }); return; }
+
+    const now = localNow();
+    const key = `sched_${Date.now()}`;
+    const value = JSON.stringify({
+      name, template_id, frequency, day_of_week, day_of_month, time_of_day,
+      recipients, enabled: enabled !== false, created_by: req.user!.userId,
+    });
+
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, sort_order, created_at, updated_at)
+      VALUES (?, ?, 'report_schedule', 0, ?, ?)
+    `).run(key, value, now, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'report_schedule_created', 'report_schedule', 0, ?, ?)`).run(
+      req.user!.userId, `Created report schedule: ${name} (${frequency})`, req.ip || 'unknown');
+
+    res.status(201).json({ id: key, name, frequency });
+  } catch (error: any) {
+    console.error('Create report schedule error:', error);
+    res.status(500).json({ error: 'Failed to create report schedule', code: 'CREATE_REPORT_SCHEDULE_ERROR' });
+  }
+});
+
+router.put('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const value = JSON.stringify(req.body);
+    db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = ? AND category = 'report_schedule'")
+      .run(value, now, req.params.id);
+    res.json({ id: req.params.id, ...req.body });
+  } catch (error: any) {
+    console.error('Update report schedule error:', error);
+    res.status(500).json({ error: 'Failed to update report schedule', code: 'UPDATE_REPORT_SCHEDULE_ERROR' });
+  }
+});
+
+router.delete('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare("UPDATE system_config SET is_active = 0 WHERE config_key = ? AND category = 'report_schedule'")
+      .run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete report schedule error:', error);
+    res.status(500).json({ error: 'Failed to delete report schedule', code: 'DELETE_REPORT_SCHEDULE_ERROR' });
+  }
+});
+
+// ── Upgrade 28: Period comparison (this week vs last week, etc) ─
+router.get('/comparison', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { period = 'week' } = req.query;
+
+    let currentStart: string, currentEnd: string, previousStart: string, previousEnd: string;
+
+    if (period === 'month') {
+      currentStart = "date('now', 'start of month')";
+      currentEnd = "datetime('now')";
+      previousStart = "date('now', 'start of month', '-1 month')";
+      previousEnd = "date('now', 'start of month')";
+    } else {
+      // Default: week (Mon-Sun)
+      currentStart = "date('now', 'weekday 0', '-6 days')";
+      currentEnd = "datetime('now')";
+      previousStart = "date('now', 'weekday 0', '-13 days')";
+      previousEnd = "date('now', 'weekday 0', '-6 days')";
+    }
+
+    // Calls comparison
+    const currentCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    // Incidents comparison
+    const currentIncidents = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousIncidents = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    // Citations comparison
+    const currentCitations = db.prepare(`
+      SELECT COUNT(*) as count FROM citations WHERE created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousCitations = db.prepare(`
+      SELECT COUNT(*) as count FROM citations WHERE created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    // Response time comparison
+    const currentResponse = db.prepare(`
+      SELECT AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_minutes
+      FROM calls_for_service WHERE onscene_at IS NOT NULL AND created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousResponse = db.prepare(`
+      SELECT AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_minutes
+      FROM calls_for_service WHERE onscene_at IS NOT NULL AND created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    const calcChange = (current: number, previous: number) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
     };
 
+    const round = (v: any) => v ? Math.round(v * 10) / 10 : null;
+
     res.json({
-      officer_id: officerId,
-      shift_start: shiftStart,
-      shift_end: shiftEnd,
-      stats,
-      calls_handled: callsHandled,
-      open_calls: openCalls,
-      bolos,
-      notes,
+      period,
+      calls: {
+        current: currentCalls?.count || 0,
+        previous: previousCalls?.count || 0,
+        change: calcChange(currentCalls?.count || 0, previousCalls?.count || 0),
+      },
+      incidents: {
+        current: currentIncidents?.count || 0,
+        previous: previousIncidents?.count || 0,
+        change: calcChange(currentIncidents?.count || 0, previousIncidents?.count || 0),
+      },
+      citations: {
+        current: currentCitations?.count || 0,
+        previous: previousCitations?.count || 0,
+        change: calcChange(currentCitations?.count || 0, previousCitations?.count || 0),
+      },
+      responseTime: {
+        current: round(currentResponse?.avg_minutes),
+        previous: round(previousResponse?.avg_minutes),
+        change: currentResponse?.avg_minutes && previousResponse?.avg_minutes
+          ? calcChange(currentResponse.avg_minutes, previousResponse.avg_minutes) : null,
+      },
     });
   } catch (error: any) {
-    console.error('Shift handoff error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Comparison report error:', error);
+    res.status(500).json({ error: 'Failed to get comparison report', code: 'COMPARISON_REPORT_ERROR' });
   }
 });
 
-// ─── SHIFT PERFORMANCE SCORECARD ──────────────────────────
-
-// GET /api/reports/shift-scorecard
-router.get('/shift-scorecard', (req: Request, res: Response) => {
+// ── Upgrade 29: Shift summary data ─────────────────────────────
+router.get('/shift-summary', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const officerId = Number(req.query.officer_id || req.user!.userId);
-    const shiftDate = (req.query.shift_date as string) || new Date().toISOString().split('T')[0];
-    const shiftStart = `${shiftDate}T00:00:00`;
-    const shiftEnd = `${shiftDate}T23:59:59`;
+    const { date, shift } = req.query;
+    const targetDate = (date as string) || localToday();
 
-    // Get officer's unit ID
-    const unit = db.prepare('SELECT id FROM units WHERE officer_id = ?').get(officerId) as any;
-    const unitId = unit?.id || 0;
+    // Define shift windows (default day shift 0600-1800, night 1800-0600)
+    let startHour = 6, endHour = 18;
+    if (shift === 'night') { startHour = 18; endHour = 6; }
+    else if (shift === 'swing') { startHour = 14; endHour = 22; }
 
-    // 1. Response Time Score (0-25) — avg response time vs 5-minute SLA
-    const responseTimes = db.prepare(`
-      SELECT AVG(
-        CAST((julianday(COALESCE(onscene_at, cleared_at)) - julianday(created_at)) * 24 * 60 AS REAL)
-      ) as avg_minutes
-      FROM calls_for_service
-      WHERE assigned_unit_ids LIKE '%' || ? || '%'
-        AND created_at BETWEEN ? AND ?
-        AND (onscene_at IS NOT NULL OR cleared_at IS NOT NULL)
-    `).get(unitId, shiftStart, shiftEnd) as any;
-    const avgMinutes = responseTimes?.avg_minutes || 0;
-    const responseScore = avgMinutes <= 0 ? 0 : Math.max(0, Math.round(25 * (1 - avgMinutes / 10)));
+    const shiftStart = `${targetDate} ${String(startHour).padStart(2, '0')}:00:00`;
+    const shiftEnd = shift === 'night'
+      ? `${targetDate} 23:59:59`
+      : `${targetDate} ${String(endHour).padStart(2, '0')}:00:00`;
 
-    // 2. Call Volume Score (0-20) — calls handled vs shift average
-    const callCount = db.prepare(`
-      SELECT COUNT(*) as cnt FROM calls_for_service
-      WHERE assigned_unit_ids LIKE '%' || ? || '%' AND created_at BETWEEN ? AND ?
-    `).get(unitId, shiftStart, shiftEnd) as any;
-    const shiftAvg = db.prepare(`
-      SELECT COUNT(*) * 1.0 / MAX(1, COUNT(DISTINCT assigned_unit_ids)) as avg_calls
-      FROM calls_for_service
-      WHERE created_at BETWEEN ? AND ?
-    `).get(shiftStart, shiftEnd) as any;
-    const volumeRatio = (callCount?.cnt || 0) / Math.max(1, shiftAvg?.avg_calls || 1);
-    const volumeScore = Math.min(20, Math.round(20 * Math.min(1.5, volumeRatio) / 1.5));
-
-    // 3. Patrol Coverage Score (0-20)
-    const scanCount = db.prepare(`
-      SELECT COUNT(*) as cnt FROM patrol_scans
-      WHERE scanned_by = ? AND scanned_at BETWEEN ? AND ?
-    `).get(officerId, shiftStart, shiftEnd) as any;
-    const coverageScore = Math.min(20, (scanCount?.cnt || 0) * 2);
-
-    // 4. Report Completion Score (0-15)
-    const reportsNeeded = db.prepare(`
+    // Calls during shift
+    const calls = db.prepare(`
       SELECT COUNT(*) as total,
-        SUM(CASE WHEN i.status = 'approved' THEN 1 ELSE 0 END) as completed
-      FROM calls_for_service c
-      LEFT JOIN incidents i ON i.call_id = c.id
-      WHERE c.assigned_unit_ids LIKE '%' || ? || '%'
-        AND c.created_at BETWEEN ? AND ?
-        AND c.incident_type NOT IN ('patrol', 'information', 'assist_citizen', 'parking_complaint')
-    `).get(unitId, shiftStart, shiftEnd) as any;
-    const completionRate = (reportsNeeded?.total || 0) > 0
-      ? (reportsNeeded?.completed || 0) / reportsNeeded.total
-      : 1;
-    const reportScore = Math.round(15 * completionRate);
-
-    // 5. Proactive Activity Score (0-10) — self-initiated calls
-    const proactive = db.prepare(`
-      SELECT COUNT(*) as cnt FROM calls_for_service
-      WHERE source = 'patrol' AND assigned_unit_ids LIKE '%' || ? || '%'
-        AND created_at BETWEEN ? AND ?
-    `).get(unitId, shiftStart, shiftEnd) as any;
-    const proactiveScore = Math.min(10, (proactive?.cnt || 0) * 3);
-
-    // 6. Safety Score (0-10) — GPS consistency
-    const gpsGaps = db.prepare(`
-      SELECT COUNT(*) as cnt FROM gps_breadcrumbs
-      WHERE user_id = ? AND recorded_at BETWEEN ? AND ?
-    `).get(officerId, shiftStart, shiftEnd) as any;
-    // Expect ~240 breadcrumbs per hour (every 15s) for an 8-hour shift ≈ 1920
-    const gpsConsistency = Math.min(1, (gpsGaps?.cnt || 0) / 500);
-    const safetyScore = Math.round(10 * gpsConsistency);
-
-    const totalScore = responseScore + volumeScore + coverageScore + reportScore + proactiveScore + safetyScore;
-    const letterGrade = totalScore >= 90 ? 'A' : totalScore >= 80 ? 'B' : totalScore >= 70 ? 'C' : totalScore >= 60 ? 'D' : 'F';
-
-    // Trend — last 5 shifts
-    const trendData = db.prepare(`
-      SELECT DATE(created_at) as shift_date, COUNT(*) as calls
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2,
+        SUM(CASE WHEN status = 'cleared' THEN 1 ELSE 0 END) as cleared,
+        AVG(CASE WHEN onscene_at IS NOT NULL
+          THEN (julianday(onscene_at) - julianday(created_at)) * 24 * 60
+          ELSE NULL END) as avg_response_min
       FROM calls_for_service
-      WHERE assigned_unit_ids LIKE '%' || ? || '%'
-        AND created_at >= datetime('now', 'localtime', '-5 days')
-      GROUP BY DATE(created_at)
-      ORDER BY shift_date DESC
-      LIMIT 5
-    `).all(unitId);
+      WHERE created_at >= ? AND created_at <= ?
+    `).get(shiftStart, shiftEnd) as any;
+
+    // Incidents during shift
+    const incidents = db.prepare(`
+      SELECT COUNT(*) as total FROM incidents WHERE created_at >= ? AND created_at <= ?
+    `).get(shiftStart, shiftEnd) as any;
+
+    // Officers on duty during shift
+    const officers = db.prepare(`
+      SELECT DISTINCT u.id, u.full_name, u.badge_number, un.call_sign
+      FROM units un
+      JOIN users u ON un.officer_id = u.id
+      WHERE un.status != 'off_duty'
+      LIMIT 50
+    `).all();
+
+    // Activity during shift
+    const activity = db.prepare(`
+      SELECT al.action, COUNT(*) as count
+      FROM activity_log al
+      WHERE al.created_at >= ? AND al.created_at <= ?
+      GROUP BY al.action ORDER BY count DESC LIMIT 10
+    `).all(shiftStart, shiftEnd);
 
     res.json({
-      officer_id: officerId,
-      shift_date: shiftDate,
-      total_score: totalScore,
-      letter_grade: letterGrade,
-      metrics: {
-        response_time: { score: responseScore, max: 25, avg_minutes: Math.round((avgMinutes || 0) * 10) / 10 },
-        call_volume: { score: volumeScore, max: 20, count: callCount?.cnt || 0 },
-        patrol_coverage: { score: coverageScore, max: 20, scans: scanCount?.cnt || 0 },
-        report_completion: { score: reportScore, max: 15, rate: Math.round(completionRate * 100) },
-        proactive_activity: { score: proactiveScore, max: 10, count: proactive?.cnt || 0 },
-        safety: { score: safetyScore, max: 10, gps_points: gpsGaps?.cnt || 0 },
+      date: targetDate,
+      shift: shift || 'day',
+      shiftStart,
+      shiftEnd,
+      calls: {
+        total: calls?.total || 0,
+        p1: calls?.p1 || 0,
+        p2: calls?.p2 || 0,
+        cleared: calls?.cleared || 0,
+        avgResponseMin: calls?.avg_response_min ? Math.round(calls.avg_response_min * 10) / 10 : null,
       },
-      trend: trendData,
+      incidents: incidents?.total || 0,
+      officersOnDuty: officers,
+      topActivity: activity,
     });
   } catch (error: any) {
-    console.error('Shift scorecard error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Shift summary error:', error);
+    res.status(500).json({ error: 'Failed to get shift summary', code: 'SHIFT_SUMMARY_ERROR' });
   }
 });
 
-// ─── COMMAND CENTER COMPOSITE ENDPOINT ─────────────────────
-
-// GET /api/reports/command-center
-router.get('/command-center', (req: Request, res: Response) => {
+// ── Upgrade 30: Officer activity feed (recent actions) ──────────
+router.get('/officer-feed/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const { officerId } = req.params;
+    const { limit = '30' } = req.query;
+    const limitNum = Math.min(100, parseInt(limit as string, 10) || 30);
 
-    // Active calls
-    const activeCalls = db.prepare(`
-      SELECT c.*, p.name as property_name
-      FROM calls_for_service c
-      LEFT JOIN properties p ON c.property_id = p.id
-      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene')
-      ORDER BY
-        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
-        c.created_at ASC
-    `).all();
+    const officer = db.prepare('SELECT id, full_name, badge_number FROM users WHERE id = ?').get(officerId) as any;
+    if (!officer) { res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' }); return; }
 
-    // Unit positions and statuses
-    const units = db.prepare(`
-      SELECT u.*, usr.full_name as officer_name, usr.badge_number
-      FROM units u
-      LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.status != 'decommissioned'
-      ORDER BY u.call_sign
-    `).all();
+    const feed = db.prepare(`
+      SELECT al.id, al.action, al.entity_type, al.entity_id, al.details, al.created_at
+      FROM activity_log al
+      WHERE al.user_id = ?
+      ORDER BY al.created_at DESC
+      LIMIT ?
+    `).all(officerId, limitNum);
 
-    // Today's KPIs
-    const today = new Date().toISOString().split('T')[0];
-    const kpis = db.prepare(`
-      SELECT
-        COUNT(*) as calls_today,
-        SUM(CASE WHEN status IN ('pending', 'dispatched', 'enroute', 'onscene') THEN 1 ELSE 0 END) as active_calls,
-        AVG(CASE
-          WHEN onscene_at IS NOT NULL THEN
-            CAST((julianday(onscene_at) - julianday(created_at)) * 24 * 60 AS REAL)
-          ELSE NULL
-        END) as avg_response_min
-      FROM calls_for_service
-      WHERE created_at >= ?
-    `).get(`${today}T00:00:00`) as any;
-
-    const unitsAvailable = db.prepare(
-      "SELECT COUNT(*) as cnt FROM units WHERE status = 'available'"
-    ).get() as any;
-    const unitsTotal = db.prepare(
-      "SELECT COUNT(*) as cnt FROM units WHERE status != 'decommissioned'"
-    ).get() as any;
-
-    // Active BOLOs count
-    const boloCount = db.prepare(
-      "SELECT COUNT(*) as cnt FROM bolos WHERE status = 'active'"
-    ).get() as any;
-
-    // Active anomaly alerts
-    const anomalyAlerts = db.prepare(`
-      SELECT * FROM anomaly_alerts
-      WHERE acknowledged_at IS NULL
-        AND created_at >= datetime('now', 'localtime', '-4 hours')
-      ORDER BY created_at DESC
-      LIMIT 10
-    `).all();
-
-    // Calls by hour (last 24h)
-    const callsByHour = db.prepare(`
-      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
-      FROM calls_for_service
-      WHERE created_at >= datetime('now', 'localtime', '-24 hours')
-      GROUP BY strftime('%H', created_at)
-      ORDER BY hour
-    `).all();
-
-    res.json({
-      active_calls: activeCalls,
-      units,
-      kpis: {
-        calls_today: kpis?.calls_today || 0,
-        active_calls: kpis?.active_calls || 0,
-        avg_response_min: Math.round((kpis?.avg_response_min || 0) * 10) / 10,
-        units_available: unitsAvailable?.cnt || 0,
-        units_total: unitsTotal?.cnt || 0,
-        active_bolos: boloCount?.cnt || 0,
-        anomaly_alerts: anomalyAlerts.length,
-      },
-      anomaly_alerts: anomalyAlerts,
-      calls_by_hour: callsByHour,
-    });
+    res.json({ officer, feed });
   } catch (error: any) {
-    console.error('Command center error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Officer feed error:', error);
+    res.status(500).json({ error: 'Failed to get officer feed', code: 'OFFICER_FEED_ERROR' });
   }
 });
 

@@ -18,12 +18,11 @@ import {
   CreditCard,
   Archive,
   RotateCcw,
-  Scale,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
-import { openUtahCourtsXChange } from '../../utils/xchange';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
@@ -34,6 +33,9 @@ import PersonHistoryPanel from '../../components/PersonHistoryPanel';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
+import WarrantBadge from '../../components/WarrantBadge';
+import AISearchButton from '../../components/AISearchButton';
+import { humanizeGender, humanizeRace, formatPhoneDisplay, formatAddressDisplay, humanizeFlag } from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -83,6 +85,8 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     ssn_last4: row.ssn_last4 ? String(row.ssn_last4) : undefined,
     ssn_full: row.ssn_full ? String(row.ssn_full) : undefined,
     id_image_url: row.id_image_url ? String(row.id_image_url) : undefined,
+    photo_url: row.photo_url ? String(row.photo_url) : undefined,
+    photo: row.photo ? String(row.photo) : undefined,
     id_type: row.id_type ? String(row.id_type) : undefined,
     id_number: row.id_number ? String(row.id_number) : undefined,
     id_state: row.id_state ? String(row.id_state) : undefined,
@@ -135,14 +139,25 @@ const FLAG_COLORS: Record<string, string> = {
 
 // ── Helpers ──────────────────────────────────────
 
+// Name-hash avatar colors for initials circles
+const AVATAR_COLORS = [
+  '#dc2626', '#d97706', '#059669', '#888888', '#7c3aed',
+  '#db2777', '#22c55e', '#65a30d', '#ea580c', '#888888',
+];
+function getAvatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
   const Icon = icon;
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-xs group">
       {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
-      <span className="text-rmpg-200">{value}</span>
+      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
+      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
 }
@@ -255,9 +270,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     if (!id) { lastFetchedPersonId.current = null; return; }
     if (lastFetchedPersonId.current === id) return;
     lastFetchedPersonId.current = id;
+    let cancelled = false;
     apiFetch<Record<string, unknown>>(`/records/persons/${id}`)
-      .then(full => setSelectedPerson(mapDbPerson(full as Record<string, unknown>)))
+      .then(full => { if (!cancelled) setSelectedPerson(mapDbPerson(full as Record<string, unknown>)); })
       .catch(() => { /* keep list-level data as fallback */ });
+    return () => { cancelled = true; };
   }, [selectedPerson?.id]);
 
   // Clear selection if the person was removed from the list
@@ -271,7 +288,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
   useEffect(() => {
     if (!selectedPerson) { setPersonAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedPerson.flags.map(f => f.toLowerCase());
+    const flagsLower = selectedPerson.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
     if (flagsLower.some(f => f.includes('known_offender') || f.includes('known offender') || f.includes('trespass'))) {
       alerts.push({ type: 'flag', priority: 'high', title: 'FLAG ALERT', description: 'Known offender / trespass warning on file' });
     }
@@ -373,7 +390,10 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     return (
       `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
       p.address?.toLowerCase().includes(q) ||
-      p.flags.some((f) => f.toLowerCase().includes(q))
+      p.dl_number?.toLowerCase().includes(q) ||
+      p.ssn_last4?.includes(q) ||
+      p.phone?.includes(q) ||
+      p.flags.some((f) => (typeof f === 'object' ? f.type : f).toLowerCase().includes(q))
     );
   });
 
@@ -393,6 +413,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 // ════════════════════════════════════════════════════
 
 export function PersonsTabList({ state }: { state: PersonsTabState }) {
+  const { user } = useAuth();
   const {
     filteredPersons, selectedPerson, setSelectedPerson, setSSNRevealed,
     searchQuery, setSearchQuery, showArchived,
@@ -403,48 +424,82 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
-      <div className="p-3 border-b border-rmpg-600">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
-          <input
-            type="text"
-            className="input-dark pl-9 w-full text-[11px]"
-            placeholder="Search persons by name, address, flags..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+      <div className="p-3 border-b border-rmpg-600" role="search">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
+            <input
+              type="text"
+              className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
+              placeholder="Search by name, address, DL#, phone, flags..." aria-label="Search by name, address, DL#, phone, flags..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <AISearchButton
+            query={searchQuery}
+            searchType="persons"
+            onFiltersExtracted={(filters) => {
+              // Build a combined search string from AI-extracted filters
+              const parts: string[] = [];
+              if (filters.name) parts.push(filters.name);
+              if (filters.address) parts.push(filters.address);
+              if (filters.race) parts.push(filters.race);
+              if (filters.gender) parts.push(filters.gender);
+              if (filters.hair) parts.push(filters.hair);
+              if (filters.eyes) parts.push(filters.eyes);
+              if (parts.length > 0) setSearchQuery(parts.join(' '));
+            }}
           />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
-              <X className="w-3 h-3" />
-            </button>
-          )}
         </div>
       </div>
 
       {/* Person List */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Person records">
         {filteredPersons.length === 0 && (
-          <div className="text-center py-12">
-            <UserCircle className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+          <div className="text-center py-16">
+            <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery ? 'Try broadening your search terms.' : 'Click "New Person" to create a record.'}
+            </p>
           </div>
         )}
-        {filteredPersons.map((person) => (
+        {filteredPersons.map((person, idx) => (
           <div
             key={person.id}
+            role="listitem"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
             className={`
-              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedPerson?.id === person.id
                 ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+                : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
               }
             `}
+            aria-selected={selectedPerson?.id === person.id}
           >
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">
-                {person.first_name[0]}{person.last_name[0]}
-              </div>
+              {person.id_image_url ? (
+                <img src={(person as any).photo || person.photo_url || person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+              ) : (person as any).photo || person.photo_url ? (
+                <img src={(person as any).photo || person.photo_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+              ) : (
+                <div
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white select-none"
+                  style={{ background: getAvatarColor(`${person.first_name}${person.last_name}`), border: '2px solid rgba(255,255,255,0.15)' }}
+                  aria-hidden="true"
+                >
+                  {(person.first_name || '')[0]?.toUpperCase()}{(person.last_name || '')[0]?.toUpperCase()}
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white truncate">
@@ -460,40 +515,44 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   {person.watchlist_match && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">OFAC</span>
                   )}
+                  <WarrantBadge flags={person.flags} size="sm" />
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {person.date_of_birth && <span>DOB: {person.date_of_birth}</span>}
-                  {person.gender && <span>{person.gender}</span>}
-                  {person.race && <span>{person.race}</span>}
+                  {person.date_of_birth && <span>DOB: {person.date_of_birth}{(() => { const b = new Date(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+                  {person.gender && <span>{humanizeGender(person.gender)}</span>}
+                  {person.race && <span>{humanizeRace(person.race)}</span>}
                   {person.phone && (
                     <span className="flex items-center gap-0.5">
-                      <Phone className="w-2.5 h-2.5" />{person.phone}
+                      <Phone className="w-2.5 h-2.5" />{formatPhoneDisplay(person.phone)}
                     </span>
                   )}
                 </div>
                 {(person.address || person.city) && (
                   <div className="flex items-center gap-1 mt-0.5 text-[9px] text-rmpg-500 truncate">
                     <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
-                    {[person.address, person.city, person.state].filter(Boolean).join(', ')}
+                    {[formatAddressDisplay(person.address), formatAddressDisplay(person.city), person.state?.toUpperCase(), person.zip].filter(Boolean).join(', ')}
                   </div>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
                 {person.flags.length > 0 && (
                   <div className="flex gap-1">
-                    {person.flags.slice(0, 2).map((flag) => (
-                      <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                        {flag}
-                      </span>
-                    ))}
+                    {person.flags.slice(0, 2).map((flag, i) => {
+                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                      return (
+                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`} title={humanizeFlag(label)}>
+                          {label}
+                        </span>
+                      );
+                    })}
                     {person.flags.length > 2 && (
                       <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
                     )}
                   </div>
                 )}
                 <div className="flex items-center gap-1">
-                  {!showArchived && (
-                    <button
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
                       title="Edit"
@@ -501,15 +560,15 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                       <Pencil className="w-3 h-3" />
                     </button>
                   )}
-                  <button
+                  <button type="button"
                     onClick={(e) => { e.stopPropagation(); openRecordWindow('person', person.id); }}
                     className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
                     title="Open in Window"
                   >
                     <ExternalLink className="w-3 h-3" />
                   </button>
-                  {!showArchived && (
-                    <button
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'person', id: person.id, label: `${person.first_name} ${person.last_name}` }); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
                       title="Delete"
@@ -517,8 +576,8 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                       <Trash2 className="w-3 h-3" />
                     </button>
                   )}
-                  {!showArchived && (
-                    <button
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); handleArchive('persons', person.id); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"
                       title="Archive"
@@ -527,7 +586,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                     </button>
                   )}
                   {showArchived && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); handleUnarchive('persons', person.id); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors"
                       title="Unarchive"
@@ -575,11 +634,14 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* Special Flags */}
         {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None') || warrantCount > 0) && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {selectedPerson.flags.map((flag) => (
-              <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                {flag}
-              </span>
-            ))}
+            {selectedPerson.flags.map((flag, i) => {
+              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+              return (
+                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`} title={humanizeFlag(label)}>
+                  {label}
+                </span>
+              );
+            })}
             {selectedPerson.watchlist_match && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">⚠ OFAC WATCHLIST MATCH</span>}
             {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
@@ -594,16 +656,9 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         )}
         {/* Compact person ID line */}
         <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-          {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}</span>}
-          {selectedPerson.gender && <span>{selectedPerson.gender}</span>}
-          {selectedPerson.race && <span>{selectedPerson.race}</span>}
-          <button
-            onClick={() => openUtahCourtsXChange({ lastName: selectedPerson.last_name, firstName: selectedPerson.first_name })}
-            className="ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold text-rmpg-400 hover:text-brand-400 hover:bg-rmpg-700/50 transition-colors border border-transparent hover:border-rmpg-600"
-            title="Search Utah Courts XChange"
-          >
-            <Scale className="w-3 h-3" /> Utah Courts
-          </button>
+          {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}{(() => { const b = new Date(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+          {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
+          {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
         </div>
       </div>
 
@@ -640,10 +695,10 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Contact & Address ────────────────────── */}
         <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {renderInfoRow('Phone', selectedPerson.phone, Phone)}
-            {renderInfoRow('Phone 2', selectedPerson.phone_secondary, Phone)}
+            {renderInfoRow('Phone', selectedPerson.phone ? formatPhoneDisplay(selectedPerson.phone) : undefined, Phone)}
+            {renderInfoRow('Phone 2', selectedPerson.phone_secondary ? formatPhoneDisplay(selectedPerson.phone_secondary) : undefined, Phone)}
             {renderInfoRow('Email', selectedPerson.email, Mail)}
-            {renderInfoRow('Address', [selectedPerson.address, selectedPerson.city, selectedPerson.state, selectedPerson.zip].filter(Boolean).join(', '), MapPin)}
+            {renderInfoRow('Address', [formatAddressDisplay(selectedPerson.address), formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', '), MapPin)}
             {renderInfoRow('Employer', selectedPerson.employer, Briefcase)}
             {renderInfoRow('Occupation', selectedPerson.occupation)}
             {renderInfoRow('Social Media', selectedPerson.social_media)}
@@ -662,7 +717,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               {selectedPerson.id_image_url ? (
                 <div className="flex-shrink-0">
                   <div className="w-24 h-32 border border-rmpg-500 bg-rmpg-900 overflow-hidden cursor-pointer group relative"
-                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank')}
+                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank', 'noopener,noreferrer')}
                     title="Click to enlarge"
                   >
                     <img src={selectedPerson.id_image_url} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -671,7 +726,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     </div>
                   </div>
                   {selectedPerson.id_type && (
-                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-blue-900/40 text-blue-400 border border-blue-700/40 text-center w-full">
+                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/40 text-center w-full">
                       {selectedPerson.id_type.replace(/_/g, ' ')}
                     </span>
                   )}
@@ -713,12 +768,12 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                         <span className="text-xs text-rmpg-200 font-mono tracking-wider">
                           {ssnRevealed ? selectedPerson.ssn_full : '***-**-' + (selectedPerson.ssn_last4 || selectedPerson.ssn_full.replace(/\D/g, '').slice(-4))}
                         </span>
-                        <button
+                        <button type="button"
                           onClick={() => setSSNRevealed(!ssnRevealed)}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
                           style={ssnRevealed
                             ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
-                            : { color: '#9ca3af', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
+                            : { color: '#999999', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
                           }
                           title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
                         >
@@ -814,7 +869,12 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
 export default function PersonsTab(props: PersonsTabProps) {
   const state = usePersonsTab(props);
+
+  // Set document title
+  useEffect(() => { document.title = 'Records - Persons \u2014 RMPG Flex'; }, []);
+
   if (props.loadingPersons) return null;
+
   return (
     <>
       <div className={`${state.selectedPerson ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

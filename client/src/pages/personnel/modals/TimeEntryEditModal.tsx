@@ -8,18 +8,7 @@ export interface TimeEntryEditData {
   id: string;
   clock_in: string;
   clock_out: string;
-  reason: string;
-  notes: string;
 }
-
-const EDIT_REASONS = [
-  'Forgot to clock out',
-  'Incorrect time recorded',
-  'Schedule change',
-  'System error',
-  'Supervisor correction',
-  'Other',
-];
 
 interface Props {
   isOpen: boolean;
@@ -44,10 +33,7 @@ export default function TimeEntryEditModal({
 }: Props) {
   const [clockIn, setClockIn] = useState('');
   const [clockOut, setClockOut] = useState('');
-  const [reason, setReason] = useState('');
-  const [customReason, setCustomReason] = useState('');
-  const [notes, setNotes] = useState('');
-  const form = useMemo(() => ({ clockIn, clockOut, reason, notes }), [clockIn, clockOut, reason, notes]);
+  const form = useMemo(() => ({ clockIn, clockOut }), [clockIn, clockOut]);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
@@ -56,17 +42,11 @@ export default function TimeEntryEditModal({
       const initialOut = toLocalInput(entry.clock_out);
       setClockIn(initialIn);
       setClockOut(initialOut);
-      setReason('');
-      setCustomReason('');
-      setNotes('');
-      snapshot({ clockIn: initialIn, clockOut: initialOut, reason: '', notes: '' });
+      snapshot({ clockIn: initialIn, clockOut: initialOut });
     } else if (isOpen) {
       setClockIn('');
       setClockOut('');
-      setReason('');
-      setCustomReason('');
-      setNotes('');
-      snapshot({ clockIn: '', clockOut: '', reason: '', notes: '' });
+      snapshot({ clockIn: '', clockOut: '' });
     }
   }, [isOpen, entry]);
 
@@ -80,22 +60,17 @@ export default function TimeEntryEditModal({
     return hrs >= 0 ? hrs : null;
   }, [clockIn, clockOut]);
 
-  const reasonValid = reason !== '' && (reason !== 'Other' || customReason.trim() !== '');
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!entry || !reasonValid) return;
-    const finalReason = reason === 'Other' ? customReason : reason;
+    if (!entry) return;
     onSubmit({
       id: entry.id,
       clock_in: clockIn,
       clock_out: clockOut,
-      reason: finalReason,
-      notes,
     });
   };
 
-  const handleClose = () => { setClockIn(''); setClockOut(''); setReason(''); setCustomReason(''); setNotes(''); onClose(); };
+  const handleClose = () => { setClockIn(''); setClockOut(''); onClose(); };
 
   return (
     <FormModal
@@ -132,7 +107,7 @@ export default function TimeEntryEditModal({
             required
             value={clockIn}
             onChange={e => setClockIn(e.target.value)}
-            className="input-dark"
+            className="input-dark min-h-[36px]"
           />
         </div>
         <div>
@@ -141,38 +116,11 @@ export default function TimeEntryEditModal({
             type="datetime-local"
             value={clockOut}
             onChange={e => setClockOut(e.target.value)}
-            className="input-dark"
+            className="input-dark min-h-[36px]"
           />
           {!clockOut && <p className="text-[9px] text-amber-400 mt-1">Leave blank if still active</p>}
         </div>
       </div>
-
-      {/* Before/After Preview */}
-      {entry && (clockIn !== toLocalInput(entry.clock_in) || clockOut !== toLocalInput(entry.clock_out)) && (
-        <div className="panel-beveled p-3 border-l-2 border-l-amber-500">
-          <p className="field-label mb-1.5">Changes Preview</p>
-          <div className="grid grid-cols-2 gap-3 text-[10px]">
-            <div>
-              <p className="text-rmpg-500 uppercase text-[8px] font-bold">Before</p>
-              <p className="text-rmpg-400 font-mono">In: {toLocalInput(entry.clock_in).replace('T', ' ')}</p>
-              <p className="text-rmpg-400 font-mono">Out: {entry.clock_out ? toLocalInput(entry.clock_out).replace('T', ' ') : '—'}</p>
-            </div>
-            <div>
-              <p className="text-green-500 uppercase text-[8px] font-bold">After</p>
-              <p className="text-green-400 font-mono">In: {clockIn.replace('T', ' ')}</p>
-              <p className="text-green-400 font-mono">Out: {clockOut ? clockOut.replace('T', ' ') : '—'}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Break minutes (read-only) */}
-      {entry && entry.break_minutes > 0 && (
-        <div className="flex items-center justify-between text-[10px] text-rmpg-400 px-3">
-          <span>Break Time</span>
-          <span className="font-mono text-amber-400">{entry.break_minutes} min</span>
-        </div>
-      )}
 
       {/* Live hours preview */}
       <div className="panel-beveled p-3 text-center border-t-2 border-t-brand-500">
@@ -184,32 +132,6 @@ export default function TimeEntryEditModal({
           <p className="text-[9px] text-amber-400 mt-1">Warning: Entry exceeds 24 hours</p>
         )}
       </div>
-
-      {/* Reason & Notes */}
-      <div className="panel-inset p-3 space-y-3">
-        <div>
-          <label className="field-label">Reason for Edit <span className="text-red-400">*</span></label>
-          <select className="select-dark w-full" value={reason} onChange={e => setReason(e.target.value)}>
-            <option value="">— Select reason —</option>
-            {EDIT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        {reason === 'Other' && (
-          <div>
-            <label className="field-label">Specify Reason <span className="text-red-400">*</span></label>
-            <input className="input-dark w-full" placeholder="Enter reason..." value={customReason} onChange={e => setCustomReason(e.target.value)} />
-          </div>
-        )}
-        <div>
-          <label className="field-label">Notes</label>
-          <textarea className="textarea-dark w-full" rows={2} placeholder="Additional notes (optional)..." value={notes} onChange={e => setNotes(e.target.value)} />
-        </div>
-      </div>
-
-      {/* Validation hint */}
-      {!reasonValid && (
-        <p className="text-[9px] text-red-400 px-3">A reason is required to submit changes.</p>
-      )}
     </FormModal>
   );
 }

@@ -34,7 +34,7 @@ async function getAppVersion(): Promise<string> {
     if (cap?.Plugins?.App?.getInfo) {
       const info = await cap.Plugins.App.getInfo();
       if (info.version && info.version !== '0.0.0') {
-        localStorage.setItem('rmpg_apk_version', info.version);
+        try { localStorage.setItem('rmpg_apk_version', info.version); } catch { /* quota */ }
         return info.version;
       }
     }
@@ -86,7 +86,7 @@ export default function AndroidUpdateChecker() {
       } else {
         // Up to date — cache version and clear stale info
         if (data.currentVersion && data.currentVersion !== '0.0.0') {
-          localStorage.setItem('rmpg_apk_version', data.currentVersion);
+          try { localStorage.setItem('rmpg_apk_version', data.currentVersion); } catch { /* quota */ }
         }
         setUpdateInfo(null);
         setDismissed(false); // allow future prompts
@@ -149,14 +149,14 @@ export default function AndroidUpdateChecker() {
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.85)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}
     >
       <div
         className="mx-4 w-full max-w-sm"
         style={{
-          background: 'linear-gradient(180deg, #1a2636 0%, #0d1520 100%)',
-          border: '1px solid #1e3048',
-          borderTop: '3px solid #1a5a9e',
+          background: 'linear-gradient(180deg, #141414 0%, #050505 100%)',
+          border: '1px solid #222222',
+          borderTop: '3px solid #888888',
           boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
         }}
       >
@@ -168,7 +168,7 @@ export default function AndroidUpdateChecker() {
               Update Available
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={() => setDismissed(true)}
             className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors"
             aria-label="Dismiss"
@@ -208,17 +208,17 @@ export default function AndroidUpdateChecker() {
           )}
 
           {/* Download button */}
-          <button
+          <button type="button"
             onClick={handleDownload}
             disabled={downloading}
             className="w-full flex items-center justify-center gap-2 py-3 px-4 font-bold text-sm uppercase tracking-wider transition-all"
             style={{
               background: downloading
-                ? 'linear-gradient(180deg, #333 0%, #222 100%)'
-                : 'linear-gradient(180deg, #1a5a9e 0%, #144a7e 100%)',
-              color: downloading ? '#888' : '#fff',
+                ? 'linear-gradient(180deg, #222222 0%, #141414 100%)'
+                : 'linear-gradient(180deg, #888888 0%, #333333 100%)',
+              color: downloading ? '#888888' : '#fff',
               border: '1px solid',
-              borderColor: downloading ? '#444' : '#d41515',
+              borderColor: downloading ? '#2e2e2e' : '#d41515',
             }}
           >
             {downloading ? (
@@ -235,7 +235,7 @@ export default function AndroidUpdateChecker() {
           </button>
 
           {/* Dismiss */}
-          <button
+          <button type="button"
             onClick={() => setDismissed(true)}
             className="w-full text-center text-xs text-rmpg-400 hover:text-rmpg-200 py-1 transition-colors"
           >
