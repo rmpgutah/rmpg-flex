@@ -8,14 +8,33 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Prevent clickjacking (SAMEORIGIN allows internal blob: PDF viewer iframes)
   res.set('X-Frame-Options', 'SAMEORIGIN');
 
-  // XSS protection (legacy browsers)
-  res.set('X-XSS-Protection', '1; mode=block');
+  // Disable legacy XSS filter — it can introduce vulnerabilities; CSP is the proper defense
+  res.set('X-XSS-Protection', '0');
 
   // Referrer policy — stricter for API routes to prevent leaking internal paths
   res.set('Referrer-Policy', req.path.startsWith('/api') ? 'no-referrer' : 'strict-origin-when-cross-origin');
 
-  // Permissions policy (restrict browser features)
-  res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
+  // Permissions policy — restrict browser features; lock down peripherals for security
+  res.set('Permissions-Policy', [
+    'camera=(self)',
+    'microphone=(self)',
+    'geolocation=(self)',
+    'payment=()',
+    'usb=()',
+    'bluetooth=()',
+    'serial=()',
+    'hid=()',
+    'fullscreen=(self)',
+    'display-capture=()',
+    'accelerometer=()',
+    'gyroscope=()',
+    'magnetometer=()',
+    'autoplay=(self)',
+  ].join(', '));
+
+  // Cross-origin isolation headers
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
 
   // Strict Transport Security — ONLY when SSL is actually enabled
   // Sending HSTS without HTTPS causes browsers to refuse plain HTTP connections

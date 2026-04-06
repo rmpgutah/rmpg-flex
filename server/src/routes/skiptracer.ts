@@ -279,7 +279,8 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     }
   } catch (err: any) {
-    res.json({ success: false, error: err.message });
+    console.error('Skip tracer connection test error:', err.message);
+    res.json({ success: false, error: 'Connection test failed' });
   }
 });
 

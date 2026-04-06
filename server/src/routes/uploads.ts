@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole, type JwtPayload } from '../middleware/auth';
-import { uploadRateLimit } from '../middleware/rateLimiter';
 import config from '../config';
 
 /** Sanitize a filename for safe use in Content-Disposition headers.
@@ -146,7 +145,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
     if (decoded.type === 'refresh') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
@@ -176,7 +175,7 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
       LEFT JOIN users u ON a.uploaded_by = u.id
       WHERE a.entity_type = ? AND a.entity_id = ?
       ORDER BY a.created_at DESC
-    `).all(String(req.params.type), parseInt(String(req.params.id, 10), 10));
+    `).all(String(req.params.type), parseInt(String(req.params.id), 10));
 
     // Enrich each attachment with an HMAC-signed access token (24h TTL)
     const enriched = (attachments as any[]).map((att) => {
@@ -186,7 +185,7 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
 
     res.json(enriched);
   } catch (error: any) {
-    console.error('List attachments error:', error?.message || 'Unknown error');
+    console.error('List attachments error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -207,7 +206,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
     const { sig, exp } = signFileAccess(req.params.fileId as string);
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
-    console.error('Sign file error:', error?.message || 'Unknown error');
+    console.error('Sign file error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -242,7 +241,7 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
 
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Download error:', error?.message || 'Unknown error');
+    console.error('Download error:', error);
     res.status(500).json({ error: 'Download failed' });
   }
 });
@@ -269,7 +268,7 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Download error:', error?.message || 'Unknown error');
+    console.error('Download error:', error);
     res.status(500).json({ error: 'Download failed' });
   }
 });
@@ -305,7 +304,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
 
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Thumbnail error:', error?.message || 'Unknown error');
+    console.error('Thumbnail error:', error);
     res.status(500).json({ error: 'Thumbnail failed' });
   }
 });
@@ -314,7 +313,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
 router.use(authenticateToken);
 
 // ─── POST /api/uploads ─── Upload one or more files ───
-router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res: Response) => {
+router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
@@ -323,27 +322,10 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
     }
 
     const { entity_type, entity_id } = req.body;
-
-    // Validate entity_type against allowed values
-    const ALLOWED_ENTITY_TYPES = [
-      'call', 'incident', 'case', 'citation', 'arrest', 'warrant', 'report',
-      'vehicle', 'property', 'evidence', 'person', 'user', 'invoice', 'training',
-      'fleet', 'bodycam', 'attachment', null,
-    ];
-    if (entity_type && !ALLOWED_ENTITY_TYPES.includes(entity_type)) {
-      res.status(400).json({ error: 'Invalid entity_type' });
-      return;
-    }
-
     const db = getDb();
     const results: any[] = [];
 
     for (const file of files) {
-      // Validate filename length to prevent storage issues
-      const safeName = file.originalname.length > 255
-        ? file.originalname.substring(0, 255)
-        : file.originalname;
-
       // Store path relative to uploads dir
       const relativePath = path.relative(UPLOAD_DIR, file.path);
 
@@ -354,7 +336,7 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         crypto.randomUUID(),
-        safeName,
+        file.originalname,
         file.filename,
         relativePath,
         file.mimetype,
@@ -382,9 +364,9 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
 
     res.status(201).json(results);
   } catch (error: any) {
-    console.error('Upload error:', error?.message || 'Unknown error');
-    if (error.message?.includes('not allowed')) {
-      res.status(400).json({ error: 'File type not allowed' });
+    console.error('Upload error:', error);
+    if (error.message?.includes('not allowed') || error.message?.includes('too large')) {
+      res.status(400).json({ error: 'File type not allowed or file too large' });
     } else {
       res.status(500).json({ error: 'Upload failed' });
     }
@@ -399,17 +381,6 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
 
     if (!entity_type || !entity_id) {
       res.status(400).json({ error: 'entity_type and entity_id are required' });
-      return;
-    }
-
-    // Validate entity_type against allowed values
-    const ALLOWED_ENTITY_TYPES = [
-      'call', 'incident', 'case', 'citation', 'arrest', 'warrant', 'report',
-      'vehicle', 'property', 'evidence', 'person', 'user', 'invoice', 'training',
-      'fleet', 'bodycam', 'attachment',
-    ];
-    if (!ALLOWED_ENTITY_TYPES.includes(entity_type)) {
-      res.status(400).json({ error: 'Invalid entity_type' });
       return;
     }
 
@@ -437,7 +408,7 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
 
     res.json(attachment);
   } catch (error: any) {
-    console.error('Link attachment error:', error?.message || 'Unknown error');
+    console.error('Link attachment error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -483,7 +454,7 @@ router.delete('/:fileId', (req: Request, res: Response) => {
 
     res.json({ message: 'File deleted' });
   } catch (error: any) {
-    console.error('Delete attachment error:', error?.message || 'Unknown error');
+    console.error('Delete attachment error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
