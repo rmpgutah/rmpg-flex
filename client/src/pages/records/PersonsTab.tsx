@@ -270,9 +270,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     if (!id) { lastFetchedPersonId.current = null; return; }
     if (lastFetchedPersonId.current === id) return;
     lastFetchedPersonId.current = id;
+    let cancelled = false;
     apiFetch<Record<string, unknown>>(`/records/persons/${id}`)
-      .then(full => setSelectedPerson(mapDbPerson(full as Record<string, unknown>)))
+      .then(full => { if (!cancelled) setSelectedPerson(mapDbPerson(full as Record<string, unknown>)); })
       .catch(() => { /* keep list-level data as fallback */ });
+    return () => { cancelled = true; };
   }, [selectedPerson?.id]);
 
   // Clear selection if the person was removed from the list

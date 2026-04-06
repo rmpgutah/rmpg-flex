@@ -255,7 +255,7 @@ export default function DispatchPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { addToast } = useToast();
-  const { subscribe } = useWebSocket();
+  const { subscribe, isConnected } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, loading: districtLoading, error: districtError, retry: retryLoadDistricts } = useDistrictOptions();
@@ -935,6 +935,17 @@ export default function DispatchPage() {
 
     return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
+
+  // Refetch all data after WebSocket reconnection to catch events missed during disconnect
+  const wsConnectedPrevRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const prev = wsConnectedPrevRef.current;
+    wsConnectedPrevRef.current = isConnected;
+    // Only refetch on reconnection (prev was false, now true) — skip initial connect
+    if (prev === false && isConnected) {
+      fetchData({ silent: true });
+    }
+  }, [isConnected, fetchData]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
   useEffect(() => {
@@ -2120,12 +2131,14 @@ export default function DispatchPage() {
 
   // Feature 6: Quick note add handler (from CallCard)
   const handleQuickNote = useCallback(async (callId: string, noteText: string) => {
-    if (!noteText.trim()) return;
+    if (!noteText.trim() || noteText.trim().length < 2) return;
+    if (noteText.length > 2000) return;
     const call = calls.find(c => c.id === callId);
     if (!call) return;
     try {
       const existingNotes = Array.isArray(call.notes) ? call.notes : [];
-      const note = { id: `qn-${Date.now()}`, author: 'Dispatch', text: noteText, timestamp: new Date().toISOString() };
+      const authorName = user?.full_name || user?.username || 'Dispatch';
+      const note = { id: `qn-${Date.now()}`, author: authorName, text: noteText, timestamp: new Date().toISOString() };
       const allNotes = [...existingNotes, note];
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT', body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
@@ -2134,7 +2147,7 @@ export default function DispatchPage() {
       setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
       if (selectedCall?.id === callId) setSelectedCall(updatedCall);
     } catch { addToast('Failed to add note', 'error'); }
-  }, [calls, selectedCall, addToast]);
+  }, [calls, selectedCall, addToast, user]);
 
   // Feature 9: Call type statistics
   const callTypeStats = useMemo(() => {
