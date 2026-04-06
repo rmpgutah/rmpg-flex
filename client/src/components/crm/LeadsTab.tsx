@@ -126,10 +126,20 @@ function scoreColor(score: number): string {
   return 'bg-red-500';
 }
 
+function scoreBadgeClasses(score: number): string {
+  if (score >= 70) return 'bg-green-900/40 text-green-400 border border-green-700/50';
+  if (score >= 40) return 'bg-amber-900/40 text-amber-400 border border-amber-700/50';
+  return 'bg-red-900/40 text-red-400 border border-red-700/50';
+}
+
 // ════════════════════════════════════════════════════════
 // LEADS TAB
 // ════════════════════════════════════════════════════════
-export default function LeadsTab() {
+interface LeadsTabProps {
+  onNavigateToProposals?: (prefill: { title?: string; scope_of_work?: string; total_value?: string }) => void;
+}
+
+export default function LeadsTab({ onNavigateToProposals }: LeadsTabProps = {}) {
   const { addToast } = useToast();
 
   // ── Data state ──────────────────────────────────────
@@ -217,6 +227,20 @@ export default function LeadsTab() {
 
   // ── Pipeline summary totals ─────────────────────────
   const pipelineTotal = useMemo(() => pipelineSummary.reduce((s, p) => s + p.count, 0), [pipelineSummary]);
+
+  // ── Pipeline value total (non-lost/non-dismissed) ───
+  const activePipelineValue = useMemo(() => {
+    return leads
+      .filter(l => l.pipeline_stage !== 'lost' && l.pipeline_stage !== 'dismissed')
+      .reduce((sum, l) => sum + (l.estimated_value || 0), 0);
+  }, [leads]);
+
+  // ── Stale lead helper (14+ days since updated_at) ───
+  const isStale = (lead: CrmLead): boolean => {
+    if (!lead.updated_at) return false;
+    const daysSince = (Date.now() - new Date(lead.updated_at).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSince >= 14 && lead.pipeline_stage !== 'won' && lead.pipeline_stage !== 'lost' && lead.pipeline_stage !== 'dismissed';
+  };
 
   // ── Actions ─────────────────────────────────────────
   const handleStageChange = async (leadId: number | string, stage: PipelineStage) => {
@@ -473,6 +497,21 @@ export default function LeadsTab() {
         </div>
       )}
 
+      {/* ── Pipeline value info bar ──────────────────── */}
+      {leads.length > 0 && (
+        <div className="flex items-center gap-4 px-3 py-1 bg-[#0a0f1a] border-b border-rmpg-700/60">
+          <span className="text-[10px] text-rmpg-400 font-mono uppercase tracking-wider">
+            Pipeline Value:
+          </span>
+          <span className="text-[10px] font-bold font-mono text-green-400">
+            {formatCurrency(activePipelineValue)}
+          </span>
+          <span className="text-[10px] text-rmpg-500">
+            ({leads.filter(l => l.pipeline_stage !== 'lost' && l.pipeline_stage !== 'dismissed').length} active leads)
+          </span>
+        </div>
+      )}
+
       {/* ── Bulk action bar ──────────────────────────── */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-600/10 border-b border-brand-700/50">
@@ -532,14 +571,18 @@ export default function LeadsTab() {
                       {selectedIds.has(lead.id) ? <CheckSquare className="w-3.5 h-3.5 text-brand-400" /> : <Square className="w-3.5 h-3.5 text-rmpg-500" />}
                     </td>
                     <td className="px-2 py-1.5">
-                      <div className="flex items-center gap-1">
-                        <div className="w-8 h-1.5 bg-rmpg-800 rounded-sm overflow-hidden">
-                          <div className={`h-full ${scoreColor(lead.lead_score)} rounded-sm`} style={{ width: `${lead.lead_score}%` }} />
-                        </div>
-                        <span className="text-[10px] text-rmpg-400 font-mono">{lead.lead_score}</span>
-                      </div>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm font-mono ${scoreBadgeClasses(lead.lead_score)}`}>
+                        {lead.lead_score}
+                      </span>
                     </td>
-                    <td className="px-2 py-1.5 text-xs text-white font-medium truncate max-w-[200px]">{lead.business_name}</td>
+                    <td className="px-2 py-1.5 text-xs text-white font-medium truncate max-w-[200px]">
+                      <span>{lead.business_name}</span>
+                      {isStale(lead) && (
+                        <span className="ml-1.5 text-[9px] font-bold text-amber-400 bg-amber-900/30 border border-amber-700/40 px-1 py-0.5 rounded-sm align-middle">
+                          ⚠ STALE
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${SOURCE_BADGE_CLASSES[lead.source as LeadSource] || 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50'}`}>
                         {SOURCE_LABELS[lead.source as LeadSource] || lead.source}
@@ -754,12 +797,19 @@ export default function LeadsTab() {
               <div className="flex flex-col gap-1.5 pt-2 border-t border-rmpg-700">
                 <button
                   onClick={() => {
-                    // Navigate to proposals creation (parent CRM page can handle this)
-                    addToast('Open Proposals tab to create a proposal for this lead', 'info');
+                    if (onNavigateToProposals) {
+                      onNavigateToProposals({
+                        title: `Proposal — ${selectedLead.business_name}`,
+                        scope_of_work: selectedLead.notes || '',
+                        total_value: selectedLead.estimated_value?.toString() || '',
+                      });
+                    } else {
+                      addToast('Open Proposals tab to create a proposal for this lead', 'info');
+                    }
                   }}
                   className="bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 justify-center"
                 >
-                  <FileText className="w-3.5 h-3.5" /> Create Proposal
+                  <ArrowRight className="w-3.5 h-3.5" /> → PROPOSAL
                 </button>
                 {selectedLead.pipeline_stage === 'won' && !selectedLead.client_id && (
                   <button

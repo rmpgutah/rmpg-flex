@@ -15,6 +15,7 @@ router.use(authenticateToken);
 
 // Default values — used when a user has no row in user_preferences yet
 const DEFAULTS = {
+  // ── Notifications ────────────────────────────────────────────
   notify_dispatch_email: 1,
   notify_dispatch_inapp: 1,
   notify_bolo_email: 1,
@@ -27,15 +28,41 @@ const DEFAULTS = {
   notify_credential_inapp: 1,
   notify_pso_email: 1,
   notify_pso_inapp: 1,
-  quiet_hours_start: null,
-  quiet_hours_end: null,
+  quiet_hours_start: null as null | string,
+  quiet_hours_end: null as null | string,
+  // ── UI / Theme ───────────────────────────────────────────────
   font_scale: 1.0,
   compact_mode: 0,
+  date_format: 'MM/DD/YYYY',
+  time_format: '12h',
+  // timezone is mandatory America/Denver — not user-configurable
+  default_landing_page: '/',
+  sidebar_collapsed: 0,
+  show_unit_status_bar: 1,
+  show_call_timer: 1,
+  show_bolo_banner: 1,
+  // ── Sounds ───────────────────────────────────────────────────
+  status_sounds_enabled: 1,
+  notification_sounds: 1,
+  dispatch_audio_alerts: 1,
+  // ── Map ──────────────────────────────────────────────────────
   show_map_labels: 1,
   default_map_style: 'dark',
-  dashboard_widgets: null,
+  map_default_zoom: 13,
+  map_traffic_overlay: 0,
+  map_satellite_default: 0,
+  gps_track_display: 'trail',        // 'trail' | 'dot' | 'none'
+  show_weather_widget: 1,
+  // ── Dispatch ─────────────────────────────────────────────────
+  dashboard_widgets: null as null | string,
   dispatch_sort: 'priority',
   dispatch_show_cleared: 0,
+  highlight_own_unit: 1,
+  // ── Patrol ───────────────────────────────────────────────────
+  patrol_log_auto_open: 0,
+  // ── Records / Warrants ───────────────────────────────────────
+  auto_geocode_calls: 1,
+  warrant_auto_attach: 1,
 };
 
 // Allowed fields for update — prevents SQL injection via dynamic column names

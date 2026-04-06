@@ -49,11 +49,13 @@ import DashCamerasPage from './pages/DashCamerasPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
 import TrainingPage from './pages/TrainingPage';
 import ForensicsPage from './pages/ForensicsPage';
+import ForensicLabPage from './pages/ForensicLabPage';
 import SkipTracerPage from './pages/SkipTracerPage';
 import ArrestRecordsPage from './pages/ArrestRecordsPage';
 import EmailPage from './pages/EmailPage';
 import CrmPage from './pages/CrmPage';
 import ServePage from './pages/ServePage';
+import HRPage from './pages/hr/HrPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -200,11 +202,13 @@ function AppRoutes() {
           <Route path="/training" element={<TrainingPage />} />
           <Route path="/training-docs" element={<TrainingDocsPage />} />
           <Route path="/forensics" element={<ForensicsPage />} />
+          <Route path="/forensic-lab" element={<ForensicLabPage />} />
           <Route path="/skip-tracer" element={<SkipTracerPage />} />
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />
           <Route path="/email" element={<EmailPage />} />
           <Route path="/crm" element={<CrmPage />} />
           <Route path="/serve" element={<ServePage />} />
+          <Route path="/hr" element={<HRPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

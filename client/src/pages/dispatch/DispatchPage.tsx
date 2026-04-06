@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Filter,
@@ -253,8 +253,9 @@ export default function DispatchPage() {
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const unitModalTitleId = useId();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { addToast } = useToast();
-  const { subscribe } = useWebSocket();
+  const { subscribe, isConnected } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, loading: districtLoading, error: districtError, retry: retryLoadDistricts } = useDistrictOptions();
@@ -266,7 +267,11 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => {
+    // Read personId from URL params for cross-module navigation
+    const pid = searchParams.get('personId');
+    return pid ? `person:${pid}` : '';
+  });
   const [newNote, setNewNote] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
@@ -930,6 +935,17 @@ export default function DispatchPage() {
 
     return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
+
+  // Refetch all data after WebSocket reconnection to catch events missed during disconnect
+  const wsConnectedPrevRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const prev = wsConnectedPrevRef.current;
+    wsConnectedPrevRef.current = isConnected;
+    // Only refetch on reconnection (prev was false, now true) — skip initial connect
+    if (prev === false && isConnected) {
+      fetchData({ silent: true });
+    }
+  }, [isConnected, fetchData]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
   useEffect(() => {
@@ -2115,12 +2131,14 @@ export default function DispatchPage() {
 
   // Feature 6: Quick note add handler (from CallCard)
   const handleQuickNote = useCallback(async (callId: string, noteText: string) => {
-    if (!noteText.trim()) return;
+    if (!noteText.trim() || noteText.trim().length < 2) return;
+    if (noteText.length > 2000) return;
     const call = calls.find(c => c.id === callId);
     if (!call) return;
     try {
       const existingNotes = Array.isArray(call.notes) ? call.notes : [];
-      const note = { id: `qn-${Date.now()}`, author: 'Dispatch', text: noteText, timestamp: new Date().toISOString() };
+      const authorName = user?.full_name || user?.username || 'Dispatch';
+      const note = { id: `qn-${Date.now()}`, author: authorName, text: noteText, timestamp: new Date().toISOString() };
       const allNotes = [...existingNotes, note];
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT', body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
@@ -2129,7 +2147,7 @@ export default function DispatchPage() {
       setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
       if (selectedCall?.id === callId) setSelectedCall(updatedCall);
     } catch { addToast('Failed to add note', 'error'); }
-  }, [calls, selectedCall, addToast]);
+  }, [calls, selectedCall, addToast, user]);
 
   // Feature 9: Call type statistics
   const callTypeStats = useMemo(() => {

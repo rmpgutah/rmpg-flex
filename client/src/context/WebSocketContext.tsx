@@ -34,6 +34,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
 
+  // Ref so ws.onclose closures always read the CURRENT auth state, not the
+  // stale value captured when `connect` was last created. Without this, logging
+  // out while connected causes the old onclose to see isAuthenticated=true and
+  // schedule a reconnect storm.
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
+
   const connect = useCallback(() => {
     if (!isAuthenticated || !token) return;
 
@@ -173,8 +180,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           setConnectionLost(true);
         }
 
-        // Auto-reconnect with backoff
-        if (isAuthenticated) {
+        // Auto-reconnect with backoff — use ref so logout correctly stops reconnects
+        if (isAuthenticatedRef.current) {
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectDelayRef.current = Math.min(
               reconnectDelayRef.current * 1.5,

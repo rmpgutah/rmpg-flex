@@ -104,6 +104,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         zoomControl: true,
         backgroundColor: '#171717',
         gestureHandling: 'greedy',
+        renderingType: 'RASTER' as any,
       });
       mapInstanceRef.current = map;
       registerMapInstance(map);

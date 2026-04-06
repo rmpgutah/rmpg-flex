@@ -6,6 +6,7 @@
 // service proposals.
 // ============================================================
 
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
@@ -274,7 +275,21 @@ router.put('/proposals/:id', requireRole('admin', 'manager', 'contract_manager')
       LEFT JOIN crm_leads l ON l.id = p.lead_id
       LEFT JOIN clients c ON c.id = p.client_id
       WHERE p.id = ?
-    `).get(id);
+    `).get(id) as any;
+
+    // Save a version snapshot
+    try {
+      const maxVersion = (db.prepare(
+        'SELECT MAX(version_num) as v FROM crm_proposal_versions WHERE proposal_id = ?'
+      ).get(id) as any)?.v || 0;
+      const versionId = crypto.randomUUID();
+      db.prepare(`
+        INSERT INTO crm_proposal_versions (id, proposal_id, version_num, snapshot, edited_by, edited_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(versionId, id, maxVersion + 1, JSON.stringify(proposal), req.user?.username || null, now);
+    } catch (_vErr: any) {
+      // Version snapshot failure is non-fatal
+    }
 
     res.json(proposal);
   } catch (err: any) {
@@ -380,6 +395,82 @@ router.put('/proposals/:id/stage', requireRole('admin', 'manager', 'contract_man
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Send Proposal ───────────────────────────────────────────
+router.post('/proposals/:id/send', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const existing = db.prepare('SELECT * FROM crm_proposals WHERE id = ?').get(id) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Proposal not found' });
+      return;
+    }
+
+    const now = localNow();
+
+    // Merge stage_entered_at JSON with 'sent' timestamp
+    let stageEnteredAt: Record<string, string> = {};
+    try {
+      if (existing.stage_entered_at) {
+        stageEnteredAt = JSON.parse(existing.stage_entered_at);
+      }
+    } catch (_) { /* ignore parse errors */ }
+    stageEnteredAt['sent'] = now;
+
+    db.prepare(`
+      UPDATE crm_proposals SET stage = 'sent', stage_entered_at = ?, sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ?
+    `).run(JSON.stringify(stageEnteredAt), now, now, id);
+
+    // Log activity entry into crm_activity
+    try {
+      db.prepare(`
+        INSERT INTO crm_activity (client_id, activity_type, subject, details, created_by, created_at)
+        VALUES (?, 'proposal_sent', ?, ?, ?, ?)
+      `).run(
+        existing.client_id || null,
+        `Proposal sent: ${existing.proposal_number}`,
+        `Proposal "${existing.title}" (${existing.proposal_number}) marked as sent`,
+        req.user?.username || null,
+        now,
+      );
+    } catch (_aErr: any) { /* activity log failure is non-fatal */ }
+
+    auditLog(req, 'UPDATE', 'crm_proposals', String(id),
+      `Proposal ${existing.proposal_number} sent (stage: ${existing.stage} → sent)`);
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('CRM proposals error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Proposal Version History ─────────────────────────────────
+router.get('/proposals/:id/versions', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const proposal = db.prepare('SELECT id FROM crm_proposals WHERE id = ?').get(id);
+    if (!proposal) {
+      res.status(404).json({ error: 'Proposal not found' });
+      return;
+    }
+
+    const rows = db.prepare(`
+      SELECT * FROM crm_proposal_versions
+      WHERE proposal_id = ?
+      ORDER BY version_num DESC
+    `).all(id);
+
+    res.json(rows);
+  } catch (err: any) {
+    console.error('CRM proposals error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

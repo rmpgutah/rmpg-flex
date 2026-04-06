@@ -322,25 +322,30 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // Broadcast to dispatch channel
     broadcastDispatchUpdate({ action: 'call_created', call });
 
-    // Notify dispatch/supervisors of new call
-    createNotificationForRoles(
-      ['admin', 'manager', 'supervisor', 'dispatcher'],
-      'dispatch', `New Call: ${call.call_number}`,
-      `${call.incident_type} — ${call.location_address || 'No address'}`,
-      'call', call.id, 'normal', 'dispatch.call_created', req.user!.userId,
-    );
-
-    // P1 emergency: extra critical notification to all sworn + dispatch
-    if (call.priority === 'P1') {
-      createNotificationForRoles(
-        ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
-        'dispatch', `🚨 P1 EMERGENCY: ${call.call_number}`,
-        `${call.incident_type} — ${call.location_address || 'No address'}`,
-        'call', call.id, 'critical', 'dispatch.call_priority_p1', req.user!.userId,
-      );
-    }
-
     res.status(201).json(call);
+
+    // Notify after response — non-fatal: a notification failure must never block
+    // the 201 or cause an unhandled rejection in a completed handler.
+    try {
+      createNotificationForRoles(
+        ['admin', 'manager', 'supervisor', 'dispatcher'],
+        'dispatch', `New Call: ${call.call_number}`,
+        `${call.incident_type} — ${call.location_address || 'No address'}`,
+        'call', call.id, 'normal', 'dispatch.call_created', req.user!.userId,
+      );
+
+      // P1 emergency: extra critical notification to all sworn + dispatch
+      if (call.priority === 'P1') {
+        createNotificationForRoles(
+          ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
+          'dispatch', `🚨 P1 EMERGENCY: ${call.call_number}`,
+          `${call.incident_type} — ${call.location_address || 'No address'}`,
+          'call', call.id, 'critical', 'dispatch.call_priority_p1', req.user!.userId,
+        );
+      }
+    } catch (notifErr: any) {
+      console.error('[Call Create] Non-fatal notification error:', notifErr?.message ?? notifErr);
+    }
   } catch (error: any) {
     console.error('Create call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -608,7 +613,19 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     const updates: string[] = [];
     const params: any[] = [];
     const addField = (col: string, val: any) => {
-      if (val !== undefined) { updates.push(`${col} = ?`); params.push(val === '' ? null : val); }
+      if (val === undefined) return;
+      // better-sqlite3 only accepts scalars (string | number | bigint | Buffer | null).
+      // If the frontend ever sends a field as a plain object or array — e.g. notes as
+      // [] instead of "[]", or pso_service_windows as {} instead of "{}" — the driver
+      // throws TypeError: Binding value cannot be an object, blocking all call edits.
+      // Coerce objects/arrays to their JSON string representation here so the bound
+      // value is always a scalar, matching how structured fields are stored in the DB.
+      let coerced: any = val === '' ? null : val;
+      if (coerced !== null && typeof coerced === 'object') {
+        coerced = JSON.stringify(coerced);
+      }
+      updates.push(`${col} = ?`);
+      params.push(coerced);
     };
 
     addField('incident_type', incident_type);
