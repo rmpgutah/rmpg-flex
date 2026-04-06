@@ -5823,8 +5823,7 @@ function seedData(): void {
   addCol('invoices', 'recurrence_interval', 'TEXT');
   addCol('invoices', 'recurrence_anchor', 'TEXT');
 
-  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_proposal_versions (id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, version_num INTEGER NOT NULL, snapshot TEXT NOT NULL, edited_by TEXT, edited_at TEXT)`).run(); } catch {}
-  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_payments (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_at TEXT, method TEXT, reference TEXT, recorded_by TEXT)`).run(); } catch {}
-}
+  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_proposal_versions (id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, version_num INTEGER NOT NULL, snapshot TEXT NOT NULL, edited_by TEXT, edited_at TEXT)`).run(); } catch { /* */ }
+  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_payments (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_at TEXT, method TEXT, reference TEXT, recorded_by TEXT)`).run(); } catch { /* */ }
 
 export default { initDatabase, getDb };
