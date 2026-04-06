@@ -3,6 +3,7 @@ import bcryptjs from 'bcryptjs';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { broadcast } from '../utils/websocket';
+import { checkLoginAnomalies } from '../utils/securityAlerts';
 import jwt from 'jsonwebtoken';
 import {
   authenticateToken,
@@ -96,6 +97,11 @@ function logLoginAttempt(
     INSERT INTO login_attempts (username, ip_address, success, failure_reason, user_agent, device_fingerprint)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(username, ip, success ? 1 : 0, reason || null, userAgent || null, fpHash);
+
+  // Check for brute-force patterns on failed login
+  if (!success) {
+    checkLoginAnomalies(ip, username);
+  }
 }
 
 // ─── Helper: Create session ───────────────────────────
@@ -141,6 +147,7 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
     username: user.username,
     role: user.role,
     fullName: user.full_name,
+    tokenGeneration: user.token_generation ?? 1,
   };
 
   const accessToken = generateAccessToken(payload);
@@ -323,6 +330,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       username: user.username,
       role: user.role,
       fullName: user.full_name,
+      tokenGeneration: user.token_generation ?? 1,
     };
 
     // ── Two-Factor Authentication gate ──────────────────
@@ -482,6 +490,7 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
       role: user.role,
       fullName: user.full_name,
       sessionId: session.session_id,
+      tokenGeneration: user.token_generation ?? 1,
     };
 
     const newAccessToken = generateAccessToken(payload);
@@ -1165,6 +1174,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
       username: user.username,
       role: user.role,
       fullName: user.full_name,
+      tokenGeneration: user.token_generation ?? 1,
     };
 
     if (needsPasswordChange) {
@@ -1600,9 +1610,9 @@ router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Respo
       }
 
       const { deviceFingerprint } = req.body;
-      const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+      const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, tokenGeneration: user.token_generation ?? 1 });
       const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
-      const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
+      const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId, tokenGeneration: user.token_generation ?? 1 });
 
       res.json({
         token: accessToken,
@@ -1844,9 +1854,9 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
       return;
     }
 
-    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, tokenGeneration: user.token_generation ?? 1 });
     const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
-    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
+    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId, tokenGeneration: user.token_generation ?? 1 });
 
     db.prepare(`
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
@@ -1998,9 +2008,9 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
       return;
     }
 
-    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, tokenGeneration: user.token_generation ?? 1 });
     const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
-    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
+    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId, tokenGeneration: user.token_generation ?? 1 });
 
     db.prepare(`
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
@@ -2122,9 +2132,9 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     );
 
     // Issue final tokens
-    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, tokenGeneration: user.token_generation ?? 1 });
     const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
-    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
+    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId, tokenGeneration: user.token_generation ?? 1 });
 
     db.prepare(`
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?

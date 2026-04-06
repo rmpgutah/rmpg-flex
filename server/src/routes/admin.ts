@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { createSecurityNotification, parseDeviceName } from '../utils/deviceFingerprint';
 import { sendNotificationEmail } from '../utils/emailSender';
+import { alertPrivilegeEscalation } from '../utils/securityAlerts';
 
 const router = Router();
 
@@ -1124,10 +1125,16 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
     db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?')
       .run(role, localNow(), userId);
 
+    // Bump token generation to revoke all existing JWTs for this user
+    db.prepare('UPDATE users SET token_generation = token_generation + 1 WHERE id = ?').run(userId);
+
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'role_changed', 'user', ?, ?, ?)
     `).run(req.user!.userId, userId, `Role changed: ${oldRole} → ${role} for ${user.username}`, ip);
+
+    // Security alert for privilege escalation
+    alertPrivilegeEscalation(userId, user.username, oldRole, role, req.user!.username || 'admin', ip);
 
     createSecurityNotification(
       userId,
@@ -1197,6 +1204,62 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
     res.json({ message: `${user.full_name}'s status changed from ${oldStatus} to ${status}.`, oldStatus, newStatus: status });
   } catch (error: any) {
     console.error('Change status error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// GET /api/admin/security-alerts — List security alerts
+// ═══════════════════════════════════════════════════════
+router.get('/security-alerts', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const severity = req.query.severity as string | undefined;
+    const acknowledged = req.query.acknowledged as string | undefined;
+    const limit = Math.min(200, parseInt(req.query.limit as string) || 50);
+
+    let query = 'SELECT * FROM security_alerts WHERE 1=1';
+    const params: any[] = [];
+
+    if (severity) {
+      query += ' AND severity = ?';
+      params.push(severity);
+    }
+    if (acknowledged === 'true') {
+      query += ' AND acknowledged_at IS NOT NULL';
+    } else if (acknowledged === 'false') {
+      query += ' AND acknowledged_at IS NULL';
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ?';
+    params.push(limit);
+
+    const alerts = db.prepare(query).all(...params);
+    res.json(alerts);
+  } catch (error: any) {
+    console.error('Security alerts list error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// PUT /api/admin/security-alerts/:id/acknowledge — Acknowledge alert
+// ═══════════════════════════════════════════════════════
+router.put('/security-alerts/:id/acknowledge', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alertId = parseInt(req.params.id, 10);
+    if (isNaN(alertId)) { res.status(400).json({ error: 'Invalid alert ID' }); return; }
+
+    const alert = db.prepare('SELECT id FROM security_alerts WHERE id = ?').get(alertId);
+    if (!alert) { res.status(404).json({ error: 'Alert not found' }); return; }
+
+    db.prepare('UPDATE security_alerts SET acknowledged_by = ?, acknowledged_at = ? WHERE id = ?')
+      .run(req.user!.userId, localNow(), alertId);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Security alert acknowledge error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
