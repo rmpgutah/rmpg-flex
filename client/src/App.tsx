@@ -12,7 +12,7 @@ import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/DispatchPage';
-import MapPage from './pages/MapPage';
+import MapPage from './pages/map/MapPage';
 import IncidentsPage from './pages/IncidentsPage';
 import RecordsPage from './pages/RecordsPage';
 import PersonnelPage from './pages/personnel';
