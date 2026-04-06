@@ -1347,7 +1347,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           {session.user_agent?.substring(0, 60)}...
                         </div>
                         <div className="text-[9px]" style={{ color: '#666666' }}>
-                          Last used: {(session.last_used_at || session.created_at) ? new Date(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
+                          Last used: {(() => { const d = new Date(session.last_used_at || session.created_at); return isNaN(d.getTime()) ? 'N/A' : d.toLocaleString(); })()}
                         </div>
                       </div>
                       <button type="button"
