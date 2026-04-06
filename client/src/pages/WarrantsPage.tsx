@@ -48,7 +48,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 
 // ============================================================
@@ -453,11 +453,15 @@ export default function WarrantsPage() {
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
 
+  const [searchParams] = useSearchParams();
+  const initialPersonId = searchParams.get('personId');
+
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabId>(initialPersonId ? 'warrants' : 'dashboard');
+  const [filterPersonId, setFilterPersonId] = useState<string | null>(initialPersonId);
 
   // ============================================================
   // DASHBOARD STATE
@@ -680,6 +684,7 @@ export default function WarrantsPage() {
       if (filterType) params.set('type', filterType);
       if (filterSource) params.set('source', filterSource);
       if (filterSeverity) params.set('severity', filterSeverity);
+      if (filterPersonId) params.set('person_id', filterPersonId);
       if (searchQuery) params.set('subject_name', searchQuery);
       params.set('archived', showArchived ? 'true' : 'false');
       params.set('page', String(page));
@@ -696,7 +701,7 @@ export default function WarrantsPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterSeverity, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
@@ -1598,6 +1603,15 @@ export default function WarrantsPage() {
                 </select>
               </div>
             </div>
+
+            {/* Person filter indicator */}
+            {filterPersonId && (
+              <div className="px-3 py-1.5 bg-brand-900/30 border-b border-brand-700/50 text-brand-300 text-xs flex items-center gap-2">
+                <User className="w-3 h-3" />
+                <span>Filtered by person #{filterPersonId}</span>
+                <button type="button" onClick={() => { setFilterPersonId(null); setPage(1); }} className="ml-auto text-brand-400 hover:text-white text-[10px] underline">Clear filter</button>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
