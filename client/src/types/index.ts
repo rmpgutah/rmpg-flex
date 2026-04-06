@@ -331,6 +331,7 @@ export interface CallForService {
   closed_at?: string;
   archived_at?: string;
   previous_status?: CallStatus;
+  risk_score?: number | null;
   created_by: string;
   updated_at: string;
   // Visit history (PSO calls)
@@ -837,6 +838,12 @@ export interface BodyCamera {
 
 export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
 
+export type BwcInteractionType =
+  | 'traffic_stop' | 'arrest' | 'use_of_force' | 'search_warrant'
+  | 'domestic_violence' | 'welfare_check' | 'community_contact'
+  | 'foot_pursuit' | 'vehicle_pursuit' | 'interview'
+  | 'evidence_collection' | 'field_training' | 'other';
+
 export interface BodyCamVideo {
   id: number;
   camera_id: number;
@@ -848,6 +855,7 @@ export interface BodyCamVideo {
   mime_type: string;
   recorded_at: string;
   case_number?: string;
+  interaction_type?: BwcInteractionType | null;
   classification: VideoClassification;
   retention_status: VideoRetention;
   overlay_status?: OverlayStatus;
@@ -902,6 +910,12 @@ export interface DashCamVideo {
   burn_progress?: number;
   burn_error?: string;
   thumbnail_path?: string;
+  camera_serial?: string;
+  camera_id?: number;
+  officer_name?: string;
+  call_sign?: string;
+  device_name?: string;
+  heading?: number | null;
 }
 
 // --- Equipment ---
@@ -3104,3 +3118,17 @@ export interface GeographyTree {
   areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
   unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
 }
+
+// ── Integration Hub ──
+export type IntegrationId = 'clearpathgps' | 'servemanager' | 'microbilt' | 'iped';
+export type IntegrationHealth = 'healthy' | 'degraded' | 'error' | 'unconfigured';
+export interface IntegrationStatus { id: IntegrationId; name: string; description: string; configured: boolean; connected: boolean; lastSync: string | null; lastError: string | null; lastHealthCheck: string | null; health: IntegrationHealth; syncing: boolean; syncProgress: number | null; uptimePercent: number | null; stats: Record<string, number>; }
+
+// ── ClearPathGPS ──
+export interface CpgpsVehicle { id: number; cpgps_id: string; vehicle_id: number | null; name: string; vin: string; make: string; model: string; year: number; license_plate: string; device_serial: string; last_lat: number | null; last_lon: number | null; last_speed: number | null; last_heading: number | null; last_reported_at: string; odometer: number | null; engine_hours: number | null; synced_at: string; created_at: string; fleet_vehicle_number?: string; fleet_make?: string; fleet_model?: string; fleet_year?: number; }
+export interface CpgpsTrip { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; trip_start: string; trip_end: string; start_lat: number | null; start_lon: number | null; end_lat: number | null; end_lon: number | null; start_address: string; end_address: string; distance_miles: number | null; max_speed: number | null; avg_speed: number | null; idle_duration_seconds: number | null; drive_duration_seconds: number | null; synced_at: string; created_at: string; }
+export interface CpgpsAlert { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; alert_type: string; severity: string; message: string; triggered_at: string; lat: number | null; lon: number | null; synced_at: string; created_at: string; }
+
+// ── Dash Camera (fleet) ──
+export type DashCameraStatus = 'available' | 'installed' | 'maintenance' | 'damaged' | 'lost';
+export interface DashCamera { id: number; vehicle_id: number; camera_id: string; make: string; model: string; firmware_version: string; storage_capacity_gb: number; channel_count: number; status: DashCameraStatus; condition: string; installed_at: string; removed_at: string; notes: string; created_by: string; created_at: string; updated_at: string; vehicle_number?: string; vehicle_make?: string; vehicle_model?: string; vehicle_year?: number; }
