@@ -104,7 +104,9 @@ function encrypt(plaintext: string): string {
 
 function decrypt(stored: string): string {
   const key = deriveKey();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const parts = stored.split(':');
+  if (parts.length !== 3) throw new Error('Invalid encrypted format — expected iv:authTag:ciphertext');
+  const [ivHex, authTagHex, ciphertext] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -620,7 +622,12 @@ export async function runIpedProcess(opts: IpedProcessOpts): Promise<void> {
 
   const javaExe = getJavaExecutable(cfg.javaHome);
   const classpath = buildIpedClasspath(cfg.installPath);
-  const profile = opts.profile || cfg.defaultProfile || 'forensic';
+  const rawProfile = opts.profile || cfg.defaultProfile || 'forensic';
+  // Sanitize profile to prevent shell injection — only allow alphanumeric, dash, underscore
+  const profile = rawProfile.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!profile) {
+    throw new Error('Invalid IPED profile name — must contain only alphanumeric characters, dashes, or underscores');
+  }
 
   db.prepare('UPDATE iped_jobs SET status = ?, started_at = ?, updated_at = ? WHERE id = ?')
     .run('running', now, now, opts.jobId);
@@ -642,7 +649,7 @@ export async function runIpedProcess(opts: IpedProcessOpts): Promise<void> {
     'iped.app.processing.Main',
     '-d', escapePath(opts.inputPath),
     '-o', escapePath(opts.outputPath),
-    '-profile', profile,
+    '-profile', escapePath(profile),
     '--nogui',
   ].join(' ');
 
@@ -664,19 +671,19 @@ export async function runIpedProcess(opts: IpedProcessOpts): Promise<void> {
       const progressMatch = text.match(/\((\d+)%\)/);
       if (progressMatch) {
         db.prepare('UPDATE iped_jobs SET progress_percent = ?, updated_at = ? WHERE id = ?')
-          .run(parseInt(progressMatch[1]), localNow(), opts.jobId);
+          .run(parseInt(progressMatch[1], 10), localNow(), opts.jobId);
       }
       // Parse item counts: "Found 5 files" or "Total items found: 5"
       const foundMatch = text.match(/(?:Found|Total items found:?)\s+(\d+)/i);
       if (foundMatch) {
         db.prepare('UPDATE iped_jobs SET items_found = ?, updated_at = ? WHERE id = ?')
-          .run(parseInt(foundMatch[1]), localNow(), opts.jobId);
+          .run(parseInt(foundMatch[1], 10), localNow(), opts.jobId);
       }
       // Parse "Total processed: N items"
       const processedMatch = text.match(/Total processed:\s+(\d+)/i);
       if (processedMatch) {
         db.prepare('UPDATE iped_jobs SET items_processed = ?, updated_at = ? WHERE id = ?')
-          .run(parseInt(processedMatch[1]), localNow(), opts.jobId);
+          .run(parseInt(processedMatch[1], 10), localNow(), opts.jobId);
       }
       // Detect completion message
       if (text.includes('IPED finished') || text.includes('Finished')) {
@@ -702,7 +709,7 @@ export async function runIpedProcess(opts: IpedProcessOpts): Promise<void> {
         resolve();
       } else {
         db.prepare("UPDATE iped_jobs SET status = 'failed', completed_at = ?, error_message = ?, updated_at = ? WHERE id = ?")
-          .run(endNow, stderr.substring(0, 2000) || `Exit code: ${code}`, endNow, opts.jobId);
+          .run(endNow, (stderr.substring(0, 2000) || `Exit code: ${code}`).replace(/\/[^\s]+/g, '[path]').replace(/at\s+\S+\s+\([^)]+\)/g, '[stack]'), endNow, opts.jobId);
         reject(new Error(`IPED exited with code ${code}`));
       }
     });

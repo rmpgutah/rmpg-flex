@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Filter,
@@ -31,9 +31,13 @@ import {
   Thermometer,
   Undo2,
   Edit,
+  Pencil,
   Search,
   Building2,
   Terminal,
+  Briefcase,
+  Copy,
+  Crosshair,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -53,7 +57,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES } from '../../utils/caseNumbers';
-import { toDisplayLabel } from '../../utils/formatters';
+import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -61,6 +65,7 @@ import PrintRecordButton from '../../components/PrintRecordButton';
 import { useToast } from '../../components/ToastProvider';
 import { useWebSocket } from '../../context/WebSocketContext';
 import WarningTags from '../../components/WarningTags';
+import WarrantBadge from '../../components/WarrantBadge';
 import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
@@ -74,8 +79,9 @@ import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
-import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
-import { useDistrictOptions } from '../../hooks/useDistrictLookup';
+import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
+import { useAuth } from '../../context/AuthContext';
+import { useDistrictOptions, useDistrictIdentify } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
@@ -88,15 +94,172 @@ import {
 } from '../../utils/callOptions';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
+import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
+import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
+import { humanizeStatus, humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay, formatAddressDisplay, timeAgo } from '../../utils/statusLabels';
+
+// Label maps for human-readable display of stored values
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  // Process Service
+  process_service: 'Process Service (General)',
+  subpoena_service: 'Subpoena Service',
+  summons_service: 'Summons & Complaint',
+  eviction_service: 'Eviction / Unlawful Detainer',
+  restraining_order_service: 'Protective Order Service',
+  writ_service: 'Writ Service',
+  court_filing: 'Court Filing / Delivery',
+  court_order_service: 'Court Order Service',
+  notice_service: 'Notice / Demand Service',
+  posting_service: 'Posting Service (Nail & Mail)',
+  // Investigative
+  skip_trace: 'Skip Trace & Locate',
+  stake_out: 'Stake Out / Surveillance',
+  rush_service: 'Rush / Same-Day Service',
+  asset_search: 'Asset Search',
+  background_check: 'Background Check / Due Diligence',
+  witness_interview: 'Witness Interview / Statement',
+  witness_locate: 'Witness Locate',
+  record_retrieval: 'Record Retrieval',
+  document_retrieval: 'Document Retrieval',
+  field_investigation: 'Field Investigation',
+  insurance_investigation: 'Insurance Investigation',
+  // Security Services
+  patrol: 'Patrol',
+  static_guard: 'Static Guard',
+  escort: 'Escort',
+  event_security: 'Event Security',
+  surveillance: 'Surveillance',
+  access_control: 'Access Control',
+  alarm_response: 'Alarm Response',
+  fire_watch: 'Fire Watch',
+  construction_security: 'Construction Site Security',
+  executive_protection: 'Executive Protection',
+  loss_prevention: 'Loss Prevention',
+  // Administrative
+  notary_service: 'Notary Service',
+  certified_copy: 'Certified Copy Service',
+  courier: 'Courier / Messenger',
+  document_preparation: 'Document Preparation',
+  affidavit_preparation: 'Affidavit Preparation',
+  other: 'Other',
+};
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  // Civil Process — General
+  subpoena: 'Subpoena',
+  subpoena_duces_tecum: 'Subpoena Duces Tecum',
+  subpoena_deposition: 'Subpoena (Deposition)',
+  federal_subpoena: 'Federal Subpoena',
+  summons: 'Summons & Complaint',
+  complaint: 'Complaint',
+  civil_summons: 'Civil Summons',
+  third_party_complaint: 'Third-Party Complaint',
+  cross_complaint: 'Cross-Complaint',
+  counterclaim: 'Counterclaim',
+  amended_complaint: 'Amended Complaint',
+  small_claims: 'Small Claims',
+  // Writs & Garnishments
+  garnishment: 'Garnishment',
+  writ_of_execution: 'Writ of Execution',
+  writ_of_restitution: 'Writ of Restitution',
+  writ_of_garnishment: 'Writ of Garnishment',
+  writ_of_attachment: 'Writ of Attachment',
+  writ_of_possession: 'Writ of Possession',
+  writ_of_assistance: 'Writ of Assistance',
+  writ_of_mandate: 'Writ of Mandate / Mandamus',
+  wage_garnishment: 'Wage Garnishment',
+  bank_levy: 'Bank Levy / Account Garnishment',
+  // Family / Domestic
+  restraining_order: 'Protective / Restraining Order',
+  temporary_protective_order: 'Temporary Protective Order',
+  cohabitant_abuse_order: 'Cohabitant Abuse Protective Order',
+  divorce_papers: 'Divorce Papers',
+  divorce_petition: 'Divorce Petition',
+  divorce_summons: 'Divorce Summons',
+  custody_order: 'Custody Order',
+  custody_modification: 'Custody Modification',
+  child_support: 'Child Support Order',
+  child_support_modification: 'Child Support Modification',
+  paternity_action: 'Paternity Action',
+  adoption_papers: 'Adoption Papers',
+  guardianship: 'Guardianship Petition',
+  termination_of_parental_rights: 'Termination of Parental Rights',
+  stalking_injunction: 'Stalking Injunction',
+  // Real Property
+  eviction: 'Eviction Notice',
+  unlawful_detainer: 'Unlawful Detainer',
+  notice_to_quit: 'Notice to Quit',
+  three_day_notice: '3-Day Notice to Pay or Quit',
+  five_day_notice: '5-Day Notice (Commercial)',
+  fifteen_day_notice: '15-Day Notice (Month-to-Month)',
+  foreclosure: 'Foreclosure Notice',
+  notice_of_default: 'Notice of Default',
+  lis_pendens: 'Lis Pendens',
+  quiet_title: 'Quiet Title Action',
+  // Court Orders & Motions
+  court_order: 'Court Order',
+  temporary_order: 'Temporary Order',
+  temporary_restraining_order: 'Temporary Restraining Order',
+  preliminary_injunction: 'Preliminary Injunction',
+  permanent_injunction: 'Permanent Injunction',
+  motion: 'Motion / Petition',
+  motion_for_contempt: 'Motion for Contempt',
+  motion_to_compel: 'Motion to Compel',
+  motion_for_summary_judgment: 'Motion for Summary Judgment',
+  notice_of_hearing: 'Notice of Hearing',
+  order_to_show_cause: 'Order to Show Cause',
+  judgment: 'Judgment',
+  default_judgment: 'Default Judgment',
+  // Probate & Estate
+  probate_petition: 'Probate Petition',
+  letters_testamentary: 'Letters Testamentary',
+  creditor_claim: 'Creditor Claim (Probate)',
+  // Bankruptcy
+  bankruptcy_notice: 'Bankruptcy Notice',
+  adversary_proceeding: 'Adversary Proceeding',
+  // Administrative
+  demand_letter: 'Demand Letter',
+  cease_and_desist: 'Cease & Desist',
+  notice_of_deposition: 'Notice of Deposition',
+  interrogatories: 'Interrogatories',
+  request_for_production: 'Request for Production',
+  request_for_admission: 'Request for Admission',
+  // General
+  civil: 'Civil Papers',
+  writ: 'Writ',
+  order: 'Court Order',
+  notice: 'Notice',
+  petition: 'Petition',
+  levy: 'Levy',
+  affidavit: 'Affidavit',
+  declaration: 'Declaration',
+  stipulation: 'Stipulation',
+  other: 'Other',
+};
+
+function formatServiceType(val: string | undefined | null): string {
+  if (!val) return '';
+  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
+
+function formatDocumentType(val: string | undefined | null): string {
+  if (!val) return '';
+  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
 
 export default function DispatchPage() {
+  const { user } = useAuth();
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const unitModalTitleId = useId();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { addToast } = useToast();
-  const { subscribe } = useWebSocket();
+  const { subscribe, isConnected } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
-  const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
+  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, loading: districtLoading, error: districtError, retry: retryLoadDistricts } = useDistrictOptions();
+  const { identify: identifyDistrict, identifying: districtIdentifying } = useDistrictIdentify();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -104,9 +267,16 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => {
+    // Read personId from URL params for cross-module navigation
+    const pid = searchParams.get('personId');
+    return pid ? `person:${pid}` : '';
+  });
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   // Quick Dispatch templates
@@ -130,6 +300,8 @@ export default function DispatchPage() {
   const [ncicInitialQuery, setNcicInitialQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   // Timeline / activity log entries for selected call
   const [activityEntries, setActivityEntries] = useState<any[]>([]);
+  // Timeline editing (admin/manager only)
+  const [editingTimestamp, setEditingTimestamp] = useState<string | null>(null);
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Record<string, any>>({});
@@ -148,6 +320,56 @@ export default function DispatchPage() {
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
+  const [serveLink, setServeLink] = useState<any>(null);
+  const [sendingToServe, setSendingToServe] = useState(false);
+  // AI Dispatch analysis state
+  const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
+  const [showAiSidebar, setShowAiSidebar] = useState(false);
+
+  // ── Feature 1: Call priority sound alerts ──
+  const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
+  const soundAlertsMutedRef = useRef(soundAlertsMuted);
+  useEffect(() => { soundAlertsMutedRef.current = soundAlertsMuted; }, [soundAlertsMuted]);
+  const toggleSoundAlerts = useCallback(() => {
+    setSoundAlertsMuted(prev => {
+      const next = !prev;
+      localStorage.setItem('rmpg_sound_alerts_muted', String(next));
+      return next;
+    });
+  }, []);
+
+  // ── Feature 5: Shift handoff notes ──
+  const [showHandoffNotes, setShowHandoffNotes] = useState(false);
+  const [handoffNotes, setHandoffNotes] = useState('');
+  const [handoffMeta, setHandoffMeta] = useState<{ updated_by?: string; updated_at?: string }>({});
+  const [savingHandoff, setSavingHandoff] = useState(false);
+
+  const fetchHandoffNotes = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/dispatch/shift-handoff');
+      setHandoffNotes(data?.text || '');
+      setHandoffMeta({ updated_by: data?.updated_by, updated_at: data?.updated_at });
+    } catch { /* ignore */ }
+  }, []);
+
+  const saveHandoffNotes = useCallback(async () => {
+    setSavingHandoff(true);
+    try {
+      await apiFetch('/dispatch/shift-handoff', { method: 'PUT', body: JSON.stringify({ text: handoffNotes }) });
+      addToast('Handoff notes saved', 'success');
+    } catch { addToast('Failed to save handoff notes', 'error'); }
+    finally { setSavingHandoff(false); }
+  }, [handoffNotes, addToast]);
+
+  // Clean up search timers and abort controllers on unmount
+  useEffect(() => {
+    return () => {
+      if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
+      if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
+      if (personAbortRef.current) personAbortRef.current.abort();
+      if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
+    };
+  }, []);
 
   // Close person/vehicle dropdowns on outside click
   useEffect(() => {
@@ -392,6 +614,7 @@ export default function DispatchPage() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(body),
@@ -461,11 +684,14 @@ export default function DispatchPage() {
   }, [showAttachUnitDropdown]);
 
   // Fetch calls and units on mount
-  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
+  const fetchData = useCallback(async (options?: { silent?: boolean; signal?: AbortSignal }) => {
+    const controller = options?.signal ? undefined : new AbortController();
+    const signal = options?.signal || controller!.signal;
+    const timeout = controller ? setTimeout(() => controller.abort(), 15000) : undefined;
     try {
       const [callsRes, unitsRes] = await Promise.all([
-        apiFetch<any>('/dispatch/calls?limit=200'),
-        apiFetch<any[]>('/dispatch/units'),
+        apiFetch<any>('/dispatch/calls?limit=200', { signal }),
+        apiFetch<any[]>('/dispatch/units', { signal }),
       ]);
       const callsRaw = Array.isArray(callsRes?.data) ? callsRes.data : Array.isArray(callsRes) ? callsRes : [];
       const mappedCalls = callsRaw.map(mapDbCall);
@@ -477,12 +703,17 @@ export default function DispatchPage() {
         if (!prev) return mappedCalls[0] || null;
         return mappedCalls.find((c: CallForService) => c.id === prev.id) || mappedCalls[0] || null;
       });
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        if (!options?.silent) addToast('Dispatch data request timed out — retrying may help', 'error');
+        return;
+      }
       if (!options?.silent) {
         console.error('Failed to load dispatch data:', err);
         addToast('Failed to load dispatch data — check connection', 'error');
       }
     } finally {
+      if (timeout) clearTimeout(timeout);
       if (!options?.silent) setIsLoading(false);
     }
   }, [addToast]);
@@ -552,6 +783,12 @@ export default function DispatchPage() {
             return [mapped, ...prev];
           });
         }
+        // Feature 1: Priority-based sound alerts (unless muted)
+        if (!soundAlertsMutedRef.current) {
+          if (mapped.priority === 'P1') playTone('alarm');
+          else if (mapped.priority === 'P2') playTone('warning');
+          else playTone('info');
+        }
         // Voice alerts: announce new call with details + safety flags
         announceNewCall(mapped);
         announceCallAlerts(mapped);
@@ -564,9 +801,28 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_updated' && data.call) {
         const mapped = mapDbCall(data.call);
+        // Detect priority escalation before updating state
+        const prevCall = calls.find((c: any) => c.id === mapped.id);
+        if (prevCall && prevCall.priority !== mapped.priority) {
+          const priorities = ['P1', 'P2', 'P3', 'P4'];
+          if (priorities.indexOf(mapped.priority) < priorities.indexOf(prevCall.priority)) {
+            announceEscalation(mapped.call_number, prevCall.priority, mapped.priority);
+          }
+        }
         setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
         // Update selected call if it's the one being viewed
         setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        // Voice alert: announce update if notes were added
+        if (data.update_type === 'note_added') {
+          // Check for @mentions in the note text
+          const noteText = data.note_text || '';
+          const mentionMatch = noteText.match(/@(\w+)/);
+          if (mentionMatch) {
+            announceDirectedNote(mentionMatch[0], mapped.call_number, noteText, data.author);
+          } else {
+            announceCallUpdate(mapped.call_number, 'New note added', data.author);
+          }
+        }
       } else if (data.action === 'call_status_changed' && data.call) {
         const mapped = mapDbCall(data.call);
         setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
@@ -575,9 +831,38 @@ export default function DispatchPage() {
         if (mapped.status === 'dispatched') {
           announceDispatchEvent(mapped);
         }
+        // Voice alert: announce archival with summary
+        if (mapped.status === 'archived') {
+          const responseMin = mapped.created_at && mapped.onscene_at
+            ? Math.floor((new Date(mapped.onscene_at).getTime() - new Date(mapped.created_at).getTime()) / 60000)
+            : undefined;
+          announceCallArchived(mapped.call_number, mapped.disposition, responseMin);
+        }
+        // Voice alert: announce status changes (on scene, cleared, etc.)
+        if (['onscene', 'enroute', 'cleared'].includes(mapped.status) && mapped.assigned_units?.length > 0) {
+          announceStatusChange({
+            call_sign: mapped.assigned_units[0],
+            call_number: mapped.call_number,
+            location: mapped.location,
+            disposition: mapped.disposition,
+            assigned_units: mapped.assigned_units,
+          }, mapped.status);
+        }
       } else if (data.action === 'units_dispatched' || data.action === 'unit_assigned' || data.action === 'unit_unassigned') {
+        // Voice alert: announce unit assignment
+        if (data.action === 'unit_assigned' && data.unit_call_sign && data.call_number) {
+          announceUnitAssignment(data.unit_call_sign, data.call_number);
+        }
+        // Voice alert: announce multi-unit dispatch (2+ units assigned at once)
+        if (data.action === 'units_dispatched' && data.unit_call_signs?.length >= 2 && data.call_number) {
+          const unitList = data.unit_call_signs.join(' and ');
+          announceCallUpdate(data.call_number, `Multiple units dispatched: ${unitList}`);
+        }
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
+      } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
+        setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
+        setShowAiSidebar(true);
       }
       } catch (err) {
         console.error('[Dispatch] Error processing WS dispatch_update:', err);
@@ -608,8 +893,79 @@ export default function DispatchPage() {
       announcePanicAlert(data.user_name || data.userName);
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); };
+    // Listen for serve queue events — update gold serve status panel in real time
+    const unsubServeCreated = subscribe('serve:created', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+        setServeLink(data);
+      }
+      // Voice alert: announce return visit scheduled
+      if (data?.call_number && data?.attempt_number && data.attempt_number > 1) {
+        announceReturnVisit(data.call_number, data.attempt_number, data.next_window);
+      }
+    });
+    const unsubServeAttempt = subscribe('serve:attempt', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+        // Refresh serve link to get updated attempt count + status
+        const callId = selectedCallRef.current!.id;
+        apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
+          if (res) setServeLink(res);
+        }).catch(() => {});
+      }
+      // Voice alert: announce serve completion
+      if (data?.result && data?.served_to && data?.call_number) {
+        announceServeComplete(
+          data.served_to,
+          data.address || '',
+          data.document_type || '',
+          data.attempt_number || 1,
+          data.result,
+        );
+      }
+    });
+
+    // Listen for warrant alerts on linked persons
+    const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
+      const data = msg.data || msg;
+      addToast(`⚠️ WARRANT ALERT: ${data.personName} — ${data.warrantCount} active warrant(s) on call`, 'error');
+      // Refresh data so warrant badges appear immediately
+      fetchData({ silent: true });
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
+
+  // Refetch all data after WebSocket reconnection to catch events missed during disconnect
+  const wsConnectedPrevRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const prev = wsConnectedPrevRef.current;
+    wsConnectedPrevRef.current = isConnected;
+    // Only refetch on reconnection (prev was false, now true) — skip initial connect
+    if (prev === false && isConnected) {
+      fetchData({ silent: true });
+    }
+  }, [isConnected, fetchData]);
+
+  // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
+  useEffect(() => {
+    if (!selectedCall?.onscene_at || ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) {
+      setOnSceneElapsed('');
+      return;
+    }
+    const update = () => {
+      const diff = Date.now() - new Date(selectedCall.onscene_at!).getTime();
+      if (diff < 0) { setOnSceneElapsed(''); return; }
+      const totalSec = Math.floor(diff / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      setOnSceneElapsed(h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`);
+    };
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, [selectedCall?.id, selectedCall?.onscene_at, selectedCall?.status]);
 
   // When switching to the archived tab, fetch archived calls if not loaded
   useEffect(() => {
@@ -644,7 +1000,7 @@ export default function DispatchPage() {
   // Create or Update Unit handler
   const handleSaveUnit = async () => {
     const cs = newUnitCallSign.trim();
-    if (!cs) return;
+    if (!cs) { addToast('Call sign is required', 'error'); return; }
     setUnitCreating(true);
     try {
       if (editingUnit) {
@@ -751,7 +1107,7 @@ export default function DispatchPage() {
 
   // Fetch linked incidents and activity when a call is selected
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); return; }
+    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); return; }
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
@@ -771,8 +1127,17 @@ export default function DispatchPage() {
       }
       try {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
-        if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings : []);
+        if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings.filter((w: any) => typeof w?.label === 'string') : []);
       } catch { if (!cancelled) setCallWarnings([]); }
+      // Fetch serve queue link for PSO calls
+      if (selectedCall.incident_type === 'pso_client_request') {
+        try {
+          const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
+          if (!cancelled) setServeLink(serveData);
+        } catch { if (!cancelled) setServeLink(null); }
+      } else {
+        if (!cancelled) setServeLink(null);
+      }
     })();
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
@@ -829,12 +1194,76 @@ export default function DispatchPage() {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared]);
 
-  // Keyboard shortcuts for dispatch power users
+  // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+
+      // ── F-KEY HOTKEYS (always active, even in inputs) ─────
+      // These mirror Spillman Flex keyboard shortcuts
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setShowNewCallModal(true);
+        return;
+      }
+      if (e.key === 'F3' && selectedCall && selectedCall.status === 'pending') {
+        e.preventDefault();
+        handleStatusChange(selectedCall.id, 'dispatched');
+        return;
+      }
+      if (e.key === 'F4' && selectedCall) {
+        e.preventDefault();
+        // Toggle edit mode on selected call
+        setIsEditing(prev => !prev);
+        return;
+      }
+      if (e.key === 'F5') {
+        e.preventDefault();
+        if (selectedCall && selectedCall.status === 'dispatched') {
+          handleStatusChange(selectedCall.id, 'enroute');
+        } else {
+          fetchData(); // Refresh if no enroute action available
+        }
+        return;
+      }
+      if (e.key === 'F6' && selectedCall && selectedCall.status === 'enroute') {
+        e.preventDefault();
+        handleStatusChange(selectedCall.id, 'onscene');
+        return;
+      }
+      if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleClearWithDisposition(selectedCall.id);
+        return;
+      }
+      if (e.key === 'F8') {
+        e.preventDefault();
+        // Focus CAD command line
+        const cadInput = document.querySelector('[data-cad-input]') as HTMLInputElement;
+        if (cadInput) cadInput.focus();
+        return;
+      }
+      if (e.key === 'F9' && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleHoldCall(selectedCall.id);
+        return;
+      }
+      if (e.key === 'F10') {
+        e.preventDefault();
+        setShowQuickPsoModal(true);
+        return;
+      }
+      if (e.key === 'F12') {
+        e.preventDefault();
+        // Toggle NCIC panel
+        setShowNcicPanel(prev => !prev);
+        return;
+      }
+
+      // Don't process letter keys when typing in inputs
+      if (isInput) return;
 
       // N - New call
       if (e.key === 'n' || e.key === 'N') {
@@ -857,7 +1286,7 @@ export default function DispatchPage() {
         return;
       }
 
-      // 1-4: Filter tabs
+      // 1-6: Filter tabs
       if (e.key === '1') { setFilterTab('all'); return; }
       if (e.key === '2') { setFilterTab('pending'); return; }
       if (e.key === '3') { setFilterTab('active'); return; }
@@ -909,6 +1338,13 @@ export default function DispatchPage() {
         return;
       }
 
+      // H - Hold call
+      if ((e.key === 'h' || e.key === 'H') && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleHoldCall(selectedCall.id);
+        return;
+      }
+
       // Escape - close modal
       if (e.key === 'Escape') {
         setShowNewCallModal(false);
@@ -919,7 +1355,8 @@ export default function DispatchPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCall, filteredCalls, fetchData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCall, filteredCalls, fetchData, setFilterTab]);
 
   const handlePsoExpandToFullForm = (data: Record<string, any>) => {
     setShowQuickPsoModal(false);
@@ -1008,6 +1445,8 @@ export default function DispatchPage() {
       setShowNewCallModal(false);
       setTemplateInitialData(undefined);
       addToast(`Call ${newCall.call_number} created`, 'success');
+      // Audible feedback for local action
+      announceLocalAction('call_created', `Call ${newCall.call_number} created.`);
     } catch (err: any) {
       console.error('Failed to create call:', err);
       addToast(err?.message || 'Failed to create call', 'error');
@@ -1018,25 +1457,7 @@ export default function DispatchPage() {
   };
 
   const handleStatusChange = async (callId: string, newStatus: CallStatus, extraBody?: Record<string, any>) => {
-    // Intercept enroute/onscene to prompt for mileage (officer role only)
-    if ((newStatus === 'enroute' || newStatus === 'onscene') && !extraBody) {
-      const call = calls.find(c => c.id === callId);
-      if (call) {
-        // Find vehicle ID from assigned units on this call
-        const assignedUnit = call.assigned_units.length > 0
-          ? units.find(u => call.assigned_units.includes(u.id))
-          : undefined;
-        setMileagePrompt({
-          callId,
-          callNumber: call.call_number,
-          status: newStatus,
-          vehicleId: assignedUnit?.vehicle || call.responding_vehicle_id || '',
-          startingMileage: newStatus === 'onscene' ? (call.starting_mileage ?? undefined) : undefined,
-        });
-        return;
-      }
-    }
-
+    // Status changes go through immediately — no mileage prompt blocking
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
         method: 'POST',
@@ -1045,6 +1466,10 @@ export default function DispatchPage() {
       const updatedCall = mapDbCall(result);
       setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // Audible feedback for local status change
+      if (newStatus === 'cleared' || newStatus === 'closed') {
+        announceLocalAction('call_closed', `Call ${updatedCall.call_number} ${newStatus}.`);
+      }
       // Refresh units since clearing/closing/cancelling a call frees assigned units
       if (newStatus === 'cleared' || newStatus === 'closed' || newStatus === 'cancelled') {
         const unitsRes = await apiFetch<any[]>('/dispatch/units');
@@ -1063,10 +1488,13 @@ export default function DispatchPage() {
   const handleMileageSubmit = (mileage: number, vehicleId: string) => {
     if (!mileagePrompt) return;
     const body: Record<string, any> = { responding_vehicle_id: vehicleId || undefined };
-    if (mileagePrompt.status === 'enroute') {
-      body.starting_mileage = mileage;
-    } else {
-      body.ending_mileage = mileage;
+    // Only include mileage if user entered a value (skip sends 0)
+    if (mileage > 0) {
+      if (mileagePrompt.status === 'enroute') {
+        body.starting_mileage = mileage;
+      } else {
+        body.ending_mileage = mileage;
+      }
     }
     setMileagePrompt(null);
     handleStatusChange(mileagePrompt.callId, mileagePrompt.status, body);
@@ -1099,6 +1527,7 @@ export default function DispatchPage() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
           });
@@ -1144,6 +1573,25 @@ export default function DispatchPage() {
       addToast('Failed to resume call', 'error');
     }
   };
+
+  // ── Admin timeline edit handler ──
+  const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
+    if (!selectedCall || !isAdminOrManager) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [field]: value || null }),
+      });
+      const updated = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+      setSelectedCall(updated);
+      addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
+    } catch (err) {
+      console.error('Failed to update timeline:', err);
+      addToast('Failed to update timeline', 'error');
+    }
+    setEditingTimestamp(null);
+  }, [selectedCall, isAdminOrManager, addToast]);
 
   // Parse simple markdown markers into React elements for display
   const renderFormattedText = useCallback((text: string) => {
@@ -1214,7 +1662,7 @@ export default function DispatchPage() {
     }
     try {
       // Build notes array with the new note appended
-      const existingNotes = selectedCall.notes || [];
+      const existingNotes = Array.isArray(selectedCall.notes) ? selectedCall.notes : [];
       const note: CallNote = {
         id: `n-${Date.now()}`,
         author: 'Dispatch',
@@ -1230,9 +1678,44 @@ export default function DispatchPage() {
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setNewNote('');
+      // Audible feedback for local note action
+      announceLocalAction('note_added', `Note added to ${selectedCall.call_number}.`);
     } catch (err) {
       console.error('Failed to add note:', err);
       addToast('Failed to save note', 'error');
+    }
+  };
+
+  const handleEditNote = async (noteId: string, text: string) => {
+    if (!selectedCall || !text.trim()) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ text: text.trim() }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      setEditingNoteId(null);
+      setEditingNoteText('');
+      addToast('Note updated', 'success');
+    } catch {
+      addToast('Failed to edit note', 'error');
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!selectedCall) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
+        method: 'DELETE',
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      addToast('Note deleted', 'success');
+    } catch {
+      addToast('Failed to delete note', 'error');
     }
   };
 
@@ -1246,6 +1729,7 @@ export default function DispatchPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
@@ -1287,6 +1771,26 @@ export default function DispatchPage() {
     } catch (err) {
       console.error('Failed to notify LE:', err);
       addToast('Failed to notify LE', 'error');
+    }
+  };
+
+  // ── Priority Change ────────────────────────────────────────
+  const handlePriorityChange = async (callId: string, priority: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority }),
+      });
+      if (result) {
+        const updated = mapDbCall(result);
+        setCalls(prev => prev.map(c => c.id === callId ? updated : c));
+        setSelectedCall(prev => prev?.id === callId ? updated : prev);
+        addToast(`Priority changed to ${priority}`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to change priority:', err);
+      addToast('Failed to change priority', 'error');
     }
   };
 
@@ -1357,6 +1861,11 @@ export default function DispatchPage() {
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setShowAttachUnitDropdown(false);
+      // Audible feedback for local unit dispatch
+      const assignedUnit = units.find(u => String(u.id) === String(unitId));
+      if (assignedUnit) {
+        announceLocalAction('unit_dispatched', `Unit ${assignedUnit.call_sign} dispatched to ${selectedCall.call_number}.`);
+      }
       // Refresh units to reflect the status change
       const unitsRes = await apiFetch<any[]>('/dispatch/units');
       setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
@@ -1418,7 +1927,7 @@ export default function DispatchPage() {
       location: selectedCall.location || '',
       latitude: selectedCall.latitude ?? null,
       longitude: selectedCall.longitude ?? null,
-      property_id: selectedCall.property_id || null,
+      property_id: selectedCall.property_id ?? null,
       description: selectedCall.description || '',
       source: selectedCall.source || 'phone',
       disposition: selectedCall.disposition || '',
@@ -1447,7 +1956,7 @@ export default function DispatchPage() {
       le_notified: !!selectedCall.le_notified,
       le_agency: selectedCall.le_agency || '',
       le_case_number: selectedCall.le_case_number || '',
-      damage_estimate: selectedCall.damage_estimate || '',
+      damage_estimate: selectedCall.damage_estimate ?? '',
       damage_description: selectedCall.damage_description || '',
       action_taken: selectedCall.action_taken || '',
       responding_officer: selectedCall.responding_officer || '',
@@ -1460,6 +1969,7 @@ export default function DispatchPage() {
       pso_service_type: selectedCall.pso_service_type || '',
       pso_billing_code: selectedCall.pso_billing_code || '',
       pso_authorization: selectedCall.pso_authorization || '',
+      contract_id: selectedCall.contract_id || '',
       // Process Service fields
       process_service_type: selectedCall.process_service_type || '',
       process_served_to: selectedCall.process_served_to || '',
@@ -1523,7 +2033,7 @@ export default function DispatchPage() {
         le_notified: editData.le_notified,
         le_agency: editData.le_agency,
         le_case_number: editData.le_case_number,
-        damage_estimate: editData.damage_estimate ? Number(editData.damage_estimate) : null,
+        damage_estimate: editData.damage_estimate !== '' && editData.damage_estimate != null ? Number(editData.damage_estimate) : null,
         damage_description: editData.damage_description,
         action_taken: editData.action_taken,
         responding_officer: editData.responding_officer,
@@ -1535,6 +2045,7 @@ export default function DispatchPage() {
         pso_service_type: editData.pso_service_type || null,
         pso_billing_code: editData.pso_billing_code || null,
         pso_authorization: editData.pso_authorization || null,
+        contract_id: editData.contract_id || null,
         // Process Service fields
         process_service_type: editData.process_service_type || null,
         process_served_to: editData.process_served_to || null,
@@ -1563,6 +2074,206 @@ export default function DispatchPage() {
   const updateEditField = useCallback((field: string, value: any) => {
     setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
+
+  // ═══════════════════════════════════════════════════════════════
+  // NEW DISPATCH FEATURES
+  // ═══════════════════════════════════════════════════════════════
+
+  // Feature 1: Auto-escalation timer — check pending calls and auto-escalate
+  const escalatedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const checkEscalation = () => {
+      const now = Date.now();
+      for (const c of calls) {
+        if (c.status !== 'pending' || escalatedRef.current.has(c.id)) continue;
+        const age = now - new Date(c.created_at).getTime();
+        const ageMins = age / 60000;
+        let shouldEscalate = false;
+        if (c.priority === 'P3' && ageMins >= 15) shouldEscalate = true;
+        if (c.priority === 'P2' && ageMins >= 30) shouldEscalate = true;
+        if (c.priority === 'P4' && ageMins >= 20) shouldEscalate = true;
+        if (shouldEscalate && c.assigned_units.length === 0) {
+          escalatedRef.current.add(c.id);
+          apiFetch(`/dispatch/calls/${c.id}/escalate`, { method: 'POST' })
+            .then((result: any) => {
+              if (result) {
+                const updated = mapDbCall(result);
+                setCalls(prev => prev.map(pc => pc.id === c.id ? updated : pc));
+                addToast(`Call ${c.call_number} auto-escalated from ${c.priority} to ${updated.priority}`, 'warning');
+              }
+            })
+            .catch(() => { escalatedRef.current.delete(c.id); });
+        }
+      }
+    };
+    const interval = setInterval(checkEscalation, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, [calls, addToast, handleArchive]);
+
+  // Feature 4: Unit availability counter
+  const unitAvailability = useMemo(() => {
+    const available = units.filter(u => u.status === 'available').length;
+    const total = units.filter(u => u.status !== 'off_duty').length;
+    return { available, total };
+  }, [units]);
+
+  // Feature 5: Stacked calls count by address
+  const stackedCallCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+      if (c.location) {
+        const loc = c.location.toLowerCase().trim();
+        counts.set(loc, (counts.get(loc) || 0) + 1);
+      }
+    });
+    return counts;
+  }, [calls]);
+
+  // Feature 6: Quick note add handler (from CallCard)
+  const handleQuickNote = useCallback(async (callId: string, noteText: string) => {
+    if (!noteText.trim() || noteText.trim().length < 2) return;
+    if (noteText.length > 2000) return;
+    const call = calls.find(c => c.id === callId);
+    if (!call) return;
+    try {
+      const existingNotes = Array.isArray(call.notes) ? call.notes : [];
+      const authorName = user?.full_name || user?.username || 'Dispatch';
+      const note = { id: `qn-${Date.now()}`, author: authorName, text: noteText, timestamp: new Date().toISOString() };
+      const allNotes = [...existingNotes, note];
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
+        method: 'PUT', body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      if (selectedCall?.id === callId) setSelectedCall(updatedCall);
+    } catch { addToast('Failed to add note', 'error'); }
+  }, [calls, selectedCall, addToast, user]);
+
+  // Feature 9: Call type statistics
+  const callTypeStats = useMemo(() => {
+    const active = calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status));
+    const typeCounts = new Map<string, number>();
+    active.forEach(c => {
+      const type = c.incident_type || 'other';
+      typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
+    });
+    return [...typeCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([type, count]) => ({ type, count }));
+  }, [calls]);
+
+  // Feature 11: Auto-assign nearest unit handler
+  const handleAutoAssign = useCallback(async (callId: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/auto-assign`, { method: 'POST' });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+      addToast(`Auto-assigned ${result.auto_assigned_unit} (${result.distance_miles} mi)`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || err?.error || 'No available units', 'error');
+    }
+  }, [addToast]);
+
+  // Feature 13: Unit workload — count active calls per unit
+  const unitWorkload = useMemo(() => {
+    const workload = new Map<string, number>();
+    calls.filter(c => ['dispatched', 'enroute', 'onscene'].includes(c.status)).forEach(c => {
+      (c.assigned_units || []).forEach(uid => {
+        workload.set(String(uid), (workload.get(String(uid)) || 0) + 1);
+      });
+    });
+    return workload;
+  }, [calls]);
+
+  // Feature 14: Disposition statistics for current shift
+  const [dispositionStats, setDispositionStats] = useState<{disposition: string; count: number}[]>([]);
+  useEffect(() => {
+    apiFetch<any[]>('/dispatch/disposition-stats')
+      .then(data => setDispositionStats(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calls.filter(c => c.disposition).length]); // Re-fetch when dispositions change
+
+  // Feature 17: Auto-archive cleared calls after 5 minutes
+  const handleArchiveRef = useRef(handleArchive);
+  useEffect(() => { handleArchiveRef.current = handleArchive; }, [handleArchive]);
+  useEffect(() => {
+    const checkAutoArchive = () => {
+      const now = Date.now();
+      const fiveMinMs = 5 * 60 * 1000;
+      calls.filter(c => ['cleared'].includes(c.status) && c.cleared_at).forEach(c => {
+        const clearedTime = new Date(c.cleared_at!).getTime();
+        if (now - clearedTime > fiveMinMs) {
+          handleArchiveRef.current(c.id).catch(() => {});
+        }
+      });
+    };
+    const interval = setInterval(checkAutoArchive, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [calls]);
+
+  // Feature 18: Multi-unit dispatch
+  const [multiSelectUnits, setMultiSelectUnits] = useState<string[]>([]);
+  const handleMultiUnitDispatch = useCallback(async (callId: string, unitIds: string[]) => {
+    if (unitIds.length === 0) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/dispatch`, {
+        method: 'POST', body: JSON.stringify({ unit_ids: unitIds.map(Number) }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+      setMultiSelectUnits([]);
+      addToast(`${unitIds.length} units dispatched`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to dispatch units', 'error');
+    }
+  }, [addToast]);
+
+  // Feature 19: Call transfer handler
+  const handleTransferCall = useCallback(async (callId: string, fromUnitId: string, toUnitId: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/transfer`, {
+        method: 'POST', body: JSON.stringify({ from_unit_id: fromUnitId, to_unit_id: toUnitId }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+      addToast('Call transferred', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Transfer failed', 'error');
+    }
+  }, [addToast]);
+
+  // Feature 20: Broadcast note handler
+  const [broadcastNoteText, setBroadcastNoteText] = useState('');
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const handleBroadcastNote = useCallback(async () => {
+    if (!selectedCall || !broadcastNoteText.trim() || isBroadcasting) return;
+    setIsBroadcasting(true);
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/broadcast-note`, {
+        method: 'POST', body: JSON.stringify({ message: broadcastNoteText.trim() }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      setBroadcastNoteText('');
+      addToast('Note broadcast to all units', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Broadcast failed', 'error');
+    } finally {
+      setIsBroadcasting(false);
+    }
+  }, [selectedCall, broadcastNoteText, addToast, isBroadcasting]);
 
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
@@ -1632,19 +2343,35 @@ export default function DispatchPage() {
     }
   };
 
-  const tabCounts = useMemo(() => ({
-    all: calls.length,
-    pending: calls.filter((c) => c.status === 'pending').length,
-    active: calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length,
-    cleared: calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length,
-    archived: archivedCalls.length,
-    serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
-  }), [calls, archivedCalls]);
+  const tabCounts = useMemo(() => {
+    const pending = calls.filter((c) => c.status === 'pending').length;
+    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
+    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
+    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    return {
+      all: allCount,
+      pending,
+      active,
+      cleared,
+      archived: archivedCalls.length,
+      serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
+    };
+  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared]);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+      <div className="flex items-center justify-center h-full" style={{ background: 'var(--surface-base)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-10 h-10 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-[#888888] animate-spin" />
+            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(136,136,136,0.25)' }} />
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
+            <span className="text-[8px] font-mono text-[#4b5563]">Connecting to dispatch services...</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1664,7 +2391,7 @@ export default function DispatchPage() {
             { id: 'serve', label: 'Serve', count: tabCounts.serve },
             { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
           ] as const).map((tab) => (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setFilterTab(tab.id as FilterTab)}
               className={`mobile-pill-tab ${filterTab === tab.id ? 'active' : ''}`}
@@ -1700,7 +2427,7 @@ export default function DispatchPage() {
                   {call.priority === 'P1' && (
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
                   )}
-                  <span className="text-base font-bold text-green-400 font-mono">{call.call_number}</span>
+                  <span className="text-base font-bold text-green-400 font-mono tabular-nums">{call.call_number}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={call.priority} type="priority" size="sm" />
@@ -1718,12 +2445,12 @@ export default function DispatchPage() {
               </div>
               {/* Footer */}
               <div className="flex items-center justify-between text-sm text-rmpg-400">
-                <div className="flex items-center gap-1.5 font-mono">
+                <div className="flex items-center gap-1.5 font-mono tabular-nums">
                   <Clock className="w-3.5 h-3.5" />
                   <span>{formatElapsed(call.created_at)}</span>
                 </div>
                 {call.assigned_units.length > 0 && (
-                  <span className="font-mono">{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>
+                  <span className="font-mono tabular-nums">{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>
                 )}
               </div>
             </div>
@@ -1744,8 +2471,8 @@ export default function DispatchPage() {
             <div className="p-3 space-y-4">
               {/* Status & Priority */}
               <div className="flex items-center gap-2 flex-wrap">
-                <StatusBadge status={selectedCall.priority} type="priority" />
-                <StatusBadge status={selectedCall.status} type="call_status" />
+                <StatusBadge status={selectedCall.priority} type="priority" title={humanizePriority(selectedCall.priority)} />
+                <StatusBadge status={selectedCall.status} type="call_status" title={getStatusTooltip(selectedCall.status, 'call')} />
                 {callWarnings.length > 0 && (
                   <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse">
                     <AlertTriangle style={{ width: 10, height: 10 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
@@ -1753,83 +2480,132 @@ export default function DispatchPage() {
                 )}
               </div>
 
+              {/* Call Duration + Response Time — mobile */}
+              <div className="flex items-center gap-3 text-[10px] font-mono tabular-nums">
+                <div className="flex items-center gap-1">
+                  <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                  <span className="text-rmpg-400">Duration:</span>
+                  <span className="text-rmpg-200 font-bold">
+                    {(() => {
+                      const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
+                      const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                      if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
+                      const mins = Math.floor(elapsed / 60000);
+                      return `${mins}m`;
+                    })()}
+                  </span>
+                </div>
+                {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                  const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                  if (diff <= 0 || !isFinite(diff)) return null;
+                  const mins = Math.floor(diff / 60000);
+                  const secs = Math.floor((diff % 60000) / 1000);
+                  return (
+                    <div className="flex items-center gap-1">
+                      <span className="text-rmpg-400">Response:</span>
+                      <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Safety Flag Badges — mobile */}
+              {(() => {
+                const flags: Array<{ label: string; color: string }> = [];
+                if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: '#fca5a5' });
+                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: '#fde047' });
+                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c4b5fd' });
+                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: '#ef4444' });
+                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: '#fb923c' });
+                if (flags.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {flags.map(f => (
+                      <span key={f.label} className="text-[9px] font-bold font-mono px-1.5 py-0.5" style={{ color: f.color, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                        {f.label}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Mobile Status Action Buttons — large touch targets for gloved use */}
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" style={{ willChange: 'transform' }}>
                 {selectedCall.status === 'pending' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
                 )}
                 {selectedCall.status === 'dispatched' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
                 )}
                 {selectedCall.status === 'enroute' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
                 )}
                 {['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
                   <>
-                    <button
+                    <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                      style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80' }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                      style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80', touchAction: 'manipulation' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleHoldCall(selectedCall.id)}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                      style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                      style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
                     >
                       ⏸ Hold
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                      style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a' }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                      style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a', touchAction: 'manipulation' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
                   </>
                 )}
                 {selectedCall.status === 'on_hold' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000', touchAction: 'manipulation' }}
                   >
                     ▶ Resume
                   </button>
                 )}
                 {selectedCall.status === 'cleared' && (
                   <>
-                    <button
+                    <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                      style={{ minHeight: 48, minWidth: 80, background: '#374151', border: '1px solid #4b5563', color: '#d1d5db' }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #4b5563', color: '#cccccc', touchAction: 'manipulation' }}
                     >
                       Close
                     </button>
-                    <button
+                    <button type="button"
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                      style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                      style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -1837,39 +2613,39 @@ export default function DispatchPage() {
                   </>
                 )}
                 {selectedCall.status === 'closed' && (
-                  <button
+                  <button type="button"
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #2a6ab0', touchAction: 'manipulation' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
                   </button>
                 )}
                 {['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
-                  <button
+                  <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
                   >
                     <Undo2 style={{ width: 16, height: 16 }} /> Back
                   </button>
                 )}
                 {selectedCall.status !== 'archived' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#999999', touchAction: 'manipulation' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
                 )}
                 {selectedCall.status === 'archived' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#999999', touchAction: 'manipulation' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -1891,7 +2667,7 @@ export default function DispatchPage() {
                     <div className="field-label mb-1">Caller</div>
                     <div className="text-sm text-rmpg-200">{selectedCall.caller_name}</div>
                     {selectedCall.caller_phone && (
-                      <div className="text-xs text-rmpg-400 mt-0.5">{selectedCall.caller_phone}</div>
+                      <div className="text-xs text-rmpg-400 mt-0.5">{formatPhoneDisplay(selectedCall.caller_phone)}</div>
                     )}
                   </div>
                 )}
@@ -1903,38 +2679,73 @@ export default function DispatchPage() {
                   </div>
                 )}
 
-                {/* Timestamps */}
+                {/* Timestamps — editable by admin/manager */}
                 <div className="panel-inset p-3">
-                  <div className="field-label mb-2">Timeline</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="field-label">Timeline</div>
+                    {isAdminOrManager && <span className="text-[8px] text-rmpg-500 font-mono">CLICK TO EDIT</span>}
+                  </div>
                   <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-rmpg-400">Created</span>
-                      <span className="font-mono text-rmpg-200">{formatTime(selectedCall.created_at)}</span>
-                    </div>
-                    {selectedCall.dispatched_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Dispatched</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.dispatched_at)}</span>
+                    {([
+                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#999999' },
+                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
+                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
+                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
+                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
+                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
+                    ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
+                      <div key={ts.field} className="flex justify-between items-center group">
+                        <span className="text-rmpg-400 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ts.color, boxShadow: ts.value ? `0 0 4px ${ts.color}80` : 'none' }} />
+                          {ts.label}
+                        </span>
+                        {editingTimestamp === ts.field ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="datetime-local"
+                              step="1"
+                              className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
+                              defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                if (e.key === 'Escape') setEditingTimestamp(null);
+                              }}
+                              onBlur={(e) => {
+                                if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                else setEditingTimestamp(null);
+                              }}
+                            />
+                            {ts.value && ts.field !== 'created_at' && (
+                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span
+                            className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                            onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                            title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
+                          >
+                            {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {selectedCall.enroute_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Enroute</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.enroute_at)}</span>
-                      </div>
-                    )}
-                    {selectedCall.onscene_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">On Scene</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.onscene_at)}</span>
-                      </div>
-                    )}
-                    {selectedCall.cleared_at && (
-                      <div className="flex justify-between">
-                        <span className="text-rmpg-400">Cleared</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.cleared_at)}</span>
-                      </div>
-                    )}
+                    ))}
+                    {/* Enhancement 26: Response time (dispatched → onscene) */}
+                    {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                      const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                      if (diff <= 0 || !isFinite(diff)) return null;
+                      const mins = Math.floor(diff / 60000);
+                      const secs = Math.floor((diff % 60000) / 1000);
+                      return (
+                        <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
+                          <span className="text-rmpg-400 text-[10px]">Response Time</span>
+                          <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -1961,12 +2772,12 @@ export default function DispatchPage() {
                 {/* Notes + Add Note */}
                 <div className="panel-inset p-3">
                   <div className="field-label mb-2">Notes</div>
-                  {selectedCall.notes && selectedCall.notes.length > 0 && (
+                  {Array.isArray(selectedCall.notes) && selectedCall.notes.length > 0 && (
                     <div className="space-y-2 mb-3">
                       {selectedCall.notes.map((note) => (
                         <div key={note.id} className="text-xs">
                           <div className="flex items-center gap-2 text-rmpg-400">
-                            <span className="font-bold">{note.author}</span>
+                            <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
                           <div className="text-rmpg-200 mt-0.5">{note.text}</div>
@@ -1978,7 +2789,7 @@ export default function DispatchPage() {
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded"
+                      className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded-sm"
                       style={{ minHeight: 44 }}
                       placeholder="Add note…"
                       maxLength={2000}
@@ -1986,11 +2797,11 @@ export default function DispatchPage() {
                       onChange={(e) => setNewNote(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddNote(); } }}
                     />
-                    <button
+                    <button type="button"
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
-                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded"
-                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : '#1a5a9e', border: '1px solid #2a6ab0' }}
+                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
+                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#444444' : '#888888', border: '1px solid #2a6ab0' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
                     </button>
@@ -2002,33 +2813,173 @@ export default function DispatchPage() {
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
-                      {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
-                          VISIT #{selectedCall.pso_attempt_number}
-                        </span>
+                      {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                        isAdminOrManager ? (
+                          <select
+                            className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
+                            style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
+                            value={selectedCall.pso_attempt_number || 1}
+                            onChange={async (e) => {
+                              const val = parseInt(e.target.value, 10);
+                              try {
+                                const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ pso_attempt_number: val }) });
+                                const updated = mapDbCall(result);
+                                setCalls(prev => prev.map(c => String(c.id) === String(updated.id) ? { ...c, ...updated } : c));
+                                setSelectedCall(prev => prev ? { ...prev, ...updated } : updated);
+                              } catch { addToast('Failed to update visit number', 'error'); }
+                            }}
+                          >
+                            {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>VISIT #{n}</option>)}
+                          </select>
+                        ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                            VISIT #{selectedCall.pso_attempt_number}
+                          </span>
+                        ) : null
                       )}
                     </div>
                     <div className="space-y-1 text-xs text-rmpg-200">
-                      {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {selectedCall.pso_service_type.replace(/_/g, ' ')}</div>}
+                      {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</div>}
                       {selectedCall.pso_requestor_name && <div><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</div>}
-                      {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</div>}
+                      {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {humanizeDisposition(selectedCall.disposition)}</div>}
                     </div>
 
+                    {/* Serve Queue Integration — Gold Status Panel */}
+                    {(
+                      <div className="mt-2 pt-2 border-t border-rmpg-600">
+                        {serveLink ? (
+                          <div
+                            className="rounded-[2px] p-2 space-y-1.5"
+                            style={{
+                              border: '1px solid #d4a017',
+                              background: '#d4a01708',
+                            }}
+                            role="status"
+                            aria-label={`Serve status: ${serveLink.status}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {/* LED indicator */}
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{
+                                  background: serveLink.status === 'served' ? '#22c55e'
+                                    : serveLink.status === 'failed' ? '#ef4444'
+                                    : serveLink.status === 'in_progress' ? '#eab308'
+                                    : '#f59e0b',
+                                  boxShadow: `0 0 4px ${
+                                    serveLink.status === 'served' ? '#22c55e'
+                                    : serveLink.status === 'failed' ? '#ef4444'
+                                    : serveLink.status === 'in_progress' ? '#eab308'
+                                    : '#f59e0b'
+                                  }`,
+                                }}
+                              />
+                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+                                Serve Queue
+                              </span>
+                              {serveLink.auto_sent && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded-sm" style={{ background: '#d4a01720', border: '1px solid #d4a01740', color: '#d4a017' }}>
+                                  AUTO-SENT
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* Status badge */}
+                              <span
+                                className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-[2px] uppercase"
+                                style={{
+                                  background: serveLink.status === 'served' ? '#22c55e20'
+                                    : serveLink.status === 'failed' ? '#dc262620'
+                                    : serveLink.status === 'in_progress' ? '#eab30820'
+                                    : '#f59e0b20',
+                                  color: serveLink.status === 'served' ? '#4ade80'
+                                    : serveLink.status === 'failed' ? '#f87171'
+                                    : serveLink.status === 'in_progress' ? '#facc15'
+                                    : '#fbbf24',
+                                  border: `1px solid ${
+                                    serveLink.status === 'served' ? '#22c55e40'
+                                    : serveLink.status === 'failed' ? '#dc262640'
+                                    : serveLink.status === 'in_progress' ? '#eab30840'
+                                    : '#f59e0b40'
+                                  }`,
+                                }}
+                              >
+                                {serveLink.status === 'in_progress' ? 'IN PROGRESS' : serveLink.status?.toUpperCase()}
+                              </span>
+                              {/* Attempt counter */}
+                              <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>
+                                Attempts: {serveLink.attempt_count}/{serveLink.max_attempts}
+                              </span>
+                            </div>
+                            {/* View in Process Server link */}
+                            <button type="button"
+                              className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgba(212,160,23,0.2)]"
+                              style={{
+                                background: '#d4a01715',
+                                border: '1px solid #d4a01740',
+                                color: '#d4a017',
+                              }}
+                              onClick={() => navigate('/serve')}
+                              aria-label="View in Process Server"
+                            >
+                              <Briefcase style={{ width: 10, height: 10 }} />
+                              View in Process Server
+                            </button>
+                          </div>
+                        ) : (
+                          <button type="button"
+                            className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
+                            style={{
+                              background: sendingToServe ? '#444444' : '#7c3aed20',
+                              border: '1px solid #7c3aed50',
+                              color: sendingToServe ? '#999999' : '#a78bfa',
+                            }}
+                            disabled={sendingToServe}
+                            onClick={async () => {
+                              setSendingToServe(true);
+                              try {
+                                const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({}),
+                                });
+                                if (result) {
+                                  setServeLink(result);
+                                  addToast('Sent to Serve Queue', 'success');
+                                }
+                              } catch (err: any) {
+                                addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                              } finally {
+                                setSendingToServe(false);
+                              }
+                            }}
+                            aria-label="Send to Serve Queue"
+                          >
+                            <Briefcase style={{ width: 14, height: 14 }} />
+                            {sendingToServe ? 'Sending...' : 'Send to Serve Queue'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Visit History (mobile) */}
-                    {selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                    {Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-rmpg-600">
                         <div className="field-label mb-1.5">Visit History</div>
                         <div className="space-y-1.5">
                           {selectedCall.visit_history.map((visit) => (
-                            <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2 py-1.5 text-[10px]">
+                            <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2 py-1.5 text-[10px]">
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
                                 {visit.time_window && (
+<<<<<<< HEAD
                                   <span className="px-1 rounded text-[8px] font-mono" style={{ background: '#1a5a9e20', border: '1px solid #1a5a9e40', color: '#6ba3d4' }}>
+=======
+                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#88888820', border: '1px solid #88888840', color: '#888888' }}>
+>>>>>>> origin/main
                                     {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
                                     {visit.is_weekend ? ' (wknd)' : ''}
                                   </span>
@@ -2057,7 +3008,11 @@ export default function DispatchPage() {
                         <div className="mt-3 pt-2 border-t border-rmpg-600">
                           <div className="field-label mb-1.5 flex items-center gap-2">
                             Service Windows
+<<<<<<< HEAD
                             <span className="text-[9px] font-mono px-1 rounded" style={{
+=======
+                            <span className="text-[9px] font-mono px-1 rounded-sm" style={{
+>>>>>>> origin/main
                               background: allMet ? '#22c55e20' : '#f59e0b20',
                               border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
                               color: allMet ? '#4ade80' : '#fbbf24',
@@ -2072,7 +3027,11 @@ export default function DispatchPage() {
                               { key: 'evening', label: '6PM – 9PM', met: windows.evening },
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
+<<<<<<< HEAD
                               <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded" style={{
+=======
+                              <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
+>>>>>>> origin/main
                                 background: met ? '#22c55e10' : '#dc262610',
                                 border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
                               }}>
@@ -2098,14 +3057,14 @@ export default function DispatchPage() {
                       const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                       if (elapsed >= 72 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded text-center text-xs font-bold animate-pulse" style={{ background: '#dc262630', border: '1px solid #dc262650', color: '#f87171' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#dc262630', border: '1px solid #dc262650', color: '#f87171' }}>
                             72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
                           </div>
                         );
                       }
                       if (elapsed >= 48 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded text-center text-xs font-bold" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
                             {Math.floor(hoursLeft)} HOURS UNTIL 72-HR DEADLINE
                           </div>
                         );
@@ -2115,8 +3074,8 @@ export default function DispatchPage() {
 
                     {/* Schedule Return Visit button (mobile) */}
                     {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
-                      <button
-                        className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded"
+                      <button type="button"
+                        className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: '#d4a01730', border: '1px solid #d4a01760', color: '#d4a017' }}
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
@@ -2129,15 +3088,38 @@ export default function DispatchPage() {
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
+                              setCalls(prev => [mapped, ...prev]);
                               setSelectedCall(mapped);
-                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched — ${ordinal} visit`, 'success');
+                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
                             }
                           } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
                       >
                         <RotateCcw style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
                         Schedule Return Visit
+                      </button>
+                    )}
+
+                    {/* Undo Return Visit button (mobile) — only on pending child calls */}
+                    {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                      <button type="button"
+                        className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
+                        style={{ background: '#ef444420', border: '1px solid #ef444450', color: '#ef4444' }}
+                        onClick={async () => {
+                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
+                          try {
+                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                            if (result?.parent) {
+                              const mapped = mapDbCall(result.parent);
+                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                              setSelectedCall(mapped);
+                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                      >
+                        <Undo2 style={{ width: 12, height: 12, display: 'inline', marginRight: 6 }} />
+                        Undo Return Visit
                       </button>
                     )}
                   </div>
@@ -2148,14 +3130,14 @@ export default function DispatchPage() {
         </MobileDetailView>
 
         {/* FABs — New Call + PSO */}
-        <button
+        <button type="button"
           className="mobile-fab"
           onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
           aria-label="New Call"
         >
           <Plus style={{ width: 24, height: 24 }} />
         </button>
-        <button
+        <button type="button"
           className="mobile-fab"
           onClick={() => setShowQuickPsoModal(true)}
           aria-label="Quick PSO"
@@ -2197,14 +3179,37 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] border-r border-rmpg-600 flex flex-col bg-surface-base">
+      <div className="w-[35%] min-w-[320px] border-r border-[#222222] flex flex-col" style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
+          {/* Enhancement 27: Live sync indicator */}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-green-400 bg-green-900/30 border border-green-700/40" title="Real-time updates active">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" style={{ boxShadow: '0 0 4px #22c55e' }} />
+            LIVE
+          </span>
           <RmpgLogo height={16} iconOnly />
+          {/* Feature 1: Sound alert mute toggle */}
+          <button type="button"
+            onClick={toggleSoundAlerts}
+            className={`toolbar-btn ${soundAlertsMuted ? 'text-red-400' : 'text-green-400'}`}
+            title={soundAlertsMuted ? 'Sound alerts: MUTED' : 'Sound alerts: ON'}
+          >
+            {soundAlertsMuted ? <XCircle style={{ width: 10, height: 10 }} /> : <Radio style={{ width: 10, height: 10 }} />}
+            {soundAlertsMuted ? 'Muted' : 'Sound'}
+          </button>
+          {/* Feature 5: Shift handoff notes */}
+          <button type="button"
+            onClick={() => { setShowHandoffNotes(true); fetchHandoffNotes(); }}
+            className="toolbar-btn"
+            title="Shift Handoff Notes"
+          >
+            <Briefcase style={{ width: 10, height: 10 }} />
+            Handoff
+          </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {tabCounts.cleared > 0 && (
-            <button
+            <button type="button"
               onClick={handleBulkArchive}
               disabled={isBulkArchiving}
               className="toolbar-btn"
@@ -2214,21 +3219,36 @@ export default function DispatchPage() {
               Archive Cleared
             </button>
           )}
-          <input
-            type="text"
-            placeholder="Search calls..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-dark text-xs flex-1"
-            style={{ minWidth: '100px', maxWidth: '160px' }}
-          />
-          <button onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
+          <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
+            <Search className="absolute left-2 w-3 h-3 text-[#4b5563] pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search calls..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-dark text-xs w-full pl-6 pr-6"
+            />
+            {searchQuery && (
+              <button type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#6b7280] hover:text-white transition-colors"
+                title="Clear search"
+              >
+                <X style={{ width: 10, height: 10 }} />
+              </button>
+            )}
+          </div>
+          <button type="button" onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 10, height: 10 }} />
             New Call
           </button>
+          <button type="button" onClick={() => window.open('/serve-intake', '_blank', 'width=800,height=700')} className="toolbar-btn" title="Upload serve documents to create dispatch call">
+            <FileText style={{ width: 10, height: 10 }} />
+            Upload Serve
+          </button>
           {/* Quick Dispatch dropdown */}
           <div className="relative" ref={templateDropdownRef} style={{ display: 'inline-block' }}>
-            <button
+            <button type="button"
               onClick={() => setShowTemplateDropdown((prev) => !prev)}
               className="toolbar-btn"
               title="Quick Dispatch — create call from template"
@@ -2246,17 +3266,17 @@ export default function DispatchPage() {
                 style={{
                   top: '100%',
                   left: 0,
-                  minWidth: '200px',
+                  minWidth: '220px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#1a2636',
-                  border: '1px solid #3a5070',
-                  borderRadius: 0,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                  background: '#141414',
+                  border: '1px solid #2e2e2e',
+                  borderRadius: '2px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                 }}
               >
                 {templates.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-rmpg-400">No templates available</div>
+                  <div className="px-3 py-3 text-xs text-rmpg-400 text-center italic">No templates available</div>
                 ) : (
                   templates.map((tpl: any) => (
                     <button
@@ -2276,11 +3296,11 @@ export default function DispatchPage() {
                         setShowTemplateDropdown(false);
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
-                      style={{ fontSize: '11px', color: '#b0bcc8', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a3e58'; }}
+                      style={{ fontSize: '11px', color: '#aaaaaa', background: 'transparent', border: 'none', borderRadius: 0 }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2e2e2e'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
-                      <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || tpl.incident_type}</span>
+                      <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
                       {tpl.description && <span className="text-rmpg-400 truncate w-full" style={{ fontSize: '10px' }}>{tpl.description}</span>}
                     </button>
                   ))
@@ -2288,7 +3308,7 @@ export default function DispatchPage() {
               </div>
             )}
           </div>
-          <button
+          <button type="button"
             onClick={() => setShowQuickPsoModal(true)}
             className="toolbar-btn"
             title="Quick PSO Client Request (P)"
@@ -2318,7 +3338,7 @@ export default function DispatchPage() {
         />
 
         {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1 border-b border-rmpg-700/50 flex items-center gap-2 flex-wrap text-[9px] font-mono flex-shrink-0 bg-surface-sunken">
+        <div className="px-3 py-1.5 border-b border-[#222222] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
           {(() => {
             const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
             const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
@@ -2327,12 +3347,13 @@ export default function DispatchPage() {
             return (
               <>
                 {p1Count > 0 && (
-                  <span className="flex items-center gap-1 px-1.5 py-0.5 bg-red-900/30 text-red-400 border border-red-700/40 font-bold animate-pulse">
-                    <AlertTriangle className="w-2.5 h-2.5" /> P1: {p1Count}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold animate-pulse" style={{ background: 'rgba(220,38,38,0.2)', border: '1px solid rgba(220,38,38,0.4)', color: '#f87171', boxShadow: '0 0 6px rgba(220,38,38,0.3)' }}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" style={{ boxShadow: '0 0 4px #ef4444' }} />
+                    P1: {p1Count}
                   </span>
                 )}
                 <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
-                <span className="text-rmpg-400">Pending: <strong className="text-blue-400">{pendingCount}</strong></span>
+                <span className="text-rmpg-400">Pending: <strong className="text-gray-400">{pendingCount}</strong></span>
                 <span className="text-rmpg-400">Active: <strong className="text-green-400">{tabCounts.active}</strong></span>
                 {/* Stacked calls indicator */}
                 {(() => {
@@ -2346,13 +3367,20 @@ export default function DispatchPage() {
                   const stacked = [...stackedLocations.entries()].filter(([, count]) => count > 1);
                   if (stacked.length > 0) {
                     return (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-900/30 text-purple-400 border border-purple-700/40 font-bold text-[9px]" title={`${stacked.length} location(s) with multiple active calls`}>
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm" style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
                         <Link className="w-2.5 h-2.5" /> STACKED: {stacked.length}
                       </span>
                     );
                   }
                   return null;
                 })()}
+                {/* Feature 4: Unit availability counter */}
+                <span className="flex items-center gap-1 text-[#6b7280]">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
+                  Units: <strong style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}>
+                    {unitAvailability.available}/{unitAvailability.total}
+                  </strong> avail
+                </span>
                 <span className="text-rmpg-500 ml-auto">
                   {filteredCalls.length} calls
                 </span>
@@ -2361,12 +3389,63 @@ export default function DispatchPage() {
           })()}
         </div>
 
+        {/* Feature 9: Call Type Statistics Bar */}
+        {callTypeStats.length > 0 && (
+          <div className="px-3 py-1 border-b border-[#222222] flex items-center gap-2 flex-shrink-0" style={{ background: '#05050580' }}>
+            {callTypeStats.map(({ type, count }) => {
+              const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
+              const pct = total > 0 ? (count / total * 100) : 0;
+              return (
+                <div key={type} className="flex items-center gap-0.5" title={`${formatIncidentType(type)}: ${count}`}>
+                  <div
+                    className="h-2 rounded-sm bg-brand-500"
+                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
+                  />
+                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[80px] tabular-nums" title={formatIncidentType(type)}>
+                    {formatIncidentType(type).slice(0, 12)} {count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Feature 14: Disposition Statistics (collapsed by default) */}
+        {dispositionStats.length > 0 && filterTab === 'cleared' && (
+          <div className="px-3 py-1 border-b border-[#222222] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: '#05050580' }}>
+            <span className="text-rmpg-500 font-bold">DISPS:</span>
+            {dispositionStats.slice(0, 5).map(d => (
+              <span key={d.disposition} className="text-rmpg-400">
+                {d.disposition}: <strong className="text-rmpg-200">{d.count}</strong>
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Call List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-rmpg-400">
-              <Phone className="w-8 h-8 mb-2" />
-              <p className="text-sm">No calls in this category</p>
+            <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
+              <div className="p-3.5 rounded-sm mb-3" style={{ background: '#05050550', border: '1px solid #22222230' }}>
+                <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
+              </div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">No calls in this category</p>
+              <p className="text-[10px] text-[#4b5563] max-w-[200px] text-center leading-relaxed">
+                {filterTab === 'pending' ? 'All pending calls have been dispatched' :
+                 filterTab === 'active' ? 'No units are currently on active calls' :
+                 filterTab === 'cleared' ? 'No cleared calls to review' :
+                 filterTab === 'archived' ? 'No archived calls found' :
+                 filterTab === 'serve' ? 'No PSO client requests in queue' :
+                 'Press N to create a new call'}
+              </p>
+              {filterTab === 'all' && (
+                <button type="button"
+                  onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
+                  className="mt-4 toolbar-btn toolbar-btn-primary text-[10px]"
+                >
+                  <Plus style={{ width: 10, height: 10 }} /> New Call
+                </button>
+              )}
             </div>
           ) : (
             filteredCalls.map((call) => (
@@ -2378,6 +3457,9 @@ export default function DispatchPage() {
                 onUnitDrop={handleDragAssignUnit}
                 onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
                 onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
+                stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
+                onQuickNote={handleQuickNote}
+                hasActiveWarrant={!!(call as any).has_active_warrant}
               />
             ))
           )}
@@ -2391,27 +3473,131 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
         {/* ------------------------------------------------------------ */}
-        <div className="flex-1 flex border-b border-rmpg-600 min-h-0">
+        <div className="flex-1 flex border-b border-[#222222] min-h-0">
           {/* Call Detail Panel */}
           <div ref={callDetailRef} className={`flex-1 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
-              <div className="panel-title-bar flex-shrink-0">
-                <div className="flex items-center gap-3">
+              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #888888' }}>
+                {/* Row 1: Call identification */}
+                <div className="panel-title-bar flex items-center gap-2" style={{ borderBottom: 'none' }}>
                   {selectedCall.priority === 'P1' && (
-                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
+                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
-                  <span className="text-sm font-bold text-green-400 font-mono">{selectedCall.call_number}</span>
-                  <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
-                  <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
+                  <span
+                    className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap cursor-pointer hover:text-green-300 transition-colors"
+                    style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}
+                    title="Click to copy"
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(selectedCall.call_number || ''); addToast(`Copied ${selectedCall.call_number}`, 'success'); }}
+                  >{selectedCall.call_number}</span>
+                  {/* Case Number — editable by admin/manager */}
+                  {(selectedCall.case_number || isAdminOrManager) && (
+                    editingTimestamp === 'case_number' ? (
+                      <input
+                        type="text"
+                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
+                        defaultValue={selectedCall.case_number || ''}
+                        placeholder="Enter case number..."
+                        autoFocus
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
+                            } catch { addToast('Failed to update case number', 'error'); }
+                            setEditingTimestamp(null);
+                          }
+                          if (e.key === 'Escape') setEditingTimestamp(null);
+                        }}
+                        onBlur={async (e) => {
+                          // Save on blur (don't discard changes)
+                          const val = e.target.value.trim();
+                          if (val !== (selectedCall.case_number || '')) {
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                            } catch { /* silent on blur */ }
+                          }
+                          setEditingTimestamp(null);
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className={`text-[10px] font-bold font-mono px-1.5 py-0.5 whitespace-nowrap ${selectedCall.case_number ? 'text-amber-300 bg-amber-900/30 border border-amber-700/40' : 'text-rmpg-600 border border-dashed border-rmpg-600/40'} ${isAdminOrManager ? 'cursor-pointer hover:brightness-125' : ''}`}
+                        onClick={() => isAdminOrManager && setEditingTimestamp('case_number')}
+                        title={isAdminOrManager ? 'Click to edit case number' : undefined}
+                      >
+                        {selectedCall.case_number ? `CASE ${selectedCall.case_number}` : isAdminOrManager ? '+ CASE #' : ''}
+                      </span>
+                    )
+                  )}
+                  {/* Incident Number — editable by admin/manager */}
+                  {(selectedCall.incident_number || isAdminOrManager) && (
+                    editingTimestamp === 'incident_number' ? (
+                      <input
+                        type="text"
+                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
+                        defaultValue={(selectedCall as any).incident_number || ''}
+                        placeholder="Incident #"
+                        autoFocus
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
+                            } catch { addToast('Failed to update incident link', 'error'); }
+                            setEditingTimestamp(null);
+                          }
+                          if (e.key === 'Escape') setEditingTimestamp(null);
+                        }}
+                        onBlur={() => setEditingTimestamp(null)}
+                      />
+                    ) : selectedCall.incident_number ? (
+                      <span
+                        className={`text-[10px] font-bold font-mono text-cyan-300 bg-cyan-900/30 border border-cyan-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-cyan-200 transition-colors`}
+                        onClick={(e) => {
+                          if (isAdminOrManager && e.shiftKey) {
+                            setEditingTimestamp('incident_number');
+                          } else {
+                            // Navigate to incident
+                            window.open(`/incidents?search=${encodeURIComponent(selectedCall.incident_number!)}`, '_blank');
+                          }
+                        }}
+                        title={isAdminOrManager ? 'Click to view incident (Shift+click to edit)' : 'Click to view incident'}
+                      >
+                        <Link style={{ width: 8, height: 8, display: 'inline', verticalAlign: 'middle', marginRight: 2 }} />
+                        INC {selectedCall.incident_number}
+                      </span>
+                    ) : null
+                  )}
+                  <StatusBadge status={selectedCall.priority} type="priority" size="sm" title={humanizePriority(selectedCall.priority)} />
+                  <StatusBadge status={selectedCall.status} type="call_status" size="sm" title={getStatusTooltip(selectedCall.status, 'call')} />
                   {callWarnings.length > 0 && (
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse">
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse whitespace-nowrap">
                       <AlertTriangle style={{ width: 9, height: 9 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
                     </span>
                   )}
+                  {/* On-scene live timer */}
+                  {onSceneElapsed && (
+                    <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-purple-300 bg-purple-900/20 border border-purple-700/30 whitespace-nowrap tabular-nums" title="Time on scene">
+                      <Clock style={{ width: 9, height: 9 }} /> On scene: {onSceneElapsed}
+                    </span>
+                  )}
                 </div>
-                  <div className="ml-auto flex items-center gap-1 flex-wrap">
+                {/* Row 2: Action buttons — separate row to prevent cramping */}
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#222222] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
@@ -2459,7 +3645,7 @@ export default function DispatchPage() {
                         })),
                         // Build narrative from notes for PDF
                         narrative: selectedCall?.notes?.map((n: any) =>
-                          `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+                          `[${n.timestamp ? formatTime(n.timestamp) : ''}] ${n.author || 'System'}: ${n.text || ''}`
                         ).join('\n') || '',
                       }}
                       identifier={selectedCall?.call_number}
@@ -2469,23 +3655,23 @@ export default function DispatchPage() {
                     />
                     {/* Edit toggle */}
                     {!isEditing && (
-                      <button onClick={startEditing} className="toolbar-btn" title="Edit call details">
+                      <button type="button" onClick={startEditing} className="toolbar-btn" title="Edit call details">
                         <Edit3 style={{ width: 10, height: 10 }} /> Edit
                       </button>
                     )}
                     {isEditing && (
                       <>
-                        <button onClick={saveEditing} className="toolbar-btn toolbar-btn-primary">
-                          <Save style={{ width: 10, height: 10 }} /> Save
+                        <button type="button" onClick={saveEditing} disabled={isSaving} className="toolbar-btn toolbar-btn-primary">
+                          {isSaving ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Save style={{ width: 10, height: 10 }} />} Save
                         </button>
-                        <button onClick={cancelEditing} className="toolbar-btn">
+                        <button type="button" onClick={cancelEditing} disabled={isSaving} className="toolbar-btn">
                           <X style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
                     )}
                     {/* NCIC Terminal button */}
                     {!isEditing && (
-                      <button
+                      <button type="button"
                         onClick={() => setShowNcicPanel(true)}
                         className="toolbar-btn"
                         title="NCIC / NLETS Query Terminal"
@@ -2494,9 +3680,9 @@ export default function DispatchPage() {
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
                     )}
-                    {/* Schedule Return Visit — PSO calls in completed states */}
-                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
-                      <button
+                    {/* Schedule Return Visit — PSO/Process Service calls in completed states */}
+                    {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
                         className="toolbar-btn"
                         style={{ background: '#d4a01725', borderColor: '#d4a01750', color: '#d4a017' }}
                         onClick={async () => {
@@ -2510,20 +3696,70 @@ export default function DispatchPage() {
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
+                              setCalls(prev => [mapped, ...prev]);
                               setSelectedCall(mapped);
-                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched as ${ordinal} visit`, 'success');
+                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
                             }
                           } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
-                        title="Schedule a return visit for this PSO call"
+                        title="Schedule a return visit — creates a new linked call"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
                     )}
+                    {/* Undo Return Visit — only on pending child calls */}
+                    {!isEditing && (selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: '#ef444420', borderColor: '#ef444450', color: '#ef4444' }}
+                        onClick={async () => {
+                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
+                          try {
+                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                            if (result?.parent) {
+                              const mapped = mapDbCall(result.parent);
+                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                              setSelectedCall(mapped);
+                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                        title="Undo this return visit and delete this call"
+                      >
+                        <Undo2 style={{ width: 10, height: 10 }} /> Undo Visit
+                      </button>
+                    )}
+                    {/* Send to Serve Queue — PSO calls */}
+                    {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
+                        disabled={sendingToServe}
+                        onClick={async () => {
+                          setSendingToServe(true);
+                          try {
+                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
+                              method: 'POST',
+                              body: JSON.stringify({}),
+                            });
+                            if (result) {
+                              setServeLink(result);
+                              addToast('Sent to Serve Queue', 'success');
+                            }
+                          } catch (err: any) {
+                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                          } finally {
+                            setSendingToServe(false);
+                          }
+                        }}
+                        title="Send this process service to the serve queue"
+                      >
+                        <Briefcase style={{ width: 10, height: 10 }} /> {sendingToServe ? 'Sending...' : 'Serve Queue'}
+                      </button>
+                    )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
-                      <button
+                      <button type="button"
                         onClick={() => handleRevertStatus(selectedCall.id)}
                         className="toolbar-btn"
                         title={`Revert to previous status`}
@@ -2534,80 +3770,81 @@ export default function DispatchPage() {
                     )}
                     {/* Status action toolbar buttons */}
                     {!isEditing && selectedCall.status === 'pending' && (
-                      <button onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
                         <Send style={{ width: 10, height: 10 }} /> Dispatch
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'dispatched' && (
-                      <button onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
                         <Navigation style={{ width: 10, height: 10 }} /> En Route
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'enroute' && (
-                      <button onClick={() => handleStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
                         <Eye style={{ width: 10, height: 10 }} /> On Scene
                       </button>
                     )}
                     {!isEditing && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
                       <>
-                        <button onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
+                        <button type="button" onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
                           <CheckCircle style={{ width: 10, height: 10 }} /> Clear
                         </button>
-                        <button onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                        <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
                           ⏸ Hold
                         </button>
-                        <button onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#ef7a7a' }}>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#ef7a7a' }}>
                           <XCircle style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'on_hold' && (
-                      <button onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: '#f59e0b', color: '#000' }}>
+                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: '#f59e0b', color: '#000' }}>
                         ▶ Resume
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'cleared' && (
                       <>
-                        <button onClick={() => handleStatusChange(selectedCall.id, 'closed')} className="toolbar-btn">
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'closed')} className="toolbar-btn">
                           Close
                         </button>
-                        <button onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
+                        <button type="button" onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
                           {isGenerating ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
                           Report
                         </button>
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'closed' && (
-                      <button onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={handleGenerateIncident} disabled={isGenerating} className="toolbar-btn toolbar-btn-primary">
                         {isGenerating ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
                         Report
                       </button>
                     )}
                     {/* LE Notification */}
                     {!isEditing && !selectedCall.le_notified && selectedCall.status !== 'archived' && (
-                      <button onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                      <button type="button" onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
                         <Radio style={{ width: 10, height: 10 }} /> Notify LE
                       </button>
                     )}
                     {selectedCall.le_notified && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-green-900/50 text-green-400 border border-green-700/50">
-                        <CheckCircle style={{ width: 9, height: 9 }} /> LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)', boxShadow: '0 0 4px rgba(34,197,94,0.1)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e80' }} />
+                        LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
                       </span>
                     )}
                     {/* Archive — available on any non-archived status */}
                     {!isEditing && selectedCall.status !== 'archived' && (
-                      <button onClick={() => handleArchive(selectedCall.id)} className="toolbar-btn" title="Archive this call">
+                      <button type="button" onClick={() => handleArchive(selectedCall.id)} className="toolbar-btn" title="Archive this call">
                         <Archive style={{ width: 10, height: 10 }} /> Archive
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'archived' && (
-                      <button onClick={() => handleUnarchive(selectedCall.id)} className="toolbar-btn">
+                      <button type="button" onClick={() => handleUnarchive(selectedCall.id)} className="toolbar-btn">
                         <RotateCcw style={{ width: 10, height: 10 }} /> Restore
                       </button>
                     )}
                     {/* Delete — available on any call */}
                     {!isEditing && (
-                      <button onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
+                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
                         <Trash2 style={{ width: 10, height: 10 }} /> Delete
                       </button>
                     )}
@@ -2616,42 +3853,118 @@ export default function DispatchPage() {
 
               {/* Warning Tags / Caution Alerts — always visible above tabs */}
               {callWarnings.length > 0 && (
-                <div className="px-4 pt-2 pb-1 flex-shrink-0">
-                  <label className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                    <AlertTriangle style={{ width: 10, height: 10 }} /> CAUTION / WARNINGS
+                <div className="px-4 pt-2 pb-1.5 flex-shrink-0" style={{ background: 'rgba(220,38,38,0.05)', borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
+                  <label className="text-[9px] font-bold text-red-400 uppercase tracking-[0.1em] flex items-center gap-1.5 mb-1.5">
+                    <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgba(239,68,68,0.4))' }} /> CAUTION / WARNINGS
                   </label>
                   <WarningTags warnings={callWarnings} />
                 </div>
               )}
 
+              {/* Call Duration + Response Time + Safety Summary — always visible above tabs */}
+              {!isEditing && (
+                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#050505', borderBottom: '1px solid #222222' }}>
+                  {/* Call duration — running timer */}
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                    <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                    <span className="text-rmpg-400">Duration:</span>
+                    <span className="text-rmpg-200 font-bold">
+                      {(() => {
+                        const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
+                        const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                        if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
+                        const totalSec = Math.floor(elapsed / 1000);
+                        const hrs = Math.floor(totalSec / 3600);
+                        const mins = Math.floor((totalSec % 3600) / 60);
+                        const secs = totalSec % 60;
+                        if (hrs > 0) return `${hrs}h ${mins}m`;
+                        return `${mins}m ${secs}s`;
+                      })()}
+                    </span>
+                  </div>
+                  {/* Response time — dispatched to on scene */}
+                  {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                    const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                    if (diff <= 0 || !isFinite(diff)) return null;
+                    const mins = Math.floor(diff / 60000);
+                    const secs = Math.floor((diff % 60000) / 1000);
+                    return (
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                        <Navigation style={{ width: 10, height: 10 }} className="text-cyan-500" />
+                        <span className="text-rmpg-400">Response:</span>
+                        <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                      </div>
+                    );
+                  })()}
+                  {/* Safety flag summary — compact inline */}
+                  {(() => {
+                    const flags: string[] = [];
+                    if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push('ARMED');
+                    if ((selectedCall as any).domestic_violence) flags.push('DV');
+                    if ((selectedCall as any).mental_health_crisis) flags.push('MH');
+                    if ((selectedCall as any).officer_safety_caution) flags.push('SAFETY');
+                    if ((selectedCall as any).felony_in_progress) flags.push('FELONY');
+                    if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push('PURSUIT');
+                    if ((selectedCall as any).ems_requested) flags.push('EMS');
+                    if ((selectedCall as any).injuries_reported) flags.push('INJ');
+                    if (flags.length === 0) return null;
+                    return (
+                      <div className="flex items-center gap-1 ml-auto">
+                        <AlertTriangle style={{ width: 10, height: 10 }} className="text-red-400" />
+                        {flags.map(f => (
+                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c4b5fd' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               {/* Detail Tabs */}
-              <div className="flex border-b border-rmpg-600 flex-shrink-0 bg-surface-sunken">
+              <div className="flex border-b border-[#222222] flex-shrink-0" style={{ background: '#050505' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'flags'] as const).map(tab => {
                   const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', flags: 'Flags' };
+                  const icons: Record<string, React.ReactNode> = {
+                    info: <FileText style={{ width: 9, height: 9 }} />,
+                    persons: <User style={{ width: 9, height: 9 }} />,
+                    timeline: <Clock style={{ width: 9, height: 9 }} />,
+                    notes: <MessageSquare style={{ width: 9, height: 9 }} />,
+                    flags: <Shield style={{ width: 9, height: 9 }} />,
+                  };
                   const counts: Record<string, number> = {
                     persons: callPersons.length + callVehicles.length,
                     timeline: activityEntries.length,
-                    notes: (selectedCall.notes || []).length,
+                    notes: (selectedCall?.notes || []).length,
                   };
                   const count = counts[tab];
+                  const isActive = detailTab === tab;
                   return (
-                    <button
+                    <button type="button"
                       key={tab}
                       onClick={() => setDetailTab(tab)}
-                      className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b-2 ${
-                        detailTab === tab
-                          ? 'border-brand-500 text-brand-400 bg-brand-900/10'
-                          : 'border-transparent text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30'
-                      }`}
+                      className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
+                      style={{
+                        color: isActive ? '#999999' : '#666666',
+                        background: isActive ? 'rgba(136,136,136,0.1)' : 'transparent',
+                        borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
+                      }}
+                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
+                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#666666'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
-                      {labels[tab]}{count ? ` (${count})` : ''}
+                      <span className="flex items-center gap-1.5">
+                        {icons[tab]}
+                        {labels[tab]}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#22222230', color: isActive ? '#999999' : '#666666' }}>{count}</span> : ''}
+                      </span>
                     </button>
                   );
                 })}
               </div>
 
               {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -2675,7 +3988,7 @@ export default function DispatchPage() {
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-rmpg-300" />
-                          <p className="text-sm text-white">{selectedCall.location}</p>
+                          <p className="text-sm text-white">{formatAddressDisplay(selectedCall.location)}</p>
                         </div>
                       )}
                       {!isEditing && selectedCall.property_name && (
@@ -2687,11 +4000,27 @@ export default function DispatchPage() {
                           {selectedCall.client_name}
                         </p>
                       )}
+                      {/* Weather at call location — officer safety indicator */}
+                      {!isEditing && selectedCall.weather_conditions && (
+                        <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
+                          <Thermometer style={{ width: 10, height: 10 }} />
+                          <span className="text-rmpg-300">{selectedCall.weather_conditions}</span>
+                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {selectedCall.lighting_conditions}</span>}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="field-label">Description:</label>
                       {isEditing ? (
-                        <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                        <>
+                          <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                          <NarrativeAssist
+                            notes={editData.description || ''}
+                            incidentType={editData.incident_type || selectedCall.incident_type}
+                            locationAddress={editData.location_address || selectedCall.location || ''}
+                            onAccept={(narrative) => updateEditField('description', narrative)}
+                          />
+                        </>
                       ) : (
                         <p className="text-sm text-rmpg-200 leading-relaxed">{selectedCall.description}</p>
                       )}
@@ -2743,11 +4072,28 @@ export default function DispatchPage() {
                             onChange={(e) => updateEditField('disposition', e.target.value)}
                           >
                             <option value="">— Select Disposition —</option>
-                            {dispositionCodes.map((d) => (
-                              <option key={d.code} value={d.code}>
-                                {d.code} — {d.description}
-                              </option>
-                            ))}
+                            {/* Feature 2: Common disposition quick-picks (always available) */}
+                            <optgroup label="Common Dispositions">
+                              <option value="Report Taken">Report Taken</option>
+                              <option value="Unfounded">Unfounded</option>
+                              <option value="GOA">Gone on Arrival</option>
+                              <option value="Referred">Referred</option>
+                              <option value="No Action">No Action Required</option>
+                              <option value="Arrest">Arrest</option>
+                              <option value="Warning">Warning Issued</option>
+                              <option value="Citation">Citation Issued</option>
+                              <option value="Trespass Warning">Trespass Warning</option>
+                              <option value="Civil Matter">Civil Matter</option>
+                            </optgroup>
+                            {dispositionCodes.length > 0 && (
+                              <optgroup label="Custom Codes">
+                                {dispositionCodes.map((d) => (
+                                  <option key={d.code} value={d.code}>
+                                    {d.code} — {d.description}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
                           </select>
                         </div>
                       </>
@@ -2756,7 +4102,7 @@ export default function DispatchPage() {
                       <div>
                         <label className="field-label">Disposition:</label>
                         <p className="text-sm text-rmpg-200">
-                          <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
+                          <span className="inline-block px-2 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1.5 rounded-sm tracking-wide">
                             {selectedCall.disposition}
                           </span>
                           {(() => {
@@ -2776,7 +4122,7 @@ export default function DispatchPage() {
                       {isEditing ? (
                         <div className="space-y-1 mt-0.5">
                           <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
-                          <input type="text" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', e.target.value)} />
+                          <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
                           <input type="text" className="input-dark text-xs" placeholder="Caller address" value={editData.caller_address} onChange={(e) => updateEditField('caller_address', e.target.value)} />
                           <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
@@ -2798,7 +4144,7 @@ export default function DispatchPage() {
                               {selectedCall.caller_phone && (
                                 <div className="flex items-center gap-1.5 ml-5">
                                   <Phone className="w-3 h-3 text-rmpg-400" />
-                                  <p className="text-xs text-rmpg-300">{selectedCall.caller_phone}</p>
+                                  <p className="text-xs text-rmpg-300">{formatPhoneDisplay(selectedCall.caller_phone)}</p>
                                 </div>
                               )}
                             </>
@@ -2807,51 +4153,77 @@ export default function DispatchPage() {
                       )}
                     </div>
 
-                    {/* Timeline */}
+                    {/* Timeline — editable by admin/manager */}
                     <div>
-                      <label className="field-label">Timeline:</label>
-                      <div className="space-y-1 mt-1">
-                        <div className="flex items-center gap-2 text-xs">
-                          <Clock className="w-3 h-3 text-rmpg-400" />
-                          <span className="text-rmpg-300">Created:</span>
-                          <span className="text-white font-mono">{formatTime(selectedCall.created_at)}</span>
-                          <span className="text-rmpg-400">({formatElapsed(selectedCall.created_at)} ago)</span>
-                        </div>
-                        {selectedCall.dispatched_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-amber-400" />
-                            <span className="text-rmpg-300">Dispatched:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.dispatched_at)}</span>
+                      <div className="flex items-center justify-between">
+                        <label className="field-label">Timeline:</label>
+                        {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
+                      </div>
+                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #222222' }}>
+                        {([
+                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#666666', showElapsed: true },
+                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
+                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
+                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
+                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
+                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
+                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#666666' },
+                        ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
+                          <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #050505', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
+                            {editingTimestamp === ts.field ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="datetime-local"
+                                  step="1"
+                                  className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
+                                  defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                    if (e.key === 'Escape') setEditingTimestamp(null);
+                                  }}
+                                  onBlur={(e) => {
+                                    if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                    else setEditingTimestamp(null);
+                                  }}
+                                />
+                                {ts.value && ts.field !== 'created_at' && (
+                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span
+                                className={`text-white font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                                onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                                title={isAdminOrManager ? 'Click to edit' : undefined}
+                              >
+                                {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic text-[9px]">— not set —</span>}
+                              </span>
+                            )}
+                            {ts.showElapsed && ts.value && !editingTimestamp && (() => {
+                              const ageMin = Math.floor((Date.now() - new Date(ts.value).getTime()) / 60000);
+                              const ageColor = ageMin > 120 ? '#ef4444' : ageMin > 60 ? '#f97316' : ageMin > 30 ? '#eab308' : '#22c55e';
+                              return <span className="text-[9px] font-mono tabular-nums font-bold" style={{ color: ageColor }}>({formatElapsed(ts.value)})</span>;
+                            })()}
                           </div>
-                        )}
-                        {selectedCall.enroute_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-brand-400" />
-                            <span className="text-rmpg-300">En Route:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.enroute_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.onscene_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-purple-400" />
-                            <span className="text-rmpg-300">On Scene:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.onscene_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.cleared_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-rmpg-300" />
-                            <span className="text-rmpg-300">Cleared:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.cleared_at)}</span>
-                          </div>
-                        )}
-                        {selectedCall.archived_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <Archive className="w-3 h-3 text-slate-400" />
-                            <span className="text-rmpg-300">Archived:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.archived_at)}</span>
-                          </div>
-                        )}
+                        ))}
+                        {/* Enhancement 26: Response time (dispatched → onscene) */}
+                        {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
+                          const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                          if (diff <= 0 || !isFinite(diff)) return null;
+                          const mins = Math.floor(diff / 60000);
+                          const secs = Math.floor((diff % 60000) / 1000);
+                          return (
+                            <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
+                              <span className="text-rmpg-400 text-[10px]">Response Time</span>
+                              <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -2859,9 +4231,9 @@ export default function DispatchPage() {
                     <div>
                       <div className="flex items-center justify-between">
                         <label className="field-label">Assigned Units:</label>
-                        {!isEditing && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                        {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                           <div className="relative" ref={attachUnitDropdownRef} style={{ display: 'inline-block' }}>
-                            <button
+                            <button type="button"
                               onClick={() => setShowAttachUnitDropdown((prev) => !prev)}
                               className="toolbar-btn"
                               style={{ padding: '1px 6px', fontSize: '9px' }}
@@ -2892,6 +4264,40 @@ export default function DispatchPage() {
                           </div>
                         )}
                       </div>
+                      {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
+                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                        <div className="flex gap-1 mt-1 mb-1">
+                          <button type="button"
+                            onClick={() => handleAutoAssign(selectedCall.id)}
+                            className="toolbar-btn text-[8px]"
+                            style={{ padding: '1px 4px' }}
+                            title="Auto-assign nearest available unit"
+                          >
+                            <Navigation style={{ width: 8, height: 8 }} /> Auto-assign
+                          </button>
+                          {/* Feature 19: Transfer button (only if a unit is assigned) */}
+                          {(selectedCall.assigned_units || []).length > 0 && (
+                            <div className="relative">
+                              <select
+                                className="input-dark text-[8px] py-0 px-1"
+                                style={{ maxWidth: 120 }}
+                                defaultValue=""
+                                onChange={(e) => {
+                                  if (e.target.value && selectedCall.assigned_units.length > 0) {
+                                    handleTransferCall(selectedCall.id, String(selectedCall.assigned_units[0]), e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              >
+                                <option value="" disabled>Transfer to...</option>
+                                {units.filter(u => u.status === 'available' && !selectedCall.assigned_units.includes(u.id)).map(u => (
+                                  <option key={u.id} value={u.id}>{u.call_sign}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {(selectedCall.assigned_units || []).length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {(selectedCall.assigned_units || []).map((unitIdStr) => {
@@ -2899,10 +4305,10 @@ export default function DispatchPage() {
                             const displayName = unitObj ? unitObj.call_sign : unitIdStr;
                             const statusColor = unitObj ? (
                               unitObj.status === 'onscene' ? '#a855f7' :
-                              unitObj.status === 'enroute' ? '#3b82f6' :
+                              unitObj.status === 'enroute' ? '#888888' :
                               unitObj.status === 'dispatched' ? '#f59e0b' :
                               '#22c55e'
-                            ) : '#5a6e80';
+                            ) : '#666666';
                             const statusLabel = unitObj ? (
                               unitObj.status === 'onscene' ? 'OS' :
                               unitObj.status === 'enroute' ? 'ER' :
@@ -2912,16 +4318,16 @@ export default function DispatchPage() {
                             return (
                               <span
                                 key={unitIdStr}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold font-mono"
-                                style={{ background: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}50` }}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold font-mono rounded-sm transition-all duration-150 hover:brightness-110"
+                                style={{ background: `${statusColor}12`, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 4px ${statusColor}10` }}
                                 title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ')})` : displayName}
                               >
-                                <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor }} />
+                                <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 3px ${statusColor}80` }} />
                                 {displayName}
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
                                 {!isEditing && unitObj && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleUnassignUnit(unitObj.id)}
                                     className="ml-0.5 hover:text-red-400 transition-colors"
                                     title={`Detach ${displayName}`}
@@ -2935,15 +4341,17 @@ export default function DispatchPage() {
                           })}
                         </div>
                       ) : (
-                        <p className="text-xs text-rmpg-400 mt-1">No units assigned</p>
+                        <p className="text-xs text-rmpg-400 mt-1 italic">No units assigned</p>
                       )}
                       {/* Inline ETA from route */}
                       {routeInfo && (
-                        <div className="mt-1.5 flex items-center gap-2 px-2 py-1" style={{ background: '#3b82f610', border: '1px solid #3b82f630' }}>
-                          <span className="text-[9px] font-mono font-bold text-blue-400">▶ ETA</span>
-                          <span className="text-[10px] font-mono font-bold text-white">{routeInfo.eta}</span>
-                          <span className="text-[9px] font-mono text-rmpg-400">{routeInfo.distance}</span>
-                          <span className="text-[8px] font-mono text-rmpg-500 ml-auto">{routeInfo.unitCallSign}</span>
+                        <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', boxShadow: '0 0 8px rgba(59,130,246,0.06)' }}>
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-gray-400">
+                            <Navigation style={{ width: 9, height: 9 }} /> ETA
+                          </span>
+                          <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
+                          <span className="text-[9px] font-mono text-[#6b7280] tabular-nums">{routeInfo.distance}</span>
+                          <span className="text-[8px] font-mono text-[#4b5563] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
                     </div>
@@ -2952,8 +4360,8 @@ export default function DispatchPage() {
 
                 {/* ── MILEAGE (primary unit) — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Primary Unit Mileage
                     </label>
                     {isEditing ? (
@@ -2969,11 +4377,11 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.starting_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">Start:</span> {Number(selectedCall.starting_mileage).toLocaleString()} mi</span>}
-                        {selectedCall.ending_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
+                        {selectedCall.starting_mileage && <span className="text-rmpg-200 tabular-nums"><span className="text-rmpg-400">Start:</span> {Number(selectedCall.starting_mileage).toLocaleString()} mi</span>}
+                        {selectedCall.ending_mileage && <span className="text-rmpg-200 tabular-nums"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
                         {selectedCall.starting_mileage && selectedCall.ending_mileage && (
-                          <span className="text-blue-400 font-semibold">
-                            Total: {(Number(selectedCall.ending_mileage) - Number(selectedCall.starting_mileage)).toFixed(1)} mi
+                          <span className="text-[10px] font-mono text-green-400 font-semibold tabular-nums">
+                            Total: {((Number(selectedCall.ending_mileage) || 0) - (Number(selectedCall.starting_mileage) || 0)).toFixed(1)} mi
                           </span>
                         )}
                       </div>
@@ -2983,17 +4391,13 @@ export default function DispatchPage() {
 
                 {/* ── EXTENDED DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.section_id || selectedCall.zone_id || selectedCall.beat_id || selectedCall.latitude || selectedCall.dispatch_code) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
-                      const filteredZones = editData.section_id
-                        ? Array.from(new Set(districts.filter(d => d.section_id === editData.section_id).map(d => d.zone_id))).sort()
-                        : zones;
-                      const filteredBeats = editData.zone_id
-                        ? Array.from(new Set(districts.filter(d => d.zone_id === editData.zone_id).map(d => d.beat_id))).sort()
-                        : beats;
+                      const filteredZones = zonesForSection(editData.section_id);
+                      const filteredBeats = beatsForZone(editData.zone_id);
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -3002,10 +4406,17 @@ export default function DispatchPage() {
                             <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
                             <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
+                          {districtLoading && <div className="flex items-center gap-1 text-[9px] text-rmpg-400 mb-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading districts...</div>}
+                          {districtError && <div className="flex items-center gap-1 text-[9px] text-amber-400 mb-1"><AlertTriangle className="w-3 h-3" /> {districtError} <button type="button" onClick={() => retryLoadDistricts()} className="text-brand-400 underline ml-1">Retry</button></div>}
+                          {!districtLoading && !districtError && districts.length === 0 && <div className="text-[9px] text-rmpg-500 mb-1">No districts configured</div>}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Section</label>
-                              <select className="input-dark text-xs" value={editData.section_id} onChange={(e) => {
+                              <label className="text-[9px] text-brand-gold-500 flex items-center gap-1">Section
+                                {editData.latitude && editData.longitude && (
+                                  <button type="button" onClick={async () => { const r = await identifyDistrict(Number(editData.latitude), Number(editData.longitude)); if (r) setEditData(prev => ({ ...prev, section_id: r.section_id || '', zone_id: r.zone_id || '', beat_id: r.beat_id || '', dispatch_code: r.dispatch_code || '' })); }} disabled={districtIdentifying} className="text-brand-400 hover:text-brand-300" title="Re-detect from GPS">{districtIdentifying ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Crosshair className="w-2.5 h-2.5" />}</button>
+                                )}
+                              </label>
+                              <select className="input-dark text-xs" value={editData.section_id} disabled={districtLoading} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, section_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
@@ -3034,7 +4445,7 @@ export default function DispatchPage() {
                                 setEditData(prev => ({ ...prev, beat_id: beatVal, dispatch_code: match?.dispatch_code || '' }));
                               }}>
                                 <option value="">— Select —</option>
-                                {filteredBeats.map(b => <option key={b} value={b}>{beatLabels.get(b) || b}</option>)}
+                                {filteredBeats.map(b => <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>)}
                               </select>
                             </div>
                             <div>
@@ -3051,15 +4462,15 @@ export default function DispatchPage() {
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
                         {selectedCall.dispatch_code && (
-                          <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 rounded-sm tracking-wide">
+                          <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums" style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}>
                             {selectedCall.dispatch_code}
                           </span>
                         )}
                         {selectedCall.section_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.section_id} — {sectionLabels.get(selectedCall.section_id) || ''}</span>}
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
-                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {beatLabels.get(selectedCall.beat_id) || selectedCall.beat_id}</span>}
-                        {selectedCall.latitude && selectedCall.longitude && (
-                          <span className="text-rmpg-400 font-mono text-[9px]">
+                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
+                        {selectedCall.latitude != null && selectedCall.longitude != null && (
+                          <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
                           </span>
                         )}
@@ -3070,8 +4481,8 @@ export default function DispatchPage() {
 
                 {/* ── SUBJECT/THREAT INFO — Persons tab ─── */}
                 {(detailTab === 'info' || detailTab === 'persons') && (isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
                     </label>
                     {isEditing ? (() => {
@@ -3107,11 +4518,12 @@ export default function DispatchPage() {
                           {callPersons.length > 0 && (
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
-                                <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded text-rmpg-200">
+                                <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace('_', ' ')}</span>
                                   {cp.last_name}, {cp.first_name}
+                                  <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
-                                  <button onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button type="button" onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -3119,9 +4531,9 @@ export default function DispatchPage() {
                           <div className="relative" ref={personDropdownRef}>
                             <input type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
                             {showPersonDropdown && personSearchResults.length > 0 && (
-                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
+                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {personSearchResults.map((p: any) => (
-                                  <button key={p.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                                  <button type="button" key={p.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                                     linkPersonToCall(selectedCall.id, p.id, linkPersonRole);
                                     const desc = `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').replace(/,\s*$/, '') + (p.dob ? ` DOB:${p.dob}` : '');
                                     updateEditField('subject_description', desc);
@@ -3157,11 +4569,11 @@ export default function DispatchPage() {
                           {callVehicles.length > 0 && (
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callVehicles.map((cv: any) => (
-                                <span key={cv.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded text-rmpg-200">
+                                <span key={cv.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cv.role || '').replace(/_/g, ' ')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
-                                  <button onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button type="button" onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -3169,9 +4581,9 @@ export default function DispatchPage() {
                           <div className="relative" ref={vehicleDropdownRef}>
                             <input type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
                             {showVehicleDropdown && vehicleSearchResults.length > 0 && (
-                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
+                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {vehicleSearchResults.map((v: any) => (
-                                  <button key={v.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                                  <button type="button" key={v.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                                     linkVehicleToCall(selectedCall.id, v.id, linkVehicleRole);
                                     const desc = [v.color, v.year, v.make, v.model].filter(Boolean).join(' ') + (v.plate_number ? ` PLT:${v.plate_number}` : '') + (v.plate_state ? `/${v.plate_state}` : '');
                                     updateEditField('vehicle_description', desc);
@@ -3221,9 +4633,10 @@ export default function DispatchPage() {
                           <div className="mt-2 space-y-1">
                             <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Persons ({callPersons.length})</span>
                             {callPersons.map((cp: any) => (
-                              <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded">{(cp.role || '').replace(/_/g, ' ')}</span>
+                              <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
+                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cp.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
+                                <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
                                 {cp.sex && <span className="text-rmpg-500">{cp.sex}</span>}
@@ -3236,11 +4649,11 @@ export default function DispatchPage() {
                           <div className="mt-2 space-y-1">
                             <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Vehicles ({callVehicles.length})</span>
                             {callVehicles.map((cv: any) => (
-                              <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded">{(cv.role || '').replace(/_/g, ' ')}</span>
+                              <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
+                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cv.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
-                                {cv.stolen_status && cv.stolen_status !== 'none' && <span className="text-red-400 font-bold uppercase">STOLEN</span>}
+                                {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{cv.stolen_status.replace(/_/g, ' ')}</span>}
                               </div>
                             ))}
                           </div>
@@ -3252,8 +4665,8 @@ export default function DispatchPage() {
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
                     </label>
                     {isEditing ? (() => {
@@ -3340,14 +4753,40 @@ export default function DispatchPage() {
 
                 {/* ── PSO CLIENT REQUEST DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || selectedCall.incident_type === 'pso_client_request') && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
-                        {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                          <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
-                            {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
-                          </span>
+                        {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                          isAdminOrManager && !isEditing ? (
+                            <select
+                              className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
+                              style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
+                              value={selectedCall.pso_attempt_number || 1}
+                              onChange={async (e) => {
+                                const newAttempt = parseInt(e.target.value, 10);
+                                try {
+                                  const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ pso_attempt_number: newAttempt }),
+                                  });
+                                  const updated = mapDbCall(result);
+                                  setCalls(prev => prev.map(c => String(c.id) === String(updated.id) ? { ...c, ...updated } : c));
+                                  setSelectedCall(prev => prev ? { ...prev, ...updated } : updated);
+                                  addToast(`Attempt number set to ${newAttempt}`, 'success');
+                                } catch (err) { addToast('Failed to update attempt number', 'error'); }
+                              }}
+                              title="Admin: change attempt number"
+                            >
+                              {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                                <option key={n} value={n}>{n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`} ATTEMPT</option>
+                              ))}
+                            </select>
+                          ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
+                            <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                              {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
+                            </span>
+                          ) : null
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
@@ -3358,14 +4797,14 @@ export default function DispatchPage() {
                         const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
                         if (elapsed >= 72 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded animate-pulse" style={{ background: '#dc262640', border: '1px solid #dc262660', color: '#f87171' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#dc262640', border: '1px solid #dc262660', color: '#f87171' }}>
                               72HR OVERDUE — RE-DISPATCH REQUIRED
                             </span>
                           );
                         }
                         if (elapsed >= 48 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
                               {Math.floor(hoursLeft)}HR UNTIL DEADLINE
                             </span>
                           );
@@ -3373,7 +4812,7 @@ export default function DispatchPage() {
                         return null;
                       })()}
                       {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
-                        <button
+                        <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: '#d4a01720', borderColor: '#d4a01740', color: '#d4a017' }}
                           onClick={async () => {
@@ -3404,37 +4843,119 @@ export default function DispatchPage() {
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
                           <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Service Type</label>
                             <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
-                              <option value="">— Select —</option>
-                              <option value="patrol">Patrol</option>
-                              <option value="static_guard">Static Guard</option>
-                              <option value="escort">Escort</option>
-                              <option value="event_security">Event Security</option>
-                              <option value="surveillance">Surveillance</option>
-                              <option value="access_control">Access Control</option>
-                              <option value="other">Other</option>
+                              <option value="">— Select Service Type —</option>
+                              <optgroup label="Process Service">
+                                <option value="process_service">Process Service (General)</option>
+                                <option value="subpoena_service">Subpoena Service</option>
+                                <option value="summons_service">Summons &amp; Complaint</option>
+                                <option value="eviction_service">Eviction / Unlawful Detainer</option>
+                                <option value="restraining_order_service">Protective Order Service</option>
+                                <option value="writ_service">Writ Service</option>
+                                <option value="court_filing">Court Filing / Delivery</option>
+                                <option value="court_order_service">Court Order Service</option>
+                                <option value="notice_service">Notice / Demand Service</option>
+                                <option value="posting_service">Posting Service (Nail &amp; Mail)</option>
+                                <option value="rush_service">Rush / Same-Day Service</option>
+                              </optgroup>
+                              <optgroup label="Investigative">
+                                <option value="skip_trace">Skip Trace &amp; Locate</option>
+                                <option value="stake_out">Stake Out / Surveillance</option>
+                                <option value="asset_search">Asset Search</option>
+                                <option value="background_check">Background Check / Due Diligence</option>
+                                <option value="witness_interview">Witness Interview / Statement</option>
+                                <option value="witness_locate">Witness Locate</option>
+                                <option value="record_retrieval">Record Retrieval</option>
+                                <option value="document_retrieval">Document Retrieval</option>
+                                <option value="field_investigation">Field Investigation</option>
+                                <option value="insurance_investigation">Insurance Investigation</option>
+                              </optgroup>
+                              <optgroup label="Security Services">
+                                <option value="patrol">Patrol</option>
+                                <option value="static_guard">Static Guard</option>
+                                <option value="escort">Escort</option>
+                                <option value="event_security">Event Security</option>
+                                <option value="surveillance">Surveillance</option>
+                                <option value="access_control">Access Control</option>
+                                <option value="alarm_response">Alarm Response</option>
+                                <option value="fire_watch">Fire Watch</option>
+                                <option value="construction_security">Construction Site Security</option>
+                                <option value="executive_protection">Executive Protection</option>
+                                <option value="loss_prevention">Loss Prevention</option>
+                              </optgroup>
+                              <optgroup label="Administrative">
+                                <option value="notary_service">Notary Service</option>
+                                <option value="certified_copy">Certified Copy Service</option>
+                                <option value="courier">Courier / Messenger</option>
+                                <option value="document_preparation">Document Preparation</option>
+                                <option value="affidavit_preparation">Affidavit Preparation</option>
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                           <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
                           <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                        </div>
                       </div>
                     ) : (
-                      <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.pso_requestor_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</span>}
-                        {selectedCall.pso_requestor_phone && <span className="text-rmpg-200"><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</span>}
-                        {selectedCall.pso_requestor_email && <span className="text-rmpg-200"><span className="text-rmpg-400">Email:</span> {selectedCall.pso_requestor_email}</span>}
-                        {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {selectedCall.pso_service_type}</span>}
-                        {selectedCall.pso_billing_code && <span className="text-rmpg-200"><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</span>}
-                        {selectedCall.pso_authorization && <span className="text-rmpg-200"><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</span>}
+                      <div className="space-y-2 mt-1">
+                        {/* Prominent client/requestor badges */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedCall.pso_requestor_name && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-sm" style={{ background: '#d4a01718', border: '1px solid #d4a01740', color: '#fbbf24' }}>
+                              <Building2 style={{ width: 10, height: 10 }} /> {selectedCall.pso_requestor_name}
+                            </span>
+                          )}
+                          {selectedCall.pso_billing_code && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#22c55e15', border: '1px solid #22c55e35', color: '#86efac' }}>
+                              {selectedCall.pso_billing_code}
+                            </span>
+                          )}
+                          {selectedCall.pso_authorization && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#88888815', border: '1px solid #88888835', color: '#cccccc' }}>
+                              AUTH: {selectedCall.pso_authorization}
+                            </span>
+                          )}
+                          {selectedCall.contract_id && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#8b5cf615', border: '1px solid #8b5cf635', color: '#c4b5fd' }}>
+                              Contract: {selectedCall.contract_id}
+                            </span>
+                          )}
+                        </div>
+                        {/* Additional details */}
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                          {selectedCall.pso_requestor_phone && <span className="text-rmpg-200"><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</span>}
+                          {selectedCall.pso_requestor_email && <span className="text-rmpg-200"><span className="text-rmpg-400">Email:</span> {selectedCall.pso_requestor_email}</span>}
+                          {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
+                        </div>
+                        {/* 72-hour deadline countdown for active PSO calls */}
+                        {selectedCall.incident_type === 'pso_client_request' && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
+                          const deadline = new Date(new Date(selectedCall.created_at).getTime() + 72 * 3600000);
+                          const remaining = deadline.getTime() - Date.now();
+                          if (remaining <= 0) return (
+                            <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>
+                              72HR DEADLINE PASSED
+                            </div>
+                          );
+                          const hrs = Math.floor(remaining / 3600000);
+                          const mins = Math.floor((remaining % 3600000) / 60000);
+                          return (
+                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? '#f87171' : hrs < 24 ? '#fbbf24' : '#4ade80' }}>
+                              {hrs}h {mins}m until 72hr deadline
+                            </div>
+                          );
+                        })()}
                         {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
-                          <span className="text-rmpg-500 italic">No PSO details entered yet</span>
+                          <span className="text-rmpg-500 italic text-xs">No PSO details entered yet</span>
                         )}
                       </div>
                     )}
@@ -3451,7 +4972,11 @@ export default function DispatchPage() {
                         <div className="mt-2 pt-2 border-t border-rmpg-700">
                           <div className="flex items-center gap-2 mb-1.5">
                             <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Service Windows</span>
+<<<<<<< HEAD
                             <span className="text-[8px] font-mono px-1 rounded" style={{
+=======
+                            <span className="text-[8px] font-mono px-1 rounded-sm" style={{
+>>>>>>> origin/main
                               background: allMet ? '#22c55e20' : '#f59e0b20',
                               border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
                               color: allMet ? '#4ade80' : '#fbbf24',
@@ -3467,7 +4992,11 @@ export default function DispatchPage() {
                               { key: 'evening', label: '6PM – 9PM', met: windows.evening },
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
+<<<<<<< HEAD
                               <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded font-mono" style={{
+=======
+                              <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
+>>>>>>> origin/main
                                 background: met ? '#22c55e10' : '#dc262610',
                                 border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
                                 color: met ? '#86efac' : '#fca5a5',
@@ -3483,16 +5012,16 @@ export default function DispatchPage() {
                   </div>
                 )}
 
-                {/* ── PROCESS SERVICE DETAILS — Info tab ─── */}
+                {/* ── PROCESS SERVICE DETAILS — Info tab (always visible for PSO/process calls) ─── */}
                 {detailTab === 'info' && (isEditing
-                  ? editData.pso_service_type === 'process_service'
-                  : (selectedCall.pso_service_type === 'process_service' || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
+                  ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
+                  : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <FileText className="w-3 h-3" /> Process Service Details
                       {!isEditing && selectedCall.process_service_result && (
-                        <span className={`ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded ${
+                        <span className={`ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm ${
                           selectedCall.process_service_result === 'served'
                             ? 'bg-green-900/40 border border-green-700/50 text-green-400'
                             : selectedCall.process_service_result === 'unable_to_serve'
@@ -3503,7 +5032,7 @@ export default function DispatchPage() {
                         </span>
                       )}
                       {!isEditing && (selectedCall.process_attempts || 0) > 0 && (
-                        <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded bg-brand-900/40 border border-brand-600/40 text-brand-300">
+                        <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm bg-brand-900/40 border border-brand-600/40 text-brand-300">
                           {selectedCall.process_attempts} {selectedCall.process_attempts === 1 ? 'ATTEMPT' : 'ATTEMPTS'}
                         </span>
                       )}
@@ -3514,13 +5043,100 @@ export default function DispatchPage() {
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
                             <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
-                              <option value="">— Select —</option>
-                              <option value="subpoena">Subpoena</option>
-                              <option value="summons">Summons</option>
-                              <option value="complaint">Complaint</option>
-                              <option value="eviction">Eviction</option>
-                              <option value="restraining_order">Restraining Order</option>
-                              <option value="other">Other</option>
+                              <option value="">— Select Document Type —</option>
+                              <optgroup label="Civil Process — General">
+                                <option value="subpoena">Subpoena</option>
+                                <option value="subpoena_duces_tecum">Subpoena Duces Tecum</option>
+                                <option value="subpoena_deposition">Subpoena (Deposition)</option>
+                                <option value="federal_subpoena">Federal Subpoena</option>
+                                <option value="summons">Summons &amp; Complaint</option>
+                                <option value="complaint">Complaint</option>
+                                <option value="third_party_complaint">Third-Party Complaint</option>
+                                <option value="cross_complaint">Cross-Complaint</option>
+                                <option value="counterclaim">Counterclaim</option>
+                                <option value="amended_complaint">Amended Complaint</option>
+                                <option value="civil_summons">Civil Summons</option>
+                                <option value="small_claims">Small Claims</option>
+                              </optgroup>
+                              <optgroup label="Writs &amp; Garnishments">
+                                <option value="garnishment">Garnishment</option>
+                                <option value="wage_garnishment">Wage Garnishment</option>
+                                <option value="bank_levy">Bank Levy / Account Garnishment</option>
+                                <option value="writ_of_execution">Writ of Execution</option>
+                                <option value="writ_of_restitution">Writ of Restitution</option>
+                                <option value="writ_of_garnishment">Writ of Garnishment</option>
+                                <option value="writ_of_attachment">Writ of Attachment</option>
+                                <option value="writ_of_possession">Writ of Possession</option>
+                                <option value="writ_of_assistance">Writ of Assistance</option>
+                                <option value="writ_of_mandate">Writ of Mandate / Mandamus</option>
+                                <option value="levy">Levy</option>
+                              </optgroup>
+                              <optgroup label="Family / Domestic">
+                                <option value="restraining_order">Protective / Restraining Order</option>
+                                <option value="temporary_protective_order">Temporary Protective Order</option>
+                                <option value="cohabitant_abuse_order">Cohabitant Abuse Protective Order</option>
+                                <option value="divorce_papers">Divorce Papers</option>
+                                <option value="divorce_petition">Divorce Petition</option>
+                                <option value="divorce_summons">Divorce Summons</option>
+                                <option value="custody_order">Custody Order</option>
+                                <option value="custody_modification">Custody Modification</option>
+                                <option value="child_support">Child Support Order</option>
+                                <option value="child_support_modification">Child Support Modification</option>
+                                <option value="paternity_action">Paternity Action</option>
+                                <option value="adoption_papers">Adoption Papers</option>
+                                <option value="guardianship">Guardianship Petition</option>
+                                <option value="termination_of_parental_rights">Termination of Parental Rights</option>
+                                <option value="stalking_injunction">Stalking Injunction</option>
+                              </optgroup>
+                              <optgroup label="Real Property">
+                                <option value="eviction">Eviction Notice</option>
+                                <option value="unlawful_detainer">Unlawful Detainer</option>
+                                <option value="notice_to_quit">Notice to Quit</option>
+                                <option value="three_day_notice">3-Day Notice to Pay or Quit</option>
+                                <option value="five_day_notice">5-Day Notice (Commercial)</option>
+                                <option value="fifteen_day_notice">15-Day Notice (Month-to-Month)</option>
+                                <option value="foreclosure">Foreclosure Notice</option>
+                                <option value="notice_of_default">Notice of Default</option>
+                                <option value="lis_pendens">Lis Pendens</option>
+                                <option value="quiet_title">Quiet Title Action</option>
+                              </optgroup>
+                              <optgroup label="Court Orders &amp; Motions">
+                                <option value="court_order">Court Order</option>
+                                <option value="temporary_order">Temporary Order</option>
+                                <option value="temporary_restraining_order">Temporary Restraining Order</option>
+                                <option value="preliminary_injunction">Preliminary Injunction</option>
+                                <option value="permanent_injunction">Permanent Injunction</option>
+                                <option value="motion">Motion / Petition</option>
+                                <option value="motion_for_contempt">Motion for Contempt</option>
+                                <option value="motion_to_compel">Motion to Compel</option>
+                                <option value="notice_of_hearing">Notice of Hearing</option>
+                                <option value="order_to_show_cause">Order to Show Cause</option>
+                                <option value="judgment">Judgment</option>
+                                <option value="default_judgment">Default Judgment</option>
+                              </optgroup>
+                              <optgroup label="Probate &amp; Estate">
+                                <option value="probate_petition">Probate Petition</option>
+                                <option value="letters_testamentary">Letters Testamentary</option>
+                                <option value="creditor_claim">Creditor Claim (Probate)</option>
+                              </optgroup>
+                              <optgroup label="Bankruptcy">
+                                <option value="bankruptcy_notice">Bankruptcy Notice</option>
+                                <option value="adversary_proceeding">Adversary Proceeding</option>
+                              </optgroup>
+                              <optgroup label="Discovery">
+                                <option value="notice_of_deposition">Notice of Deposition</option>
+                                <option value="interrogatories">Interrogatories</option>
+                                <option value="request_for_production">Request for Production</option>
+                                <option value="request_for_admission">Request for Admission</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="demand_letter">Demand Letter</option>
+                                <option value="cease_and_desist">Cease &amp; Desist</option>
+                                <option value="affidavit">Affidavit</option>
+                                <option value="declaration">Declaration</option>
+                                <option value="stipulation">Stipulation</option>
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                           <div>
@@ -3539,23 +5155,71 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Served At</label>
-                            <input type="datetime-local" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
+                            <input type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Service Result</label>
                             <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
-                              <option value="served">Served</option>
-                              <option value="unable_to_serve">Unable to Serve</option>
-                              <option value="refused">Refused</option>
-                              <option value="substitute_service">Substitute Service</option>
+                              <optgroup label="Successful Service">
+                                <option value="served">Personal Service</option>
+                                <option value="substitute_service">Substitute Service</option>
+                                <option value="abode_service">Abode / Dwelling Service</option>
+                                <option value="posted">Posted (Nail &amp; Mail)</option>
+                                <option value="left_with">Left With (Co-Resident / Co-Worker)</option>
+                                <option value="left_at_door">Left at Door (Conspicuous Place)</option>
+                                <option value="served_agent">Served on Agent / Registered Agent</option>
+                                <option value="served_attorney">Served on Attorney of Record</option>
+                                <option value="served_corporate">Served on Corporate Officer</option>
+                                <option value="served_manager">Served on Manager / Supervisor</option>
+                                <option value="served_secretary_of_state">Served via Secretary of State</option>
+                                <option value="acknowledged">Acknowledged / Accepted Service</option>
+                                <option value="certified_mail">Certified Mail (Return Receipt)</option>
+                              </optgroup>
+                              <optgroup label="Unsuccessful — Attempt Made">
+                                <option value="no_answer">No Answer / Not Home</option>
+                                <option value="no_contact">No Contact Made</option>
+                                <option value="refused">Refused Service</option>
+                                <option value="evasion">Evasion / Avoiding Service</option>
+                                <option value="gate_locked">Gated / Locked — No Access</option>
+                                <option value="aggressive_animal">Aggressive Animal / Dog</option>
+                                <option value="unsafe_conditions">Unsafe Conditions</option>
+                                <option value="wrong_person">Wrong Person at Address</option>
+                                <option value="not_recognized">Subject Not Recognized at Location</option>
+                              </optgroup>
+                              <optgroup label="Unsuccessful — Cannot Serve">
+                                <option value="unable_to_locate">Unable to Locate</option>
+                                <option value="bad_address">Bad / Invalid Address</option>
+                                <option value="address_vacant">Address Vacant / Abandoned</option>
+                                <option value="address_commercial">Address is Commercial (Need Residential)</option>
+                                <option value="moved">Subject Moved</option>
+                                <option value="moved_out_of_state">Subject Moved Out of State</option>
+                                <option value="deceased">Subject Deceased</option>
+                                <option value="incarcerated">Subject Incarcerated</option>
+                                <option value="military">Subject on Active Military Duty</option>
+                                <option value="non_est">Non Est Inventus (Not Found)</option>
+                                <option value="due_diligence_exhausted">Due Diligence Exhausted</option>
+                              </optgroup>
+                              <optgroup label="Administrative">
+                                <option value="unable_to_serve">Unable to Serve (General)</option>
+                                <option value="returned_to_attorney">Returned to Attorney</option>
+                                <option value="returned_to_court">Returned to Court</option>
+                                <option value="returned_to_client">Returned to Client</option>
+                                <option value="expired">Documents Expired</option>
+                                <option value="recalled">Service Recalled / Cancelled</option>
+                                <option value="duplicate">Duplicate / Already Served</option>
+                                <option value="insufficient_info">Insufficient Information</option>
+                                <option value="jurisdiction_issue">Jurisdiction Issue</option>
+                                <option value="referred_out">Referred to Another Server</option>
+                                <option value="other">Other</option>
+                              </optgroup>
                             </select>
                           </div>
                         </div>
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.process_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Document:</span> {selectedCall.process_service_type.replace(/_/g, ' ')}</span>}
+                        {selectedCall.process_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Document:</span> {formatDocumentType(selectedCall.process_service_type)}</span>}
                         {selectedCall.process_served_to && <span className="text-rmpg-200"><span className="text-rmpg-400">Serve To:</span> {selectedCall.process_served_to}</span>}
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {selectedCall.process_served_at}</span>}
@@ -3569,10 +5233,10 @@ export default function DispatchPage() {
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
                 {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
-                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#60a5fa' }}>
+                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#88888820', border: '1px solid #88888840', color: '#aaaaaa' }}>
                         {selectedCall.visit_history.length} PRIOR {selectedCall.visit_history.length === 1 ? 'VISIT' : 'VISITS'}
                       </span>
                     </label>
@@ -3584,22 +5248,22 @@ export default function DispatchPage() {
                           ? (visit.ending_mileage - visit.starting_mileage).toFixed(1)
                           : null;
                         return (
-                          <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2.5 py-1.5">
+                          <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2.5 py-2">
                             <div className="flex items-center justify-between mb-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
+                                <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0 tabular-nums">
                                   VISIT #{visit.visit_number}
                                 </span>
-                                <span className={`text-[8px] font-bold px-1 py-0 rounded ${
+                                <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                                  : visit.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
+                                  : visit.status === 'closed' ? 'bg-gray-900/40 border border-gray-700/50 text-gray-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                                   : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
                                 }`}>
                                   {(visit.status || '').toUpperCase()}
                                 </span>
                                 {visit.disposition && (
-                                  <span className="text-[9px] text-rmpg-300">{visit.disposition}</span>
+                                  <span className="text-[9px] text-rmpg-300">{(visit.disposition || '').replace(/_/g, ' ')}</span>
                                 )}
                               </div>
                               {unitsList.length > 0 && (
@@ -3630,8 +5294,8 @@ export default function DispatchPage() {
 
                 {/* ── QUICK-TOGGLE FLAGS — Flags tab ─── */}
                 {detailTab === 'flags' && !isEditing && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Quick Flags
                     </label>
                     <div className="flex flex-wrap gap-1.5">
@@ -3640,29 +5304,29 @@ export default function DispatchPage() {
                         { field: 'drugs_involved', label: 'Drugs', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'domestic_violence', label: 'DV', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'injuries_reported', label: 'Injuries', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'supervisor_notified', label: 'Supervisor', onBg: '#3b82f630', onBorder: '#3b82f650', onText: '#60a5fa' },
-                        { field: 'le_notified', label: 'LE Notified', onBg: '#3b82f630', onBorder: '#3b82f650', onText: '#60a5fa' },
+                        { field: 'supervisor_notified', label: 'Supervisor', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
+                        { field: 'le_notified', label: 'LE Notified', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
                         { field: 'mental_health_crisis', label: 'Mental Health', onBg: '#a855f730', onBorder: '#a855f750', onText: '#c084fc' },
                         { field: 'juvenile_involved', label: 'Juvenile', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
                         { field: 'felony_in_progress', label: 'Felony', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'officer_safety_caution', label: 'Officer Safety', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'gang_related', label: 'Gang', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'body_camera_active', label: 'Body Cam', onBg: '#22c55e30', onBorder: '#22c55e50', onText: '#4ade80' },
-                        { field: 'k9_requested', label: 'K9', onBg: '#06b6d430', onBorder: '#06b6d450', onText: '#22d3ee' },
+                        { field: 'k9_requested', label: 'K9', onBg: '#06b6d430', onBorder: '#06b6d450', onText: '#22c55e' },
                         { field: 'ems_requested', label: 'EMS', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'fire_requested', label: 'Fire', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
                         { field: 'hazmat', label: 'HazMat', onBg: '#eab30830', onBorder: '#eab30850', onText: '#fbbf24' },
                         { field: 'evidence_collected', label: 'Evidence', onBg: '#10b98130', onBorder: '#10b98150', onText: '#34d399' },
-                        { field: 'photos_taken', label: 'Photos', onBg: '#6366f130', onBorder: '#6366f150', onText: '#818cf8' },
+                        { field: 'photos_taken', label: 'Photos', onBg: '#6366f130', onBorder: '#6366f150', onText: '#aaaaaa' },
                         { field: 'trespass_issued', label: 'Trespass', onBg: '#f59e0b30', onBorder: '#f59e0b50', onText: '#fbbf24' },
                         { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                         { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
                       ] as const).map(({ field, label, onBg, onBorder, onText }) => {
                         const isOn = !!(selectedCall as any)[field];
                         return (
-                          <button
+                          <button type="button"
                             key={field}
-                            className="px-2 py-0.5 text-[9px] font-semibold rounded transition-colors border"
+                            className="px-2 py-0.5 text-[9px] font-semibold rounded-sm transition-colors border"
                             style={isOn
                               ? { background: onBg, borderColor: onBorder, color: onText }
                               : { background: 'var(--color-rmpg-700, #1a1a2e)', borderColor: 'var(--color-rmpg-600, #2a2a3e)', color: 'var(--color-rmpg-400, #888)' }
@@ -3690,12 +5354,12 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── ACTIVITY LOG / TIMELINE — Timeline tab ─── */}
-                <div className="border-t border-rmpg-600 pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
+                <div className="border-t border-[#222222] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="field-label !flex items-center gap-1.5">
+                    <label className="field-label !flex items-center gap-1.5" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Activity Log
                     </label>
-                    <button onClick={() => setShowAddTimeline(!showAddTimeline)} className="toolbar-btn" style={{ padding: '1px 6px', fontSize: '9px' }}>
+                    <button type="button" onClick={() => setShowAddTimeline(!showAddTimeline)} className="toolbar-btn" style={{ padding: '1px 6px', fontSize: '9px' }}>
                       <PlusCircle style={{ width: 9, height: 9 }} /> Add Entry
                     </button>
                   </div>
@@ -3705,15 +5369,24 @@ export default function DispatchPage() {
                         onChange={(e) => setNewTimelineText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddTimeline(); }}
                       />
-                      <button onClick={handleAddTimeline} className="toolbar-btn toolbar-btn-primary" style={{ fontSize: '9px' }} disabled={!newTimelineText.trim()}>Add</button>
+                      <button type="button" onClick={handleAddTimeline} className="toolbar-btn toolbar-btn-primary" style={{ fontSize: '9px' }} disabled={!newTimelineText.trim()}>Add</button>
                     </div>
                   )}
                   {activityEntries.length > 0 ? (
-                    <div className="space-y-1 max-h-36 overflow-y-auto">
-                      {activityEntries.map((entry: any) => (
-                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-rmpg-700/30 px-1 py-0.5 transition-colors">
-                          <span className="text-rmpg-400 font-mono whitespace-nowrap" style={{ fontSize: '9px' }}>
-                            {entry.created_at ? formatTime(entry.created_at) : '--'}
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                      {activityEntries.map((entry: any, idx: number) => {
+                        const actionColor = (entry.action || '').includes('dispatch') ? '#f59e0b' :
+                          (entry.action || '').includes('enroute') ? '#888888' :
+                          (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? '#a855f7' :
+                          (entry.action || '').includes('clear') ? '#22c55e' :
+                          (entry.action || '').includes('note') ? '#666666' :
+                          '#888888';
+                        return (
+                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#14141420] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #222222' }}>
+                          {/* Step connector dot */}
+                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #050505' }} />
+                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
+                            {entry.created_at ? `${formatTime(entry.created_at)} (${timeAgo(entry.created_at)})` : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
                             <div className="flex-1 flex gap-1">
@@ -3722,55 +5395,90 @@ export default function DispatchPage() {
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
                               />
-                              <button onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button type="button" onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
                                 <Save style={{ width: 8, height: 8 }} />
                               </button>
-                              <button onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button type="button" onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
                                 <X style={{ width: 8, height: 8 }} />
                               </button>
                             </div>
                           ) : (
                             <>
-                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
+                              <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-brand-400 text-rmpg-500" title="Edit">
+                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-rmpg-500" title="Delete">
+                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
                             </>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
-                    <p className="text-[10px] text-rmpg-500 italic">No activity recorded — use Add Entry to start the log.</p>
+                    <div className="flex flex-col items-center py-8 text-[#4b5563]">
+                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#05050540', border: '1px solid #22222230' }}>
+                        <Clock className="w-5 h-5" style={{ opacity: 0.3 }} />
+                      </div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Activity Recorded</p>
+                      <p className="text-[9px] text-[#374151]">Click "Add Entry" to start the activity log</p>
+                    </div>
                   )}
                 </div>
 
                 {/* Notes — fills remaining vertical space — Notes tab */}
-                <div className="border-t border-rmpg-600 pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
-                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0">
+                <div className="border-t border-[#222222] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
+                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
-                  <div className="space-y-1.5 mb-3 flex-1 overflow-y-auto">
-                    {(selectedCall.notes || []).map((note) => (
-                      <div key={note.id} className="flex items-start gap-2 text-xs">
-                        <span className="text-rmpg-400 font-mono whitespace-nowrap">{formatTime(note.timestamp)}</span>
-                        <span className="text-brand-400 font-semibold whitespace-nowrap">{note.author}:</span>
-                        <span className="text-rmpg-200">{renderFormattedText(note.text)}</span>
+                  <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
+                    {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
+                      <div className="flex flex-col items-center py-8 text-[#4b5563]">
+                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#05050540', border: '1px solid #22222230' }}>
+                          <MessageSquare className="w-5 h-5" style={{ opacity: 0.3 }} />
+                        </div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Notes Yet</p>
+                        <p className="text-[9px] text-[#374151]">Add a note below to get started</p>
                       </div>
-                    ))}
+                    ) : (
+                      (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#14141420]" style={{ borderLeft: '2px solid #88888840' }}>
+                        <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
+                        <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
+                        {editingNoteId === note.id ? (
+                          <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <div className="flex gap-1">
+                              <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
+                              <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
+                            {isAdminOrManager && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#999999] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      ))
+                    )}
                   </div>
                   <div className="flex-shrink-0">
                     {/* Formatting toolbar */}
-                    <div className="flex items-center gap-0.5 mb-1">
-                      <button type="button" title="Bold (Ctrl+B)" className="px-1.5 py-0.5 text-[9px] font-black text-rmpg-300 hover:text-white hover:bg-rmpg-600 border border-rmpg-600 transition-colors" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="px-1.5 py-0.5 text-[9px] italic font-semibold text-rmpg-300 hover:text-white hover:bg-rmpg-600 border border-rmpg-600 transition-colors" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="px-1.5 py-0.5 text-[9px] underline text-rmpg-300 hover:text-white hover:bg-rmpg-600 border border-rmpg-600 transition-colors" onClick={() => wrapNoteSelection('__')}>U</button>
-                      <span className="text-[8px] text-rmpg-500 ml-1">Shift+Enter to add</span>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#222222] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
+                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#222222] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
+                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#222222] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
+                      <span className="text-[8px] text-[#4b5563] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
                       <textarea
@@ -3789,29 +5497,55 @@ export default function DispatchPage() {
                           if (e.key === 'u' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('__'); }
                         }}
                       />
-                      <button onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary self-end" disabled={!newNote.trim()}>
+                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary self-end" disabled={!newNote.trim()}>
                         Add
                       </button>
                     </div>
+                    {/* Feature 20: Broadcast Note to all assigned units */}
+                    {(selectedCall.assigned_units || []).length > 0 && (
+                      <div className="flex gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
+                        <input
+                          type="text"
+                          className="input-dark flex-1 text-xs"
+                          placeholder="Broadcast to all units on call..."
+                          maxLength={500}
+                          value={broadcastNoteText}
+                          onChange={(e) => setBroadcastNoteText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBroadcastNote(); } }}
+                        />
+                        <button type="button"
+                          onClick={handleBroadcastNote}
+                          className="toolbar-btn self-end"
+                          disabled={!broadcastNoteText.trim()}
+                          style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa', padding: '2px 8px', fontSize: '9px' }}
+                          title="Send note to all assigned unit officers"
+                        >
+                          <Radio style={{ width: 9, height: 9 }} /> Broadcast
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Linked Incidents — Notes tab */}
                 {detailTab === 'notes' && linkedIncidents.length > 0 && (
-                  <div className="border-t border-rmpg-600 pt-3 flex-shrink-0">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#222222] pt-3 flex-shrink-0">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Link className="w-3 h-3" /> Linked Incidents
                     </label>
                     <div className="space-y-1 mt-1">
                       {linkedIncidents.map((inc: any) => (
                         <div
                           key={inc.id || inc.incident_number}
-                          className="flex items-center gap-3 px-2 py-1.5 hover:bg-rmpg-700/50 cursor-pointer transition-colors"
+                          className="flex items-center gap-3 px-2.5 py-1.5 cursor-pointer transition-all duration-100 rounded-sm"
+                          style={{ border: '1px solid transparent' }}
                           onClick={() => navigate(`/incidents/${inc.id}`)}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#14141430'; (e.currentTarget as HTMLElement).style.borderColor = '#22222240'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
-                          <span className="font-mono text-green-400 text-xs font-bold">{inc.incident_number}</span>
+                          <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
                           <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
-                          <span className="text-xs text-rmpg-400 uppercase font-semibold">{inc.status || '--'}</span>
+                          <span className="text-xs text-rmpg-400 uppercase font-semibold">{(inc.status || '--').replace(/_/g, ' ')}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">
                               <User className="w-3 h-3" /> {inc.officer_name}
@@ -3861,19 +5595,56 @@ export default function DispatchPage() {
 
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-rmpg-400">
+            <div className="flex-1 flex items-center justify-center text-[#6b7280]">
               <div className="text-center">
-                <Radio className="w-10 h-10 mx-auto mb-3 text-rmpg-500" />
-                <p className="text-sm">Select a call to view details</p>
-                <p className="text-xs text-rmpg-500 mt-1">or create a new call for service</p>
+                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#05050560', border: '1px solid #22222240' }}>
+                  <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
+                <p className="text-[10px] text-[#4b5563] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
+                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#4b5563]">
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 border border-[#222222] rounded-sm bg-[#05050540] text-[#6b7280]">N</kbd>
+                    <span>New Call</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 border border-[#222222] rounded-sm bg-[#05050540] text-[#6b7280]">P</kbd>
+                    <span>Quick PSO</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 border border-[#222222] rounded-sm bg-[#05050540] text-[#6b7280]">R</kbd>
+                    <span>Refresh</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
           </div>
 
+          {/* AI Dispatch Sidebar (conditionally shown between detail and map) */}
+          {showAiSidebar && selectedCall && (
+            <AIDispatchSidebar
+              selectedCall={selectedCall}
+              aiAnalyses={aiAnalyses}
+              onAcceptFlag={async (callId, flag) => {
+                try {
+                  await apiFetch(`/dispatch/calls/${callId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ [flag]: true }),
+                  });
+                  const updated = { ...selectedCall, [flag]: 1 };
+                  setSelectedCall(updated);
+                  setCalls(prev => prev.map(c => c.id === callId ? updated : c));
+                  addToast(`Flag "${flag.replace(/_/g, ' ')}" accepted`, 'success');
+                } catch { addToast(`Failed to set flag`, 'error'); }
+              }}
+              onDismiss={() => setShowAiSidebar(false)}
+            />
+          )}
+
           {/* Dispatch Map Panel (right side, always visible) */}
-          <div className="w-[35%] border-l border-rmpg-600 flex flex-col bg-surface-deep overflow-hidden flex-shrink-0">
-            {selectedCall?.latitude && selectedCall?.longitude ? (
+          <div className="w-[35%] border-l border-[#222222] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+            {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
               <DispatchMiniMap
                 call={selectedCall}
                 units={units}
@@ -3881,11 +5652,13 @@ export default function DispatchPage() {
                 onRouteUpdate={setRouteInfo}
               />
             ) : (
-              <div className="flex-1 flex items-center justify-center text-rmpg-500">
+              <div className="flex-1 flex items-center justify-center text-[#4b5563]">
                 <div className="text-center">
-                  <MapPin className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                  <p className="text-[10px] font-mono">NO LOCATION DATA</p>
-                  <p className="text-[9px] text-rmpg-600 mt-0.5">Select a geolocated call</p>
+                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#05050550', border: '1px dashed #22222240' }}>
+                    <MapPin className="w-6 h-6" style={{ opacity: 0.25 }} />
+                  </div>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-widest mb-1">No Location Data</p>
+                  <p className="text-[8px] text-[#374151] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
                 </div>
               </div>
             )}
@@ -3897,15 +5670,16 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         <div className="h-[35%] flex flex-col overflow-hidden flex-shrink-0">
           <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
-            <span className="text-[9px] font-mono" style={{ color: '#22c55e' }}>
+            <span className="flex items-center gap-1 text-[9px] font-mono font-bold tabular-nums" style={{ color: '#4ade80' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
             <span className="toolbar-separator" />
-            <span className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: '#666666' }}>
               {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
             </span>
             <span className="toolbar-separator" />
-            <button onClick={() => setShowCreateUnitModal(true)} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={() => setShowCreateUnitModal(true)} className="toolbar-btn toolbar-btn-primary">
               <Plus style={{ width: 10, height: 10 }} /> New Unit
             </button>
           </PanelTitleBar>
@@ -3939,53 +5713,89 @@ export default function DispatchPage() {
           }}
         >
           <div
-            className="py-1 min-w-[180px] shadow-xl"
-            style={{ background: '#1a2636', border: '1px solid #3a5070' }}
+            className="py-1 min-w-[190px] rounded-sm"
+            style={{ background: '#141414', border: '1px solid #2e2e2e', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
-              <button className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
                 <Send style={{ width: 12, height: 12 }} /> Dispatch
               </button>
             )}
             {contextMenu.call.status === 'dispatched' && (
-              <button className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
                 <Navigation style={{ width: 12, height: 12 }} /> En Route
               </button>
             )}
             {contextMenu.call.status === 'enroute' && (
-              <button className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
                 <Eye style={{ width: 12, height: 12 }} /> On Scene
               </button>
             )}
             {['dispatched', 'enroute', 'onscene'].includes(contextMenu.call.status) && (
               <>
-                <button className="context-menu-item" onClick={() => { handleClearWithDisposition(contextMenu.call.id); setContextMenu(null); }}>
+                <button type="button" className="context-menu-item" onClick={() => { handleClearWithDisposition(contextMenu.call.id); setContextMenu(null); }}>
                   <CheckCircle style={{ width: 12, height: 12 }} /> Clear
                 </button>
-                <button className="context-menu-item" onClick={() => { handleHoldCall(contextMenu.call.id); setContextMenu(null); }}>
+                <button type="button" className="context-menu-item" onClick={() => { handleHoldCall(contextMenu.call.id); setContextMenu(null); }}>
                   ⏸ Hold
                 </button>
               </>
             )}
             {contextMenu.call.status === 'on_hold' && (
-              <button className="context-menu-item" onClick={() => { handleResumeCall(contextMenu.call.id); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { handleResumeCall(contextMenu.call.id); setContextMenu(null); }}>
                 ▶ Resume
               </button>
             )}
             {contextMenu.call.status !== 'archived' && (
               <>
                 <div className="border-t border-rmpg-600 my-1" />
-                <button className="context-menu-item" onClick={() => { handleArchive(contextMenu.call.id); setContextMenu(null); }}>
+                <button type="button" className="context-menu-item" onClick={() => { handleArchive(contextMenu.call.id); setContextMenu(null); }}>
                   <Archive style={{ width: 12, height: 12 }} /> Archive
                 </button>
               </>
             )}
             <div className="border-t border-rmpg-600 my-1" />
-            <button className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
+            {/* Priority change shortcuts */}
+            <div className="flex items-center gap-0.5 px-2 py-1">
+              <span className="text-[9px] text-rmpg-500 mr-1.5">PRI:</span>
+              {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
+                <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
+                  style={{ background: pri === 'P1' ? '#dc2626' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
+                  {pri}
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-rmpg-600 my-1" />
+            <button type="button" className="context-menu-item" onClick={() => { setSelectedCall(contextMenu.call); setIsEditing(true); setContextMenu(null); }}>
+              <Pencil style={{ width: 12, height: 12 }} /> Edit Call
+            </button>
+            <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
               Copy Call Number
             </button>
-            <button className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
+            <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(`${contextMenu.call.call_number} | ${contextMenu.call.incident_type} | ${contextMenu.call.location} | ${contextMenu.call.priority} | ${contextMenu.call.status}`); setContextMenu(null); addToast('Call summary copied', 'success'); }}>
+              Copy Summary
+            </button>
+            {contextMenu.call.status !== 'archived' && contextMenu.call.status !== 'cancelled' && (
+              <button type="button" className="context-menu-item" onClick={() => {
+                // Duplicate call as new — safe access for optional fields
+                const c = contextMenu.call;
+                setTemplateInitialData({
+                  incident_type: c.incident_type || 'other',
+                  priority: c.priority || 'P3',
+                  location: c.location || '',
+                  description: c.description || '',
+                  source: c.source || 'dispatch',
+                });
+                setShowNewCallModal(true);
+                setContextMenu(null);
+              }}>
+                <Copy style={{ width: 12, height: 12 }} /> Duplicate as New
+              </button>
+            )}
+            <div className="border-t border-rmpg-600 my-1" />
+            <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
               <Trash2 style={{ width: 12, height: 12 }} /> Delete
             </button>
           </div>
@@ -3994,10 +5804,10 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.6)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
-            className="panel-beveled bg-surface-raised"
-            style={{ width: '440px', border: '1px solid #3a5070' }}
+            className="panel-beveled bg-surface-raised animate-in rounded-sm"
+            style={{ width: '440px', border: '1px solid #2e2e2e', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -4031,11 +5841,11 @@ export default function DispatchPage() {
 
             <div className="p-4 space-y-4">
               {/* Template banner */}
-              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: '#0d1520' }}>
+              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: '#050505' }}>
                 <span className={`text-xs font-bold px-2 py-0.5 border ${
                   quickTemplateData.priority === 'P1' ? 'border-red-500 text-red-400 bg-red-900/30' :
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
-                  quickTemplateData.priority === 'P4' ? 'border-gray-500 text-rmpg-300 bg-rmpg-700/30' :
+                  quickTemplateData.priority === 'P4' ? 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30' :
                   'border-brand-500 text-brand-400 bg-brand-900/30'
                 }`}>{quickTemplateData.priority}</span>
                 <span className="text-xs font-bold text-white">{quickTemplateData.name}</span>
@@ -4125,14 +5935,14 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #3a5070' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2e2e2e', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
-                <span id={unitModalTitleId} className="text-sm font-bold text-white">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
+                <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
-              <button onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
+              <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
@@ -4180,10 +5990,10 @@ export default function DispatchPage() {
                 </select>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
+                <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   onClick={handleSaveUnit}
                   disabled={!newUnitCallSign.trim() || unitCreating}
                   className="toolbar-btn toolbar-btn-primary"
@@ -4328,6 +6138,168 @@ export default function DispatchPage() {
               case 'le_notify':
                 fetchData();
                 break;
+              case 'voice_status': {
+                // Voice announce unit status — find unit data and speak it
+                if (action.callSign) {
+                  const unit = units.find(u => u.call_sign === action.callSign);
+                  if (unit) {
+                    announceStatusChange(unit.call_sign, unit.status);
+                  }
+                } else {
+                  const active = units.filter(u => u.status !== 'off_duty');
+                  const msg = `${active.length} units active. ${active.filter(u => u.status === 'available').length} available.`;
+                  announceCallUpdate('', msg);
+                }
+                break;
+              }
+              case 'voice_check': {
+                // Voice read-back call details
+                const call = calls.find(c => c.call_number === action.callNumber);
+                if (call) {
+                  announceDispatchEvent(call);
+                }
+                break;
+              }
+              case 'voice_eta': {
+                // Voice announce ETA — announce unit status as proxy (GPS ETA would need server)
+                const unit = units.find(u => u.call_sign === action.callSign);
+                if (unit) {
+                  const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ');
+                  announceCallUpdate('', `Unit ${unit.call_sign} is currently ${statusLabel}`);
+                }
+                break;
+              }
+              case 'voice_weather':
+                // Voice weather — use selected call location weather if available
+                if (selectedCall?.weather_conditions) {
+                  announceCallUpdate('', `Weather conditions: ${selectedCall.weather_conditions}`);
+                } else {
+                  announceCallUpdate('', 'No weather data available for current location');
+                }
+                break;
+              case 'voice_time':
+                announceTime();
+                break;
+              case 'voice_ack':
+                announceAcknowledgment();
+                break;
+              case 'voice_allclear': {
+                const callNum = action.callNumber || selectedCall?.call_number;
+                if (callNum) {
+                  announceAllClear(callNum);
+                } else {
+                  announceAllClear('current call');
+                }
+                break;
+              }
+              case 'voice_summary': {
+                // Shift summary — compute stats from current calls and units
+                const activeCalls = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
+                const completed = calls.filter(c => ['cleared', 'closed'].includes(c.status));
+                const pending = calls.filter(c => c.status === 'pending');
+                const psoServes = completed.filter(c => c.incident_type === 'pso_client_request');
+                const totalMi = activeCalls.reduce((sum, c) => {
+                  if (c.starting_mileage && c.ending_mileage) return sum + (Number(c.ending_mileage) - Number(c.starting_mileage));
+                  return sum;
+                }, 0);
+                announceShiftSummary({
+                  calls: activeCalls.length + completed.length,
+                  serves: psoServes.length,
+                  pending: pending.length,
+                  avgResponse: 0,
+                  totalMiles: totalMi,
+                });
+                break;
+              }
+              case 'voice_locate': {
+                // Announce unit last known location (from current call or status)
+                const unit = units.find(u => u.call_sign === action.callSign);
+                if (unit && unit.current_call_id) {
+                  const call = calls.find(c => c.id === String(unit.current_call_id));
+                  const loc = call?.location || 'unknown location';
+                  announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ')}.`);
+                } else if (unit) {
+                  announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')}. No active call assigned.`);
+                }
+                break;
+              }
+              case 'voice_serve': {
+                // Announce serve details for a call
+                const call = calls.find(c => c.call_number === action.callNumber);
+                if (call) {
+                  const docType = (call as any).process_service_type || (call as any).pso_service_type || 'unknown';
+                  const servedTo = (call as any).process_served_to || (call as any).caller_name || 'unknown';
+                  const attempt = (call as any).pso_attempt_number || (call as any).process_attempts || 1;
+                  const result = (call as any).process_service_result || 'pending';
+                  announceServeComplete(servedTo, call.location || '', docType, attempt, result);
+                }
+                break;
+              }
+              case 'voice_deadline': {
+                // Announce 72hr deadline status for a PSO call
+                const call = calls.find(c => c.call_number === action.callNumber);
+                if (call) {
+                  const terminalTime = (call as any).closed_at || (call as any).cleared_at;
+                  if (terminalTime) {
+                    const elapsed = Date.now() - new Date(terminalTime).getTime();
+                    const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
+                    const caseNum = call.case_number || call.call_number;
+                    announceCourtDeadline(caseNum, hoursLeft, (call as any).process_served_to || (call as any).caller_name);
+                  } else {
+                    announceCallUpdate('', `Call ${call.call_number} has not been cleared or closed yet. No deadline active.`);
+                  }
+                }
+                break;
+              }
+              case 'voice_stack': {
+                // Announce stacked calls at the selected call's location
+                if (selectedCall?.location) {
+                  const locKey = selectedCall.location.toLowerCase().trim();
+                  const stacked = calls.filter(c => c.location && c.location.toLowerCase().trim() === locKey && !['archived', 'cancelled'].includes(c.status));
+                  if (stacked.length > 1) {
+                    const unitSet = new Set<string>();
+                    stacked.forEach(c => (c.assigned_units || []).forEach(u => unitSet.add(u)));
+                    const unitNames = units.filter(u => unitSet.has(String(u.id))).map(u => u.call_sign);
+                    announceCallStack(stacked.length, selectedCall.location, unitNames);
+                  } else {
+                    announceCallUpdate('', `No stacked calls at ${selectedCall.location}.`);
+                  }
+                } else {
+                  announceCallUpdate('', 'No call selected. Select a call to check for stacked calls.');
+                }
+                break;
+              }
+              case 'voice_units': {
+                // Announce all unit statuses
+                const active = units.filter(u => u.status !== 'off_duty');
+                const avail = active.filter(u => u.status === 'available').length;
+                const enr = active.filter(u => u.status === 'enroute').length;
+                const ons = active.filter(u => u.status === 'onscene').length;
+                const busy = active.filter(u => u.status === 'busy').length;
+                announceCallUpdate('', `${active.length} units active. ${avail} available, ${enr} en route, ${ons} on scene, ${busy} busy.`);
+                break;
+              }
+              case 'voice_pending': {
+                // Announce pending calls
+                const pending = calls.filter(c => c.status === 'pending');
+                if (pending.length === 0) {
+                  announceCallUpdate('', 'No pending calls.');
+                } else {
+                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ') || 'unknown'}`).join('. ');
+                  announceCallUpdate('', `${pending.length} pending calls. ${details}.`);
+                }
+                break;
+              }
+              case 'voice_priority': {
+                // Announce priority breakdown
+                const active = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
+                const p1 = active.filter(c => c.priority === 'P1').length;
+                const p2 = active.filter(c => c.priority === 'P2').length;
+                const p3 = active.filter(c => c.priority === 'P3').length;
+                const p4 = active.filter(c => c.priority === 'P4').length;
+                announceCallUpdate('', `Priority breakdown. ${p1} priority 1. ${p2} priority 2. ${p3} priority 3. ${p4} priority 4.`);
+                break;
+              }
             }
           }}
         />
@@ -4355,6 +6327,111 @@ export default function DispatchPage() {
         onSubmit={handleCreateVehicleFromDispatch}
         isSubmitting={isCreatingRecord}
       />
+
+      {/* Feature 5: Shift Handoff Notes Modal */}
+      {showHandoffNotes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
+          <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2e2e2e', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#050505' }}>
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-brand-400" />
+                <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
+              </div>
+              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-3 flex-1 overflow-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              {handoffMeta.updated_by && (
+                <p className="text-[10px] text-rmpg-400 mb-2">
+                  Last updated by <span className="text-amber-400">{handoffMeta.updated_by}</span>
+                  {handoffMeta.updated_at && ` at ${new Date(handoffMeta.updated_at).toLocaleString()}`}
+                </p>
+              )}
+              <textarea
+                value={handoffNotes}
+                onChange={e => setHandoffNotes(e.target.value)}
+                className="input-dark w-full h-48 text-sm resize-none"
+                placeholder="Leave notes for the incoming shift dispatcher..."
+              />
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button type="button" onClick={() => setShowHandoffNotes(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={saveHandoffNotes} disabled={savingHandoff} className="toolbar-btn toolbar-btn-primary">
+                {savingHandoff ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Save Notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[90]"
+        style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
+        {/* Left: Call metrics */}
+        <div className="flex items-center gap-3 text-[9px] tabular-nums">
+          <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ef4444', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px #ef4444' : 'none' }} />
+            <span style={{ color: '#fca5a5' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span style={{ color: '#fcd34d' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+          </span>
+          <span style={{ color: '#666666' }}>|</span>
+          <span style={{ color: '#999999' }}>
+            PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? '#fbbf24' : '#4ade80' }}>{calls.filter(c => c.status === 'pending').length}</span>
+          </span>
+          <span style={{ color: '#999999' }}>
+            ACTIVE: <span style={{ color: '#aaaaaa' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
+          </span>
+          <span style={{ color: '#999999' }}>
+            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? '#f97316' : '#555555' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
+          </span>
+          {(() => {
+            const stacked = new Map<string, number>();
+            calls.filter(c => !['cleared','closed','archived','cancelled'].includes(c.status) && c.location).forEach(c => {
+              const key = c.location.toLowerCase().trim();
+              stacked.set(key, (stacked.get(key) || 0) + 1);
+            });
+            const stackedCount = Array.from(stacked.values()).filter(v => v > 1).length;
+            return stackedCount > 0 ? (
+              <span style={{ color: '#f97316' }}>STACKED: {stackedCount}</span>
+            ) : null;
+          })()}
+        </div>
+
+        {/* Center: Unit metrics */}
+        <div className="flex items-center gap-3 text-[9px] tabular-nums">
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
+            <span style={{ color: '#86efac' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
+          </span>
+          <span style={{ color: '#aaaaaa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
+          <span style={{ color: '#a78bfa' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
+          <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
+          <span style={{ color: '#666666' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
+          <span style={{ color: '#666666' }}>|</span>
+          <span style={{ color: '#999999' }}>
+            TOTAL: <span style={{ color: '#cccccc' }}>{units.length}</span>
+          </span>
+        </div>
+
+        {/* Right: F-key hints + clock */}
+        <div className="flex items-center gap-2 text-[8px] tabular-nums">
+          <span style={{ color: '#555555' }}>F2:New</span>
+          <span style={{ color: '#555555' }}>F3:Disp</span>
+          <span style={{ color: '#555555' }}>F5:EnR</span>
+          <span style={{ color: '#555555' }}>F6:OnS</span>
+          <span style={{ color: '#555555' }}>F7:Clr</span>
+          <span style={{ color: '#555555' }}>F8:CMD</span>
+          <span style={{ color: '#555555' }}>F12:NCIC</span>
+          <span style={{ color: '#444444' }}>|</span>
+          <span style={{ color: '#999999' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
+        </div>
+      </div>
     </div>
   );
 }

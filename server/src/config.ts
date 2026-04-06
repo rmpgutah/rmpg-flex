@@ -33,16 +33,15 @@ if (!envSecret || envSecret === defaultSecret) {
   if (isProduction) {
     console.error('');
     console.error('╔═══════════════════════════════════════════════════════════╗');
-    console.error('║  FATAL: JWT_SECRET is not set or using default value!     ║');
-    console.error('║  A random fallback would silently destroy all sessions    ║');
-    console.error('║  and permanently invalidate TOTP secrets on restart.      ║');
-    console.error('║                                                           ║');
+    console.error('║  CRITICAL SECURITY WARNING                               ║');
+    console.error('║  JWT_SECRET is not set or using default value!            ║');
     console.error('║  Generate a strong secret: openssl rand -hex 64           ║');
     console.error('║  Set it in .env: JWT_SECRET=<your-secret>                 ║');
     console.error('╚═══════════════════════════════════════════════════════════╝');
     console.error('');
-    // Refuse to start — a random secret destroys TOTP secrets and sessions on restart
-    process.exit(1);
+    // In production, generate a random secret so the server still runs
+    // but tokens will invalidate on restart
+    jwtSecret = crypto.randomBytes(64).toString('hex');
   } else {
     // Development: use the default but warn
     jwtSecret = envSecret || crypto.randomBytes(64).toString('hex');
@@ -55,9 +54,6 @@ if (!envSecret || envSecret === defaultSecret) {
 }
 
 // ─── SSL/TLS Certificate Detection ────────────────────
-// When running behind a reverse proxy (nginx), set DISABLE_SSL=true in .env
-// so the server only listens on PORT (default 3001) as plain HTTP.
-const disableSsl = envBool('DISABLE_SSL', false);
 const sslCertPath = process.env.SSL_CERT_PATH || path.resolve(__dirname, '../certs/fullchain.pem');
 const sslKeyPath = process.env.SSL_KEY_PATH || path.resolve(__dirname, '../certs/privkey.pem');
 
@@ -65,30 +61,14 @@ let sslEnabled = false;
 let sslCert: string | undefined;
 let sslKey: string | undefined;
 
-if (disableSsl) {
-  console.log('ℹ  SSL disabled via DISABLE_SSL=true — running HTTP-only behind reverse proxy');
-} else {
-  try {
-    if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
-      sslCert = fs.readFileSync(sslCertPath, 'utf-8');
-      sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
-      sslEnabled = true;
-    }
-  } catch (err) {
-    console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
+try {
+  if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
+    sslCert = fs.readFileSync(sslCertPath, 'utf-8');
+    sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
+    sslEnabled = true;
   }
-}
-
-// Warn in production if TOTP_ENCRYPTION_KEY is not explicitly set
-if (isProduction && !process.env.TOTP_ENCRYPTION_KEY) {
-  console.error('');
-  console.error('╔═══════════════════════════════════════════════════════════╗');
-  console.error('║  WARNING: TOTP_ENCRYPTION_KEY is not set!                ║');
-  console.error('║  Falling back to JWT_SECRET for TOTP encryption.         ║');
-  console.error('║  Generate one: openssl rand -hex 32                       ║');
-  console.error('║  Set it in .env: TOTP_ENCRYPTION_KEY=<your-key>           ║');
-  console.error('╚═══════════════════════════════════════════════════════════╝');
-  console.error('');
+} catch (err) {
+  console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
 }
 
 export const config = {
@@ -134,7 +114,7 @@ export const config = {
     requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
     historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
     expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
-    expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 7),
+    expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 14),
   },
 
   // Two-Factor Authentication (TOTP)
@@ -143,24 +123,6 @@ export const config = {
     issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
     requiredRoles: (process.env.TOTP_REQUIRED_ROLES || 'admin,manager,supervisor,officer,dispatcher,contract_manager').split(',').map(s => s.trim()).filter(Boolean),
     backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
-    tempTokenExpiry: process.env.TOTP_TEMP_TOKEN_EXPIRY || '3m',
-    trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
-  },
-
-  // WebAuthn / Security Key (YubiKey, Touch ID, Windows Hello)
-  webauthn: {
-    rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
-    rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
-    origin: (process.env.WEBAUTHN_ORIGIN || 'https://rmpgutah.us,http://localhost:5173,http://localhost:3001').split(',').map(s => s.trim()),
-  },
-
-  // Alias for utilities that reference config.twoFactor
-  twoFactor: {
-    issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
-    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || jwtSecret,
-    tempTokenExpiry: process.env.TOTP_TEMP_TOKEN_EXPIRY || '3m',
-    backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
-    trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
   },
 
   // Session
@@ -170,10 +132,8 @@ export const config = {
     ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'warn') as 'invalidate' | 'reauth' | 'warn',
   },
 
-  // CORS — localhost origins only in development; production is restricted to real domains
-  corsOrigins: (process.env.CORS_ORIGINS || (isProduction
-    ? 'https://rmpgutah.us,https://www.rmpgutah.us,https://crm.rmpgutah.us'
-    : 'http://localhost:5173,http://localhost:3000,http://localhost:4173,https://rmpgutah.us,https://www.rmpgutah.us,https://crm.rmpgutah.us'))
+  // CORS
+  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:4173,https://rmpgutah.us,http://rmpgutah.us,https://www.rmpgutah.us')
     .split(',')
     .map(s => s.trim()),
 
@@ -183,8 +143,54 @@ export const config = {
   // Auto-Update Server URL (where desktop apps check for updates)
   updateServerUrl: process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us',
 
+  // Two-Factor Authentication (general 2FA settings)
+  twoFactor: {
+    trustedDeviceDays: envInt('TWO_FACTOR_TRUSTED_DEVICE_DAYS', 30),
+  },
+
+  // WebAuthn / FIDO2
+  webauthn: {
+    rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
+    rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
+    origin: process.env.WEBAUTHN_ORIGIN || (isProduction ? 'https://rmpgutah.us' : 'http://localhost:5173'),
+  },
+
   // Integrations
   serveManagerApiKey: process.env.SERVEMANAGER_API_KEY || '',
+
+  // Email (Microsoft Graph)
+  email: {
+    clientId: process.env.AZURE_CLIENT_ID || '',
+    clientSecret: process.env.AZURE_CLIENT_SECRET || '',
+    tenantId: process.env.AZURE_TENANT_ID || '',
+  },
 } as const;
+
+// ─── Environment Variable Validation ──────────────────
+// Warn about missing critical env vars at startup
+const requiredInProduction: Array<{ key: string; label: string }> = [
+  { key: 'JWT_SECRET', label: 'JWT signing secret' },
+];
+
+const recommendedInProduction: Array<{ key: string; label: string }> = [
+  { key: 'CORS_ORIGINS', label: 'Allowed CORS origins' },
+  { key: 'PRIMARY_DOMAIN', label: 'Primary domain for redirects' },
+  { key: 'WEBAUTHN_RP_ID', label: 'WebAuthn relying party ID' },
+];
+
+if (isProduction) {
+  const missing = requiredInProduction.filter(({ key }) => !process.env[key] || process.env[key] === defaultSecret);
+  if (missing.length > 0) {
+    console.warn(`\n[Config] Missing required environment variables in production:`);
+    missing.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));
+    console.warn('');
+  }
+  const unset = recommendedInProduction.filter(({ key }) => !process.env[key]);
+  if (unset.length > 0) {
+    console.warn(`[Config] Recommended environment variables not set:`);
+    unset.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));
+    console.warn('');
+  }
+}
 
 export default config;

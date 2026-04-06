@@ -91,8 +91,8 @@ function parseArcGisResponse(data: any): PropertyRecord[] {
       zoning: attrs.ZONING || attrs.ZONE || attrs.zoning || '',
       sqft: attrs.SQFT || attrs.BUILDING_SQFT || attrs.sqft || '',
       yearBuilt: attrs.YEAR_BUILT || attrs.year_built || attrs.YR_BUILT || '',
-      latitude: geom.y || geom.lat || undefined,
-      longitude: geom.x || geom.lng || geom.lon || undefined,
+      latitude: geom.y ?? geom.lat ?? undefined,
+      longitude: geom.x ?? geom.lng ?? geom.lon ?? undefined,
     });
   }
 
@@ -239,7 +239,8 @@ export async function scrapeCommercialRe(): Promise<ScrapeResult> {
   let lastError: string | undefined;
 
   const config = getSourceConfig(SOURCE_KEY);
-  const extraConfig = config?.extra_config ? JSON.parse(config.extra_config) : {};
+  let extraConfig: any = {};
+  try { if (config?.extra_config) extraConfig = JSON.parse(config.extra_config); } catch { /* malformed config — use defaults */ }
   const minValue = extraConfig.min_value || 100_000;
 
   let fetched = false;
@@ -313,8 +314,8 @@ export async function scrapeCommercialRe(): Promise<ScrapeResult> {
           try {
             const data = JSON.parse(body);
             records = Array.isArray(data) ? parseSocrataResponse(data) : parseArcGisResponse(data);
-          } catch {
-            // Parse failure
+          } catch (e: any) {
+            console.warn('[CommercialRE] Parse failure:', e?.message);
           }
         } else {
           records = parseHtmlResults(body);

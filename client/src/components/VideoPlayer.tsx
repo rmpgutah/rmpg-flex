@@ -71,9 +71,11 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
   const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
 
-  const headers = getAuthHeaders();
-  const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
+  const signedQuery = (video as any)._signedQuery || (() => {
+    const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
+    return `token=${encodeURIComponent(token)}`;
+  })();
+  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?${signedQuery}`;
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -92,10 +94,10 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   } : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         ref={containerRef}
-        className={`bg-black border border-rmpg-800 rounded-lg shadow-2xl overflow-hidden ${
+        className={`bg-black border border-rmpg-800 rounded-sm shadow-md overflow-hidden ${
           isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
         }`}
         onClick={e => e.stopPropagation()}
@@ -111,7 +113,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               {classLabel(video.classification)}
             </span>
             {overlayInfo && (
-              <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded flex-shrink-0 ${overlayInfo.cls}`}>
+              <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded-sm flex-shrink-0 ${overlayInfo.cls}`}>
                 <Shield className={`w-2.5 h-2.5 ${video.overlay_status === 'processing' || video.overlay_status === 'pending' ? 'animate-spin' : ''}`} />
                 {overlayInfo.label}
               </span>
@@ -119,22 +121,22 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
           </div>
           <div className="flex items-center gap-1">
             {onEditVideo && (
-              <button onClick={() => onEditVideo(video)} className="toolbar-btn p-1" title="Edit video metadata">
+              <button type="button" onClick={() => onEditVideo(video)} className="toolbar-btn p-1" title="Edit video metadata">
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
             )}
-            <button onClick={onClose} className="toolbar-btn p-1">
+            <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
               <X className="w-4 h-4" />
             </button>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
+            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
               HUD {hudVisible ? 'ON' : 'OFF'}
             </button>
-            <button onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
+            <button type="button" onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
               {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
-            <button onClick={onClose} className="toolbar-btn p-1">
+            <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
               <X className="w-4 h-4" />
             </button>
           </div>

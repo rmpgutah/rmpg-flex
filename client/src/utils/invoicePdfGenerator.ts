@@ -23,12 +23,18 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
+  formSectionPageBreak,
+  sanitizePdfText,
+  addSignatureBlock,
+  wordWrapText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
+import { drawNibrsHeader, drawFormSection, type FormRow } from './pdfFormHelpers';
+import { FORM_NUMBERS } from './pdfAssets';
 
 // ── Data interface ────────────────────────────────────────
 
@@ -75,8 +81,8 @@ interface InvoicePdfData {
 }
 
 function fmt(n: number | null | undefined): string {
-  if (n == null) return '$0.00';
-  return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (n == null || !Number.isFinite(Number(n))) return '$0.00';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n));
 }
 
 // ── PDF Generation ────────────────────────────────────────
@@ -87,7 +93,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   await loadPdfAssets();
   setActiveFormKey('invoice');
   setActiveCaseNumber(data.invoice_number);
-  setGenerationTimestamp(new Date().toLocaleString());
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -102,29 +111,55 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   // ── Watermark ────────────────────────────────────────
   addConfidentialWatermark(doc);
 
-  // ── Header with seal (same as all reports) ───────────
-  let y = addReportHeader(doc, data.invoice_number, 'Invoice', 'routine', undefined, { useLogo: true });
+  // ── NIBRS-style Header ───────────────────────────────
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'INVOICE',
+    formNumber: FORM_NUMBERS.invoice || 'FORM PS-301',
+    caseNumber: data.invoice_number,
+    reportDate: data.issue_date?.substring(0, 10) || '',
+  });
 
-  // ── Invoice Information Section (auto-sizing) ─────────
-  { const sec = openAutoSection(doc, 'Invoice Information', y); y = sec.contentY;
-    const qw = getQuarterWidth(doc);
-    addFieldPair(doc, 'Invoice Number', data.invoice_number, lx, y, qw);
-    addFieldPair(doc, 'Status', (data.status || 'draft').toUpperCase(), lx + qw + SPACING.MD, y, qw);
-    addFieldPair(doc, 'Issue Date', data.issue_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 2, y, qw);
-    y = addFieldPair(doc, 'Due Date', data.due_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 3, y, qw);
-    addFieldPair(doc, 'Payment Terms', data.payment_terms || 'Net 30', lx, y, hfw);
-    y = addFieldPair(doc, 'Billing Period', `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // ── Invoice Information ─────────────────────────────
+  y = drawFormSection(doc, {
+    sideTab: { label: 'INVOICE' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '1. INVOICE NUMBER', value: data.invoice_number, ratio: 2, valueBold: true },
+        { label: '2. STATUS', value: (data.status || 'draft').toUpperCase(), ratio: 1, align: 'center', valueBold: true },
+        { label: '3. ISSUE DATE', value: data.issue_date?.substring(0, 10) || '', ratio: 1 },
+        { label: '4. DUE DATE', value: data.due_date?.substring(0, 10) || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '5. PAYMENT TERMS', value: data.payment_terms || 'Net 30', ratio: 1 },
+        { label: '6. BILLING PERIOD', value: `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, ratio: 2 },
+      ]},
+    ],
+    y,
+  });
 
-  // ── Client Information Section (auto-sizing) ──────────
-  { const sec = openAutoSection(doc, 'Client / Bill To', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Client Name', data.client_name || '', lx, y, ffw);
-    y = addFieldPair(doc, 'Billing Address', data.billing_address || data.client_address || '', lx, y, ffw);
-    addFieldPair(doc, 'Contact', data.contact_name || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Email', data.billing_email || data.contact_email || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // ── Client / Bill To ──────────────────────────────
+  y = drawFormSection(doc, {
+    sideTab: { label: 'BILL TO' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '7. CLIENT NAME', value: data.client_name || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '8. BILLING ADDRESS', value: data.billing_address || data.client_address || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '9. CONTACT', value: data.contact_name || '', ratio: 1 },
+        { label: '10. EMAIL', value: data.billing_email || data.contact_email || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Line Items Table ─────────────────────────────────
   {
@@ -138,7 +173,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
       // Table header
       const cols = [
-        { label: 'DESCRIPTION', x: lx, w: cw - SPACING.CONTENT_INSET * 2 - 66 },
+        { label: 'DESCRIPTION', x: lx, w: Math.max(40, cw - SPACING.CONTENT_INSET * 2 - 66) },
         { label: 'QTY', x: pageWidth - LAYOUT.PAGE_MARGIN - 70, w: 15 },
         { label: 'RATE', x: pageWidth - LAYOUT.PAGE_MARGIN - 50, w: 22 },
         { label: 'AMOUNT', x: pageWidth - LAYOUT.PAGE_MARGIN - 25, w: 25 },
@@ -170,8 +205,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         { top: tableStartY, bottom: y, page: tableStartPage },
       ];
 
-      // Data rows
-      doc.setFont('helvetica', 'normal');
+      // Data rows — Courier for body text
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
         // Page break check — re-draw headers on new page
@@ -184,14 +219,16 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           y = drawItemHeaders(y);
           // Start new segment on new page
           tableSegments.push({ top: y - 8, bottom: y, page: doc.getNumberOfPages() });
-          doc.setFont('helvetica', 'normal');
+          doc.setFont('courier', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
 
         const item = items[i];
 
-        // Dynamic row height for multi-line descriptions
-        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
+        // Dynamic row height for multi-line descriptions — use wordWrapText to prevent mid-word breaks
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+        const descLines = wordWrapText(doc, sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height
@@ -200,16 +237,18 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 3, cw - 2, rowHeight, 'F');
         }
 
-        doc.setTextColor(30, 30, 30);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(descLines, cols[0].x, y);
-        doc.text(String(item.quantity), cols[1].x + cols[1].w, y, { align: 'right' });
-        doc.text(fmt(item.unit_price), cols[2].x + cols[2].w, y, { align: 'right' });
+        const safeQty = Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : 0;
+        const safeRate = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : 0;
+        doc.text(String(safeQty), cols[1].x + cols[1].w, y, { align: 'right' });
+        doc.text(fmt(safeRate), cols[2].x + cols[2].w, y, { align: 'right' });
 
         // Unified credit/debit colors from tokens
-        const amtColor: [number, number, number] = item.amount < 0 ? [...COLOR.AMOUNT_CREDIT] : [30, 30, 30];
+        const amtColor: [number, number, number] = (item.amount ?? 0) < 0 ? [...COLOR.AMOUNT_CREDIT] : [...COLOR.TEXT_PRIMARY];
         doc.setTextColor(amtColor[0], amtColor[1], amtColor[2]);
-        doc.text(fmt(item.amount), cols[3].x + cols[3].w, y, { align: 'right' });
-        doc.setTextColor(30, 30, 30);
+        doc.text(fmt(item.amount ?? 0), cols[3].x + cols[3].w, y, { align: 'right' });
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
         y += rowHeight;
 
@@ -222,19 +261,12 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       // Update final segment bottom
       if (tableSegments.length > 0) tableSegments[tableSegments.length - 1].bottom = y + 1;
 
-      // Outer table border — draw per page segment
-      const currentPage = doc.getNumberOfPages();
-      for (const seg of tableSegments) {
-        doc.setPage(seg.page);
-        doc.setDrawColor(...COLOR.BORDER_OUTER);
-        doc.setLineWidth(BORDER.TABLE_OUTER);
-        doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, seg.bottom - seg.top + 3);
-      }
-      doc.setPage(currentPage);
+      // Table segments tracked for page continuity (no outer border — clean CFS style)
+      void tableSegments;
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('No line items', lx, y);
+      doc.text('NO LINE ITEMS', lx, y);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       y += SPACING.XL;
     }
@@ -250,26 +282,27 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const totX = pageWidth - LAYOUT.PAGE_MARGIN - 60;
   const totVX = pageWidth - LAYOUT.PAGE_MARGIN;
   const addTotal = (label: string, value: string, bold = false, color?: readonly [number, number, number]) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFont('courier', bold ? 'bold' : 'normal');
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
-    doc.setTextColor(color ? color[0] : 30, color ? color[1] : 30, color ? color[2] : 30);
+    const valColor = color || COLOR.TEXT_PRIMARY;
+    doc.setTextColor(valColor[0], valColor[1], valColor[2]);
     doc.text(value, totVX, y, { align: 'right' });
     y += bold ? 6 : LAYOUT.LINE_HEIGHT;
   };
 
-  addTotal('Subtotal:', fmt(data.subtotal));
-  if (data.discount_amount > 0) addTotal('Discount:', `-${fmt(data.discount_amount)}`, false, COLOR.AMOUNT_CREDIT);
-  if (data.late_fee_amount > 0) addTotal('Late Fee:', fmt(data.late_fee_amount), false, COLOR.AMOUNT_DEBIT);
+  addTotal('Subtotal:', fmt(data.subtotal ?? 0));
+  if ((data.discount_amount ?? 0) > 0) addTotal('Discount:', `-${fmt(data.discount_amount)}`, false, COLOR.AMOUNT_CREDIT);
+  if ((data.late_fee_amount ?? 0) > 0) addTotal('Late Fee:', fmt(data.late_fee_amount), false, COLOR.AMOUNT_DEBIT);
 
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
   doc.line(totX - 5, y - 1, totVX, y - 1);
   y += SPACING.SM;
 
-  addTotal('TOTAL:', fmt(data.total), true);
-  if (data.amount_paid > 0) addTotal('Amount Paid:', `-${fmt(data.amount_paid)}`, false, COLOR.AMOUNT_CREDIT);
+  addTotal('TOTAL:', fmt(data.total ?? 0), true);
+  if ((data.amount_paid ?? 0) > 0) addTotal('Amount Paid:', `-${fmt(data.amount_paid)}`, false, COLOR.AMOUNT_CREDIT);
 
   // Balance due box
   doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
@@ -277,11 +310,11 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const balBoxX = totX - 8;
   const balBoxW = totVX - balBoxX + 3;
   doc.rect(balBoxX, y - 2, balBoxW, 9);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });
-  doc.text(fmt(data.balance_due), totVX, y + 4, { align: 'right' });
+  doc.text(fmt(data.balance_due ?? 0), totVX, y + 4, { align: 'right' });
   y += 14;
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -302,10 +335,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       { label: 'REFERENCE', x: payColPositions[3] },
     ];
     const payRows = payments.map(p => [
-      p.payment_date?.substring(0, 10) || '',
-      fmt(p.amount),
-      p.payment_method || '',
-      p.reference_number || '',
+      sanitizePdfText(p.payment_date?.substring(0, 10) || '').toUpperCase(),
+      fmt(p.amount).toUpperCase(),
+      sanitizePdfText(p.payment_method || '').toUpperCase(),
+      sanitizePdfText(p.reference_number || '').toUpperCase(),
     ]);
     y = addTableWithShading(doc, payHeaders, payRows, y, payColPositions);
 
@@ -317,11 +350,16 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = checkPageBreak(doc, y, 20);
     const sec = openAutoSection(doc, 'Notes', y);
     y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    y = addWrappedText(doc, data.notes, lx, y, ffw, 9);
+    doc.setFont('courier', 'normal');
+    y = addWrappedText(doc, sanitizePdfText(data.notes).toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE);
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // ── Signature Block ──────────────────────────────────
+  y = checkPageBreak(doc, y, 30);
+  y += SPACING.MD;
+  y = addSignatureBlock(doc, 'Authorized By', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
 
   // ── Footer on all pages ──────────────────────────────
   const totalPages = doc.getNumberOfPages();
@@ -423,7 +461,11 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
       <div class="field-box"><div class="label">Status</div><div class="value">${escHtml((data.status || 'draft').toUpperCase())}</div></div>
       <div class="field-box"><div class="label">Issue Date</div><div class="value">${data.issue_date?.substring(0, 10) || '&mdash;'}</div></div>
       <div class="field-box"><div class="label">Due Date</div><div class="value">${data.due_date?.substring(0, 10) || '&mdash;'}</div></div>
+<<<<<<< HEAD
       <div class="field-box"><div class="label">Terms</div><div class="value">${escHtml(data.payment_terms) || 'Net 30'}</div></div>
+=======
+      <div class="field-box"><div class="label">Terms</div><div class="value">${escHtml(data.payment_terms || 'Net 30')}</div></div>
+>>>>>>> origin/main
       <div class="field-box"><div class="label">Period</div><div class="value">${data.period_start?.substring(0, 10)} to ${data.period_end?.substring(0, 10)}</div></div>
     </div>
   </div>

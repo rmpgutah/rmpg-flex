@@ -22,6 +22,8 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
+  formSectionPageBreak,
+  sanitizePdfText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -29,6 +31,7 @@ import {
   getLeftX, getRightColumnX, getHalfFieldWidth,
   getProportionalColumns,
 } from './pdfTokens';
+import { drawNibrsHeader, drawFormSection, type FormRow } from './pdfFormHelpers';
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -99,12 +102,12 @@ export interface ServiceLogData {
 
 // ── Helper: Centered bold title ──────────────────────────────
 
-function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = 14): number {
+function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = FONT.SIZE_HEADER_TITLE): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text(title, pageWidth / 2, y, { align: 'center' });
+  doc.text(sanitizePdfText(title).toUpperCase(), pageWidth / 2, y, { align: 'center' });
   return y + fontSize * 0.5 + SPACING.LG;
 }
 
@@ -256,81 +259,95 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   const ffw = getFullFieldWidth(doc);
 
   setActiveCaseNumber(data.caseNumber);
-  let y = addReportHeader(doc, data.caseNumber, 'Affidavit of Service', 'routine', undefined, { useLogo: true });
-
-  // Title
-  y = addCenteredTitle(doc, 'AFFIDAVIT OF SERVICE', y + SPACING.MD);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'AFFIDAVIT OF SERVICE',
+    caseNumber: data.caseNumber,
+    reportDate: data.serviceDate || '',
+  });
 
   // ── Court Information ──
-  {
-    const sec = openAutoSection(doc, 'Court Information', y);
-    y = sec.contentY;
-    y = addFieldPair(doc, 'Court Name', data.courtName, lx, y, ffw);
-    y += SPACING.SM;
-    const rowY = y;
-    addFieldPair(doc, 'Case Number', data.caseNumber, lx, rowY, hfw);
-    y = addFieldPair(doc, 'Jurisdiction', data.jurisdiction, rx, rowY, hfw);
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'COURT' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '1. COURT NAME', value: data.courtName, ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '2. CASE NUMBER', value: data.caseNumber, ratio: 1, valueBold: true },
+        { label: '3. JURISDICTION', value: data.jurisdiction, ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Server Information ──
-  y = checkPageBreak(doc, y, 25);
-  {
-    const sec = openAutoSection(doc, 'Server Information', y);
-    y = sec.contentY;
-    const rowY1 = y;
-    addFieldPair(doc, 'Full Name', data.serverName, lx, rowY1, hfw);
-    y = addFieldPair(doc, 'Badge / License #', data.serverBadge, rx, rowY1, hfw);
-    y += SPACING.SM;
-    y = addFieldPair(doc, 'Company', data.serverCompany, lx, y, ffw);
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SERVER' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '4. SERVER NAME', value: data.serverName, ratio: 2, valueBold: true },
+        { label: '5. BADGE / LICENSE #', value: data.serverBadge, ratio: 1 },
+      ]},
+      { cells: [
+        { label: '6. COMPANY', value: data.serverCompany, ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Recipient Information ──
-  y = checkPageBreak(doc, y, 25);
-  {
-    const sec = openAutoSection(doc, 'Recipient Information', y);
-    y = sec.contentY;
-    y = addFieldPair(doc, 'Recipient Name', data.recipientName, lx, y, ffw);
-    y += SPACING.SM;
-    y = addFieldPair(doc, 'Address', data.recipientAddress, lx, y, ffw);
-    y += SPACING.SM;
-    y = addFieldPair(doc, 'Document Type Served', data.documentType, lx, y, ffw);
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'RECIPIENT' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '7. RECIPIENT NAME', value: data.recipientName, ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '8. ADDRESS', value: data.recipientAddress, ratio: 1 },
+      ]},
+      { cells: [
+        { label: '9. DOCUMENT TYPE SERVED', value: data.documentType, ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Service Details ──
-  y = checkPageBreak(doc, y, 30);
-  {
-    const sec = openAutoSection(doc, 'Service Details', y);
-    y = sec.contentY;
-    const methodLabel = data.serviceMethod === 'personal' ? 'Personal Service'
-      : data.serviceMethod === 'substitute' ? 'Substitute Service'
-      : 'Posting';
-    const r1y = y;
-    addFieldPair(doc, 'Date of Service', data.serviceDate, lx, r1y, hfw);
-    y = addFieldPair(doc, 'Time of Service', data.serviceTime, rx, r1y, hfw);
-    y += SPACING.SM;
-    const r2y = y;
-    addFieldPair(doc, 'Method of Service', methodLabel, lx, r2y, hfw);
-    y = addFieldPair(doc, 'GPS Coordinates', `${data.gpsLat.toFixed(6)}, ${data.gpsLng.toFixed(6)}`, rx, r2y, hfw);
-    y += SPACING.SM;
-
-    // Substitute service details
-    if (data.serviceMethod === 'substitute' && data.substituteInfo) {
-      y = addFieldPair(doc, 'Person Served (Substitute)', data.substituteInfo.name, lx, y, ffw);
-      y += SPACING.SM;
-      const r3y = y;
-      addFieldPair(doc, 'Relationship', data.substituteInfo.relationship, lx, r3y, hfw);
-      y = addFieldPair(doc, 'Physical Description', data.substituteInfo.description, rx, r3y, hfw);
-      y += SPACING.SM;
-    }
-
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  const methodLabel = data.serviceMethod === 'personal' ? 'Personal Service'
+    : data.serviceMethod === 'substitute' ? 'Substitute Service'
+    : 'Posting';
+  const serviceRows: FormRow[] = [
+    { cells: [
+      { label: '10. DATE OF SERVICE', value: data.serviceDate, ratio: 1 },
+      { label: '11. TIME', value: data.serviceTime, ratio: 1, align: 'center' },
+      { label: '12. METHOD', value: methodLabel, ratio: 1, valueBold: true },
+      { label: '13. GPS', value: `${data.gpsLat.toFixed(6)}, ${data.gpsLng.toFixed(6)}`, ratio: 1 },
+    ]},
+  ];
+  if (data.serviceMethod === 'substitute' && data.substituteInfo) {
+    serviceRows.push(
+      { cells: [
+        { label: '14. SUBSTITUTE NAME', value: data.substituteInfo.name, ratio: 2 },
+        { label: '15. RELATIONSHIP', value: data.substituteInfo.relationship, ratio: 1 },
+        { label: '16. DESCRIPTION', value: data.substituteInfo.description, ratio: 2 },
+      ]},
+    );
   }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SERVICE' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: serviceRows,
+    y,
+  });
 
   // ── Photos ──
   if (data.photos && data.photos.length > 0) {
@@ -374,7 +391,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPageFooter(doc, i, totalPages);
+    addPageFooter(doc, i, totalPages, 'serve_affidavit');
     if (i > 1) addConfidentialWatermark(doc);
   }
 
@@ -407,49 +424,62 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   const ffw = getFullFieldWidth(doc);
 
   setActiveCaseNumber(data.caseNumber);
-  let y = addReportHeader(doc, data.caseNumber, 'Affidavit of Non-Service', 'routine', undefined, { useLogo: true });
-
-  // Title
-  y = addCenteredTitle(doc, 'AFFIDAVIT OF DUE DILIGENCE / NON-SERVICE', y + SPACING.MD);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'AFFIDAVIT OF DUE DILIGENCE / NON-SERVICE',
+    caseNumber: data.caseNumber,
+  });
 
   // ── Court Information ──
-  {
-    const sec = openAutoSection(doc, 'Court Information', y);
-    y = sec.contentY;
-    y = addFieldPair(doc, 'Court Name', data.courtName, lx, y, ffw);
-    y += SPACING.SM;
-    const rowY = y;
-    addFieldPair(doc, 'Case Number', data.caseNumber, lx, rowY, hfw);
-    y = addFieldPair(doc, 'Jurisdiction', data.jurisdiction, rx, rowY, hfw);
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'COURT' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '1. COURT NAME', value: data.courtName, ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '2. CASE NUMBER', value: data.caseNumber, ratio: 1, valueBold: true },
+        { label: '3. JURISDICTION', value: data.jurisdiction, ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Server Information ──
-  y = checkPageBreak(doc, y, 20);
-  {
-    const sec = openAutoSection(doc, 'Server Information', y);
-    y = sec.contentY;
-    const rowY = y;
-    addFieldPair(doc, 'Full Name', data.serverName, lx, rowY, hfw);
-    y = addFieldPair(doc, 'Badge / License #', data.serverBadge, rx, rowY, hfw);
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SERVER' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '4. SERVER NAME', value: data.serverName, ratio: 2, valueBold: true },
+        { label: '5. BADGE / LICENSE #', value: data.serverBadge, ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Recipient Information ──
-  y = checkPageBreak(doc, y, 25);
-  {
-    const sec = openAutoSection(doc, 'Recipient Information', y);
-    y = sec.contentY;
-    y = addFieldPair(doc, 'Recipient Name', data.recipientName, lx, y, ffw);
-    y += SPACING.SM;
-    y = addFieldPair(doc, 'Address', data.recipientAddress, lx, y, ffw);
-    y += SPACING.SM;
-    y = addFieldPair(doc, 'Document Type', data.documentType, lx, y, ffw);
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'RECIPIENT' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '6. RECIPIENT NAME', value: data.recipientName, ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '7. ADDRESS', value: data.recipientAddress, ratio: 1 },
+      ]},
+      { cells: [
+        { label: '8. DOCUMENT TYPE', value: data.documentType, ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Attempt History Table ──
   y = checkPageBreak(doc, y, 30);
@@ -466,13 +496,13 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
       { label: 'RESULT', x: cols[4] },
       { label: 'NOTES', x: cols[5] },
     ];
-    const rows = data.attempts.map(a => [
+    const rows = (data.attempts || []).map(a => [
       String(a.number),
-      a.date,
-      a.time,
+      sanitizePdfText(a.date || '').toUpperCase(),
+      sanitizePdfText(a.time || '').toUpperCase(),
       `${a.gpsLat.toFixed(4)}, ${a.gpsLng.toFixed(4)}`,
-      a.result,
-      a.notes,
+      sanitizePdfText(a.result || '').toUpperCase(),
+      sanitizePdfText(a.notes || '').toUpperCase(),
     ]);
 
     y = addTableWithShading(doc, headers, rows, y, cols);
@@ -481,7 +511,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Photos from attempts ──
-  for (const attempt of data.attempts) {
+  for (const attempt of (data.attempts || [])) {
     if (attempt.photos && attempt.photos.length > 0) {
       y = checkPageBreak(doc, y, 40);
       const sec = openAutoSection(doc, `Attempt #${attempt.number} Photos`, y);
@@ -497,22 +527,23 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     const sec = openAutoSection(doc, 'Skip Trace Summary', y);
     y = sec.contentY;
 
-    for (const trace of data.skipTraces) {
+    for (const trace of (data.skipTraces || [])) {
       y = checkPageBreak(doc, y, 20);
       const rowY = y;
-      addFieldPair(doc, 'Date', trace.date, lx, rowY, hfw);
-      y = addFieldPair(doc, 'Search Type', trace.searchType, rx, rowY, hfw);
+      const yL = addFieldPair(doc, 'Date', trace.date, lx, rowY, hfw);
+      const yR = addFieldPair(doc, 'Search Type', trace.searchType, rx, rowY, hfw);
+      y = Math.max(yL, yR);
       y += SPACING.SM;
       y = addFieldPair(doc, 'Addresses Found', String(trace.addressesFound), lx, y, hfw);
       y += SPACING.SM;
 
-      if (trace.addressesTried.length > 0) {
-        y = addFieldPair(doc, 'Addresses Tried', trace.addressesTried.join('; '), lx, y, ffw);
+      if ((trace.addressesTried || []).length > 0) {
+        y = addFieldPair(doc, 'Addresses Tried', (trace.addressesTried || []).map(a => sanitizePdfText(a)).join('; '), lx, y, ffw);
         y += SPACING.SM;
       }
 
       // Separator between traces
-      if (data.skipTraces!.indexOf(trace) < data.skipTraces!.length - 1) {
+      if ((data.skipTraces || []).indexOf(trace) < (data.skipTraces || []).length - 1) {
         doc.setDrawColor(...COLOR.BORDER_TABLE);
         doc.setLineWidth(BORDER.TABLE_ROW);
         doc.line(lx, y, lx + ffw, y);
@@ -572,7 +603,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPageFooter(doc, i, totalPages);
+    addPageFooter(doc, i, totalPages, 'serve_non_service');
     if (i > 1) addConfidentialWatermark(doc);
   }
 
@@ -604,60 +635,53 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
-  const dateRangeLabel = `${data.dateRange.start} — ${data.dateRange.end}`;
+  const dateRangeLabel = `${sanitizePdfText(data.dateRange.start)} -- ${sanitizePdfText(data.dateRange.end)}`;
   setActiveCaseNumber('');
-  let y = addReportHeader(doc, '', 'Service Log Report', 'routine', undefined, { useLogo: true });
-
-  // Title + date range subtitle
-  y = addCenteredTitle(doc, 'SERVICE LOG REPORT', y + SPACING.MD);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(dateRangeLabel, doc.internal.pageSize.getWidth() / 2, y - SPACING.SM, { align: 'center' });
-  y += SPACING.MD;
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'SERVICE LOG REPORT',
+    reportDate: dateRangeLabel,
+  });
 
   // ── Officer Information ──
-  {
-    const sec = openAutoSection(doc, 'Officer Information', y);
-    y = sec.contentY;
-    const rowY = y;
-    addFieldPair(doc, 'Officer Name', data.officerName, lx, rowY, hfw);
-    y = addFieldPair(doc, 'Badge #', data.officerBadge, rx, rowY, hfw);
-    y += SPACING.SM;
-    y = addFieldPair(doc, 'Date Range', dateRangeLabel, lx, y, ffw);
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'OFFICER' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '1. OFFICER NAME', value: data.officerName, ratio: 2, valueBold: true },
+        { label: '2. BADGE #', value: data.officerBadge, ratio: 1 },
+      ]},
+      { cells: [
+        { label: '3. DATE RANGE', value: dateRangeLabel, ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Summary Statistics ──
-  y = checkPageBreak(doc, y, 25);
-  {
-    const sec = openAutoSection(doc, 'Summary Statistics', y);
-    y = sec.contentY;
+  const jobs = data.jobs || [];
+  const served = jobs.filter(j => (j.result || '').toLowerCase() === 'served').length;
+  const failed = jobs.filter(j => ['failed', 'unable'].some(s => (j.result || '').toLowerCase().includes(s))).length;
+  const pending = jobs.filter(j => (j.result || '').toLowerCase() === 'pending').length;
 
-    const served = data.jobs.filter(j => j.result.toLowerCase() === 'served').length;
-    const failed = data.jobs.filter(j => ['failed', 'unable'].some(s => j.result.toLowerCase().includes(s))).length;
-    const pending = data.jobs.filter(j => j.result.toLowerCase() === 'pending').length;
-
-    // Use proportional columns for 5 stats
-    const statCols = getProportionalColumns(doc, [1, 1, 1, 1, 1]);
-    const statW = (ffw - 4 * SPACING.SM) / 5;
-
-    const stats = [
-      { label: 'Total Jobs', value: String(data.jobs.length) },
-      { label: 'Served', value: String(served) },
-      { label: 'Failed', value: String(failed) },
-      { label: 'Pending', value: String(pending) },
-      { label: 'Miles Driven', value: data.totalMileage.toFixed(1) },
-    ];
-
-    stats.forEach((stat, i) => {
-      addFieldPair(doc, stat.label, stat.value, statCols[i], y, statW);
-    });
-
-    y += SPACING.FIELD_ROW_ADVANCE + SPACING.LG;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SUMMARY' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '4. TOTAL JOBS', value: String(jobs.length), ratio: 1, align: 'center', valueBold: true },
+        { label: '5. SERVED', value: String(served), ratio: 1, align: 'center' },
+        { label: '6. FAILED', value: String(failed), ratio: 1, align: 'center' },
+        { label: '7. PENDING', value: String(pending), ratio: 1, align: 'center' },
+        { label: '8. MILES DRIVEN', value: (data.totalMileage ?? 0).toFixed(1), ratio: 1, align: 'center' },
+      ]},
+    ],
+    y,
+  });
 
   // ── Job Details Table ──
   y = checkPageBreak(doc, y, 30);
@@ -675,8 +699,8 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     ];
 
     // Group jobs by client name
-    const clientGroups = new Map<string, typeof data.jobs>();
-    for (const job of data.jobs) {
+    const clientGroups = new Map<string, typeof jobs>();
+    for (const job of jobs) {
       const client = job.clientName || 'Unassigned';
       if (!clientGroups.has(client)) clientGroups.set(client, []);
       clientGroups.get(client)!.push(job);
@@ -685,14 +709,14 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const rows: string[][] = [];
     Array.from(clientGroups.entries()).forEach(([clientName, jobs]) => {
       // Group header row (bold client name spanning first column, rest empty)
-      rows.push([`[${clientName}]`, '', '', '', '']);
+      rows.push([`[${sanitizePdfText(clientName).toUpperCase()}]`, '', '', '', '']);
       for (const job of jobs) {
         rows.push([
-          job.recipientName,
-          job.address,
-          job.documentType,
+          sanitizePdfText(job.recipientName || '').toUpperCase(),
+          sanitizePdfText(job.address || '').toUpperCase(),
+          sanitizePdfText(job.documentType || '').toUpperCase(),
           String(job.attempts),
-          job.result,
+          sanitizePdfText(job.result || '').toUpperCase(),
         ]);
       }
     });
@@ -708,8 +732,9 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Route Efficiency', y);
     y = sec.contentY;
     const rowY = y;
-    addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned.toFixed(1), lx, rowY, hfw);
-    y = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual.toFixed(1), rx, rowY, hfw);
+    const yL2 = addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned.toFixed(1), lx, rowY, hfw);
+    const yR2 = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual.toFixed(1), rx, rowY, hfw);
+    y = Math.max(yL2, yR2);
     y += SPACING.SM;
 
     const efficiency = data.routeEfficiency.planned > 0
@@ -724,7 +749,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPageFooter(doc, i, totalPages);
+    addPageFooter(doc, i, totalPages, 'service_log');
     if (i > 1) addConfidentialWatermark(doc);
   }
 

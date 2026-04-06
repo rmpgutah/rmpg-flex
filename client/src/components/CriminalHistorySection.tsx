@@ -81,7 +81,7 @@ const RECORD_TYPE_CLASSES: Record<string, string> = {
   booking: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
   probation: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   parole: 'bg-purple-900/50 text-purple-400 border-purple-600/50',
-  court_order: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  court_order: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
   restraining_order: 'bg-pink-900/40 text-pink-300 border-pink-700/50',
   sex_offense: 'bg-red-900/70 text-red-300 border-red-500/70',
   dui: 'bg-amber-900/60 text-amber-400 border-amber-600/50',
@@ -91,7 +91,7 @@ const RECORD_TYPE_CLASSES: Record<string, string> = {
 const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
   felony: 'bg-red-900/60 text-red-300 border-red-700/50',
   misdemeanor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  infraction: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
+  infraction: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   civil: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
   unknown: 'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50',
 };
@@ -99,7 +99,7 @@ const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return dateStr; }
 }
 
@@ -201,7 +201,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
     <div className="panel-beveled bg-surface-base overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-3">
-        <button
+        <button type="button"
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-1.5 hover:text-rmpg-200 transition-colors"
         >
@@ -229,7 +229,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               )}
             </div>
           )}
-          <button
+          <button type="button"
             onClick={() => {
               setEditingId(null);
               setForm({ ...EMPTY_FORM });
@@ -253,7 +253,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 <span className="text-[10px] text-brand-400 uppercase font-bold tracking-wider">
                   {editingId ? 'Edit Record' : 'Add Criminal Record'}
                 </span>
-                <button onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-white">
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-white">
                   <X className="w-3 h-3" />
                 </button>
               </div>
@@ -399,8 +399,8 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               </div>
 
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px]">Cancel</button>
-                <button
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px]">Cancel</button>
+                <button type="button"
                   onClick={handleSave}
                   disabled={saving || !form.offense.trim()}
                   className="toolbar-btn toolbar-btn-primary text-[10px]"
@@ -455,10 +455,10 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                     )}
                     <span className="text-white font-semibold text-[11px] flex-1">{rec.offense}</span>
                     <span className="text-rmpg-400 text-[10px]">{formatDate(rec.offense_date)}</span>
-                    <button onClick={() => handleEdit(rec)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
+                    <button type="button" onClick={() => handleEdit(rec)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button onClick={() => handleDelete(rec.id)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete">
+                    <button type="button" onClick={() => handleDelete(rec.id)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
@@ -474,7 +474,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         <span>
                           <span className="text-rmpg-500">Disp:</span>{' '}
                           <span className={rec.disposition.toLowerCase().includes('guilty') || rec.disposition.toLowerCase().includes('convicted') ? 'text-red-400 font-semibold' : rec.disposition.toLowerCase().includes('dismiss') ? 'text-green-400' : ''}>
-                            {rec.disposition}
+                            {(rec.disposition || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                           </span>
                           {rec.disposition_date && <span className="text-rmpg-500 ml-1">({formatDate(rec.disposition_date)})</span>}
                         </span>

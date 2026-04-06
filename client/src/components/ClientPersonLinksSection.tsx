@@ -37,7 +37,7 @@ interface ClientPersonLink {
 // ── Relationship display config ─────────────────────
 
 const RELATIONSHIP_OPTIONS = [
-  { value: 'employee', label: 'Employee', color: 'bg-blue-900/40 text-blue-300 border-blue-700/40' },
+  { value: 'employee', label: 'Employee', color: 'bg-gray-900/40 text-gray-300 border-gray-700/40' },
   { value: 'contact', label: 'Contact', color: 'bg-teal-900/40 text-teal-300 border-teal-700/40' },
   { value: 'tenant', label: 'Tenant', color: 'bg-indigo-900/40 text-indigo-300 border-indigo-700/40' },
   { value: 'owner', label: 'Owner', color: 'bg-green-900/40 text-green-300 border-green-700/40' },

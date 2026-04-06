@@ -150,7 +150,7 @@ export default function LinkRecordModal({
               key={type}
               type="button"
               onClick={() => setTargetType(type)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border rounded transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm transition-colors ${
                 targetType === type
                   ? 'bg-brand-900/40 text-brand-400 border-brand-700/50'
                   : 'bg-rmpg-700 text-rmpg-400 border-rmpg-600 hover:bg-rmpg-600'
@@ -201,7 +201,7 @@ export default function LinkRecordModal({
                     label: result.label || result.name || result.id,
                   })
                 }
-                className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-rmpg-700/50 text-xs text-rmpg-200 border rounded transition-colors ${
+                className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-rmpg-700/50 text-xs text-rmpg-200 border rounded-sm transition-colors ${
                   isSelected
                     ? 'border-brand-500/50 bg-brand-900/20'
                     : 'border-transparent'
@@ -214,7 +214,7 @@ export default function LinkRecordModal({
                   />
                 )}
                 <span className="truncate">{result.label || result.name || result.id}</span>
-                <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-rmpg-500 bg-rmpg-700 px-1.5 py-0.5 rounded">
+                <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-rmpg-500 bg-rmpg-700 px-1.5 py-0.5 rounded-sm">
                   {result.record_type || targetType}
                 </span>
               </div>
@@ -230,7 +230,7 @@ export default function LinkRecordModal({
 
       {/* Selected Target Display */}
       {selectedTarget && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded border border-brand-500/50 bg-brand-900/20">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-sm border border-brand-500/50 bg-brand-900/20">
           <Check className="text-brand-400 flex-shrink-0" style={{ width: 14, height: 14 }} />
           <span className="text-xs text-brand-300 font-medium truncate">
             {selectedTarget.label}
@@ -275,7 +275,7 @@ export default function LinkRecordModal({
 
       {/* Error Display */}
       {error && (
-        <div className="text-[10px] text-red-400 bg-red-900/20 border border-red-800/40 rounded px-3 py-2">
+        <div className="text-[10px] text-red-400 bg-red-900/20 border border-red-800/40 rounded-sm px-3 py-2">
           {error}
         </div>
       )}

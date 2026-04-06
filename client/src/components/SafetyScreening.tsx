@@ -10,6 +10,7 @@ import { AlertTriangle, Shield, FileWarning, User, Scale, Ban, MapPin } from 'lu
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
 import { announceScreeningAlerts } from '../utils/voiceAlerts';
+import { safeDateStr } from '../utils/dateUtils';
 
 interface ScreeningPerson {
   person: {
@@ -121,9 +122,13 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
 
   if (!extractedName || extractedName.length < 3) return null;
   if (loading) {
+    {/* 75: Loading state with Loader2 spinner */}
     return (
       <div className="safety-screening">
-        <span className="animate-pulse text-[10px] text-rmpg-400 font-mono">SCREENING NAME...</span>
+        <span className="flex items-center gap-1.5 text-[10px] text-rmpg-400 font-mono">
+          <span className="inline-block w-3 h-3 border border-rmpg-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+          SCREENING NAME...
+        </span>
       </div>
     );
   }
@@ -136,8 +141,9 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
   const hasUtahWarrants = (result.utahWarrantHits || []).length > 0;
   const hasPremise = (result.premiseWarnings || []).length > 0;
 
+  {/* 73: role="alert" on safety screening for screen reader priority; 74: aria-live assertive */}
   return (
-    <div className={`safety-screening ${result.hasWarnings ? 'safety-screening-alert' : ''}`}>
+    <div className={`safety-screening ${result.hasWarnings ? 'safety-screening-alert' : ''}`} role="alert" aria-live="assertive">
       {/* Main warning banner */}
       {result.hasWarnings && (
         <div className="safety-warning-banner">
@@ -157,18 +163,23 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
         <div key={item.person.id} className="safety-person-hit">
           <div
             className="safety-person-header"
+            role="button"
+            tabIndex={0}
+            aria-expanded={expandedPerson === item.person.id}
             onClick={() => setExpandedPerson(
               expandedPerson === item.person.id ? null : item.person.id
             )}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedPerson(expandedPerson === item.person.id ? null : item.person.id); } }}
           >
-            <div className="flex items-center gap-1.5">
-              <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} />
-              <span className="text-[11px] font-bold text-white">
+            {/* 76: Person name with monospace styling for consistent readout */}
+          <div className="flex items-center gap-1.5">
+              <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} aria-hidden="true" />
+              <span className="text-[11px] font-bold text-white font-mono tracking-tight">
                 {item.person.last_name}, {item.person.first_name}
               </span>
               {item.person.dob && (
                 <span className="text-[10px] text-rmpg-400">
-                  DOB: {new Date(item.person.dob).toLocaleDateString()}
+                  DOB: {safeDateStr(item.person.dob)}
                 </span>
               )}
             </div>
@@ -207,9 +218,9 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                 <div key={w.id} className="flex items-start gap-1.5 text-[10px]">
                   <Scale style={{ width: 10, height: 10, color: '#ef4444', flexShrink: 0, marginTop: 1 }} />
                   <div>
-                    <span className="text-red-400 font-bold uppercase">{w.offense_level}</span>
+                    <span className="text-red-400 font-bold uppercase">{(w.offense_level || '').replace(/_/g, ' ')}</span>
                     <span className="text-rmpg-300 ml-1">{w.charge_description}</span>
-                    {w.bail_amount && (
+                    {w.bail_amount != null && w.bail_amount > 0 && (
                       <span className="text-rmpg-500 ml-1">Bail: ${w.bail_amount.toLocaleString()}</span>
                     )}
                   </div>
@@ -223,7 +234,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                   <span className="font-bold">Criminal History:</span>
                   {item.criminalHistory.slice(0, 3).map((ch) => (
                     <div key={ch.id} className="ml-4 text-rmpg-300">
-                      {ch.charge} {ch.disposition && `— ${ch.disposition}`}
+                      {ch.charge} {ch.disposition && `— ${ch.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}`}
                     </div>
                   ))}
                   {item.criminalHistory.length > 3 && (
@@ -256,7 +267,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
             <span className="font-bold">OFAC SANCTIONS MATCH — {result.ofacHits.length} HIT(S)</span>
           </div>
           {result.ofacHits.map((hit, idx) => (
-            <div key={idx} className="safety-ofac-entry">
+            <div key={`ofac-${hit.name}-${idx}`} className="safety-ofac-entry">
               <span className="text-[10px] text-red-300 font-bold">{hit.name}</span>
               <span className="text-[9px] text-red-400/80">{hit.program}</span>
               <span className="text-[9px] text-rmpg-400">{hit.source_list} — {hit.type}</span>

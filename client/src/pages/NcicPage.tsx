@@ -3,7 +3,8 @@
 // Full-page wrapper around the NcicQueryPanel in embedded mode.
 // ============================================================
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Terminal } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import NcicQueryPanel from '../components/NcicQueryPanel';
@@ -11,11 +12,19 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function NcicPage() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
+
+  useEffect(() => { document.title = 'NCIC / NLETS Terminal \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      {!isMobile && <PanelTitleBar title="NCIC / NLETS TERMINAL" icon={Terminal} />}
-      <div className="flex-1 overflow-hidden">
-        <NcicQueryPanel isOpen={true} onClose={() => {}} embedded={true} />
+      {!isMobile && (
+        <PanelTitleBar title="NCIC / NLETS TERMINAL" icon={Terminal}>
+          <span className="text-[8px] font-mono text-rmpg-500 tracking-wider">SECURE CHANNEL</span>
+        </PanelTitleBar>
+      )}
+      <div className="flex-1 overflow-hidden print:overflow-visible">
+        <NcicQueryPanel isOpen={true} onClose={() => navigate(-1)} embedded={true} />
       </div>
     </div>
   );

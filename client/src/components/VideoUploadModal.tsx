@@ -62,6 +62,7 @@ export default function VideoUploadModal({
   const [chunkStatus, setChunkStatus] = useState('');
   const [error, setError] = useState('');
   const abortRef = useRef(false);
+  const activeXhrRef = useRef<XMLHttpRequest | null>(null);
   const uploadIdRef = useRef<string | null>(null);
 
   if (!isOpen) return null;
@@ -117,9 +118,11 @@ export default function VideoUploadModal({
       headers['Content-Type'] = 'application/json';
     }
     const res = await fetch(`${apiBase}${url}`, { ...opts, headers: { ...headers, ...(opts.headers as Record<string, string> || {}) } });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
   };
 
   /** Upload a single chunk via XHR (for progress tracking per chunk) */
@@ -156,6 +159,7 @@ export default function VideoUploadModal({
 
   const handleAbort = async () => {
     abortRef.current = true;
+    if (activeXhrRef.current) { activeXhrRef.current.abort(); activeXhrRef.current = null; }
     setPhase('idle');
     setChunkStatus('Upload cancelled');
     if (uploadIdRef.current) {
@@ -203,6 +207,7 @@ export default function VideoUploadModal({
       if (notes) formData.append('notes', notes);
 
       const xhr = new XMLHttpRequest();
+      activeXhrRef.current = xhr;
       xhr.open('POST', `${apiBase}/personnel/bodycam-videos`);
       xhr.timeout = 600000;
       const headers = getAuthHeaders();
@@ -212,6 +217,7 @@ export default function VideoUploadModal({
         if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 100));
       };
       xhr.onload = () => {
+        activeXhrRef.current = null;
         if (xhr.status >= 200 && xhr.status < 300) {
           setPhase('done');
           setTimeout(() => { reset(); onUploaded(); onClose(); }, 500);
@@ -225,8 +231,8 @@ export default function VideoUploadModal({
           }
         }
       };
-      xhr.onerror = () => { setPhase('error'); setError('Network error — upload failed.'); };
-      xhr.ontimeout = () => { setPhase('error'); setError('Upload timed out.'); };
+      xhr.onerror = () => { activeXhrRef.current = null; setPhase('error'); setError('Network error — upload failed.'); };
+      xhr.ontimeout = () => { activeXhrRef.current = null; setPhase('error'); setError('Upload timed out.'); };
       xhr.send(formData);
       return;
     }
@@ -361,15 +367,15 @@ export default function VideoUploadModal({
   const isUploading = phase === 'uploading' || phase === 'initializing' || phase === 'finalizing';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={handleClose}>
-      <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-[520px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={handleClose}>
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-[520px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
           <div className="flex items-center gap-2">
             <Upload className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Upload Body Camera Video</h2>
           </div>
-          <button onClick={handleClose} disabled={isUploading} className="toolbar-btn p-1">
+          <button type="button" onClick={handleClose} disabled={isUploading} className="toolbar-btn p-1" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -410,7 +416,7 @@ export default function VideoUploadModal({
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-lg hover:border-brand-500 transition-colors flex flex-col items-center gap-2"
+                className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-sm hover:border-brand-500 transition-colors flex flex-col items-center gap-2"
               >
                 <Upload className="w-6 h-6 text-rmpg-500" />
                 <span className="text-xs text-rmpg-400">Click to select video</span>

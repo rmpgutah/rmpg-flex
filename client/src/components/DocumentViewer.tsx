@@ -33,9 +33,31 @@ export default function DocumentViewer({
   title = 'Document Viewer',
   type = 'auto',
 }: DocumentViewerProps) {
+  // Validate src protocol to prevent javascript:/data: XSS
+  const safeSrc = src && /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
+
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Body scroll lock — prevent background scrolling when viewer is open
+  useEffect(() => {
+    if (isOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.top = `-${scrollY}px`;
+    }
+    return () => {
+      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.top = '';
+      if (scrollY > 0) window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
 
   // Reset state when opening a new document
   useEffect(() => {
@@ -62,12 +84,12 @@ export default function DocumentViewer({
 
   const handleDownload = useCallback(() => {
     const a = document.createElement('a');
-    a.href = src;
+    a.href = safeSrc;
     a.download = title || 'document';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [src, title]);
+  }, [safeSrc, title]);
 
   const handlePrint = useCallback(() => {
     if (detectedType === 'pdf') {
@@ -79,16 +101,23 @@ export default function DocumentViewer({
       const printWindow = window.open('', '_blank');
       if (printWindow) {
         const body = printWindow.document.body;
+<<<<<<< HEAD
         body.style.cssText = 'margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000;';
         const img = printWindow.document.createElement('img');
         img.src = src;
         img.style.cssText = 'max-width:100%;max-height:100vh;';
+=======
+        body.style.cssText = 'margin:0;display:flex;justify-content:center;align-items:center;min-height:100dvh;background:#000;';
+        const img = printWindow.document.createElement('img');
+        img.src = safeSrc;
+        img.style.cssText = 'max-width:100%;max-height:100dvh;';
+>>>>>>> origin/main
         body.appendChild(img);
         printWindow.document.close();
         img.onload = () => printWindow.print();
       }
     }
-  }, [src, detectedType]);
+  }, [safeSrc, detectedType]);
 
   // Close on Escape
   useEffect(() => {
@@ -103,14 +132,14 @@ export default function DocumentViewer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90" role="dialog" aria-modal="true">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0">
+    <div className="fixed inset-0 z-[9998] flex flex-col bg-black/95" role="dialog" aria-modal="true" style={{ touchAction: 'manipulation' }}>
+      {/* Toolbar — z-index above iframe to ensure clicks register */}
+      <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0 relative z-10">
         <div className="flex items-center gap-3">
           {detectedType === 'pdf' ? (
             <FileText className="w-4 h-4 text-red-400" />
           ) : (
-            <ImageIcon className="w-4 h-4 text-blue-400" />
+            <ImageIcon className="w-4 h-4 text-gray-400" />
           )}
           <span className="text-sm font-bold text-white truncate max-w-[300px]">{title}</span>
           <span className="text-[10px] text-rmpg-400 uppercase font-mono">
@@ -120,7 +149,7 @@ export default function DocumentViewer({
 
         <div className="flex items-center gap-1">
           {/* Zoom controls */}
-          <button
+          <button type="button"
             onClick={() => setZoom((z) => Math.max(25, z - 25))}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -129,7 +158,7 @@ export default function DocumentViewer({
             <ZoomOut style={{ width: 14, height: 14 }} />
           </button>
           <span className="text-[10px] text-rmpg-300 font-mono w-10 text-center">{zoom}%</span>
-          <button
+          <button type="button"
             onClick={() => setZoom((z) => Math.min(400, z + 25))}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -137,7 +166,7 @@ export default function DocumentViewer({
           >
             <ZoomIn style={{ width: 14, height: 14 }} />
           </button>
-          <button
+          <button type="button"
             onClick={() => setZoom(100)}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -151,7 +180,7 @@ export default function DocumentViewer({
           {/* Rotate (images only) */}
           {detectedType === 'image' && (
             <>
-              <button
+              <button type="button"
                 onClick={() => setRotation((r) => (r + 90) % 360)}
                 className="toolbar-btn"
                 style={{ fontSize: '9px' }}
@@ -164,7 +193,7 @@ export default function DocumentViewer({
           )}
 
           {/* Print */}
-          <button
+          <button type="button"
             onClick={handlePrint}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -174,7 +203,7 @@ export default function DocumentViewer({
           </button>
 
           {/* Download */}
-          <button
+          <button type="button"
             onClick={handleDownload}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -184,7 +213,7 @@ export default function DocumentViewer({
           </button>
 
           {/* Fullscreen toggle */}
-          <button
+          <button type="button"
             onClick={() => setIsFullscreen((f) => !f)}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -199,22 +228,15 @@ export default function DocumentViewer({
 
           <span className="toolbar-separator" />
 
-          {/* Close */}
-          <button
-            onClick={onClose}
-            className="toolbar-btn"
-            style={{ fontSize: '9px' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#991b1b';
-              e.currentTarget.style.color = '#ffffff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '';
-              e.currentTarget.style.color = '';
-            }}
-            title="Close"
+          {/* Close — bright red, always visible, high z-index */}
+          <button type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
+            className="relative z-20 ml-2 px-3 py-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 text-white font-bold text-xs rounded-sm cursor-pointer"
+            style={{ touchAction: 'manipulation' }}
+            title="Close viewer"
+            aria-label="Close"
           >
-            <X style={{ width: 16, height: 16 }} />
+            <X className="w-4 h-4" /> Close
           </button>
         </div>
       </div>
@@ -224,7 +246,7 @@ export default function DocumentViewer({
         {detectedType === 'pdf' ? (
           <iframe
             id="doc-viewer-iframe"
-            src={src}
+            src={safeSrc}
             className="border border-rmpg-600 bg-white"
             style={{
               width: isFullscreen ? '100%' : `${Math.min(zoom, 100)}%`,
@@ -236,7 +258,7 @@ export default function DocumentViewer({
           />
         ) : (
           <img
-            src={src}
+            src={safeSrc}
             alt={title}
             className="max-w-full max-h-full object-contain select-none"
             style={{

@@ -29,7 +29,8 @@ export function useServiceWorker() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
-    let checkInterval: ReturnType<typeof setInterval>;
+    let checkInterval: ReturnType<typeof setInterval> | undefined;
+    let unmounted = false;
 
     const handleControllerChange = () => {
       // The SW controller changed — a new version activated
@@ -64,15 +65,17 @@ export function useServiceWorker() {
           });
         });
 
-        // Periodically check for updates
-        checkInterval = setInterval(() => {
-          reg.update().catch(() => {
-            // Network errors during update check are non-fatal
-          });
-        }, UPDATE_CHECK_INTERVAL);
+        // Periodically check for updates (skip if already unmounted)
+        if (!unmounted) {
+          checkInterval = setInterval(() => {
+            reg.update().catch((err) => {
+              console.warn('[useServiceWorker] Update check failed:', err);
+            });
+          }, UPDATE_CHECK_INTERVAL);
+        }
 
-      } catch {
-        // SW registration failed (e.g., no HTTPS in production) — not critical
+      } catch (err) {
+        console.warn('[useServiceWorker] Registration failed:', err);
       }
     };
 
@@ -90,6 +93,7 @@ export function useServiceWorker() {
     registerSW();
 
     return () => {
+      unmounted = true;
       if (checkInterval) clearInterval(checkInterval);
       navigator.serviceWorker.removeEventListener('message', handleMessage);
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);

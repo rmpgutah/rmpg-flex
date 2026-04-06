@@ -47,7 +47,7 @@ export default function OfflineStatusBar() {
         style={{
           background: 'rgba(59, 130, 246, 0.15)',
           borderBottom: '1px solid rgba(59, 130, 246, 0.3)',
-          color: '#93c5fd',
+          color: '#cccccc',
         }}
       >
         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -56,10 +56,10 @@ export default function OfflineStatusBar() {
           {syncStatus.table && `${syncStatus.table} `}
           ({syncStatus.current}/{syncStatus.total})
         </span>
-        <div className="w-24 h-1.5 bg-blue-900/50 overflow-hidden" style={{ borderRadius: 1 }}>
+        <div className="w-24 h-1.5 bg-gray-900/50 overflow-hidden" style={{ borderRadius: 1 }}>
           <div
             className="h-full transition-all duration-300"
-            style={{ width: `${pct}%`, background: '#3b82f6' }}
+            style={{ width: `${pct}%`, background: '#888888' }}
           />
         </div>
       </div>
@@ -119,7 +119,7 @@ export default function OfflineStatusBar() {
               • {syncQueueDepth} pending sync
             </span>
           )}
-          <button
+          <button type="button"
             onClick={triggerSync}
             className="ml-2 px-2 py-0.5 text-[10px] transition-colors"
             style={{
@@ -151,7 +151,7 @@ export default function OfflineStatusBar() {
         >
           <WifiOff className="w-3.5 h-3.5" />
           <span>Offline — Read-only mode</span>
-          <button
+          <button type="button"
             onClick={() => setPinModalOpen(true)}
             className="ml-2 px-2 py-0.5 text-[10px] transition-colors"
             style={{

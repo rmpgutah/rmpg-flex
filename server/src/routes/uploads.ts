@@ -6,16 +6,8 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole, type JwtPayload } from '../middleware/auth';
+import { authenticateToken, type JwtPayload } from '../middleware/auth';
 import config from '../config';
-
-/** Sanitize a filename for safe use in Content-Disposition headers.
- *  Strips CRLF, null bytes, double quotes, and non-printable chars
- *  to prevent header injection / response splitting attacks. */
-function safeContentDisposition(type: 'inline' | 'attachment', filename: string): string {
-  const safe = filename.replace(/[\r\n\0"]/g, '_').replace(/[^\x20-\x7E]/g, '_');
-  return `${type}; filename="${safe}"`;
-}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,7 +60,7 @@ const storage = multer.diskStorage({
   },
   filename: (_req, file, cb) => {
     // Generate a unique filename while preserving extension
-    const ext = path.extname(file.originalname).toLowerCase();
+    const ext = path.extname(file.originalname || '').toLowerCase();
     const uniqueName = `${crypto.randomUUID()}${ext}`;
     cb(null, uniqueName);
   },
@@ -91,7 +83,7 @@ const upload = multer({
 // without requiring a valid JWT session.  This prevents TOKEN_EXPIRED
 // errors when viewing photos/documents across sessions or computers.
 
-function signFileAccess(fileId: string, ttlSeconds = 86400): { sig: string; exp: number } {
+function signFileAccess(fileId: string, ttlSeconds = 31536000): { sig: string; exp: number } {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const data = `file:${fileId}:${exp}`;
   const sig = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');
@@ -119,14 +111,14 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   const expParam = typeof req.query.exp === 'string' ? parseInt(req.query.exp, 10) : null;
 
   if (sigParam && expParam) {
-    const fileId = req.params.fileId as string;
+    const fileId = req.params.fileId;
     if (fileId && verifyFileAccess(fileId, sigParam, expParam)) {
       // Signed access verified — minimal user context for read-only serving
       req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
       next();
       return;
     }
-    res.status(403).json({ error: 'Invalid or expired file signature' });
+    res.status(403).json({ error: 'Invalid or expired file signature', code: 'INVALID_OR_EXPIRED_FILE' });
     return;
   }
 
@@ -140,14 +132,14 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   const token = headerToken || queryToken;
 
   if (!token) {
-    res.status(401).json({ error: 'Authentication required' });
+    res.status(401).json({ error: 'Authentication required', code: 'AUTHENTICATION_REQUIRED' });
     return;
   }
 
   try {
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
     if (decoded.type === 'refresh') {
-      res.status(403).json({ error: 'Invalid token type' });
+      res.status(403).json({ error: 'Invalid token type', code: 'INVALID_TOKEN_TYPE' });
       return;
     }
     req.user = decoded;
@@ -156,7 +148,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
     if (err.name === 'TokenExpiredError') {
       res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
     } else {
-      res.status(403).json({ error: 'Invalid or expired token' });
+      res.status(403).json({ error: 'Invalid or expired token', code: 'INVALID_OR_EXPIRED_TOKEN' });
     }
   }
 }
@@ -175,6 +167,8 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
       LEFT JOIN users u ON a.uploaded_by = u.id
       WHERE a.entity_type = ? AND a.entity_id = ?
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all(String(req.params.type), parseInt(String(req.params.id), 10));
 
     // Enrich each attachment with an HMAC-signed access token (24h TTL)
@@ -185,8 +179,13 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
 
     res.json(enriched);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('List attachments error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('List attachments error:', error);
+    res.status(500).json({ error: 'Failed to list attachments', code: 'LIST_ATTACHMENTS_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -199,15 +198,20 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
     const attachment = db.prepare('SELECT file_id FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
-    const { sig, exp } = signFileAccess(req.params.fileId as string);
+    const { sig, exp } = signFileAccess(req.params.fileId);
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Sign file error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Sign file error:', error);
+    res.status(500).json({ error: 'Failed to sign file', code: 'SIGN_FILE_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -221,28 +225,33 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
     const filePath = safeFilePath(attachment.file_path);
-    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path', code: 'INVALID_FILE_PATH' }); return; }
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
+      res.status(404).json({ error: 'File not found on disk', code: 'FILE_NOT_FOUND_ON' });
       return;
     }
 
     // Set appropriate headers
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
+    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
     res.set('Content-Length', String(attachment.file_size));
     // Allow browser caching for 5 minutes
     res.set('Cache-Control', 'private, max-age=300');
 
     res.sendFile(filePath);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
+=======
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' });
+>>>>>>> origin/main
   }
 });
 
@@ -253,23 +262,28 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
     const filePath = safeFilePath(attachment.file_path);
-    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path', code: 'INVALID_FILE_PATH' }); return; }
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
+      res.status(404).json({ error: 'File not found on disk', code: 'FILE_NOT_FOUND_ON' });
       return;
     }
 
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
+    res.set('Content-Disposition', `attachment; filename="${attachment.original_name}"`);
     res.sendFile(filePath);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
+=======
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' });
+>>>>>>> origin/main
   }
 });
 
@@ -280,32 +294,37 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
     // Only serve images as thumbnails
     if (!attachment.mime_type.startsWith('image/')) {
-      res.status(400).json({ error: 'Not an image' });
+      res.status(400).json({ error: 'Not an image', code: 'NOT_AN_IMAGE' });
       return;
     }
 
     const filePath = safeFilePath(attachment.file_path);
-    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path', code: 'INVALID_FILE_PATH' }); return; }
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
+      res.status(404).json({ error: 'File not found on disk', code: 'FILE_NOT_FOUND_ON' });
       return;
     }
 
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
+    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
     res.set('Content-Length', String(attachment.file_size));
     res.set('Cache-Control', 'private, max-age=600');
 
     res.sendFile(filePath);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Thumbnail error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Thumbnail failed' });
+=======
+    console.error('Thumbnail error:', error);
+    res.status(500).json({ error: 'Thumbnail failed', code: 'THUMBNAIL_FAILED' });
+>>>>>>> origin/main
   }
 });
 
@@ -317,7 +336,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
-      res.status(400).json({ error: 'No files provided' });
+      res.status(400).json({ error: 'No files provided', code: 'NO_FILES_PROVIDED' });
       return;
     }
 
@@ -347,7 +366,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
       );
 
       const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(result.lastInsertRowid);
-      if (attachment) results.push(attachment);
+      results.push(attachment);
     }
 
     // Log the upload
@@ -368,19 +387,19 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
     if (error.message?.includes('not allowed')) {
       res.status(400).json({ error: 'File type not allowed' });
     } else {
-      res.status(500).json({ error: 'Upload failed' });
+      res.status(500).json({ error: 'Upload failed', code: 'UPLOAD_FAILED' });
     }
   }
 });
 
 // ─── PUT /api/uploads/:fileId/link ─── Link file to entity ───
-router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:fileId/link', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { entity_type, entity_id } = req.body;
 
     if (!entity_type || !entity_id) {
-      res.status(400).json({ error: 'entity_type and entity_id are required' });
+      res.status(400).json({ error: 'entity_type and entity_id are required', code: 'ENTITYTYPE_AND_ENTITYID_ARE' });
       return;
     }
 
@@ -389,27 +408,20 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
     `).run(entity_type, parseInt(entity_id, 10), req.params.fileId);
 
     if (result.changes === 0) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId);
-
-    // Audit log: file reassignment
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_linked', 'attachment', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.fileId,
-      `Linked file to ${entity_type} #${entity_id}`,
-      req.ip || 'unknown',
-    );
-
     res.json(attachment);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Link attachment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Link attachment error:', error);
+    res.status(500).json({ error: 'Failed to link attachment', code: 'LINK_ATTACHMENT_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -420,20 +432,13 @@ router.delete('/:fileId', (req: Request, res: Response) => {
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
-    // Ownership check: only the uploader or admin/manager can delete files
-    const userRole = req.user!.role;
-    if (attachment.uploaded_by !== req.user!.userId && !['admin', 'manager'].includes(userRole)) {
-      res.status(403).json({ error: 'Not authorized to delete this file' });
-      return;
-    }
-
-    // Delete file from disk (validate path to prevent traversal)
-    const filePath = safeFilePath(attachment.file_path);
-    if (filePath && fs.existsSync(filePath)) {
+    // Delete file from disk
+    const filePath = path.join(UPLOAD_DIR, attachment.file_path);
+    if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
@@ -454,8 +459,13 @@ router.delete('/:fileId', (req: Request, res: Response) => {
 
     res.json({ message: 'File deleted' });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Delete attachment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Delete attachment error:', error);
+    res.status(500).json({ error: 'Failed to delete attachment', code: 'DELETE_ATTACHMENT_ERROR' });
+>>>>>>> origin/main
   }
 });
 

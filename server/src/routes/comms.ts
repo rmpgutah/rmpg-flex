@@ -1,35 +1,37 @@
 import { Router, Request, Response } from 'express';
-import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateEnum } from '../middleware/sanitize';
-import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
-import { localNow } from '../utils/timeUtils';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __comms_filename = fileURLToPath(import.meta.url);
-const __comms_dirname = path.dirname(__comms_filename);
+import { getDb } from '../models/database';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
+import { localNow } from '../utils/timeUtils';
 
 const router = Router();
-
-// ─── Allowed enum values ─────────────────────────────────
-const VALID_BOLO_TYPES = ['person', 'vehicle', 'property'] as const;
-const VALID_BOLO_PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
-const VALID_MSG_PRIORITIES = ['routine', 'urgent', 'emergency'] as const;
 
 router.use(authenticateToken);
 
 // ─── MESSAGES ─────────────────────────────────────────
 
 // POST /api/comms/messages - Send message
-router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { to_user_id, channel, content, priority, subject, parent_id } = req.body;
 
     if (!content) {
-      res.status(400).json({ error: 'content is required' });
+      res.status(400).json({ error: 'content is required', code: 'MISSING_CONTENT' });
+      return;
+    }
+
+    // Input sanitization
+    const cleanContent = typeof content === 'string' ? content.trim() : content;
+    if (typeof cleanContent === 'string' && cleanContent.length === 0) {
+      res.status(400).json({ error: 'content cannot be empty', code: 'EMPTY_CONTENT' });
+      return;
+    }
+    if (typeof content === 'string' && content.length > 10000) {
+      res.status(400).json({ error: 'content must be 10000 characters or less', code: 'CONTENT_TOO_LONG' });
       return;
     }
 
@@ -42,21 +44,13 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
 
     // Direct messages require a recipient
     if (msgChannel === 'direct' && !to_user_id) {
-      res.status(400).json({ error: 'to_user_id is required for direct messages' });
+      res.status(400).json({ error: 'to_user_id is required for direct messages', code: 'TOUSERID_IS_REQUIRED_FOR' });
       return;
     }
 
     // Broadcast/dispatch require dispatcher+ role
     if (['broadcast', 'dispatch'].includes(msgChannel) && !['admin', 'manager', 'dispatcher', 'supervisor'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'Insufficient permissions for broadcast/dispatch messages' });
-      return;
-    }
-
-    // Validate message priority (emergency triggers system-wide broadcastAlert)
-    try {
-      if (priority) validateEnum(priority, VALID_MSG_PRIORITIES, 'priority');
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(403).json({ error: 'Insufficient permissions for broadcast/dispatch messages', code: 'INSUFFICIENT_PERMISSIONS_FOR_BROADCASTDISPATCH' });
       return;
     }
 
@@ -80,7 +74,6 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       LEFT JOIN users u ON m.from_user_id = u.id
       WHERE m.id = ?
     `).get(result.lastInsertRowid) as any;
-    if (!message) { res.status(500).json({ error: 'Failed to retrieve created message' }); return; }
 
     // Send via WebSocket
     if (msgChannel === 'direct' && to_user_id) {
@@ -98,10 +91,16 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       });
     }
 
-    res.status(201).json(message);
+    auditLog(req, 'message_sent', 'message', result.lastInsertRowid as number, `Sent ${msgChannel} message`);
+    res.status(201).json({ data: message });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Send message error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Send message error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'SEND_MESSAGE_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -110,7 +109,7 @@ router.get('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { channel, unreadOnly, thread_id, limit = '50' } = req.query;
-    const limitNum = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
 
     let whereClause = 'WHERE (m.to_user_id = ? OR m.to_user_id IS NULL OR m.from_user_id = ?)';
     const params: any[] = [req.user!.userId, req.user!.userId];
@@ -153,8 +152,13 @@ router.get('/messages', (req: Request, res: Response) => {
       unreadCount: unreadCount.count,
     });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get messages error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Get messages error:', error);
+    res.status(500).json({ error: 'Failed to get messages', code: 'GET_MESSAGES_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -162,16 +166,23 @@ router.get('/messages', (req: Request, res: Response) => {
 router.put('/messages/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' }); return; }
     const now = localNow();
 
     db.prepare(`
       UPDATE messages SET read_at = ? WHERE id = ? AND to_user_id = ? AND read_at IS NULL
-    `).run(now, req.params.id, req.user!.userId);
+    `).run(now, id, req.user!.userId);
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Mark read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Mark read error:', error);
+    res.status(500).json({ error: 'Failed to mark read', code: 'MARK_READ_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -187,8 +198,13 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
 
     res.json({ message: 'All messages marked as read', count: result.changes });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Mark all read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Mark all read error:', error);
+    res.status(500).json({ error: 'Failed to mark all read', code: 'MARK_ALL_READ_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -196,20 +212,29 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
 router.delete('/messages/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
-    if (!message) { res.status(404).json({ error: 'Message not found' }); return; }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' }); return; }
+    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as any;
+    if (!message) { res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' }); return; }
 
     // Only sender or admin can delete
     if (message.from_user_id !== req.user!.userId && !['admin', 'manager'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'Only the sender or an admin can delete this message' });
+      res.status(403).json({ error: 'Only the sender or an admin can delete this message', code: 'ONLY_THE_SENDER_OR' });
       return;
     }
 
-    db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
-    res.json({ success: true, id: req.params.id });
+    db.prepare('DELETE FROM messages WHERE id = ?').run(id);
+
+    auditLog(req, 'message_deleted', 'message', id, `Deleted ${message.channel} message (id: ${id})`);
+    res.json({ success: true, id });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Delete message error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Delete message error:', error);
+    res.status(500).json({ error: 'Failed to delete message', code: 'DELETE_MESSAGE_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -248,12 +273,19 @@ router.get('/bolos', (req: Request, res: Response) => {
       ORDER BY
         CASE b.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
         b.created_at DESC
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(bolos);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get BOLOs error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Get BOLOs error:', error);
+    res.status(500).json({ error: 'Failed to get bolos', code: 'GET_BOLOS_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -270,12 +302,19 @@ router.get('/bolos/active', (req: Request, res: Response) => {
       ORDER BY
         CASE b.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
         b.created_at DESC
+    
+      LIMIT 1000
     `).all(localNow());
 
     res.json(bolos);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get active BOLOs error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Get active BOLOs error:', error);
+    res.status(500).json({ error: 'Failed to get active bolos', code: 'GET_ACTIVE_BOLOS_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -297,7 +336,7 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 
     // Extract keywords (3+ chars) from each field and match against BOLO fields
     const extractKeywords = (text: string) =>
-      (text || '').toUpperCase().split(/[\s,;]+/).filter(w => w.length >= 3);
+      text.toUpperCase().split(/[\s,;]+/).filter(w => w.length >= 3);
 
     const matchClauses: string[] = [];
 
@@ -341,8 +380,13 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 
     res.json({ matches, count: matches.length });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('BOLO check error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('BOLO check error:', error);
+    res.status(500).json({ error: 'Failed to bolo check', code: 'BOLO_CHECK_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -350,22 +394,29 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 router.get('/bolos/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const boloId = parseInt(req.params.id, 10);
+    if (isNaN(boloId)) { res.status(400).json({ error: 'Invalid BOLO ID', code: 'INVALID_BOLO_ID' }); return; }
     const bolo = db.prepare(`
       SELECT b.*, u.full_name as issued_by_name
       FROM bolos b
       LEFT JOIN users u ON b.issued_by = u.id
       WHERE b.id = ?
-    `).get(req.params.id) as any;
+    `).get(boloId) as any;
 
     if (!bolo) {
-      res.status(404).json({ error: 'BOLO not found' });
+      res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' });
       return;
     }
 
     res.json(bolo);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Get BOLO error:', error);
+    res.status(500).json({ error: 'Failed to get bolo', code: 'GET_BOLO_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -379,16 +430,7 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     } = req.body;
 
     if (!type || !title) {
-      res.status(400).json({ error: 'type and title are required' });
-      return;
-    }
-
-    // Validate BOLO enum fields
-    try {
-      validateEnum(type, VALID_BOLO_TYPES, 'type');
-      if (priority) validateEnum(priority, VALID_BOLO_PRIORITIES, 'priority');
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(400).json({ error: 'type and title are required', code: 'TYPE_AND_TITLE_ARE' });
       return;
     }
 
@@ -397,8 +439,8 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let nextNum = 1;
     if (lastBolo) {
       const parts = lastBolo.bolo_number.split('-');
-      const parsed = parts.length >= 2 ? parseInt(parts[1], 10) : NaN;
-      if (!isNaN(parsed)) nextNum = parsed + 1;
+      const parsed = parseInt(parts[1], 10);
+      nextNum = isNaN(parsed) ? 1 : parsed + 1;
     }
     const boloNumber = `BOLO-${String(nextNum).padStart(3, '0')}`;
 
@@ -416,17 +458,12 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       SELECT b.*, u.full_name as issued_by_name
       FROM bolos b LEFT JOIN users u ON b.issued_by = u.id
       WHERE b.id = ?
-    `).get(result.lastInsertRowid) as any;
-    if (!bolo) { res.status(500).json({ error: 'Failed to retrieve created BOLO' }); return; }
+    `).get(result.lastInsertRowid);
 
-    // Broadcast minimal BOLO alert — full subject/vehicle descriptions are PII
-    // that should only be accessed via authenticated API with role checks
+    // Broadcast alert for new BOLO
     broadcastAlert({
       type: 'new_bolo',
-      id: bolo.id,
-      bolo_number: bolo.bolo_number,
-      title: bolo.title,
-      priority: bolo.priority,
+      bolo,
     });
 
     db.prepare(`
@@ -436,8 +473,13 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     res.status(201).json(bolo);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Create BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Create BOLO error:', error);
+    res.status(500).json({ error: 'Failed to create bolo', code: 'CREATE_BOLO_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -447,8 +489,17 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
     if (!bolo) {
-      res.status(404).json({ error: 'BOLO not found' });
+      res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' });
       return;
+    }
+
+    // God Mode: admin can edit BOLOs in any status (cancelled, expired, archived)
+    if (req.user?.role === 'admin' && ['cancelled', 'expired'].includes(bolo.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: editing ${bolo.status} BOLO "${bolo.title}"`);
+    }
+    // God Mode: admin can reactivate expired BOLOs
+    if (req.user?.role === 'admin' && req.body.status === 'active' && ['expired', 'cancelled'].includes(bolo.status)) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: reactivating ${bolo.status} BOLO "${bolo.title}"`);
     }
 
     const {
@@ -494,8 +545,13 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
 
     res.json(updated);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Update BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Update BOLO error:', error);
+    res.status(500).json({ error: 'Failed to update bolo', code: 'UPDATE_BOLO_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -505,11 +561,11 @@ router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req:
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
     if (!bolo) {
-      res.status(404).json({ error: 'BOLO not found' });
+      res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' });
       return;
     }
 
-    db.prepare("UPDATE bolos SET status = 'cancelled', updated_at = ? WHERE id = ?").run(localNow(), bolo.id);
+    db.prepare("UPDATE bolos SET status = 'cancelled' WHERE id = ?").run(bolo.id);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -518,8 +574,13 @@ router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req:
 
     res.json({ message: 'BOLO cancelled' });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Cancel BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Cancel BOLO error:', error);
+    res.status(500).json({ error: 'Failed to cancel bolo', code: 'CANCEL_BOLO_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -528,8 +589,11 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
-    if (!bolo) { res.status(404).json({ error: 'BOLO not found' }); return; }
-    if (bolo.archived_at) { res.status(400).json({ error: 'BOLO is already archived' }); return; }
+    if (!bolo) { res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }); return; }
+    if (bolo.archived_at && req.user?.role !== 'admin') { res.status(400).json({ error: 'BOLO is already archived', code: 'BOLO_IS_ALREADY_ARCHIVED' }); return; }
+    if (bolo.archived_at && req.user?.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'bolo', bolo.id, `Admin God Mode: re-archiving already archived BOLO`);
+    }
 
     const now = localNow();
     db.prepare('UPDATE bolos SET archived_at = ? WHERE id = ?').run(now, bolo.id);
@@ -541,8 +605,13 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Archive BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Archive BOLO error:', error);
+    res.status(500).json({ error: 'Failed to archive bolo', code: 'ARCHIVE_BOLO_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -551,8 +620,8 @@ router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor'
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
-    if (!bolo) { res.status(404).json({ error: 'BOLO not found' }); return; }
-    if (!bolo.archived_at) { res.status(400).json({ error: 'BOLO is not archived' }); return; }
+    if (!bolo) { res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }); return; }
+    if (!bolo.archived_at) { res.status(400).json({ error: 'BOLO is not archived', code: 'BOLO_IS_NOT_ARCHIVED' }); return; }
 
     db.prepare('UPDATE bolos SET archived_at = NULL WHERE id = ?').run(bolo.id);
 
@@ -563,8 +632,13 @@ router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor'
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Unarchive BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Unarchive BOLO error:', error);
+    res.status(500).json({ error: 'Failed to unarchive bolo', code: 'UNARCHIVE_BOLO_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -575,8 +649,8 @@ router.get('/activity-feed', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { limit = '50', offset = '0', entityType } = req.query;
-    const limitNum = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
-    const offsetNum = Math.max(parseInt(offset as string, 10) || 0, 0);
+    const limitNum = parseInt(limit as string, 10);
+    const offsetNum = parseInt(offset as string, 10);
 
     let whereClause = '';
     const params: any[] = [];
@@ -602,13 +676,18 @@ router.get('/activity-feed', (req: Request, res: Response) => {
 
     res.json({
       data: activity,
-      total: countRow?.total ?? 0,
+      total: countRow.total,
       limit: limitNum,
       offset: offsetNum,
     });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get activity feed error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Get activity feed error:', error);
+    res.status(500).json({ error: 'Failed to get activity feed', code: 'GET_ACTIVITY_FEED_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -657,10 +736,15 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offsetNum);
 
-    res.json({ data: transcripts, total: countRow?.total ?? 0, limit: limitNum, offset: offsetNum });
+    res.json({ data: transcripts, total: countRow.total, limit: limitNum, offset: offsetNum });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get radio transcripts error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Get radio transcripts error:', error);
+    res.status(500).json({ error: 'Failed to get radio transcripts', code: 'GET_RADIO_TRANSCRIPTS_ERROR' });
+>>>>>>> origin/main
   }
 });
 
@@ -696,52 +780,779 @@ router.get('/radio-channels', (req: Request, res: Response) => {
       ]);
     }
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get radio channels error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Get radio channels error:', error);
+    res.status(500).json({ error: 'Failed to get radio channels', code: 'GET_RADIO_CHANNELS_ERROR' });
+>>>>>>> origin/main
   }
 });
 
-// ─── RADIO AUDIO FILE ─────────────────────────────────
-
-// GET /api/comms/radio/audio/:id — Stream a saved radio recording
-router.get('/radio/audio/:id', (req: Request, res: Response) => {
+// ─── Feature 11: Message read receipts ──────────────────
+router.put('/messages/:id/read-receipt', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT audio_file, file_size FROM radio_transcripts WHERE id = ?').get(req.params.id) as any;
+    const now = localNow();
+    const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) return res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
 
-    if (!row || !row.audio_file) {
-      return res.status(404).json({ error: 'Audio recording not found' });
+    const receipts = JSON.parse(msg.read_receipts || '{}');
+    receipts[String(req.user!.userId)] = { at: now, name: req.user!.fullName };
+    db.prepare('UPDATE messages SET read_receipts = ?, read_at = COALESCE(read_at, ?) WHERE id = ?')
+      .run(JSON.stringify(receipts), now, req.params.id);
+
+    res.json({ data: { receipts } });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+// ─── Feature 13: BOLO expiration tracking ───────────────
+router.post('/bolos/expire-check', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    // Auto-expire BOLOs that have passed their expires_at
+    const result = db.prepare(`
+      UPDATE bolos SET status = 'expired', expired_at = ?
+      WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ?
+    `).run(now, now);
+
+    // Also auto-expire BOLOs with auto_expire_hours set
+    const result2 = db.prepare(`
+      UPDATE bolos SET status = 'expired', expired_at = ?
+      WHERE status = 'active' AND auto_expire_hours IS NOT NULL
+      AND datetime(created_at, '+' || auto_expire_hours || ' hours') <= ?
+    `).run(now, now);
+
+    res.json({ expired: (result.changes || 0) + (result2.changes || 0) });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+// ─── Feature 14: Broadcast templates ────────────────────
+router.get('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templates = db.prepare(`
+      SELECT bt.*, u.full_name as created_by_name
+      FROM broadcast_templates bt
+      LEFT JOIN users u ON bt.created_by = u.id
+      ORDER BY bt.category ASC, bt.name ASC
+    
+      LIMIT 1000
+    `).all();
+    res.json({ data: templates });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+router.post('/templates', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, category, subject, content, priority } = req.body;
+    if (!name || !content) return res.status(400).json({ error: 'name and content required', code: 'NAME_AND_CONTENT_REQUIRED' });
+
+    const result = db.prepare(`
+      INSERT INTO broadcast_templates (name, category, subject, content, priority, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, category || 'general', subject || null, content, priority || 'routine', req.user!.userId);
+
+    const template = db.prepare('SELECT * FROM broadcast_templates WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: template });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM broadcast_templates WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+// ─── Feature 16: Officer acknowledgment tracking ────────
+router.put('/messages/:id/acknowledge', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) return res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+
+    const acks = JSON.parse(msg.acknowledgments || '{}');
+    acks[String(req.user!.userId)] = { at: now, name: req.user!.fullName };
+    db.prepare('UPDATE messages SET acknowledgments = ? WHERE id = ?')
+      .run(JSON.stringify(acks), req.params.id);
+
+    res.json({ data: { acknowledgments: acks } });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+// ─── Feature 17: Broadcast scheduling ───────────────────
+router.post('/messages/scheduled', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { content, subject, priority, channel, scheduled_at } = req.body;
+    if (!content || !scheduled_at) return res.status(400).json({ error: 'content and scheduled_at required', code: 'CONTENT_AND_SCHEDULEDAT_REQUIRED' });
+
+    const result = db.prepare(`
+      INSERT INTO messages (from_user_id, channel, content, priority, subject, scheduled_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.user!.userId, channel || 'broadcast', content, priority || 'routine', subject || null, scheduled_at);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, scheduled_at } });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+// ─── Feature 18: Message search with filters ────────────
+router.get('/messages/search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q, date_from, date_to, sender_id, channel, priority, limit = '50' } = req.query;
+    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (q) {
+      where += ' AND (m.content LIKE ? OR m.subject LIKE ?)';
+      const s = `%${q}%`; params.push(s, s);
+    }
+    if (date_from) { where += ' AND m.created_at >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND m.created_at <= ?'; params.push(date_to); }
+    if (sender_id) { where += ' AND m.from_user_id = ?'; params.push(sender_id); }
+    if (channel) { where += ' AND m.channel = ?'; params.push(channel); }
+    if (priority) { where += ' AND m.priority = ?'; params.push(priority); }
+
+    const messages = db.prepare(`
+      SELECT m.*, f.full_name as from_name, t.full_name as to_name
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      LEFT JOIN users t ON m.to_user_id = t.id
+      ${where}
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `).all(...params, limitNum);
+
+    res.json({ data: messages });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+// ─── Feature 19: Alert escalation check ─────────────────
+router.post('/alerts/escalation-check', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { minutes = 15 } = req.body;
+    const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+    // Find emergency/urgent broadcast messages not acknowledged
+    const unacked = db.prepare(`
+      SELECT m.*, f.full_name as from_name
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      WHERE m.channel = 'broadcast'
+      AND m.priority IN ('urgent', 'emergency')
+      AND m.created_at <= ?
+      AND (m.acknowledgments IS NULL OR m.acknowledgments = '{}')
+    
+      LIMIT 1000
+    `).all(cutoff);
+
+    // Broadcast escalation alert for each
+    for (const msg of unacked as any[]) {
+      broadcastAlert({
+        type: 'escalation',
+        message: `UNACKNOWLEDGED ${(msg.priority || '').toUpperCase()} ALERT: ${msg.content?.substring(0, 100)}`,
+        original_message_id: msg.id,
+        from: msg.from_name || 'System',
+      });
     }
 
-    const uploadsDir = path.resolve(__comms_dirname, '../../uploads');
-    const filePath = path.join(uploadsDir, row.audio_file);
+    res.json({ escalated: (unacked as any[]).length });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
 
-    // Security: ensure resolved path is within uploads directory
-    if (!filePath.startsWith(uploadsDir)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+// ─── Feature 20: Broadcast history archive ──────────────
+router.get('/messages/archive', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to, channel = 'broadcast', page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+    const offset = (pageNum - 1) * limitNum;
 
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Audio file missing from disk' });
-    }
+    let where = 'WHERE m.channel = ?';
+    const params: any[] = [channel];
+    if (date_from) { where += ' AND m.created_at >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND m.created_at <= ?'; params.push(date_to); }
 
-    const stat = fs.statSync(filePath);
-    res.set({
-      'Content-Type': 'audio/webm',
-      'Content-Length': stat.size.toString(),
-      'Cache-Control': 'public, max-age=86400',
-    });
-    const stream = fs.createReadStream(filePath);
-    stream.on('error', (err) => {
-      console.error('Audio stream error:', err);
-      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream audio' });
-      else res.destroy();
-    });
-    stream.pipe(res);
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM messages m ${where}`).get(...params) as any).count;
+    const messages = db.prepare(`
+      SELECT m.*, f.full_name as from_name
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      ${where}
+      ORDER BY m.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limitNum, offset);
+
+    res.json({ data: messages, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
+});
+
+// ── Feature 26: Message drafts ────────────────────────────────────
+// POST /api/comms/drafts - Save a draft message
+router.post('/drafts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { to_user_id, channel, content, subject, priority } = req.body;
+    if (!content) { res.status(400).json({ error: 'content is required', code: 'CONTENT_IS_REQUIRED' }); return; }
+
+    const now = localNow();
+    const result = db.prepare(`
+      INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, is_draft, draft_updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+    `).run(req.user!.userId, to_user_id || null, channel || 'direct', content, subject || null, priority || 'routine', now);
+
+    res.status(201).json({ id: Number(result.lastInsertRowid), is_draft: true });
   } catch (error: any) {
+<<<<<<< HEAD
     console.error('Get radio audio error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+=======
+    console.error('Save draft error:', error);
+    res.status(500).json({ error: 'Failed to save draft', code: 'SAVE_DRAFT_ERROR' });
+>>>>>>> origin/main
   }
 });
 
+// GET /api/comms/drafts - Get user's draft messages
+router.get('/drafts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const drafts = db.prepare(`
+      SELECT m.*, t.full_name as to_name
+      FROM messages m
+      LEFT JOIN users t ON m.to_user_id = t.id
+      WHERE m.from_user_id = ? AND m.is_draft = 1
+      ORDER BY m.draft_updated_at DESC
+    `).all(req.user!.userId);
+    res.json(drafts);
+  } catch (error: any) {
+    console.error('Get drafts error:', error);
+    res.status(500).json({ error: 'Failed to get drafts', code: 'GET_DRAFTS_ERROR' });
+  }
+});
+
+// PUT /api/comms/drafts/:id - Update a draft
+router.put('/drafts/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const draft = db.prepare('SELECT * FROM messages WHERE id = ? AND from_user_id = ? AND is_draft = 1').get(req.params.id, req.user!.userId) as any;
+    if (!draft) { res.status(404).json({ error: 'Draft not found', code: 'DRAFT_NOT_FOUND' }); return; }
+
+    const { to_user_id, content, subject, priority } = req.body;
+    const now = localNow();
+
+    db.prepare(`
+      UPDATE messages SET to_user_id = COALESCE(?, to_user_id), content = COALESCE(?, content),
+        subject = COALESCE(?, subject), priority = COALESCE(?, priority), draft_updated_at = ?
+      WHERE id = ?
+    `).run(to_user_id, content, subject, priority, now, req.params.id);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Update draft error:', error);
+    res.status(500).json({ error: 'Failed to update draft', code: 'UPDATE_DRAFT_ERROR' });
+  }
+});
+
+// POST /api/comms/drafts/:id/send - Send a draft
+router.post('/drafts/:id/send', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const draft = db.prepare('SELECT * FROM messages WHERE id = ? AND from_user_id = ? AND is_draft = 1').get(req.params.id, req.user!.userId) as any;
+    if (!draft) { res.status(404).json({ error: 'Draft not found', code: 'DRAFT_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE messages SET is_draft = 0, created_at = ?, delivery_status = ? WHERE id = ?').run(now, 'sent', draft.id);
+
+    const message = db.prepare(`
+      SELECT m.*, u.full_name as from_name FROM messages m LEFT JOIN users u ON m.from_user_id = u.id WHERE m.id = ?
+    `).get(draft.id) as any;
+
+    // Send via WebSocket
+    if (draft.channel === 'direct' && draft.to_user_id) {
+      sendToUser(draft.to_user_id, 'new_message', message);
+    } else {
+      broadcastNewMessage(message);
+    }
+
+    if (draft.priority === 'emergency') {
+      broadcastAlert({ type: 'emergency_message', message: draft.content, from: req.user?.fullName || 'Unknown' });
+    }
+
+    res.json(message);
+  } catch (error: any) {
+    console.error('Send draft error:', error);
+    res.status(500).json({ error: 'Failed to send draft', code: 'SEND_DRAFT_ERROR' });
+  }
+});
+
+// ── Feature 27: BOLO photo attachment ─────────────────────────────
+// PUT /api/comms/bolos/:id/photos - Update BOLO photos
+router.put('/bolos/:id/photos', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
+    if (!bolo) { res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }); return; }
+
+    const { photos } = req.body; // Array of photo URLs
+    if (!Array.isArray(photos)) { res.status(400).json({ error: 'photos must be an array', code: 'PHOTOS_MUST_BE_AN' }); return; }
+
+    db.prepare('UPDATE bolos SET photos = ? WHERE id = ?').run(JSON.stringify(photos), req.params.id);
+    res.json({ success: true, photos });
+  } catch (error: any) {
+    console.error('Update BOLO photos error:', error);
+    res.status(500).json({ error: 'Failed to update bolo photos', code: 'UPDATE_BOLO_PHOTOS_ERROR' });
+  }
+});
+
+// ── Feature 28: Broadcast channel groups ──────────────────────────
+// POST /api/comms/broadcast-group - Send to a group by role
+router.post('/broadcast-group', requireRole('admin', 'manager', 'dispatcher', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { roles, content, subject, priority } = req.body;
+    if (!content) { res.status(400).json({ error: 'content is required', code: 'CONTENT_IS_REQUIRED' }); return; }
+    if (!roles || !Array.isArray(roles) || roles.length === 0) {
+      res.status(400).json({ error: 'roles must be a non-empty array', code: 'ROLES_MUST_BE_A' }); return;
+    }
+
+    const now = localNow();
+    const placeholders = roles.map(() => '?').join(',');
+    const recipients = db.prepare(`SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'active'`).all(...roles) as any[];
+
+    const insertStmt = db.prepare(`
+      INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, delivery_status, created_at)
+      VALUES (?, ?, 'broadcast', ?, ?, ?, 'sent', ?)
+    `);
+
+    const results: number[] = [];
+    const tx = db.transaction(() => {
+      for (const recipient of recipients) {
+        const result = insertStmt.run(req.user!.userId, recipient.id, content, subject || null, priority || 'routine', now);
+        results.push(Number(result.lastInsertRowid));
+        sendToUser(recipient.id, 'new_message', { id: result.lastInsertRowid, content, subject, priority, from_name: req.user?.fullName });
+      }
+    });
+    tx();
+
+    res.status(201).json({ success: true, recipients_count: recipients.length, message_ids: results });
+  } catch (error: any) {
+    console.error('Broadcast group error:', error);
+    res.status(500).json({ error: 'Failed to broadcast group', code: 'BROADCAST_GROUP_ERROR' });
+  }
+});
+
+// ── Feature 29: Message delivery confirmation ─────────────────────
+// POST /api/comms/messages/:id/delivered - Confirm delivery
+router.post('/messages/:id/delivered', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    db.prepare(`UPDATE messages SET delivered_at = ?, delivery_status = 'delivered' WHERE id = ? AND to_user_id = ? AND delivered_at IS NULL`)
+      .run(now, req.params.id, req.user!.userId);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delivery confirm error:', error);
+    res.status(500).json({ error: 'Failed to delivery confirm', code: 'DELIVERY_CONFIRM_ERROR' });
+  }
+});
+
+// GET /api/comms/messages/:id/delivery-status - Get delivery status
+router.get('/messages/:id/delivery-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const msg = db.prepare('SELECT delivery_status, delivered_at, read_at FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) { res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' }); return; }
+    res.json(msg);
+  } catch (error: any) {
+    console.error('Delivery status error:', error);
+    res.status(500).json({ error: 'Failed to delivery status', code: 'DELIVERY_STATUS_ERROR' });
+  }
+});
+
+// ── Feature 30: Emergency broadcast mode ──────────────────────────
+// POST /api/comms/emergency-broadcast - Send to ALL active units/users
+router.post('/emergency-broadcast', requireRole('admin', 'manager', 'dispatcher', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { content, subject } = req.body;
+    if (!content) { res.status(400).json({ error: 'content is required', code: 'CONTENT_IS_REQUIRED' }); return; }
+
+    const now = localNow();
+
+    // Insert a single broadcast message (no to_user_id = broadcast to all)
+    const result = db.prepare(`
+      INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, delivery_status, created_at)
+      VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', 'sent', ?)
+    `).run(req.user!.userId, content, subject || 'EMERGENCY BROADCAST', now);
+
+    const message = db.prepare(`
+      SELECT m.*, u.full_name as from_name FROM messages m LEFT JOIN users u ON m.from_user_id = u.id WHERE m.id = ?
+    `).get(result.lastInsertRowid) as any;
+
+    // Broadcast to ALL connected clients
+    broadcastAlert({
+      type: 'emergency_broadcast',
+      message: content,
+      subject: subject || 'EMERGENCY BROADCAST',
+      from: req.user?.fullName || 'Unknown',
+      timestamp: now,
+    });
+    broadcastNewMessage(message);
+
+    // Also create high-priority notification
+    try {
+      db.prepare(`
+        INSERT INTO notifications (type, priority, title, message, created_at)
+        VALUES ('system', 'critical', ?, ?, ?)
+      `).run(`EMERGENCY: ${subject || 'Emergency Broadcast'}`, content, now);
+    } catch { /* notifications table may not exist */ }
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    console.error('Emergency broadcast error:', error);
+    res.status(500).json({ error: 'Failed to emergency broadcast', code: 'EMERGENCY_BROADCAST_ERROR' });
+  }
+});
+
+// GET /api/comms/radio/audio/:entryId — Get radio audio recording
+router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const entry = db.prepare(
+      'SELECT * FROM radio_transcripts WHERE id = ?'
+    ).get(req.params.entryId) as any;
+
+    if (!entry) { res.status(404).json({ error: 'Audio entry not found', code: 'AUDIO_ENTRY_NOT_FOUND' }); return; }
+
+    if (entry.audio_path) {
+      // path, fs imported at top of file
+      const audioPath = path.resolve(entry.audio_path);
+      if (fs.existsSync(audioPath)) {
+        res.sendFile(audioPath);
+        return;
+      }
+    }
+
+    res.status(404).json({ error: 'Audio file not available', code: 'AUDIO_FILE_NOT_AVAILABLE' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// ── Upgrade 1: BOLO category statistics ─────────────────────────
+router.get('/bolos/stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    // By category (type)
+    const byCategory = db.prepare(`
+      SELECT type as category, COUNT(*) as count,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count,
+        SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as expired_count,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_count
+      FROM bolos
+      GROUP BY type ORDER BY count DESC
+    `).all();
+
+    // By priority
+    const byPriority = db.prepare(`
+      SELECT priority, COUNT(*) as count FROM bolos
+      WHERE status = 'active' GROUP BY priority ORDER BY priority
+    `).all();
+
+    // Expiring soon (within 24 hours)
+    const expiringSoon = db.prepare(`
+      SELECT COUNT(*) as count FROM bolos
+      WHERE status = 'active' AND expires_at IS NOT NULL
+      AND expires_at > ? AND expires_at <= datetime(?, '+24 hours')
+    `).get(now, now) as any;
+
+    // Total active
+    const totalActive = db.prepare(`SELECT COUNT(*) as count FROM bolos WHERE status = 'active'`).get() as any;
+
+    // Average BOLO lifespan in hours
+    const avgLifespan = db.prepare(`
+      SELECT AVG(
+        (julianday(COALESCE(expired_at, archived_at, ?)) - julianday(created_at)) * 24
+      ) as avg_hours
+      FROM bolos WHERE status != 'active'
+    `).get(now) as any;
+
+    res.json({
+      byCategory,
+      byPriority,
+      totalActive: totalActive?.count || 0,
+      expiringSoon: expiringSoon?.count || 0,
+      avgLifespanHours: avgLifespan?.avg_hours ? Math.round(avgLifespan.avg_hours * 10) / 10 : null,
+    });
+  } catch (error: any) {
+    console.error('BOLO stats error:', error);
+    res.status(500).json({ error: 'Failed to get bolo stats', code: 'BOLO_STATS_ERROR' });
+  }
+});
+
+// ── Upgrade 2: BOLO broadcast count tracking ────────────────────
+router.post('/bolos/:id/broadcast', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
+    if (!bolo) { res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    const broadcastCount = (bolo.broadcast_count || 0) + 1;
+    db.prepare('UPDATE bolos SET broadcast_count = ?, last_broadcast_at = ? WHERE id = ?')
+      .run(broadcastCount, now, bolo.id);
+
+    // Broadcast the BOLO alert
+    broadcastAlert({
+      type: 'bolo_rebroadcast',
+      bolo: { ...bolo, broadcast_count: broadcastCount },
+      by: req.user?.fullName,
+    });
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'bolo_broadcast', 'bolo', ?, ?, ?)`).run(
+      req.user!.userId, bolo.id, `Broadcast BOLO #${broadcastCount}: ${bolo.title}`, req.ip || 'unknown');
+
+    res.json({ broadcast_count: broadcastCount, last_broadcast_at: now });
+  } catch (error: any) {
+    console.error('BOLO broadcast error:', error);
+    res.status(500).json({ error: 'Failed to broadcast bolo', code: 'BOLO_BROADCAST_ERROR' });
+  }
+});
+
+// ── Upgrade 3: Auto-archive expired BOLOs (batch operation) ─────
+router.post('/bolos/auto-archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { days_expired = 7 } = req.body;
+
+    // Archive BOLOs that expired more than X days ago
+    const result = db.prepare(`
+      UPDATE bolos SET archived_at = ?
+      WHERE status IN ('expired', 'cancelled')
+      AND archived_at IS NULL
+      AND (expired_at IS NOT NULL AND expired_at <= datetime(?, '-' || ? || ' days'))
+    `).run(now, now, days_expired);
+
+    res.json({ archived: result.changes });
+  } catch (error: any) {
+    console.error('Auto-archive error:', error);
+    res.status(500).json({ error: 'Failed to auto-archive bolos', code: 'AUTO_ARCHIVE_ERROR' });
+  }
+});
+
+// ── Upgrade 4: Message thread summary ───────────────────────────
+router.get('/messages/threads', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { limit = '20' } = req.query;
+    const limitNum = Math.min(100, parseInt(limit as string, 10) || 20);
+
+    const threads = db.prepare(`
+      SELECT
+        COALESCE(m.thread_id, m.id) as thread_root_id,
+        MIN(m.created_at) as started_at,
+        MAX(m.created_at) as last_activity,
+        COUNT(*) as message_count,
+        COUNT(CASE WHEN m.read_at IS NULL AND m.to_user_id = ? THEN 1 END) as unread_count,
+        GROUP_CONCAT(DISTINCT f.full_name) as participants
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      WHERE (m.to_user_id = ? OR m.from_user_id = ? OR m.to_user_id IS NULL)
+        AND m.is_draft = 0
+        AND m.thread_id IS NOT NULL
+      GROUP BY thread_root_id
+      ORDER BY last_activity DESC
+      LIMIT ?
+    `).all(req.user!.userId, req.user!.userId, req.user!.userId, limitNum);
+
+    // Get root message content for each thread
+    const enriched = threads.map((t: any) => {
+      const root = db.prepare(`
+        SELECT id, subject, content, from_user_id, channel, priority
+        FROM messages WHERE id = ?
+      `).get(t.thread_root_id) as any;
+      return { ...t, root_subject: root?.subject, root_preview: root?.content?.substring(0, 100), root_channel: root?.channel, root_priority: root?.priority };
+    });
+
+    res.json({ data: enriched });
+  } catch (error: any) {
+    console.error('Thread list error:', error);
+    res.status(500).json({ error: 'Failed to get threads', code: 'GET_THREADS_ERROR' });
+  }
+});
+
+// ── Upgrade 5: Message priority statistics ──────────────────────
+router.get('/messages/priority-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '7' } = req.query;
+    const daysNum = Math.max(1, Math.min(365, parseInt(days as string, 10) || 7));
+
+    const stats = db.prepare(`
+      SELECT
+        priority,
+        COUNT(*) as total,
+        SUM(CASE WHEN read_at IS NOT NULL THEN 1 ELSE 0 END) as read_count,
+        AVG(CASE WHEN read_at IS NOT NULL
+          THEN (julianday(read_at) - julianday(created_at)) * 24 * 60
+          ELSE NULL END) as avg_read_time_minutes
+      FROM messages
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+        AND is_draft = 0
+      GROUP BY priority
+      ORDER BY CASE priority
+        WHEN 'emergency' THEN 1 WHEN 'urgent' THEN 2 WHEN 'routine' THEN 3 ELSE 4
+      END
+    `).all(daysNum);
+
+    const channelStats = db.prepare(`
+      SELECT channel, COUNT(*) as count
+      FROM messages
+      WHERE created_at >= datetime('now', '-' || ? || ' days') AND is_draft = 0
+      GROUP BY channel ORDER BY count DESC
+    `).all(daysNum);
+
+    res.json({ byPriority: stats, byChannel: channelStats });
+  } catch (error: any) {
+    console.error('Priority stats error:', error);
+    res.status(500).json({ error: 'Failed to get priority stats', code: 'PRIORITY_STATS_ERROR' });
+  }
+});
+
+// ── Upgrade 6: BOLO category filtering (enhanced) ──────────────
+router.get('/bolos/by-category', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { category } = req.query;
+
+    if (!category) {
+      res.status(400).json({ error: 'category parameter required', code: 'CATEGORY_REQUIRED' });
+      return;
+    }
+
+    const validCategories = ['vehicle', 'person', 'weapon', 'property', 'other'];
+    if (!validCategories.includes(category as string)) {
+      res.status(400).json({ error: 'Invalid category', valid: validCategories, code: 'INVALID_CATEGORY' });
+      return;
+    }
+
+    const bolos = db.prepare(`
+      SELECT b.*, u.full_name as issued_by_name
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      WHERE b.type = ? AND b.archived_at IS NULL
+      ORDER BY
+        CASE b.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
+        b.created_at DESC
+      LIMIT 500
+    `).all(category);
+
+    res.json({ data: bolos, category, count: bolos.length });
+  } catch (error: any) {
+    console.error('BOLO by category error:', error);
+    res.status(500).json({ error: 'Failed to filter BOLOs by category', code: 'BOLO_CATEGORY_ERROR' });
+  }
+});
+
+// ── Upgrade 7: Read receipt summary for a message ───────────────
+router.get('/messages/:id/read-receipts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const msg = db.prepare('SELECT read_receipts, to_user_id, channel, from_user_id FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) { res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' }); return; }
+
+    const receipts = JSON.parse(msg.read_receipts || '{}');
+    const receiptList = Object.entries(receipts).map(([uid, data]: [string, any]) => ({
+      user_id: parseInt(uid),
+      read_at: data.at,
+      name: data.name,
+    }));
+
+    res.json({ message_id: parseInt(req.params.id), receipts: receiptList, total_read: receiptList.length });
+  } catch (error: any) {
+    console.error('Read receipts error:', error);
+    res.status(500).json({ error: 'Failed to get read receipts', code: 'READ_RECEIPTS_ERROR' });
+  }
+});
+
+// ── Upgrade 8: BOLO watch list (BOLOs matching user criteria) ───
+router.get('/bolos/watch-list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    // Get active P1 and P2 BOLOs as the watch list
+    const watchList = db.prepare(`
+      SELECT b.id, b.bolo_number, b.type, b.title, b.priority,
+        b.subject_description, b.vehicle_description,
+        b.broadcast_count, b.last_broadcast_at, b.expires_at,
+        u.full_name as issued_by_name,
+        CASE
+          WHEN b.expires_at IS NOT NULL AND b.expires_at <= datetime(?, '+2 hours')
+          THEN 'expiring_soon'
+          ELSE 'active'
+        END as watch_status
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      WHERE b.status = 'active' AND b.priority IN ('P1', 'P2')
+      ORDER BY b.priority ASC, b.created_at DESC
+      LIMIT 50
+    `).all(now);
+
+    res.json({ data: watchList, count: watchList.length });
+  } catch (error: any) {
+    console.error('Watch list error:', error);
+    res.status(500).json({ error: 'Failed to get watch list', code: 'WATCH_LIST_ERROR' });
+  }
+});
+
+// ── Communications CSV Export ─────────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT b.bolo_number, b.type, b.priority, b.status, b.title,
+             b.subject_description, b.vehicle_description,
+             b.broadcast_count, b.expires_at,
+             u.full_name as issued_by_name, b.created_at, b.updated_at
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      ORDER BY b.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['BOLO #', 'Type', 'Priority', 'Status', 'Title', 'Subject Description', 'Vehicle Description', 'Broadcasts', 'Expires', 'Issued By', 'Created', 'Updated'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.bolo_number, r.type, r.priority, r.status,
+        (r.title || '').replace(/"/g, '""'),
+        (r.subject_description || '').replace(/"/g, '""'),
+        (r.vehicle_description || '').replace(/"/g, '""'),
+        r.broadcast_count, r.expires_at, r.issued_by_name, r.created_at, r.updated_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="communications_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Comms CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export communications', code: 'COMMS_EXPORT_ERROR' });
+  }
+});
 export default router;

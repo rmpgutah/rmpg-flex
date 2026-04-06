@@ -18,7 +18,7 @@ describe('totp.ts', () => {
     });
 
     it('returns iv:authTag:ciphertext format', () => {
-      const encrypted = encryptSecret('test-secret');
+      const encrypted = encryptSecret('GEZDGNBVGY3TQOJQ');
       const parts = encrypted.split(':');
       expect(parts).toHaveLength(3);
       // IV = 16 bytes = 32 hex chars
@@ -30,7 +30,7 @@ describe('totp.ts', () => {
     });
 
     it('produces different ciphertext for the same input (random IV)', () => {
-      const secret = 'same-secret';
+      const secret = 'JBSWY3DPEHPK3PXP';
       const enc1 = encryptSecret(secret);
       const enc2 = encryptSecret(secret);
       expect(enc1).not.toBe(enc2);
@@ -40,7 +40,7 @@ describe('totp.ts', () => {
     });
 
     it('rejects tampered ciphertext', () => {
-      const encrypted = encryptSecret('important-secret');
+      const encrypted = encryptSecret('MFZWIZLTOQ======');
       const parts = encrypted.split(':');
       // Flip last hex char of the ciphertext
       const lastChar = parts[2].slice(-1);
@@ -50,7 +50,7 @@ describe('totp.ts', () => {
     });
 
     it('rejects tampered auth tag', () => {
-      const encrypted = encryptSecret('important-secret');
+      const encrypted = encryptSecret('MFZWIZLTOQ======');
       const parts = encrypted.split(':');
       const tamperedTag = '0'.repeat(32);
       const tampered = `${parts[0]}:${tamperedTag}:${parts[2]}`;

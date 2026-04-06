@@ -65,23 +65,23 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
     if (!isOpen) resetForm();
   }, [isOpen, resetForm]);
 
-  const handleSearch = useCallback(async () => {
-    if (searchQuery.length < 2) return;
+  const handleSearch = useCallback(async (query: string) => {
+    if (query.length < 2) return;
     setIsSearching(true);
     setError('');
     try {
-      const results = await apiFetch<PersonResult[]>(`/records/persons/search?q=${encodeURIComponent(searchQuery)}`);
+      const results = await apiFetch<PersonResult[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
       setSearchResults(results);
     } catch {
       setError('Failed to search persons');
     } finally {
       setIsSearching(false);
     }
-  }, [searchQuery]);
+  }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (searchQuery.length >= 2) handleSearch();
+      if (searchQuery.length >= 2) handleSearch(searchQuery);
       else setSearchResults([]);
     }, 300);
     return () => clearTimeout(timeout);
@@ -180,7 +180,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-field pl-8"
+            className="input-dark pl-8"
             placeholder="Search by name, phone, email..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setSelectedPerson(null); }}
@@ -191,7 +191,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
         {/* Results dropdown */}
         {searchResults.length > 0 && !selectedPerson && (
-          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-gray-700">
+          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-rmpg-700">
             {searchResults.map((person) => {
               const flags = parseFlags(person.flags);
               return (
@@ -207,11 +207,14 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
                     </span>
                     {flags.length > 0 && (
                       <div className="flex gap-1">
-                        {flags.map((f, i) => (
-                          <span key={i} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
-                            {f}
-                          </span>
-                        ))}
+                        {flags.map((f, i) => {
+                          const flagText = typeof f === 'object' && f !== null ? (f as any).type || JSON.stringify(f) : String(f);
+                          return (
+                            <span key={`${flagText}-${i}`} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                              {flagText}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -289,7 +292,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       {/* Role */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
-        <select className="input-field" value={role} onChange={(e) => setRole(e.target.value as PersonRole)}>
+        <select className="select-dark" value={role} onChange={(e) => setRole(e.target.value as PersonRole)}>
           {PERSON_ROLES.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
           ))}
@@ -300,12 +303,14 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
         <textarea
-          className="input-field"
+          className="textarea-dark"
           rows={2}
           placeholder="Additional details about this person's involvement..."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          maxLength={2000}
         />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{notes.length}/2000</div>
       </div>
       {/* Create Person Modal */}
       <PersonFormModal

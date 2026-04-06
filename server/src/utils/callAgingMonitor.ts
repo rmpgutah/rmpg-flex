@@ -24,6 +24,7 @@ import { createNotificationForRoles } from '../routes/notifications';
 import { broadcastDispatchUpdate } from './websocket';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let startupTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const HOURS_48_MS = 48 * 60 * 60 * 1000;
 const HOURS_72_MS = 72 * 60 * 60 * 1000;
@@ -71,21 +72,23 @@ function checkAgingCalls(): void {
 
       // ── 72-hour overdue — critical notification ──
       if (elapsed >= HOURS_72_MS && notified !== '72h') {
-        createNotificationForRoles(
-          ['admin', 'manager', 'supervisor', 'dispatcher'],
-          'dispatch',
-          `OVERDUE: ${call.call_number} — 72+ hours ${statusText}`,
-          `Call ${call.call_number} (${call.incident_type}) at ${location} has been ${statusText} for over 72 hours. ` +
-          `Priority: ${call.priority}. ${call.responding_officer ? `Officer: ${call.responding_officer}` : 'No officer assigned.'} ` +
-          `Review and clear or escalate immediately.`,
-          'call',
-          call.id,
-          'critical',
-          'call_72hr_overdue',
-        );
-
-        db.prepare('UPDATE calls_for_service SET overdue_notified = ? WHERE id = ?')
-          .run('72h', call.id);
+        // Atomic update — prevents duplicate notifications from concurrent checks
+        const updated72 = db.prepare('UPDATE calls_for_service SET overdue_notified = ? WHERE id = ? AND (overdue_notified IS NULL OR overdue_notified != ?)')
+          .run('72h', call.id, '72h');
+        if (updated72.changes > 0) {
+          createNotificationForRoles(
+            ['admin', 'manager', 'supervisor', 'dispatcher'],
+            'dispatch',
+            `OVERDUE: ${call.call_number} — 72+ hours ${statusText}`,
+            `Call ${call.call_number} (${call.incident_type}) at ${location} has been ${statusText} for over 72 hours. ` +
+            `Priority: ${call.priority}. ${call.responding_officer ? `Officer: ${call.responding_officer}` : 'No officer assigned.'} ` +
+            `Review and clear or escalate immediately.`,
+            'call',
+            call.id,
+            'critical',
+            'call_72hr_overdue',
+          );
+        }
 
         broadcastDispatchUpdate({
           action: 'call_overdue',
@@ -133,13 +136,17 @@ export function startCallAgingMonitor(intervalMs: number = 30 * 60 * 1000): void
   if (intervalHandle) return;
   console.log(`[Call Aging] Starting 72-hour overdue monitor — every ${intervalMs / 60_000}min`);
   // Initial check after 3 minutes (let DB init + PSO monitor run first)
-  setTimeout(checkAgingCalls, 3 * 60 * 1000);
+  startupTimeout = setTimeout(checkAgingCalls, 3 * 60 * 1000);
   intervalHandle = setInterval(checkAgingCalls, intervalMs);
   intervalHandle.unref();
 }
 
 /** Stop the call aging monitor */
 export function stopCallAgingMonitor(): void {
+  if (startupTimeout) {
+    clearTimeout(startupTimeout);
+    startupTimeout = null;
+  }
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
