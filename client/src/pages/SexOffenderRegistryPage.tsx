@@ -110,6 +110,7 @@ export default function SexOffenderRegistryPage() {
   // ── Data State ────────────────────────────────────────────
   const [records, setRecords] = useState<SexOffenderRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [selected, setSelected] = useState<SexOffenderRecord | null>(null);
   const [page, setPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -136,6 +137,7 @@ export default function SexOffenderRegistryPage() {
   // ── Fetch records (declared before handlers that depend on it) ──
   const fetchRecords = useCallback(async () => {
     setLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (search) params.set('search', search);
@@ -145,8 +147,9 @@ export default function SexOffenderRegistryPage() {
       const body = await apiFetch<{ data: SexOffenderRecord[]; pagination: any }>(`/sex-offender-registry?${params}`);
       setRecords(body.data || []);
       setTotalRecords(body.pagination?.total || 0);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch SOR records:', err);
+      setFetchError(err?.message || 'Failed to load registry data');
     } finally {
       setLoading(false);
     }
@@ -293,6 +296,13 @@ export default function SexOffenderRegistryPage() {
   // ============================================================
   const leftPanel = (
     <div className="flex flex-col h-full" style={{ background: '#050505' }}>
+      {/* Error Banner */}
+      {fetchError && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-3 h-3" /> {fetchError}
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+        </div>
+      )}
       {/* Stats Strip */}
       <div
         className="flex items-center gap-4 px-3 py-1.5 text-[11px] font-mono flex-shrink-0 overflow-x-auto"
@@ -350,6 +360,7 @@ export default function SexOffenderRegistryPage() {
           value={tierFilter}
           onChange={e => { setTierFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
+          aria-label="Filter by tier"
         >
           <option value="">All Tiers</option>
           <option value="1">Tier 1</option>
@@ -360,6 +371,7 @@ export default function SexOffenderRegistryPage() {
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
+          aria-label="Filter by status"
         >
           <option value="">All Status</option>
           <option value="compliant">Compliant</option>

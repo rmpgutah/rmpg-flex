@@ -427,6 +427,7 @@ export default function RadioPage() {
               value={historyChannel}
               onChange={(e) => setHistoryChannel(e.target.value)}
               className="bg-surface-base text-[8px] text-rmpg-300 border border-rmpg-700 px-1 py-0.5 font-mono"
+              aria-label="Filter by channel"
             >
               <option value="">All Channels</option>
               {RADIO_CHANNELS.map(ch => (

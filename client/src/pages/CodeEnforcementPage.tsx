@@ -384,7 +384,7 @@ export default function CodeEnforcementPage() {
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
                 <input value={vSearch} onChange={e => { setVSearch(e.target.value); setVPage(1); }} placeholder="Search violations..." aria-label="Search violations..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
-              <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
+              <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter violations by status">
                 <option value="">All</option>
                 {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
               </select>
@@ -395,7 +395,7 @@ export default function CodeEnforcementPage() {
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
                 <input value={tSearch} onChange={e => { setTSearch(e.target.value); setTPage(1); }} placeholder="Search tows..." aria-label="Search tows..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
-              <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
+              <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter tows by status">
                 <option value="">All</option>
                 {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
               </select>

@@ -789,11 +789,11 @@ export default function CitationsPage() {
         {/* Filter row */}
         <div className={`flex items-center ${isMobile ? 'flex-col gap-1.5' : 'gap-2 flex-wrap'}`}>
           {!isMobile && <Filter size={10} className="text-rmpg-500" />}
-          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
+          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by citation type">
             <option value="">All Types</option>
             {CITATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by citation status">
             <option value="">All Statuses</option>
             {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
@@ -1608,6 +1608,14 @@ export default function CitationsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-3 h-3" /> {error}
+          <button type="button" onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+        </div>
+      )}
+
       {/* Stats bar */}
       <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
         {isMobile ? (
