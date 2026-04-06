@@ -55,30 +55,3 @@ export function localToday(): string {
  * for INSERT/UPDATE operations where the timestamp is sent to clients.
  */
 export const SQL_NOW = "datetime('now', 'localtime')";
-
-/**
- * Returns the current local hour (0-23) in America/Denver timezone.
- * Use this instead of `new Date().getHours()` for timezone-safe shift detection.
- */
-export function localHour(): number {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Denver',
-    hour: 'numeric',
-    hour12: false,
-  });
-  return parseInt(fmt.format(new Date()), 10);
-}
-
-/**
- * Returns the current local day of week (0=Sunday, 6=Saturday) in America/Denver timezone.
- * Use this instead of `new Date().getDay()` for timezone-safe day matching.
- */
-export function localDayOfWeek(): number {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Denver',
-    weekday: 'short',
-  });
-  const day = fmt.format(new Date());
-  const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return map[day] ?? new Date().getDay();
-}

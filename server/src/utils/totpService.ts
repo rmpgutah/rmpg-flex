@@ -6,8 +6,8 @@ import config from '../config';
 
 const ALGORITHM = 'aes-256-gcm';
 
-// Safe accessors — TOTP settings live under config.totp
-const twoFactorConfig = () => config.totp as { encryptionKey: string; issuer: string; requiredRoles: string[]; backupCodeCount: number; trustedDeviceDays: number };
+// Safe accessors with fallbacks in case config.twoFactor is undefined
+const twoFactorConfig = () => config.twoFactor || {} as Record<string, any>;
 
 // ─── TOTP Secret Generation ──────────────────────────
 
@@ -97,23 +97,6 @@ export function isTotpCodeUsed(userId: number, code: string): boolean {
   if (!ts) return false;
   // Expired entries are treated as unused
   return (Date.now() - ts) < REPLAY_WINDOW_MS;
-}
-
-/**
- * Atomically check AND mark a TOTP code as used — prevents race conditions
- * where two concurrent requests could both pass isTotpCodeUsed() before either
- * calls markTotpCodeUsed(). Returns true if code was already used (reject).
- */
-export function checkAndMarkTotpCode(userId: number, code: string): boolean {
-  const key = `${userId}:${code}`;
-  const ts = usedCodes.get(key);
-  const now = Date.now();
-  if (ts && (now - ts) < REPLAY_WINDOW_MS) {
-    return true; // Already used — reject
-  }
-  // Mark immediately before returning — atomic in single-threaded Node.js
-  usedCodes.set(key, now);
-  return false; // Not used — proceed
 }
 
 /** Mark a TOTP code as used for this user. */

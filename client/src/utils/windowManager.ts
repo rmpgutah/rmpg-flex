@@ -39,7 +39,6 @@ function openDetachedWindow(path: string, title: string, width = 1100, height = 
     'status=no',
     'resizable=yes',
     'scrollbars=yes',
-    'noopener=yes',
   ].join(',');
 
   const win = window.open(path, `rmpg_${title}_${Date.now()}`, features);

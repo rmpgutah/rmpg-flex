@@ -2,11 +2,10 @@
 // RMPG Flex — Personnel: Equipment Tab (All Equipment)
 // ============================================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Package, Plus, Edit3, Trash2, AlertTriangle, Box, ClipboardList, ArrowRightLeft,
+  Package, Plus, Edit3, Trash2, AlertTriangle, Box,
 } from 'lucide-react';
-import { apiFetch } from '../../../hooks/useApi';
 import type { OfficerEquipment, EquipmentType } from '../../../types';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
 
@@ -38,12 +37,6 @@ interface Props {
 
 export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipment, onDeleteEquipment }: Props) {
   const [typeFilter, setTypeFilter] = useState<EquipmentType | 'all'>('all');
-  const [checkoutLog, setCheckoutLog] = useState<any[]>([]);
-  const [showCheckoutLog, setShowCheckoutLog] = useState(false);
-
-  useEffect(() => {
-    apiFetch<any>('/api/personnel/equipment-log?days=30').then((d: any) => Array.isArray(d) ? setCheckoutLog(d) : setCheckoutLog([])).catch(() => setCheckoutLog([]));
-  }, []);
 
   const stats = useMemo(() => {
     const issued = equipment.filter((e) => e.status === 'issued').length;
@@ -63,7 +56,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
 
   function formatDate(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function statusLabel(status: string): string {
@@ -77,7 +70,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
   function statusLedClass(status: string): string {
     switch (status) {
       case 'issued': return 'led-dot led-green';
-      case 'maintenance': return 'led-dot led-gray';
+      case 'maintenance': return 'led-dot led-blue';
       case 'damaged': return 'led-dot led-amber';
       case 'lost': return 'led-dot led-red';
       case 'returned': return 'led-dot led-off';
@@ -91,12 +84,9 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
     { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-gray-400', bgClass: 'bg-[#0a0f1a]', border: 'border-gray-700/30', topBorder: 'border-t-blue-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
   ];
-
-  // Set document title
-  useEffect(() => { document.title = 'Personnel - Equipment \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -106,7 +96,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
           <Package className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Equipment</h2>
         </div>
-        <button type="button" onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Issue Equipment
         </button>
@@ -140,7 +130,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
       {/* Type Filter */}
       <div className="panel-inset p-2 flex items-center gap-1.5 flex-wrap">
         {EQUIPMENT_TYPES.map((t) => (
-          <button type="button"
+          <button
             key={t.value}
             onClick={() => setTypeFilter(t.value)}
             className={`text-[10px] px-2.5 py-1 ${
@@ -150,29 +140,6 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             {t.label}
           </button>
         ))}
-      </div>
-
-      {/* Checkout/Return Log */}
-      <div className="panel-beveled p-3 bg-surface-base">
-        <button type="button" onClick={() => setShowCheckoutLog(!showCheckoutLog)}
-          className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5 w-full">
-          <ArrowRightLeft className="w-3 h-3" /> Equipment Checkout Log ({checkoutLog.length})
-          <span className="ml-auto text-[8px] text-rmpg-500">{showCheckoutLog ? 'Hide' : 'Show'}</span>
-        </button>
-        {showCheckoutLog && checkoutLog.length > 0 && (
-          <div className="mt-2 space-y-0.5 max-h-[200px] overflow-y-auto">
-            {checkoutLog.slice(0, 20).map((log: any) => (
-              <div key={log.id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[9px]">
-                <span className="text-rmpg-300">{log.officer_name || '-'}</span>
-                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-gray-400' : 'text-amber-400'}`}>
-                  {log.action?.toUpperCase()}
-                </span>
-                <span className="text-rmpg-200">{log.equipment_name}</span>
-                <span className="text-rmpg-500 font-mono">{log.created_at?.slice(0, 10)}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Equipment Table */}
@@ -245,14 +212,14 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
                   </td>
                   <td className="text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button type="button"
+                      <button
                         onClick={() => onEditEquipment(eq)}
                         className="toolbar-btn p-1"
                         title="Edit equipment"
                       >
                         <Edit3 className="w-3 h-3" />
                       </button>
-                      <button type="button"
+                      <button
                         onClick={() => onDeleteEquipment(eq.id)}
                         className="toolbar-btn toolbar-btn-danger p-1"
                         title="Delete equipment"

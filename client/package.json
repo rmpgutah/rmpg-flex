@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-client",
-  "version": "5.7.0",
+  "version": "5.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "tsc --noEmit",
     "cap:ios": "npx cap sync ios",
     "cap:open:ios": "npx cap open ios",
     "cap:android": "npx cap sync android",
@@ -23,18 +22,17 @@
     "@capacitor/ios": "^8.1.0",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
+    "@googlemaps/js-api-loader": "^2.0.2",
     "@simplewebauthn/browser": "^13.2.2",
-    "d3-cloud": "^1.2.7",
     "idb": "^8.0.3",
-    "jspdf": "^4.2.0",
+    "jspdf": "^4.1.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-force-graph-2d": "^1.29.1",
     "react-router-dom": "^6.28.0",
-    "recharts": "^2.14.1",
-    "source-map": "^0.7.6"
+    "recharts": "^2.14.1"
   },
   "overrides": {
     "dompurify": "file:./stubs/dompurify"

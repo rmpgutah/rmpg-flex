@@ -760,7 +760,7 @@
   </div>
 
   <script>
-    // Fetch installer info from API and serve downloads directly from VPS
+    // Fetch installer info from API and update page dynamically
     fetch('/api/downloads/info')
       .then(function(r) { return r.json(); })
       .then(function(data) {
@@ -809,9 +809,9 @@
         }
       })
       .catch(function() {
-        document.getElementById('win-size').textContent = 'Unavailable';
-        document.getElementById('mac-size').textContent = 'Unavailable';
-        document.getElementById('android-size').textContent = 'Unavailable';
+        document.getElementById('win-size').textContent = '';
+        document.getElementById('mac-size').textContent = '';
+        document.getElementById('android-size').textContent = '';
       });
 
     // Tab switching for install instructions

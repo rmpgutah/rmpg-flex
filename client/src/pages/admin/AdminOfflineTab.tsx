@@ -23,20 +23,6 @@ interface PinSecret {
   created_at: string | null;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminOfflineTab({ LoadingSpinner, error, setError }: AdminOfflineTabProps) {
   const {
     isOfflineCapable,
@@ -131,19 +117,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
   const usersWithSecrets = secrets.filter(s => s.has_secret).length;
   const employeesWithoutSecrets = secrets.filter(s => !s.has_secret && s.username !== 'admin');
 
-  // Set document title
-  useEffect(() => { document.title = 'Admin - Offline \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setPinModalOpen(false); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
   if (loading) return <LoadingSpinner />;
-
 
   return (
     <div className="p-4 space-y-5 animate-fade-in">
@@ -183,7 +157,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
         {/* Sync Queue */}
         <div className="panel-beveled p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Database className="w-4 h-4 text-gray-400" />
+            <Database className="w-4 h-4 text-blue-400" />
             <span className="text-xs font-bold text-white">Sync Queue</span>
           </div>
           <div className="text-[10px] text-rmpg-400 space-y-1">
@@ -191,7 +165,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               Pending items: <span className="text-white font-bold">{syncQueueDepth}</span>
             </div>
             {isSyncing && (
-              <div className="flex items-center gap-1 text-gray-400">
+              <div className="flex items-center gap-1 text-blue-400">
                 <RefreshCw className="w-3 h-3 animate-spin" />
                 {syncStatus.phase === 'push' ? 'Pushing' : 'Pulling'} {syncStatus.table}
                 ({syncStatus.current}/{syncStatus.total})
@@ -199,14 +173,14 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
             )}
           </div>
           {isOfflineCapable && (
-            <button type="button"
+            <button
               onClick={triggerSync}
               disabled={isSyncing}
               className="mt-2 flex items-center gap-1 px-2 py-1 text-[10px] transition-colors"
               style={{
-                background: '#222222',
-                border: '1px solid #2e2e2e',
-                color: isSyncing ? '#383838' : '#888888',
+                background: '#1e3048',
+                border: '1px solid #2a3e58',
+                color: isSyncing ? '#3a5070' : '#8a9aaa',
               }}
             >
               <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -243,21 +217,21 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
             <span className="text-xs font-bold text-white">PIN Generation</span>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button"
+            <button
               onClick={handleGenerateAll}
               disabled={generatingAll}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors"
               style={{
-                background: '#222222',
-                border: '1px solid #2e2e2e',
-                color: generatingAll ? '#383838' : '#888888',
+                background: '#1e3048',
+                border: '1px solid #2a3e58',
+                color: generatingAll ? '#3a5070' : '#8a9aaa',
               }}
             >
-              {generatingAll ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
+              {generatingAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
               {generatingAll ? 'Generating...' : 'Generate All Missing Secrets'}
             </button>
             {isOfflineCapable && (
-              <button type="button"
+              <button
                 onClick={() => setPinModalOpen(true)}
                 className="btn-primary text-[10px] py-1.5"
                 style={{ borderColor: '#d97706' }}
@@ -308,32 +282,32 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                   </td>
                   <td className="text-center">
                     {!s.has_secret ? (
-                      <button type="button"
+                      <button
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 transition-colors"
                         style={{
-                          background: '#222222',
-                          border: '1px solid #2e2e2e',
-                          color: generatingSingle === s.user_id ? '#383838' : '#d97706',
+                          background: '#1e3048',
+                          border: '1px solid #2a3e58',
+                          color: generatingSingle === s.user_id ? '#3a5070' : '#d97706',
                         }}
                       >
                         {generatingSingle === s.user_id ? (
-                          <Loader2 className="w-3 h-3 animate-spin inline" role="status" aria-label="Loading" />
+                          <Loader2 className="w-3 h-3 animate-spin inline" />
                         ) : (
                           'Generate'
                         )}
                       </button>
                     ) : (
-                      <button type="button"
+                      <button
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        style={{ background: '#0a0a0a', border: '1px solid #222222' }}
+                        style={{ background: '#141e2b', border: '1px solid #1e3048' }}
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (
-                          <Loader2 className="w-3 h-3 animate-spin inline" role="status" aria-label="Loading" />
+                          <Loader2 className="w-3 h-3 animate-spin inline" />
                         ) : (
                           'Rotate'
                         )}

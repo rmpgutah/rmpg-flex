@@ -16,9 +16,6 @@ export const STATUS_LABELS: Partial<Record<CallStatus, string>> = {
   onscene:    'ONS',
   cleared:    'CLR',
   on_hold:    'HELD',
-  archived:   'ARCH',
-  closed:     'CLSD',
-  cancelled:  'CNCL',
 };
 
 // ── Threshold Configuration (seconds) ──────────────────────
@@ -189,26 +186,6 @@ export function getCallAge(call: CallForService): number {
 export function getTimerState(call: CallForService): TimerState {
   const status = call.status;
   const label = STATUS_LABELS[status] || status.toUpperCase().slice(0, 4);
-
-  // For terminal statuses, show a static timestamp instead of running timer
-  if (['archived', 'closed', 'cancelled'].includes(status)) {
-    const terminalTime = (call as any).archived_at || call.cleared_at || call.closed_at || call.created_at;
-    const d = new Date(terminalTime);
-    const formatted = !isNaN(d.getTime())
-      ? `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      : '--';
-    return {
-      label,
-      elapsed: 0,
-      formatted,
-      threshold: Infinity,
-      progress: 0,
-      severity: 'normal',
-      color: '#666666', // muted gray for terminal calls
-      isOverdue: false,
-    };
-  }
-
   const elapsed = getStatusElapsed(call);
   const threshold = getThreshold(call);
   let severity = getTimerSeverity(elapsed, threshold);

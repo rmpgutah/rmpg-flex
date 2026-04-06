@@ -3,7 +3,6 @@ import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import AddressAutocomplete from './AddressAutocomplete';
-import { formatPhoneInput } from '../utils/formatters';
 
 export interface ClientFormData {
   name: string;
@@ -314,9 +313,7 @@ export default function ClientFormModal({
               value={form.notes}
               onChange={(e) => set('notes', e.target.value)}
               placeholder="Additional notes about this client..."
-              maxLength={5000}
             />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>
       )}
@@ -332,11 +329,11 @@ export default function ClientFormModal({
             </div>
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Email</label>
-              <input type="email" className="input-dark text-xs w-full" value={form.contact_email} onChange={(e) => set('contact_email', e.target.value)} placeholder="jwong@gateway.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" />
+              <input type="email" className="input-dark text-xs w-full" value={form.contact_email} onChange={(e) => set('contact_email', e.target.value)} placeholder="jwong@gateway.com" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Phone</label>
-              <input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-3001" pattern="[0-9()\-\s+]{7,20}" />
+              <input type="text" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} placeholder="(801) 555-3001" />
             </div>
           </div>
 
@@ -344,7 +341,7 @@ export default function ClientFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Email</label>
-              <input type="email" className="input-dark text-xs w-full" value={form.billing_email} onChange={(e) => set('billing_email', e.target.value)} placeholder="billing@gateway.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" />
+              <input type="email" className="input-dark text-xs w-full" value={form.billing_email} onChange={(e) => set('billing_email', e.target.value)} placeholder="billing@gateway.com" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Address</label>
@@ -363,7 +360,7 @@ export default function ClientFormModal({
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Method</label>
               <select className="select-dark text-xs w-full" value={form.payment_method} onChange={(e) => set('payment_method', e.target.value)}>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{m ? m.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '-- Select --'}</option>
+                  <option key={m} value={m}>{m ? m.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-- Select --'}</option>
                 ))}
               </select>
             </div>
@@ -388,7 +385,7 @@ export default function ClientFormModal({
           {/* Tax ID */}
           <div>
             <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Tax ID / EIN</label>
-            <input type="text" className="input-dark text-xs w-full" value={form.tax_id} onChange={(e) => set('tax_id', e.target.value)} placeholder="e.g. 12-3456789" pattern="\d{2}-\d{7}" />
+            <input type="text" className="input-dark text-xs w-full" value={form.tax_id} onChange={(e) => set('tax_id', e.target.value)} placeholder="e.g. 12-3456789" />
           </div>
         </>
       )}

@@ -8,10 +8,8 @@
 //      area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v145';
+const CACHE_NAME = 'rmpg-flex-v64';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
-const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
-const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -23,25 +21,10 @@ const STATIC_ASSETS = [
   '/tiles/manifest.json',
 ];
 
-// Evict oldest entries when cache exceeds limit
-async function trimCache(cacheName, maxEntries) {
-  const cache = await caches.open(cacheName);
-  const keys = await cache.keys();
-  if (keys.length > maxEntries) {
-    const toDelete = keys.slice(0, keys.length - maxEntries);
-    await Promise.all(toDelete.map((key) => cache.delete(key)));
-  }
-}
-
 // Install — pre-cache core shell, immediately activate
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .catch((err) => {
-        console.warn('[SW] Pre-cache failed:', err);
-        // Don't block install — partial cache is acceptable
-      })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
   // Skip waiting so the new SW activates immediately
   self.skipWaiting();
@@ -130,9 +113,6 @@ async function precacheTiles() {
       });
     }
 
-    // Trim tile cache to limit
-    await trimCache(TILE_CACHE_NAME, MAX_TILE_CACHE_ENTRIES);
-
     // Notify completion
     self.clients.matchAll({ type: 'window' }).then((clients) => {
       clients.forEach((c) => {
@@ -140,7 +120,6 @@ async function precacheTiles() {
       });
     });
   } catch (err) {
-    console.warn('[SW] Tile pre-cache error:', err);
     // Non-fatal — tiles will be cached on-demand via fetch handler
   }
 }
@@ -197,28 +176,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests — always network first with offline fallback
+  // Navigation requests — always network first
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
-          }
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;
         })
-        .catch(() =>
-          caches.match(event.request)
-            .then((cached) => cached || caches.match('/'))
-            .then((fallback) => fallback || new Response(
-              '<!DOCTYPE html><html><body style="background:#141e2b;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Offline</h1><p>No network connection. Please reconnect and try again.</p></div></body></html>',
-              { status: 503, headers: { 'Content-Type': 'text/html' } }
-            ))
-        )
+        .catch(() => caches.match('/') || caches.match(event.request))
     );
     return;
   }
@@ -230,14 +197,11 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response.ok) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
-        .catch(() => caches.match(event.request).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' })))
+        .catch(() => caches.match(event.request).then((cached) => cached || new Response('', { status: 503 })))
     );
     return;
   }
@@ -246,18 +210,13 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
-      return fetch(event.request)
-        .then((response) => {
-          if (response.ok && url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/)) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
-          }
-          return response;
-        })
-        .catch(() => new Response('', { status: 503, statusText: 'Offline' }));
+      return fetch(event.request).then((response) => {
+        if (response.ok && url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/)) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      });
     })
   );
 });
@@ -275,12 +234,8 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Listen for messages from the client — verify source is a controlled WindowClient
+// Listen for messages from the client
 self.addEventListener('message', (event) => {
-  // Only accept messages from controlled clients (same-origin guarantee)
-  if (!event.source || (event.source.type !== undefined && event.source.type !== 'window')) {
-    return;
-  }
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

@@ -54,9 +54,7 @@ function deriveKey(): Buffer {
 
 function decrypt(stored: string): string {
   const key = deriveKey();
-  const parts = stored.split(':');
-  if (parts.length !== 3) throw new Error('Invalid encrypted format');
-  const [ivHex, authTagHex, ciphertext] = parts;
+  const [ivHex, authTagHex, ciphertext] = stored.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -283,7 +281,7 @@ function parseAndUpsert(records: JailBaseRecord[], sourceId: string, sourceName:
   let count = 0;
   const upsertTx = db.transaction(() => {
     for (const rec of records) {
-      const jailbaseId = rec.id || `${sourceId}-${crypto.createHash('md5').update((rec.name || '') + (rec.date || '')).digest('hex').slice(0, 12)}`;
+      const jailbaseId = rec.id || `${sourceId}-${crypto.createHash('md5').update(rec.name || '' + rec.date || '').digest('hex').slice(0, 12)}`;
       const { first, middle, last } = splitName(rec.name || '');
       const charges = rec.charges ? JSON.stringify(rec.charges) : '[]';
       const bookingDate = rec.book_date_formatted || rec.date || null;
@@ -349,7 +347,7 @@ export function crossLinkArrests(): { warrants: number; courtEvents: number; per
           insertLink.run(arrest.id, 'warrant', wm.id, 'name', 0.8, now);
           warrants++;
         }
-      } catch (e: any) { console.warn('[ArrestCrossLink] Warrant check failed:', e?.message); }
+      } catch { /* warrants table may not have data */ }
 
       // 2. Check Utah state warrants
       try {
@@ -363,7 +361,7 @@ export function crossLinkArrests(): { warrants: number; courtEvents: number; per
           insertLink.run(arrest.id, 'utah_warrant', um.id, 'name', 0.75, now);
           warrants++;
         }
-      } catch (e: any) { console.warn('[ArrestCrossLink] Utah warrant check failed:', e?.message); }
+      } catch { /* table may not exist */ }
 
       // 3. Check court events by defendant_name
       try {
@@ -377,7 +375,7 @@ export function crossLinkArrests(): { warrants: number; courtEvents: number; per
           insertLink.run(arrest.id, 'court_event', cm.id, 'name', 0.6, now);
           courtEvents++;
         }
-      } catch (e: any) { console.warn('[ArrestCrossLink] Court event check failed:', e?.message); }
+      } catch { /* court_events may not have data */ }
 
       // 4. Check known persons
       try {
@@ -391,7 +389,7 @@ export function crossLinkArrests(): { warrants: number; courtEvents: number; per
           insertLink.run(arrest.id, 'person', pm.id, 'name', 0.7, now);
           persons++;
         }
-      } catch (e: any) { console.warn('[ArrestCrossLink] Person check failed:', e?.message); }
+      } catch { /* persons may not have data */ }
     }
   });
   linkTx();
@@ -652,7 +650,7 @@ function enrichWithCrossLinks(row: any): any {
   // Parse charges JSON
   try {
     record.charges = JSON.parse(row.charges || '[]');
-  } catch (e: any) { console.warn('[Arrest] Charges parse failed:', e?.message); record.charges = []; }
+  } catch { record.charges = []; }
 
   // Get cross-link details
   const links = db.prepare(`
@@ -683,7 +681,7 @@ function enrichWithCrossLinks(row: any): any {
         `).get(link.linked_id) as any;
         if (p) record.cross_links.persons.push(p);
       }
-    } catch (e: any) { console.warn('[Arrest] Cross-link lookup failed:', e?.message); }
+    } catch { /* link target may have been deleted */ }
   }
 
   return record;

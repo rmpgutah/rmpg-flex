@@ -203,20 +203,15 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99998, touchAction: 'manipulation' }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Offline authorization PIN entry"
-      onClick={onClose}
+      style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99998 }}
     >
       <div
         className="w-full max-w-sm mx-4"
         style={{
-          background: '#0a0a0a',
-          border: '1px solid #222222',
+          background: '#141e2b',
+          border: '1px solid #1e3048',
           borderTop: '3px solid #d97706',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
@@ -224,12 +219,11 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
             <Lock className="w-4 h-4 text-amber-500" />
             <span className="text-sm font-bold text-white">Offline Authorization</span>
           </div>
-          <button type="button"
+          <button
             onClick={onClose}
-            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-white transition-colors"
-            style={{ touchAction: 'manipulation' }}
-            aria-label="Close">
-            <X className="w-5 h-5 sm:w-4 sm:h-4" />
+            className="p-1 text-rmpg-400 hover:text-white transition-colors"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -246,7 +240,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
             <div>
               <label
                 className="block text-[10px] font-bold uppercase mb-1 tracking-wide"
-                style={{ color: '#888888' }}
+                style={{ color: '#8a9aaa' }}
               >
                 <User className="w-3 h-3 inline-block mr-1 -mt-0.5" />
                 Employee
@@ -259,7 +253,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                   className="w-full h-9 pl-3 pr-8 text-sm text-white appearance-none cursor-pointer focus:outline-none"
                   style={{
                     background: '#0d0d0d',
-                    border: `1px solid ${!selectedUserId ? '#d97706' : '#2e2e2e'}`,
+                    border: `1px solid ${!selectedUserId ? '#d97706' : '#2a3e58'}`,
                     borderRadius: 0,
                   }}
                 >
@@ -274,7 +268,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 </select>
                 <ChevronDown
                   className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                  style={{ color: '#666666' }}
+                  style={{ color: '#5a6e80' }}
                 />
               </div>
               {selectedEmployee && (
@@ -284,7 +278,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                     style={{ background: '#4ade80' }}
                   />
                   <span className="text-[9px] uppercase tracking-wide" style={{ color: '#4ade80' }}>
-                    {(selectedEmployee.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} — Badge {selectedEmployee.badge_number || 'N/A'}
+                    {selectedEmployee.role} — Badge {selectedEmployee.badge_number || 'N/A'}
                   </span>
                 </div>
               )}
@@ -309,7 +303,6 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                   inputMode="numeric"
                   maxLength={1}
                   value={digit}
-                  aria-label={`PIN digit ${i + 1}`}
                   onChange={e => handleChange(i, e.target.value)}
                   onKeyDown={e => handleKeyDown(i, e)}
                   onPaste={i === 0 ? handlePaste : undefined}
@@ -317,7 +310,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                   className="w-11 h-13 text-center text-2xl font-mono font-bold text-white transition-colors focus:outline-none disabled:opacity-40"
                   style={{
                     background: '#0d0d0d',
-                    border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#2e2e2e'}`,
+                    border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#2a3e58'}`,
                     caretColor: '#d97706',
                   }}
                 />
@@ -344,7 +337,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
           )}
 
           {/* Submit button (mostly for accessibility — auto-submits on 6th digit) */}
-          <button type="button"
+          <button
             onClick={handleSubmit}
             disabled={submitting || (!isSelectedAdmin && digits.some(d => d === '')) || (!selectedUserId && employees.length > 0)}
             className="btn-primary w-full justify-center"

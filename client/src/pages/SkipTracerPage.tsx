@@ -1,30 +1,26 @@
 // ============================================================
-// RMPG Flex — Skip Tracker Page
+// RMPG Flex — Skip Tracer Page
 // Standalone skip-tracing search against the RapidAPI Skip
 // Tracing Working API. Supports search by name, address,
 // phone, email, and combined name+address queries.
 // All searches are logged server-side for audit trail.
 // ============================================================
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Search, User, MapPin, Phone, Mail, Loader2, ChevronRight,
   AlertCircle, ExternalLink, Copy, CheckCircle2, Hash,
   ChevronLeft, ChevronDown,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { useToast } from '../components/ToastProvider';
-import ExportButton from '../components/ExportButton';
-import { safeDateStr } from '../utils/dateUtils';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
 
 const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; color: string; description: string }[] = [
-  { id: 'name', label: 'By Name', icon: User, color: '#aaaaaa', description: 'Search by full name (first and last)' },
+  { id: 'name', label: 'By Name', icon: User, color: '#60a5fa', description: 'Search by full name (first and last)' },
   { id: 'address', label: 'By Address', icon: MapPin, color: '#34d399', description: 'Search by street address' },
   { id: 'nameaddress', label: 'Name + Address', icon: Search, color: '#a78bfa', description: 'Search by name and address combined' },
   { id: 'phone', label: 'By Phone', icon: Phone, color: '#f59e0b', description: 'Reverse phone lookup' },
@@ -34,34 +30,16 @@ const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; co
 // Clipboard copy helper
 function useCopyToClipboard() {
   const [copied, setCopied] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
   const copy = useCallback((text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopied(label);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCopied(null), 1500);
+    setTimeout(() => setCopied(null), 1500);
   }, []);
   return { copied, copy };
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function SkipTracerPage() {
   const isMobile = useIsMobile();
-  const { addToast } = useToast();
   const { copied, copy } = useCopyToClipboard();
 
   // Search state
@@ -118,59 +96,11 @@ export default function SkipTracerPage() {
       setResults(data);
     } catch (err: any) {
       setError(err?.message || 'Search failed');
-      addToast(err?.message || 'Skip trace search failed', 'error');
       setResults(null);
     } finally {
       setLoading(false);
     }
   }, [mode, nameQuery, addressQuery, phoneQuery, emailQuery, page]);
-
-  // ── Search History (localStorage) ──
-  const HISTORY_KEY = 'rmpg_skiptracer_history';
-  const [searchHistory, setSearchHistory] = useState<{ query: string; mode: SearchMode; date: string; count: number }[]>(() => {
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
-  });
-
-  const saveSearchToHistory = useCallback((query: string, searchMode: SearchMode, resultCount: number) => {
-    setSearchHistory(prev => {
-      const entry = { query, mode: searchMode, date: new Date().toISOString(), count: resultCount };
-      const updated = [entry, ...prev.filter(h => !(h.query === query && h.mode === searchMode))].slice(0, 20);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
-
-  const clearSearchHistory = useCallback(() => {
-    localStorage.removeItem(HISTORY_KEY);
-    setSearchHistory([]);
-  }, []);
-
-  const rerunSearch = useCallback((entry: { query: string; mode: SearchMode }) => {
-    setMode(entry.mode);
-    switch (entry.mode) {
-      case 'name': setNameQuery(entry.query); break;
-      case 'address': setAddressQuery(entry.query); break;
-      case 'phone': setPhoneQuery(entry.query); break;
-      case 'email': setEmailQuery(entry.query); break;
-      case 'nameaddress': setNameQuery(entry.query); break;
-    }
-    setPage(1);
-    // Trigger search after state updates
-    setTimeout(() => handleSearch(), 100);
-  }, [handleSearch]);
-
-  // Save to history after successful search
-  useEffect(() => {
-    if (results && !error) {
-      const query = mode === 'name' ? nameQuery : mode === 'address' ? addressQuery : mode === 'phone' ? phoneQuery : mode === 'email' ? emailQuery : nameQuery;
-      if (query.trim()) {
-        const count = results?.PeopleDetails?.length || results?.data?.length || 0;
-        saveSearchToHistory(query.trim(), mode, count);
-      }
-    }
-  }, [results]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useLiveSync('skiptracer', handleSearch);
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
@@ -184,7 +114,6 @@ export default function SkipTracerPage() {
       setPersonDetail(data);
     } catch (err: any) {
       setError(err?.message || 'Failed to get person details');
-      addToast('Failed to load person details', 'error');
     } finally {
       setLoadingDetail(false);
     }
@@ -196,9 +125,9 @@ export default function SkipTracerPage() {
 
   // ─── Render helpers ─────────────────────────────────────
   const renderCopyButton = (text: string, label: string) => (
-    <button type="button"
+    <button
       onClick={(e) => { e.stopPropagation(); copy(text, label); }}
-      className="ml-1 text-rmpg-600 hover:text-gray-400 transition-colors"
+      className="ml-1 text-rmpg-600 hover:text-blue-400 transition-colors"
       title={`Copy ${label}`}
     >
       {copied === label ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
@@ -217,27 +146,22 @@ export default function SkipTracerPage() {
     );
   };
 
-  // Set document title
-  useEffect(() => { document.title = 'Skip Tracker \u2014 RMPG Flex'; }, []);
-
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      <PanelTitleBar title="SKIP TRACKER" icon={Search}>
-        <ExportButton exportUrl="/api/skiptracer/export/csv" exportFilename="skip-traces.csv" />
-      </PanelTitleBar>
+      <PanelTitleBar title="SKIP TRACER" icon={Search} />
 
       <div className={`flex-1 overflow-hidden ${isMobile ? 'flex flex-col' : 'flex'}`}>
         {/* ─── Left Panel: Search Form ──────────────────────── */}
         <div
           className={`${isMobile ? 'flex-shrink-0' : 'w-80'} overflow-y-auto border-r border-rmpg-700`}
-          style={{ background: '#050505' }}
+          style={{ background: '#0d0d0d' }}
         >
           {/* Search Mode Selector */}
           <div className="p-3 space-y-3">
             <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Search Method</div>
             <div className="grid grid-cols-2 gap-1.5">
               {SEARCH_MODES.map(({ id, label, icon: Icon, color }) => (
-                <button type="button"
+                <button
                   key={id}
                   onClick={() => { setMode(id); setResults(null); setSelected(null); setPage(1); }}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border transition-all ${
@@ -264,7 +188,7 @@ export default function SkipTracerPage() {
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
                     placeholder="e.g. John Smith"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -281,7 +205,7 @@ export default function SkipTracerPage() {
                     value={addressQuery}
                     onChange={(e) => setAddressQuery(e.target.value)}
                     placeholder="e.g. 123 Main St, Anytown, UT"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus={mode === 'address'}
                   />
@@ -298,7 +222,7 @@ export default function SkipTracerPage() {
                     value={phoneQuery}
                     onChange={(e) => setPhoneQuery(e.target.value)}
                     placeholder="e.g. 801-555-1234"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -315,34 +239,34 @@ export default function SkipTracerPage() {
                     value={emailQuery}
                     onChange={(e) => setEmailQuery(e.target.value)}
                     placeholder="e.g. john@example.com"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
                 </div>
               )}
 
-              <button type="button"
+              <button
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 border border-brand-700 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 border border-blue-700"
               >
-                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3.5 h-3.5" />}
+                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                 Search
               </button>
             </div>
 
             {/* Error */}
             {error && (
-              <div className="flex items-center gap-2 px-3 py-2 text-xs bg-red-900/20 text-red-400 border border-red-700/50" role="alert">
+              <div className="flex items-center gap-2 px-3 py-2 text-xs bg-red-900/20 text-red-400 border border-red-700/50">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span className="flex-1">{error}</span>
+                {error}
               </div>
             )}
 
             {/* Result count */}
             {results && !loading && (
-              <div className="text-[10px] text-rmpg-400 pt-1 font-mono tabular-nums">
+              <div className="text-[10px] text-rmpg-400 pt-1">
                 {resultItems.length > 0
                   ? `Found ${totalRecords} result${totalRecords !== 1 ? 's' : ''} — Page ${results?.Page || page}`
                   : 'No results found'}
@@ -352,7 +276,7 @@ export default function SkipTracerPage() {
             {/* Pagination */}
             {results && resultItems.length >= 10 && (
               <div className="flex items-center gap-2 pt-1">
-                <button type="button"
+                <button
                   onClick={() => page > 1 && handlePageChange(page - 1)}
                   disabled={page <= 1 || loading}
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-white disabled:opacity-30"
@@ -360,7 +284,7 @@ export default function SkipTracerPage() {
                   <ChevronLeft className="w-3 h-3" /> Prev
                 </button>
                 <span className="text-[10px] text-rmpg-500 tabular-nums">Page {page}</span>
-                <button type="button"
+                <button
                   onClick={() => handlePageChange(page + 1)}
                   disabled={loading}
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-white disabled:opacity-30"
@@ -370,31 +294,6 @@ export default function SkipTracerPage() {
               </div>
             )}
           </div>
-
-          {/* ─── Recent Searches ────────────────────────────── */}
-          {searchHistory.length > 0 && (
-            <div className="border-t border-rmpg-700 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider">Recent Searches</span>
-                <button type="button" onClick={clearSearchHistory} className="text-[8px] text-rmpg-600 hover:text-red-400 transition-colors">Clear</button>
-              </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
-                {searchHistory.slice(0, 10).map((entry, i) => (
-                  <button type="button" key={i} onClick={() => rerunSearch(entry)}
-                    className="w-full text-left px-2 py-1.5 text-[10px] bg-surface-sunken border border-rmpg-800 hover:bg-rmpg-800/50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <span className="text-rmpg-200 font-mono truncate">{entry.query}</span>
-                      <span className="text-[8px] text-rmpg-600 ml-1 shrink-0">{entry.count} results</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
-                      <span className="uppercase">{entry.mode}</span>
-                      <span>{safeDateStr(entry.date)}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* ─── Result List ────────────────────────────────── */}
           {resultItems.length > 0 && (
@@ -408,18 +307,18 @@ export default function SkipTracerPage() {
                 const isActive = selected === person;
 
                 return (
-                  <button type="button"
+                  <button
                     key={idx}
                     onClick={() => setSelected(person)}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
-                        ? 'bg-gray-900/20 border-l-2 border-l-blue-500'
+                        ? 'bg-blue-900/20 border-l-2 border-l-blue-500'
                         : 'hover:bg-surface-base border-l-2 border-l-transparent'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
-                        <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <User className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-rmpg-100 truncate">{name}</div>
                           <div className="text-[9px] text-rmpg-500">
@@ -444,7 +343,7 @@ export default function SkipTracerPage() {
           {!selected && !personDetail && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Search className="w-12 h-12 text-rmpg-700 mb-3" />
-              <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Skip Tracker</p>
+              <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Skip Tracer</p>
               <p className="text-[10px] text-rmpg-600 mt-1 max-w-xs">
                 Search for individuals by name, address, phone, or email.
                 Select a result to view detailed information.
@@ -457,8 +356,8 @@ export default function SkipTracerPage() {
               {/* Person Header */}
               <div className="panel-beveled bg-surface-base p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-                    <User className="w-5 h-5 text-gray-400" />
+                  <div className="p-2.5 rounded" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
+                    <User className="w-5 h-5 text-blue-400" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h2 className="text-sm font-bold text-white tracking-wider uppercase truncate">
@@ -473,12 +372,12 @@ export default function SkipTracerPage() {
                     )}
                   </div>
                   {selected['Person ID'] && (
-                    <button type="button"
+                    <button
                       onClick={() => handleGetPersonDetails(selected['Person ID'])}
                       disabled={loadingDetail}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-700/20 text-brand-400 border border-brand-700/50 hover:bg-brand-700/40 disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-700/20 text-blue-400 border border-blue-700/50 hover:bg-blue-700/40 disabled:opacity-50"
                     >
-                      {loadingDetail ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <ExternalLink className="w-3 h-3" />}
+                      {loadingDetail ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
                       Full Details
                     </button>
                   )}
@@ -520,7 +419,7 @@ export default function SkipTracerPage() {
           {/* Person Detail (from ID lookup) */}
           {personDetail && (
             <div className="mt-4 panel-beveled bg-surface-base p-4 space-y-1 animate-fade-in">
-              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Extended Person Details</div>
+              <div className="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-2">Extended Person Details</div>
               {renderAllFields(personDetail, renderFieldRow)}
               <details className="mt-3">
                 <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300">Raw Response</summary>
@@ -584,9 +483,9 @@ function renderArraySection(
           {typeof item === 'string' ? (
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-rmpg-200 font-mono">{item}</span>
-              <button type="button"
+              <button
                 onClick={() => copy(item, `${title}-${idx}`)}
-                className="text-rmpg-600 hover:text-gray-400"
+                className="text-rmpg-600 hover:text-blue-400"
               >
                 {copied === `${title}-${idx}` ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
               </button>

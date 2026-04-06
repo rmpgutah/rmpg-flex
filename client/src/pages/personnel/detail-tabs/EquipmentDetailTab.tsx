@@ -2,12 +2,10 @@
 // RMPG Flex — Officer Equipment Detail Tab
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Package, Plus, Edit2, Trash2, Loader2, Box, LogIn, LogOut, Clock } from 'lucide-react';
+import React from 'react';
+import { Package, Plus, Edit2, Trash2, Loader2, Box } from 'lucide-react';
 import type { OfficerEquipment } from '../../../types';
-import { apiFetch } from '../../../hooks/useApi';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
-import { safeDateTimeStr } from '../../../utils/dateUtils';
 
 interface Props {
   equipment: OfficerEquipment[];
@@ -17,20 +15,6 @@ interface Props {
   loading: boolean;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function EquipmentDetailTab({
   equipment,
   onAdd,
@@ -38,48 +22,10 @@ export default function EquipmentDetailTab({
   onDelete,
   loading,
 }: Props) {
-  const [checkoutLogs, setCheckoutLogs] = useState<Record<string, any[]>>({});
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
-  const [checkingOut, setCheckingOut] = useState<string | null>(null);
-
-  const fetchCheckoutLog = useCallback(async (equipId: string) => {
-    try {
-      const logs = await apiFetch<any[]>(`/personnel/equipment/${equipId}/checkout-log`);
-      setCheckoutLogs(prev => ({ ...prev, [equipId]: logs }));
-    } catch { /* silent */ }
-  }, []);
-
-  const handleCheckout = async (equipId: string) => {
-    setCheckingOut(equipId);
-    try {
-      await apiFetch(`/personnel/equipment/${equipId}/checkout`, { method: 'POST', body: JSON.stringify({}) });
-      fetchCheckoutLog(equipId);
-    } catch { /* silent */ }
-    finally { setCheckingOut(null); }
-  };
-
-  const handleCheckin = async (equipId: string) => {
-    setCheckingOut(equipId);
-    try {
-      await apiFetch(`/personnel/equipment/${equipId}/checkin`, { method: 'POST', body: JSON.stringify({}) });
-      fetchCheckoutLog(equipId);
-    } catch { /* silent */ }
-    finally { setCheckingOut(null); }
-  };
-
-  const toggleLog = (equipId: string) => {
-    if (expandedLogId === equipId) {
-      setExpandedLogId(null);
-    } else {
-      setExpandedLogId(equipId);
-      if (!checkoutLogs[equipId]) fetchCheckoutLog(equipId);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
         <span className="ml-2 text-xs text-rmpg-400">Loading equipment...</span>
       </div>
     );
@@ -101,7 +47,7 @@ export default function EquipmentDetailTab({
   const ledClass = (status: string) => {
     switch (status) {
       case 'issued': return 'led-dot led-green';
-      case 'maintenance': return 'led-dot led-gray';
+      case 'maintenance': return 'led-dot led-blue';
       case 'damaged': return 'led-dot led-amber';
       case 'lost': return 'led-dot led-red';
       default: return 'led-dot led-off';
@@ -127,7 +73,7 @@ export default function EquipmentDetailTab({
           <Package className="w-3 h-3" />
           Equipment
         </h3>
-        <button type="button"
+        <button
           onClick={onAdd}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -170,14 +116,14 @@ export default function EquipmentDetailTab({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button"
+                  <button
                     onClick={() => onEdit(eq)}
                     className="toolbar-btn p-1"
                     title="Edit equipment"
                   >
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button type="button"
+                  <button
                     onClick={() => onDelete(eq.id)}
                     className="toolbar-btn toolbar-btn-danger p-1"
                     title="Delete equipment"
@@ -233,60 +179,13 @@ export default function EquipmentDetailTab({
                   </p>
                 </div>
               )}
-
-              {/* Checkout/Checkin Controls */}
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
-                {eq.status === 'issued' ? (
-                  <button type="button" onClick={() => handleCheckin(eq.id)} disabled={checkingOut === eq.id}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-gray-900/30 text-gray-300 border border-gray-700/40 hover:bg-gray-900/50">
-                    <LogIn className="w-3 h-3" /> {checkingOut === eq.id ? '...' : 'Check In'}
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => handleCheckout(eq.id)} disabled={checkingOut === eq.id}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-green-900/30 text-green-300 border border-green-700/40 hover:bg-green-900/50">
-                    <LogOut className="w-3 h-3" /> {checkingOut === eq.id ? '...' : 'Check Out'}
-                  </button>
-                )}
-                <button type="button" onClick={() => toggleLog(eq.id)}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-rmpg-400 hover:text-rmpg-200">
-                  <Clock className="w-3 h-3" /> History
-                </button>
-                {eq.status === 'issued' && (
-                  <span className="ml-auto text-[9px] font-bold text-green-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Currently checked out
-                  </span>
-                )}
-              </div>
-
-              {/* Checkout Log */}
-              {expandedLogId === eq.id && (
-                <div className="mt-2 space-y-1 max-h-[150px] overflow-y-auto">
-                  {(checkoutLogs[eq.id] || []).length === 0 ? (
-                    <div className="text-[10px] text-rmpg-500 text-center py-2">No checkout history</div>
-                  ) : (
-                    (checkoutLogs[eq.id] || []).map((log: any) => (
-                      <div key={log.id} className="flex items-center gap-2 text-[10px] px-2 py-1 bg-surface-sunken border border-rmpg-700/30">
-                        <span className={log.action === 'checkout' ? 'text-green-400' : 'text-gray-400'}>
-                          {log.action === 'checkout' ? 'OUT' : 'IN'}
-                        </span>
-                        <span className="text-rmpg-400">{safeDateTimeStr(log.created_at)}</span>
-                        <span className="text-rmpg-300">by {log.checked_by_name || 'Unknown'}</span>
-                        {log.notes && <span className="text-rmpg-500 italic">{log.notes}</span>}
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>
       ) : (
-        <div className="panel-beveled p-10 text-center bg-surface-base" role="status">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
-            <Box className="w-7 h-7 text-rmpg-600" />
-          </div>
-          <p className="text-sm text-rmpg-400 font-medium">No equipment issued</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Equipment" to issue gear</p>
+        <div className="panel-beveled p-8 text-center bg-surface-base">
+          <Box className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+          <p className="text-xs text-rmpg-400">No equipment issued</p>
         </div>
       )}
     </div>

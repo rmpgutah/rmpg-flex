@@ -32,11 +32,10 @@ function formatTime(dateStr: string): string {
 }
 
 function calcHours(entry: TimeEntry): string {
-  if (entry.total_hours != null && Number.isFinite(Number(entry.total_hours))) return Number(entry.total_hours).toFixed(2);
+  if (entry.total_hours != null) return entry.total_hours.toFixed(2);
   if (!entry.clock_in) return '-';
   const start = new Date(entry.clock_in).getTime();
   const end = entry.clock_out ? new Date(entry.clock_out).getTime() : Date.now();
-  if (isNaN(start) || isNaN(end)) return '-';
   const hrs = (end - start) / (1000 * 60 * 60);
   return hrs.toFixed(2);
 }
@@ -47,20 +46,6 @@ function leftBarColor(status: string): string {
   if (status === 'edited') return 'border-l-blue-500';
   return 'border-l-rmpg-500';
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function TimeLogDetailTab({
   timeEntries, officerId, isClockedIn, isOnBreak,
@@ -91,22 +76,22 @@ export default function TimeLogDetailTab({
           {isActive ? (
             <>
               {isClockedIn && (
-                <button type="button"
+                <button
                   onClick={() => onStartBreak(officerId)}
-                  className="toolbar-btn flex items-center gap-1.5 text-gray-400 border-gray-700/50 hover:bg-gray-900/40"
+                  className="toolbar-btn flex items-center gap-1.5 text-blue-400 border-blue-700/50 hover:bg-blue-900/40"
                 >
                   <Coffee className="w-3 h-3" /> Start Break
                 </button>
               )}
               {isOnBreak && (
-                <button type="button"
+                <button
                   onClick={() => onEndBreak(officerId)}
                   className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
                 >
                   <Zap className="w-3 h-3" /> End Break
                 </button>
               )}
-              <button type="button"
+              <button
                 onClick={() => onClockOut(officerId)}
                 className="toolbar-btn toolbar-btn-danger flex items-center gap-1.5"
               >
@@ -114,7 +99,7 @@ export default function TimeLogDetailTab({
               </button>
             </>
           ) : (
-            <button type="button"
+            <button
               onClick={() => onClockIn(officerId)}
               className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
             >
@@ -202,11 +187,11 @@ export default function TimeLogDetailTab({
                       {entry.break_minutes > 0 && (
                         <span className="text-[9px] text-amber-400 font-mono">
                           <Coffee className="w-2.5 h-2.5 inline mr-0.5" />
-                          {(Number(entry.break_minutes) || 0).toFixed(0)}min break
+                          {entry.break_minutes.toFixed(0)}min break
                         </span>
                       )}
                       {entry.status === 'edited' && (
-                        <span className="text-[8px] px-1 py-0.5 bg-gray-900/40 text-gray-400 border border-gray-700/50 font-bold uppercase">
+                        <span className="text-[8px] px-1 py-0.5 bg-blue-900/40 text-blue-400 border border-blue-700/50 font-bold uppercase">
                           Edited
                         </span>
                       )}
@@ -218,14 +203,14 @@ export default function TimeLogDetailTab({
                     <div className="text-right">
                       <p className="text-sm font-mono font-bold text-rmpg-100">{hours}h</p>
                     </div>
-                    <button type="button"
+                    <button
                       onClick={() => onEditTimeEntry(entry)}
                       className="toolbar-btn p-1"
                       title="Edit time entry"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button type="button"
+                    <button
                       onClick={() => setDeleteTarget(entry.id)}
                       className="toolbar-btn toolbar-btn-danger p-1"
                       title="Delete time entry"

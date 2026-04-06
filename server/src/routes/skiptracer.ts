@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracker — RapidAPI Skip Tracing Integration
+// Skip Tracer — RapidAPI Skip Tracing Integration
 // ============================================================
 // Proxy routes for the Skip Tracing Working API on RapidAPI.
 // Credentials are stored AES-256-GCM encrypted in system_config,
@@ -20,23 +20,13 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate } from '../utils/websocket';
-import { rateLimit } from '../middleware/rateLimiter';
 import config from '../config';
 
 const router = Router();
 router.use(authenticateToken);
-
-// Rate limit all skip tracer searches: 20 searches per 5-minute window per user
-const skipSearchRateLimit = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  maxRequests: 20,
-  keyGenerator: (req) => `skiptracer:${req.user?.userId || req.ip}`,
-  message: 'Skip tracer search rate limit exceeded. Please wait before searching again.',
-});
 
 // ============================================================
 // Encryption helpers (same pattern as microbilt.ts)
@@ -149,7 +139,7 @@ function ensureTable(): void {
 
 async function rapidApiFetch(path: string, params: Record<string, string>): Promise<any> {
   const apiKey = getApiKey();
-  if (!apiKey) throw new Error('Skip Tracker API key not configured');
+  if (!apiKey) throw new Error('Skip Tracer API key not configured');
 
   const qs = new URLSearchParams(params).toString();
   const url = `${RAPIDAPI_BASE}${path}${qs ? '?' + qs : ''}`;
@@ -160,12 +150,11 @@ async function rapidApiFetch(path: string, params: Record<string, string>): Prom
       'x-rapidapi-key': apiKey,
       'x-rapidapi-host': RAPIDAPI_HOST,
     },
-    signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Skip Tracker API error (${res.status}): ${text.slice(0, 500)}`);
+    throw new Error(`Skip Tracer API error (${res.status}): ${text.slice(0, 500)}`);
   }
 
   return res.json();
@@ -193,7 +182,7 @@ function persistSearch(searchType: string, queryParams: Record<string, string>, 
       localNow(),
     );
   } catch (err) {
-    console.error('[Skip Tracker] Failed to persist search:', err);
+    console.error('[SkipTracer] Failed to persist search:', err);
   }
 }
 
@@ -203,17 +192,13 @@ function persistSearch(searchType: string, queryParams: Record<string, string>, 
 
 // ── Status ──────────────────────────────────────────────────
 router.get('/status', (_req: Request, res: Response) => {
-  try {
-    const apiKey = getApiKey();
-    const enabled = getConfigValue(CONFIG_KEYS.enabled);
-    res.json({
-      configured: !!apiKey,
-      enabled: enabled === '1',
-      host: RAPIDAPI_HOST,
-    });
-  } catch {
-    res.json({ configured: false, enabled: false, host: RAPIDAPI_HOST });
-  }
+  const apiKey = getApiKey();
+  const enabled = getConfigValue(CONFIG_KEYS.enabled);
+  res.json({
+    configured: !!apiKey,
+    enabled: enabled === '1',
+    host: RAPIDAPI_HOST,
+  });
 });
 
 // ── Save config (admin only) ────────────────────────────────
@@ -236,13 +221,13 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     // Always production for RapidAPI
     setConfigValue(CONFIG_KEYS.environment, 'production');
 
-    auditLog(req, 'skiptracer_config_updated', 'integration', 0, 'Skip Tracker configuration updated');
+    auditLog(req, 'skiptracer_config_updated', 'integration', 0, 'Skip Tracer configuration updated');
     broadcastAdminUpdate({ type: 'skiptracer_config_updated' });
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -251,13 +236,13 @@ router.delete('/config', requireRole('admin'), (req: Request, res: Response) => 
   try {
     Object.values(CONFIG_KEYS).forEach(deleteConfigValue);
 
-    auditLog(req, 'skiptracer_config_cleared', 'integration', 0, 'Skip Tracker configuration cleared');
+    auditLog(req, 'skiptracer_config_cleared', 'integration', 0, 'Skip Tracer configuration cleared');
     broadcastAdminUpdate({ type: 'skiptracer_config_cleared' });
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -266,7 +251,7 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
   try {
     const apiKey = getApiKey();
     if (!apiKey) {
-      return res.status(400).json({ success: false, error: 'API key not configured' });
+      return res.json({ success: false, error: 'API key not configured' });
     }
 
     // Quick test: search by name with a known test query
@@ -276,7 +261,6 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
         'x-rapidapi-key': apiKey,
         'x-rapidapi-host': RAPIDAPI_HOST,
       },
-      signal: AbortSignal.timeout(15000),
     });
 
     if (testRes.ok) {
@@ -289,143 +273,108 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     } else {
       const text = await testRes.text().catch(() => '');
-      res.status(502).json({
+      res.json({
         success: false,
         error: `API returned ${testRes.status}: ${text.slice(0, 200)}`,
       });
     }
   } catch (err: any) {
-    console.error('[Skip Tracker] Connection test error:', err?.message || err);
-    res.status(502).json({ success: false, error: 'Failed to connect to Skip Tracker API' });
+    res.json({ success: false, error: err.message });
   }
 });
 
 // ── Search by Name ──────────────────────────────────────────
-router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byname', async (req: Request, res: Response) => {
   try {
     const { name, page } = req.query;
-    if (!name) return res.status(400).json({ error: 'name parameter required', code: 'NAME_PARAMETER_REQUIRED' });
-    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
+    if (!name) return res.status(400).json({ error: 'name parameter required' });
 
     const params: Record<string, string> = { name: String(name) };
-    if (page) {
-      const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
-      params.page = String(p);
-    }
+    if (page) params.page = String(page);
 
     const data = await rapidApiFetch('/search/byname', params);
     persistSearch('byname', params, data, req.user!.userId);
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name: ${name}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Search by Address ───────────────────────────────────────
-router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byaddress', async (req: Request, res: Response) => {
   try {
     const { address, page } = req.query;
-    if (!address) return res.status(400).json({ error: 'address parameter required', code: 'ADDRESS_PARAMETER_REQUIRED' });
-    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)', code: 'ADDRESS_TOO_LONG_MAX' });
+    if (!address) return res.status(400).json({ error: 'address parameter required' });
 
     const params: Record<string, string> = { address: String(address) };
-    if (page) {
-      const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
-      params.page = String(p);
-    }
+    if (page) params.page = String(page);
 
     const data = await rapidApiFetch('/search/byaddress', params);
     persistSearch('byaddress', params, data, req.user!.userId);
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by address: ${address}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Search by Name and Address ──────────────────────────────
-router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/bynameaddress', async (req: Request, res: Response) => {
   try {
     const { name, address, page } = req.query;
-    if (!name || !address) return res.status(400).json({ error: 'name and address parameters required', code: 'NAME_AND_ADDRESS_PARAMETERS' });
-    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
-    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)', code: 'ADDRESS_TOO_LONG_MAX' });
+    if (!name || !address) return res.status(400).json({ error: 'name and address parameters required' });
 
     const params: Record<string, string> = { name: String(name), address: String(address) };
-    if (page) {
-      const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
-      params.page = String(p);
-    }
+    if (page) params.page = String(page);
 
     const data = await rapidApiFetch('/search/bynameaddress', params);
     persistSearch('bynameaddress', params, data, req.user!.userId);
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name+address: ${name}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Search by Phone ─────────────────────────────────────────
-router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byphone', async (req: Request, res: Response) => {
   try {
     const { phone, page } = req.query;
-    if (!phone) return res.status(400).json({ error: 'phone parameter required', code: 'PHONE_PARAMETER_REQUIRED' });
-    // Validate phone format (digits, spaces, dashes, parens, plus)
-    const phoneStr = String(phone);
-    if (phoneStr.length > 30 || !/^[0-9()\-+\s.]+$/.test(phoneStr)) {
-      return res.status(400).json({ error: 'Invalid phone format', code: 'INVALID_PHONE_FORMAT' });
-    }
+    if (!phone) return res.status(400).json({ error: 'phone parameter required' });
 
-    const params: Record<string, string> = { phone: phoneStr };
-    if (page) {
-      const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
-      params.page = String(p);
-    }
+    const params: Record<string, string> = { phone: String(phone) };
+    if (page) params.page = String(page);
 
     const data = await rapidApiFetch('/search/byphone', params);
     persistSearch('byphone', params, data, req.user!.userId);
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by phone: ${phone}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Search by Email ─────────────────────────────────────────
-router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byemail', async (req: Request, res: Response) => {
   try {
     const { email, page } = req.query;
-    if (!email) return res.status(400).json({ error: 'email parameter required', code: 'EMAIL_PARAMETER_REQUIRED' });
-    // Basic email format validation
-    const emailStr = String(email);
-    if (emailStr.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
-      return res.status(400).json({ error: 'Invalid email format', code: 'INVALID_EMAIL_FORMAT' });
-    }
+    if (!email) return res.status(400).json({ error: 'email parameter required' });
 
-    const params: Record<string, string> = { email: emailStr };
-    if (page) {
-      const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
-      params.page = String(p);
-    }
+    const params: Record<string, string> = { email: String(email) };
+    if (page) params.page = String(page);
 
     const data = await rapidApiFetch('/search/byemail', params);
     persistSearch('byemail', params, data, req.user!.userId);
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by email: ${email}`);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -433,14 +382,14 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
 router.get('/person/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    if (!id || !id.trim()) return res.status(400).json({ error: 'id parameter required', code: 'ID_PARAMETER_REQUIRED' });
+    if (!id) return res.status(400).json({ error: 'id parameter required' });
 
     const data = await rapidApiFetch('/search/detailsbyID', { id });
     persistSearch('personDetailsByID', { id }, data, req.user!.userId);
     res.json(data);
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -449,9 +398,8 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
-    const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
-    const rawOffset = Number(req.query.offset) || 0;
-    const offset = Math.max(0, Math.min(rawOffset, 100000));
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
 
     const rows = db.prepare(`
       SELECT s.*, u.full_name AS searched_by_name
@@ -465,8 +413,8 @@ router.get('/history', async (req: Request, res: Response) => {
 
     res.json({ searches: rows, total, limit, offset });
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -491,43 +439,10 @@ router.get('/stats', async (_req: Request, res: Response) => {
       ORDER BY count DESC
     `).all();
 
-    res.set('Cache-Control', 'private, max-age=60');
     res.json({ ...stats, byType });
   } catch (err: any) {
-    console.error('Skip Tracker error:', err.message);
-    res.status(500).json({ error: 'Skip Tracker operation failed', code: 'SKIP_TRACER_ERROR' });
-  }
-});
-
-// ── Skip Tracker CSV Export ────────────────────────────────────────────────────
-router.get('/export/csv', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT s.search_type, s.query_params, s.result_count,
-             u.full_name as searched_by_name, s.created_at
-      FROM skip_tracer_searches s
-      LEFT JOIN users u ON s.searched_by = u.id
-      ORDER BY s.created_at DESC
-      LIMIT 10000
-    `).all() as any[];
-    const headers = ['Search Type', 'Query', 'Result Count', 'Searched By', 'Date'];
-    const csv = [
-      headers.join(','),
-      ...rows.map((r: any) => [
-        r.search_type,
-        (r.query_params || '').replace(/"/g, '""'),
-        r.result_count,
-        (r.searched_by_name || '').replace(/"/g, '""'),
-        r.created_at
-      ].map(v => `"${v || ''}"`).join(','))
-    ].join('\n');
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="skip_traces_export_${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.send(csv);
-  } catch (error: any) {
-    console.error('Skip tracer CSV export error:', error);
-    res.status(500).json({ error: 'Failed to export skip traces', code: 'SKIPTRACER_EXPORT_ERROR' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -33,11 +33,8 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           'Content-Type': 'application/json',
         },
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Setup failed');
-      }
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Setup failed');
       setQrDataUri(data.qrCodeDataUri);
       setManualKey(data.manualKey);
       setStep('scan');
@@ -60,11 +57,8 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         },
         body: JSON.stringify({ token: verifyCode }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Verification failed');
-      }
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Verification failed');
       setBackupCodes(data.backupCodes);
       setStep('backup');
     } catch (err: any) {
@@ -99,8 +93,8 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             className="flex-1 h-1 transition-colors duration-300"
             style={{
               background: ['intro', 'scan', 'verify', 'backup'].indexOf(step) >= i
-                ? '#888888'
-                : '#222222',
+                ? '#1a5a9e'
+                : '#1e3048',
             }}
           />
         ))}
@@ -110,20 +104,20 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {step === 'intro' && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 panel-inset" style={{ background: 'rgba(136,136,136,0.1)' }}>
-              <Shield className="w-5 h-5" style={{ color: '#888888' }} />
+            <div className="p-2 panel-inset" style={{ background: 'rgba(26,90,158,0.1)' }}>
+              <Shield className="w-5 h-5" style={{ color: '#1a5a9e' }} />
             </div>
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e0e0e0' }}>
+              <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e5e7eb' }}>
                 Enable Two-Factor Authentication
               </h3>
-              <p className="text-[10px] mt-0.5" style={{ color: '#666666' }}>
+              <p className="text-[10px] mt-0.5" style={{ color: '#6b7280' }}>
                 Add an extra layer of security to your account
               </p>
             </div>
           </div>
 
-          <div className="space-y-2 text-[10px]" style={{ color: '#888888' }}>
+          <div className="space-y-2 text-[10px]" style={{ color: '#8a9aaa' }}>
             <p>You will need an authenticator app such as:</p>
             <ul className="space-y-1 pl-4">
               <li className="flex items-center gap-2">
@@ -131,7 +125,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
                 Google Authenticator
               </li>
               <li className="flex items-center gap-2">
-                <span className="led-dot led-gray" style={{ width: 4, height: 4 }} />
+                <span className="led-dot led-blue" style={{ width: 4, height: 4 }} />
                 Microsoft Authenticator
               </li>
               <li className="flex items-center gap-2">
@@ -143,11 +137,11 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
 
           <div className="flex gap-2 pt-2">
             {onCancel && (
-              <button type="button" onClick={onCancel} className="toolbar-btn flex-1 h-8 text-[10px] uppercase tracking-wider">
+              <button onClick={onCancel} className="toolbar-btn flex-1 h-8 text-[10px] uppercase tracking-wider">
                 Cancel
               </button>
             )}
-            <button type="button"
+            <button
               onClick={startSetup}
               disabled={loading}
               className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
@@ -162,7 +156,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {/* Step: Scan QR */}
       {step === 'scan' && (
         <div className="space-y-4">
-          <p className="text-[10px]" style={{ color: '#888888' }}>
+          <p className="text-[10px]" style={{ color: '#8a9aaa' }}>
             Scan this QR code with your authenticator app:
           </p>
 
@@ -174,10 +168,10 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           </div>
 
           {/* Manual key toggle */}
-          <button type="button"
+          <button
             onClick={() => setShowManual(!showManual)}
             className="text-[10px] flex items-center gap-1 mx-auto"
-            style={{ color: '#888888' }}
+            style={{ color: '#4a90c4' }}
           >
             <Keyboard className="w-3 h-3" />
             {showManual ? 'Hide manual key' : "Can't scan? Enter key manually"}
@@ -186,18 +180,18 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           {showManual && (
             <div
               className="flex items-center gap-2 p-2 font-mono text-xs"
-              style={{ background: '#050505', border: '1px solid #222222' }}
+              style={{ background: '#0d1520', border: '1px solid #1e3048' }}
             >
-              <span className="flex-1 tracking-widest text-center" style={{ color: '#e0e0e0' }}>
+              <span className="flex-1 tracking-widest text-center" style={{ color: '#e5e7eb' }}>
                 {manualKey}
               </span>
-              <button type="button" onClick={copyManualKey} className="toolbar-btn p-1">
+              <button onClick={copyManualKey} className="toolbar-btn p-1">
                 {keyCopied ? <Check className="w-3 h-3" style={{ color: '#22c55e' }} /> : <Copy className="w-3 h-3" />}
               </button>
             </div>
           )}
 
-          <button type="button"
+          <button
             onClick={() => setStep('verify')}
             className="toolbar-btn toolbar-btn-primary w-full h-8 text-white text-[10px] font-bold uppercase tracking-wider"
           >
@@ -209,7 +203,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {/* Step: Verify */}
       {step === 'verify' && (
         <div className="space-y-4">
-          <p className="text-[10px]" style={{ color: '#888888' }}>
+          <p className="text-[10px]" style={{ color: '#8a9aaa' }}>
             Enter the 6-digit code from your authenticator app to confirm setup:
           </p>
 
@@ -235,13 +229,13 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           )}
 
           <div className="flex gap-2">
-            <button type="button"
+            <button
               onClick={() => { setStep('scan'); setError(''); }}
               className="toolbar-btn flex-1 h-8 text-[10px] uppercase tracking-wider"
             >
               Back
             </button>
-            <button type="button"
+            <button
               onClick={confirmSetup}
               disabled={verifyCode.length !== 6 || loading}
               className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
@@ -280,10 +274,10 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               <Shield className="w-8 h-8" style={{ color: '#22c55e' }} />
             </div>
           </div>
-          <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e0e0e0' }}>
+          <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e5e7eb' }}>
             Setup Complete
           </h3>
-          <p className="text-[10px]" style={{ color: '#666666' }}>
+          <p className="text-[10px]" style={{ color: '#6b7280' }}>
             Your account is now protected with two-factor authentication.
           </p>
         </div>

@@ -151,7 +151,6 @@ export default function PropertyFormModal({
           name="name"
           type="text"
           required
-          autoFocus
           className="input-dark w-full text-xs"
           placeholder="e.g. Sunrise Office Park"
           value={form.name}
@@ -211,9 +210,6 @@ export default function PropertyFormModal({
             className="input-dark w-full text-xs"
             value={form.zip}
             onChange={handleChange}
-            pattern="\d{5}(-\d{4})?"
-            maxLength={10}
-            placeholder="e.g. 84101"
           />
         </div>
       </div>
@@ -311,9 +307,7 @@ export default function PropertyFormModal({
           placeholder="Standing instructions for officers at this property"
           value={form.post_orders}
           onChange={handleChange}
-          maxLength={5000}
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.post_orders.length}/5000</div>
       </div>
 
       {/* Row 8: Hazard Notes */}
@@ -326,9 +320,7 @@ export default function PropertyFormModal({
           placeholder="Known hazards, safety concerns, or officer caution notes"
           value={form.hazard_notes}
           onChange={handleChange}
-          maxLength={3000}
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.hazard_notes.length}/3000</div>
       </div>
 
       {/* Row 9: Access Instructions */}

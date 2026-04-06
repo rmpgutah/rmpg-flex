@@ -18,25 +18,11 @@ interface Props {
   loading: boolean;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function DashCameraDetailTab({ events, deviceMapping, loading }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
         <span className="ml-2 text-xs text-rmpg-400">Loading dash camera data...</span>
       </div>
     );
@@ -55,7 +41,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
     return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const eventLabel = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  const eventLabel = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   // Stats
   const hardBrakes = events.filter(e => e.event_type === 'hard_brake').length;

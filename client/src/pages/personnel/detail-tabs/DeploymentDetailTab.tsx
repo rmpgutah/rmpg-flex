@@ -46,7 +46,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
         <span className="ml-2 text-xs text-rmpg-400">Loading deployment history...</span>
       </div>
     );
@@ -60,7 +60,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
           <MapPinned className="w-3.5 h-3.5 text-brand-400" />
           Deployment History
         </h3>
-        <button type="button"
+        <button
           onClick={() => onAddDeployment(officerId)}
           className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
         >
@@ -164,12 +164,12 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
       {/* Empty State */}
       {deployments.length === 0 && (
-        <div className="text-center py-16" role="status">
-          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
-            <MapPinned className="w-8 h-8 text-rmpg-600" />
+        <div className="text-center py-12">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+            <MapPinned className="w-7 h-7 text-rmpg-600" />
           </div>
-          <p className="text-sm text-rmpg-400 font-medium">No deployment history for this officer</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Deployment" to assign a deployment</p>
+          <p className="text-xs text-rmpg-500">No deployment history for this officer.</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Add Deployment&quot; to assign a deployment.</p>
         </div>
       )}
     </div>

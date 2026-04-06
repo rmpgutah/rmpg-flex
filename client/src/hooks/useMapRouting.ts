@@ -35,7 +35,6 @@ function haversineMeters(
   lat1: number, lng1: number,
   lat2: number, lng2: number,
 ): number {
-  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const R = 6371000; // Earth radius in meters
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -56,7 +55,7 @@ const REROUTE_THROTTLE_MS = 30_000;
 const REROUTE_DISTANCE_THRESHOLD = 100;
 
 /** Route polyline color (matches unit blue) */
-const ROUTE_COLOR = '#888888';
+const ROUTE_COLOR = '#3b82f6';
 
 // ─── Hook ───────────────────────────────────────────────────
 
@@ -158,8 +157,8 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
         setActiveRoute(info);
         return info;
-      } catch (err) {
-        console.warn('[useMapRouting] Directions query failed:', err);
+      } catch {
+        // Silent — don't break the UI if directions fail
         return null;
       } finally {
         setRouteLoading(false);

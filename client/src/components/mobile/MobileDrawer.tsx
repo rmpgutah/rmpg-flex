@@ -41,18 +41,6 @@ import {
   ClipboardList,
   Calendar,
   ShieldBan,
-  UserCog,
-  Video,
-  Camera,
-  IdCard,
-  Crosshair,
-  UserSearch,
-  ShieldAlert,
-  Microscope,
-  BookOpen,
-  Scale,
-  Contact,
-  Siren,
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -102,8 +90,6 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/map', icon: Map, label: 'Map' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
-      { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
-      { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
     ],
   },
   {
@@ -113,38 +99,31 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/records', icon: Database, label: 'Records' },
       { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
       { path: '/criminal-history', icon: Search, label: 'Criminal History' },
-      { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
       { path: '/evidence', icon: Package, label: 'Evidence / Property' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
-      { path: '/dl-search', icon: IdCard, label: 'DL Search' },
-      { path: '/microbilt', icon: Crosshair, label: 'MicroBilt' },
     ],
   },
   {
     label: 'Enforcement',
     items: [
-      { path: '/serve', icon: Briefcase, label: 'Process Server' },
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-      { path: '/sex-offender-registry', icon: ShieldAlert, label: 'Sex Offender Registry' },
     ],
   },
   {
     label: 'Personnel',
     items: [
       { path: '/personnel', icon: Users, label: 'Personnel' },
-      { path: '/hr', icon: UserCog, label: 'HR Console' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
     ],
   },
   {
     label: 'Communications',
     items: [
-      { path: '/email', icon: MessageSquare, label: 'Email' },
       { path: '/communications', icon: MessageSquare, label: 'Comms' },
       { path: '/radio', icon: Radio, label: 'Radio' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
@@ -157,12 +136,6 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
-      { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
-      { path: '/forensics', icon: Search, label: 'Forensics' },
-      { path: '/training', icon: ClipboardCheck, label: 'Training' },
-      { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
-      { path: '/statute-analytics', icon: Scale, label: 'Statute Analytics' },
-      { path: '/crm', icon: Contact, label: 'CRM' },
     ],
   },
   {
@@ -178,9 +151,7 @@ const NAV_GROUPS: NavGroup[] = [
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar', '/hr',
-  '/body-cameras', '/dash-cameras', '/dl-search', '/skip-tracer',
-  '/arrest-records', '/forensic-lab', '/forensics', '/training-docs',
+  '/reports/custom', '/crime-analysis', '/dar',
 ]);
 
 // ─── Component ───────────────────────────────────────────────
@@ -215,15 +186,6 @@ export default function MobileDrawer({
       return () => { document.body.style.overflow = ''; };
     }
   }, [isOpen]);
-
-  // Android hardware back button — close drawer on back press
-  useEffect(() => {
-    if (!isOpen) return;
-    const handlePopState = () => { onClose(); };
-    window.history.pushState({ mobileDrawer: true }, '');
-    window.addEventListener('popstate', handlePopState);
-    return () => { window.removeEventListener('popstate', handlePopState); };
-  }, [isOpen, onClose]);
 
   // ─── Swipe-to-close ────────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -275,14 +237,13 @@ export default function MobileDrawer({
       <div
         className="absolute inset-0 mobile-drawer-backdrop open"
         onClick={onClose}
-        style={{ touchAction: 'manipulation' }}
       />
 
       {/* Drawer Panel */}
       <div
         ref={drawerRef}
         className="absolute top-0 left-0 bottom-0 mobile-drawer open"
-        style={{ width: 'min(85vw, 320px)', willChange: 'transform' }}
+        style={{ width: 'min(85vw, 320px)' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -290,15 +251,15 @@ export default function MobileDrawer({
         {/* Blue accent */}
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: 'linear-gradient(90deg, #888888, #1a1a1a)' }}
+          style={{ background: 'linear-gradient(90deg, #1a5a9e, #0e3359)' }}
         />
 
         {/* ── User Header ── */}
         <div
           className="flex items-center gap-3 px-4 py-4"
           style={{
-            background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
-            borderBottom: '1px solid #222222',
+            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+            borderBottom: '1px solid #1e3048',
           }}
         >
           {/* Avatar */}
@@ -307,15 +268,15 @@ export default function MobileDrawer({
               src={user.profile_image}
               alt={user.first_name}
               className="w-11 h-11 object-cover flex-shrink-0"
-              style={{ border: '2px solid #383838' }}
+              style={{ border: '2px solid #3a5070' }}
             />
           ) : (
             <div
               className="w-11 h-11 flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #333333, #888888)',
+                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
                 color: '#fff',
-                border: '2px solid #aaaaaa',
+                border: '2px solid #3b8ad4',
               }}
             >
               {initials}
@@ -329,28 +290,27 @@ export default function MobileDrawer({
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               {user?.badge_number && (
-                <span className="text-[11px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-300 border border-rmpg-700">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-300 border border-rmpg-700">
                   {user.badge_number}
                 </span>
               )}
-              <span className="text-[11px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
                 {toDisplayLabel(user?.role || '')}
               </span>
             </div>
           </div>
 
           {/* Close button */}
-          <button type="button"
+          <button
             onClick={onClose}
-            className="flex items-center justify-center w-11 h-11 text-rmpg-400"
-            aria-label="Close navigation drawer"
+            className="flex items-center justify-center w-8 h-8 text-rmpg-400"
           >
             <X style={{ width: 18, height: 18 }} />
           </button>
         </div>
 
         {/* ── Navigation Groups ── */}
-        <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100dvh - 200px)' }}>
+        <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100vh - 200px)' }}>
           {NAV_GROUPS.map((group) => {
             const isClientViewer = user?.role === 'client_viewer';
             const visibleItems = group.items.filter((item) => {
@@ -364,8 +324,8 @@ export default function MobileDrawer({
               <div key={group.label} className="mb-1">
                 {/* Group label */}
                 <div
-                  className="px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] font-mono"
-                  style={{ color: '#666666' }}
+                  className="px-4 py-2 text-[9px] font-bold uppercase tracking-[0.12em] font-mono"
+                  style={{ color: '#5a6e80' }}
                 >
                   {group.label}
                 </div>
@@ -379,18 +339,18 @@ export default function MobileDrawer({
                       : location.pathname.startsWith(item.path);
 
                   return (
-                    <button type="button"
+                    <button
                       key={item.path}
                       onClick={() => handleNav(item.path)}
                       className="w-full flex items-center gap-3 px-4 text-left transition-colors"
                       style={{
                         minHeight: 48,
                         background: isActive
-                          ? 'rgba(136, 136, 136, 0.15)'
+                          ? 'rgba(26, 90, 158, 0.15)'
                           : 'transparent',
-                        color: isActive ? '#fff' : '#aaaaaa',
+                        color: isActive ? '#fff' : '#b0bcc8',
                         borderLeft: isActive
-                          ? '3px solid #888888'
+                          ? '3px solid #1a5a9e'
                           : '3px solid transparent',
                       }}
                     >
@@ -416,7 +376,7 @@ export default function MobileDrawer({
         {/* ── Status Footer ── */}
         <div
           className="border-t border-rmpg-700 px-4 py-3"
-          style={{ background: '#050505' }}
+          style={{ background: '#0d1520' }}
         >
           {/* Status indicators row */}
           <div className="flex items-center gap-3 mb-3">
@@ -436,14 +396,14 @@ export default function MobileDrawer({
                 GPS {gpsTracking ? 'ON' : 'OFF'}
               </span>
               {gpsTracking && gpsAccuracy != null && (
-                <span className="text-[11px] font-mono text-rmpg-400">
+                <span className="text-[9px] font-mono text-rmpg-400">
                   ±{Math.round(gpsAccuracy)}m
                 </span>
               )}
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#222222' }} />
+            <div className="w-px h-4" style={{ background: '#1e3048' }} />
 
             {/* WebSocket */}
             <div className="flex items-center gap-1.5">
@@ -459,7 +419,7 @@ export default function MobileDrawer({
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#222222' }} />
+            <div className="w-px h-4" style={{ background: '#1e3048' }} />
 
             {/* Users online */}
             <div className="flex items-center gap-1.5">
@@ -474,7 +434,7 @@ export default function MobileDrawer({
           </div>
 
           {/* Sign Out */}
-          <button type="button"
+          <button
             onClick={() => {
               onClose();
               onLogout();

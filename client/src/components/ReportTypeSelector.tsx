@@ -174,7 +174,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
                       onPreview(type);
                       setIsOpen(false);
                     }}
-                    className="ml-2 p-1 hover:bg-rmpg-600 rounded-sm text-rmpg-400 hover:text-rmpg-200"
+                    className="ml-2 p-1 hover:bg-rmpg-600 rounded text-rmpg-400 hover:text-rmpg-200"
                     title={`Preview ${label}`}
                   >
                     <Eye className="w-3 h-3" />
@@ -188,8 +188,8 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
 
       {/* Quick-sign modal */}
       {signModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true">
-          <div className="bg-surface-base border border-rmpg-600 shadow-md p-6 max-w-lg w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-surface-base border border-rmpg-600 shadow-2xl p-6 max-w-lg w-full mx-4">
             <h3 className="text-sm font-bold text-rmpg-100 mb-1">Sign Document</h3>
             <p className="text-[10px] text-rmpg-400 mb-4">
               Draw your signature below. It will be embedded in the PDF and saved to your profile for future reports.

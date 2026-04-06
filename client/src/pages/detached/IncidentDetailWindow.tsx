@@ -15,20 +15,6 @@ import type { PdfReportType } from '../../utils/caseNumbers';
 import { apiFetch } from '../../hooks/useApi';
 import { fetchEntityImages } from '../../utils/pdfImageHelpers';
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function IncidentDetailWindow() {
   const { id } = useParams<{ id: string }>();
   const [incident, setIncident] = useState<any>(null);
@@ -84,18 +70,6 @@ export default function IncidentDetailWindow() {
       domestic_violence: incident.domestic_violence,
       disposition: incident.disposition,
       zone_beat: incident.zone_beat,
-      section_id: incident.section_id,
-      zone_id: incident.zone_id,
-      beat_id: incident.beat_id,
-      dispatch_code: incident.dispatch_code,
-      source: incident.source,
-      badge_number: incident.badge_number,
-      property_name: incident.property_name,
-      client_name: incident.client_name,
-      call_number: incident.call_number,
-      scene_safety: incident.scene_safety,
-      direction_of_travel: incident.direction_of_travel,
-      contract_id: incident.contract_id,
       responding_le_agency: incident.responding_le_agency,
       le_case_number: incident.le_case_number,
       created_at: incident.created_at,
@@ -117,54 +91,18 @@ export default function IncidentDetailWindow() {
       subject_injuries: incident.subject_injuries,
       officer_injuries: incident.officer_injuries,
       de_escalation_attempts: incident.de_escalation_attempts,
-      // Operational flags
-      injuries_reported: incident.injuries_reported,
-      mental_health_crisis: incident.mental_health_crisis,
-      juvenile_involved: incident.juvenile_involved,
-      felony_in_progress: incident.felony_in_progress,
-      officer_safety_caution: incident.officer_safety_caution,
-      gang_related: incident.gang_related,
-      hazmat: incident.hazmat,
-      body_camera_active: incident.body_camera_active,
-      evidence_collected: incident.evidence_collected,
-      photos_taken: incident.photos_taken,
-      supervisor_notified: incident.supervisor_notified,
-      le_notified: incident.le_notified,
-      trespass_issued: incident.trespass_issued,
-      vehicle_pursuit: incident.vehicle_pursuit,
-      foot_pursuit: incident.foot_pursuit,
-      k9_requested: incident.k9_requested,
-      ems_requested: incident.ems_requested,
-      fire_requested: incident.fire_requested,
-      // PSO / Process Service
-      pso_service_type: incident.pso_service_type,
-      pso_authorization: incident.pso_authorization,
-      pso_requestor_name: incident.pso_requestor_name,
-      pso_requestor_phone: incident.pso_requestor_phone,
-      pso_requestor_email: incident.pso_requestor_email,
-      pso_billing_code: incident.pso_billing_code,
-      process_service_type: incident.process_service_type,
-      process_served_to: incident.process_served_to,
-      process_served_address: incident.process_served_address,
-      process_attempts: incident.process_attempts,
-      process_served_at: incident.process_served_at,
-      process_service_result: incident.process_service_result,
-      // Geo
-      latitude: incident.latitude,
-      longitude: incident.longitude,
-      // Linked entities
       linked_persons: incident.linked_persons || [],
       linked_vehicles: incident.linked_vehicles || [],
       evidence: incident.evidence || [],
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
-    } as any);
+    });
   };
 
   if (loading) {
     return (
       <DetachedLayout title="Loading...">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" />
         </div>
       </DetachedLayout>
     );

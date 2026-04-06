@@ -12,9 +12,6 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
-import { escapeLike, validateParamIdMiddleware, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
-import { broadcast } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -51,11 +48,9 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(source);
     }
     if (pipeline_stage) {
-      const stages = (pipeline_stage as string).split(',').filter(Boolean).slice(0, 20);
-      if (stages.length > 0) {
-        sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
-        params.push(...stages);
-      }
+      const stages = (pipeline_stage as string).split(',').slice(0, 20);
+      sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
+      params.push(...stages);
     }
     if (score_min) {
       sql += ' AND l.lead_score >= ?';
@@ -70,8 +65,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       }
     }
     if (search) {
-      sql += " AND (l.business_name LIKE ? ESCAPE '\\' OR l.contact_name LIKE ? ESCAPE '\\' OR l.address LIKE ? ESCAPE '\\' OR l.city LIKE ? ESCAPE '\\')";
-      const q = `%${escapeLike(String(search))}%`;
+      sql += " AND (l.business_name LIKE ? OR l.contact_name LIKE ? OR l.address LIKE ? OR l.city LIKE ?)";
+      const q = `%${search}%`;
       params.push(q, q, q, q);
     }
     if (date_from) {
@@ -83,8 +78,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(date_to + ' 23:59:59');
     }
     if (service_interest) {
-      sql += " AND l.service_interest LIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(String(service_interest))}%`);
+      sql += ' AND l.service_interest LIKE ?';
+      params.push(`%${service_interest}%`);
     }
 
     sql += ' ORDER BY l.lead_score DESC, l.created_at DESC LIMIT 500';
@@ -92,13 +87,13 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Get Single Lead ─────────────────────────────────────────
-router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -111,7 +106,7 @@ router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     `).get(id) as any;
 
     if (!lead) {
-      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
+      res.status(404).json({ error: 'Lead not found' });
       return;
     }
 
@@ -122,14 +117,12 @@ router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LEFT JOIN users u ON u.id = a.created_by
       WHERE a.lead_id = ?
       ORDER BY a.created_at DESC
-    
-      LIMIT 1000
     `).all(id);
 
     res.json({ ...lead, activity });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -145,28 +138,10 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       project_type, property_size, notes, assigned_to, pipeline_stage,
     } = req.body;
 
-    // ── Validate lead inputs ──
-    const PIPELINE_STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'dismissed'] as const;
-    const validBizName = validateStr(business_name, 'business_name', 300);
-    if (!validBizName) {
-      res.status(400).json({ error: 'business_name is required', code: 'BUSINESSNAME_IS_REQUIRED' });
+    if (!business_name?.trim()) {
+      res.status(400).json({ error: 'business_name is required' });
       return;
     }
-    validateStr(contact_name, 'contact_name', 200);
-    validateStr(contact_email, 'contact_email', 200);
-    validateStr(contact_phone, 'contact_phone', 30);
-    validateStr(contact_title, 'contact_title', 100);
-    validateStr(address, 'address', 500);
-    validateStr(city, 'city', 100);
-    validateStr(state, 'state', 10);
-    validateStr(zip, 'zip', 20);
-    validateStr(industry, 'industry', 200);
-    validateStr(source, 'source', 100);
-    if (estimated_value != null) requireFloat(estimated_value, 'estimated_value', 0, 100_000_000);
-    if (pipeline_stage) validateEnum(pipeline_stage, PIPELINE_STAGES, 'pipeline_stage');
-    if (assigned_to) requireInt(assigned_to, 'assigned_to');
-    if (latitude != null) requireFloat(latitude, 'latitude', -90, 90);
-    if (longitude != null) requireFloat(longitude, 'longitude', -180, 180);
 
     const now = localNow();
     const leadData = {
@@ -201,7 +176,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     );
 
     const leadId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_leads', leadId, `Created lead: ${business_name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_leads' as any, leadId, `Created lead: ${business_name.trim()}`);
 
     // Log creation activity
     db.prepare(`
@@ -210,26 +185,22 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     `).run(leadId, req.user?.userId || null, now);
 
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(leadId);
-    if (!lead) return res.status(404).json({ error: 'Lead not found after creation', code: 'LEAD_NOT_FOUND_AFTER' });
-    broadcast('admin', 'lead:created', lead);
+    if (!lead) return res.status(404).json({ error: 'Lead not found after creation' });
     res.json(lead);
   } catch (err: any) {
-    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
-      res.status(400).json({ error: err.message }); return;
-    }
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Update Lead ─────────────────────────────────────────────
-router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
+      res.status(404).json({ error: 'Lead not found' });
       return;
     }
 
@@ -253,7 +224,7 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
+      res.status(400).json({ error: 'No fields to update' });
       return;
     }
 
@@ -271,7 +242,7 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     params.push(id);
 
     db.prepare(`UPDATE crm_leads SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Updated lead: ${existing.business_name}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Updated lead: ${existing.business_name}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -279,39 +250,37 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
-    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Delete Lead ─────────────────────────────────────────────
-router.delete('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/leads/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
+      res.status(404).json({ error: 'Lead not found' });
       return;
     }
 
     // Cascade: delete activity (handled by FK ON DELETE CASCADE, but be explicit)
     db.prepare('DELETE FROM crm_lead_activity WHERE lead_id = ?').run(id);
     db.prepare('DELETE FROM crm_leads WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_leads', String(id), `Deleted lead: ${existing.business_name}`);
-    broadcast('admin', 'lead:deleted', { id: Number(id) });
+    auditLog(req, 'DELETE', 'crm_leads' as any, String(id), `Deleted lead: ${existing.business_name}`);
     res.json({ success: true });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Move Pipeline Stage ─────────────────────────────────────
-router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/stage', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -319,7 +288,7 @@ router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', '
 
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
+      res.status(404).json({ error: 'Lead not found' });
       return;
     }
 
@@ -347,7 +316,7 @@ router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', '
       VALUES (?, 'stage_change', ?, ?, ?, ?, ?)
     `).run(id, `Pipeline: ${existing.pipeline_stage} → ${pipeline_stage}`, existing.pipeline_stage, pipeline_stage, req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -355,16 +324,15 @@ router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', '
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
-    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Assign Lead ─────────────────────────────────────────────
-router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/assign', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -372,7 +340,7 @@ router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 
 
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
+      res.status(404).json({ error: 'Lead not found' });
       return;
     }
 
@@ -391,7 +359,7 @@ router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 
       VALUES (?, 'assignment', ?, ?, ?, ?, ?)
     `).run(id, `Assigned to ${assigneeName}`, String(existing.assigned_to || ''), String(assigned_to || ''), req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Assigned lead to ${assigneeName}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Assigned lead to ${assigneeName}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -399,28 +367,27 @@ router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
-    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Convert Lead to Client ──────────────────────────────────
-router.post('/leads/:id/convert', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/leads/:id/convert', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
 
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!lead) {
-      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
+      res.status(404).json({ error: 'Lead not found' });
       return;
     }
 
     if (lead.pipeline_stage !== 'won') {
-      res.status(400).json({ error: 'Lead must be in "won" stage to convert', code: 'LEAD_MUST_BE_IN' });
+      res.status(400).json({ error: 'Lead must be in "won" stage to convert' });
       return;
     }
 
@@ -466,14 +433,13 @@ router.post('/leads/:id/convert', validateParamIdMiddleware, requireRole('admin'
     `).run(id, String(clientId), req.user?.userId || null, now);
 
     auditLog(req, 'CREATE', 'client', clientId, `Converted lead "${lead.business_name}" to client`);
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Converted to client #${clientId}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Converted to client #${clientId}`);
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
-    broadcast('admin', 'lead:updated', { id: Number(id), converted: true, client_id: clientId });
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -484,13 +450,9 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
     const { action, lead_ids, assigned_to } = req.body;
 
     if (!action || !Array.isArray(lead_ids) || lead_ids.length === 0) {
-      res.status(400).json({ error: 'action and lead_ids[] are required', code: 'ACTION_AND_LEADIDS_ARE' });
+      res.status(400).json({ error: 'action and lead_ids[] are required' });
       return;
     }
-    if (lead_ids.length > 200) { res.status(400).json({ error: 'Maximum 200 IDs per bulk action', code: 'MAXIMUM_200_IDS_PER' }); return; }
-    const BULK_ACTIONS = ['mark_contacted', 'assign', 'dismiss'] as const;
-    try { validateEnum(action, BULK_ACTIONS, 'action'); } catch (e: any) { res.status(400).json({ error: e.message }); return; }
-    for (const lid of lead_ids) { if (isNaN(parseInt(String(lid), 10)) || parseInt(String(lid), 10) < 1) { res.status(400).json({ error: 'All lead_ids must be positive integers', code: 'ALL_LEADIDS_MUST_BE' }); return; } }
 
     const now = localNow();
     const placeholders = lead_ids.map(() => '?').join(',');
@@ -505,7 +467,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
 
       case 'assign':
         if (!assigned_to) {
-          res.status(400).json({ error: 'assigned_to is required for assign action', code: 'ASSIGNEDTO_IS_REQUIRED_FOR' });
+          res.status(400).json({ error: 'assigned_to is required for assign action' });
           return;
         }
         updated = db.prepare(
@@ -520,16 +482,15 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         break;
 
       default:
-        res.status(400).json({ error: 'Unknown action. Must be one of: mark_contacted, assign, dismiss', code: 'UNKNOWN_ACTION_MUST_BE' });
+        res.status(400).json({ error: `Unknown action: ${action}` });
         return;
     }
 
-    auditLog(req, 'UPDATE', 'crm_leads', lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
-    broadcast('admin', 'lead:updated', { action, updated, lead_ids });
+    auditLog(req, 'UPDATE', 'crm_leads' as any, lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
     res.json({ success: true, updated });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -547,8 +508,8 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
     `).all();
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -570,8 +531,8 @@ router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_m
 
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -581,14 +542,14 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
     const db = getDb();
     const { lead_id, activity_type, subject, details, old_value, new_value } = req.body;
     if (!lead_id || !activity_type) {
-      res.status(400).json({ error: 'lead_id and activity_type are required', code: 'LEADID_AND_ACTIVITYTYPE_ARE' });
+      res.status(400).json({ error: 'lead_id and activity_type are required' });
       return;
     }
 
     // Verify lead exists
     const lead = db.prepare('SELECT id FROM crm_leads WHERE id = ?').get(lead_id);
     if (!lead) {
-      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
+      res.status(404).json({ error: 'Lead not found' });
       return;
     }
 
@@ -606,11 +567,11 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
       WHERE a.id = ?
     `).get(activityId);
 
-    if (!activity) return res.status(404).json({ error: 'Activity not found', code: 'ACTIVITY_NOT_FOUND' });
+    if (!activity) return res.status(404).json({ error: 'Activity not found' });
     res.json(activity);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -621,8 +582,8 @@ router.get('/scrape-sources', requireRole('admin', 'manager', 'contract_manager'
     const rows = db.prepare('SELECT * FROM lead_scrape_sources ORDER BY source_key').all();
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -634,7 +595,7 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
 
     const existing = db.prepare('SELECT * FROM lead_scrape_sources WHERE source_key = ?').get(key) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+      res.status(404).json({ error: 'Source not found' });
       return;
     }
 
@@ -656,8 +617,8 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
     const source = db.prepare('SELECT * FROM lead_scrape_sources WHERE source_key = ?').get(key);
     res.json(source);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -669,7 +630,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const sourceKey = String(key);
     const scraper = getRegisteredScraper(sourceKey);
     if (!scraper) {
-      res.status(404).json({ error: 'No scraper registered for the specified source', code: 'NO_SCRAPER_REGISTERED_FOR' });
+      res.status(404).json({ error: `No scraper registered for source: ${sourceKey}` });
       return;
     }
 
@@ -679,8 +640,8 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const result = await runScraper(sourceKey);
     res.json(result);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -705,377 +666,8 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
-  }
-});
-
-// ─── CSV EXPORT ──────────────────────────────────────────
-
-// GET /api/crm/leads/export/csv — Export leads
-router.get('/leads/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT l.id, l.source, l.business_name, l.industry, l.business_type,
-        l.contact_name, l.contact_email, l.contact_phone,
-        l.address, l.city, l.state, l.zip,
-        l.estimated_value, l.pipeline_stage, l.lead_score,
-        l.created_at, l.updated_at,
-        u.full_name as assigned_to_name
-      FROM crm_leads l
-      LEFT JOIN users u ON u.id = l.assigned_to
-      ORDER BY l.created_at DESC LIMIT 10000
-    `).all();
-    sendCsv(res, 'crm_leads_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'source', header: 'Source' },
-      { key: 'business_name', header: 'Business Name' },
-      { key: 'industry', header: 'Industry' },
-      { key: 'business_type', header: 'Business Type' },
-      { key: 'contact_name', header: 'Contact Name' },
-      { key: 'contact_email', header: 'Contact Email' },
-      { key: 'contact_phone', header: 'Contact Phone' },
-      { key: 'address', header: 'Address' },
-      { key: 'city', header: 'City' },
-      { key: 'state', header: 'State' },
-      { key: 'zip', header: 'ZIP' },
-      { key: 'estimated_value', header: 'Estimated Value' },
-      { key: 'pipeline_stage', header: 'Pipeline Stage' },
-      { key: 'lead_score', header: 'Lead Score' },
-      { key: 'assigned_to_name', header: 'Assigned To' },
-      { key: 'created_at', header: 'Created At' },
-      { key: 'updated_at', header: 'Updated At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// FEATURE 11: Enhanced Lead Scoring
-// Score leads based on engagement (website visits, emails, form fills)
-// ════════════════════════════════════════════════════════════
-
-router.get('/leads/:id/score-breakdown', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(req.params.id) as any;
-    if (!lead) { res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' }); return; }
-
-    const activity = db.prepare(
-      'SELECT * FROM crm_lead_activity WHERE lead_id = ? ORDER BY created_at DESC'
-    ).all(req.params.id) as any[];
-
-    // Engagement-based scoring
-    const emailEngagements = activity.filter((a: any) => a.activity_type === 'email').length;
-    const callEngagements = activity.filter((a: any) => a.activity_type === 'call').length;
-    const meetingEngagements = activity.filter((a: any) => a.activity_type === 'meeting').length;
-    const webVisits = activity.filter((a: any) => a.activity_type === 'web_visit').length;
-    const formFills = activity.filter((a: any) => a.activity_type === 'form_fill').length;
-
-    const baseScore = lead.lead_score || 0;
-    const engagementScore = Math.min(30,
-      (emailEngagements * 3) +
-      (callEngagements * 5) +
-      (meetingEngagements * 10) +
-      (webVisits * 2) +
-      (formFills * 8)
-    );
-
-    // Recency bonus: more recent activity = higher score
-    const lastActivity = activity[0];
-    let recencyBonus = 0;
-    if (lastActivity) {
-      const daysSinceLastActivity = (Date.now() - new Date(lastActivity.created_at).getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSinceLastActivity <= 7) recencyBonus = 15;
-      else if (daysSinceLastActivity <= 14) recencyBonus = 10;
-      else if (daysSinceLastActivity <= 30) recencyBonus = 5;
-    }
-
-    const totalScore = Math.min(100, baseScore + engagementScore + recencyBonus);
-
-    // Update the lead score
-    db.prepare('UPDATE crm_leads SET lead_score = ?, updated_at = ? WHERE id = ?')
-      .run(totalScore, localNow(), req.params.id);
-
-    res.json({
-      lead_id: lead.id,
-      business_name: lead.business_name,
-      base_score: baseScore,
-      engagement_score: engagementScore,
-      recency_bonus: recencyBonus,
-      total_score: totalScore,
-      breakdown: {
-        emails: emailEngagements,
-        calls: callEngagements,
-        meetings: meetingEngagements,
-        web_visits: webVisits,
-        form_fills: formFills,
-      },
-      last_activity: lastActivity?.created_at || null,
-    });
-  } catch (err: any) {
-    console.error('Lead score breakdown error:', err);
-    res.status(500).json({ error: 'Failed to lead score breakdown', code: 'LEAD_SCORE_BREAKDOWN_ERROR' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// FEATURE 12: Sales Pipeline Stages Summary
-// Track leads through: Prospect → Qualified → Proposal → Won/Lost
-// ════════════════════════════════════════════════════════════
-
-router.get('/pipeline-summary', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-
-    const stages = db.prepare(`
-      SELECT
-        pipeline_stage,
-        COUNT(*) as count,
-        COALESCE(SUM(estimated_value), 0) as total_value,
-        COALESCE(AVG(estimated_value), 0) as avg_value,
-        COALESCE(AVG(lead_score), 0) as avg_score
-      FROM crm_leads
-      WHERE pipeline_stage NOT IN ('dismissed')
-      GROUP BY pipeline_stage
-      ORDER BY CASE pipeline_stage
-        WHEN 'new' THEN 1
-        WHEN 'contacted' THEN 2
-        WHEN 'qualified' THEN 3
-        WHEN 'proposal' THEN 4
-        WHEN 'negotiation' THEN 5
-        WHEN 'won' THEN 6
-        WHEN 'lost' THEN 7
-        ELSE 8
-      END
-    `).all();
-
-    // Conversion rates between stages
-    const allLeads = db.prepare('SELECT pipeline_stage FROM crm_leads').all() as any[];
-    const stageOrder = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won'];
-    const conversions: any[] = [];
-    for (let i = 0; i < stageOrder.length - 1; i++) {
-      const fromStageIdx = stageOrder.indexOf(stageOrder[i]);
-      const fromCount = allLeads.filter((l: any) => stageOrder.indexOf(l.pipeline_stage) >= fromStageIdx).length;
-      const toCount = allLeads.filter((l: any) => stageOrder.indexOf(l.pipeline_stage) >= fromStageIdx + 1).length;
-      conversions.push({
-        from: stageOrder[i],
-        to: stageOrder[i + 1],
-        rate: fromCount > 0 ? Math.round((toCount / fromCount) * 100) : 0,
-      });
-    }
-
-    res.json({ stages, conversions });
-  } catch (err: any) {
-    console.error('Pipeline summary error:', err);
-    res.status(500).json({ error: 'Failed to pipeline summary', code: 'PIPELINE_SUMMARY_ERROR' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// FEATURE 13: Follow-up Reminders
-// Set follow-up date on leads, show overdue reminders
-// ════════════════════════════════════════════════════════════
-
-router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const today = localNow().slice(0, 10);
-
-    const overdue = db.prepare(`
-      SELECT l.*, u.full_name as assigned_to_name
-      FROM crm_leads l
-      LEFT JOIN users u ON u.id = l.assigned_to
-      WHERE l.next_follow_up IS NOT NULL
-        AND l.next_follow_up < ?
-        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-      ORDER BY l.next_follow_up ASC
-    
-      LIMIT 1000
-    `).all(today);
-
-    const todayFollowUps = db.prepare(`
-      SELECT l.*, u.full_name as assigned_to_name
-      FROM crm_leads l
-      LEFT JOIN users u ON u.id = l.assigned_to
-      WHERE l.next_follow_up = ?
-        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-      ORDER BY l.lead_score DESC
-    
-      LIMIT 1000
-    `).all(today);
-
-    const upcoming = db.prepare(`
-      SELECT l.*, u.full_name as assigned_to_name
-      FROM crm_leads l
-      LEFT JOIN users u ON u.id = l.assigned_to
-      WHERE l.next_follow_up > ?
-        AND l.next_follow_up <= date(?, '+7 days')
-        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-      ORDER BY l.next_follow_up ASC
-    
-      LIMIT 1000
-    `).all(today, today);
-
-    res.json({ overdue, today: todayFollowUps, upcoming });
-  } catch (err: any) {
-    console.error('Follow-ups error:', err);
-    res.status(500).json({ error: 'Failed to follow-ups', code: 'FOLLOWUPS_ERROR' });
-  }
-});
-
-router.put('/leads/:id/follow-up', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { next_follow_up, follow_up_notes } = req.body;
-    const now = localNow();
-
-    const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(req.params.id) as any;
-    if (!existing) { res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' }); return; }
-
-    db.prepare('UPDATE crm_leads SET next_follow_up = ?, updated_at = ? WHERE id = ?')
-      .run(next_follow_up || null, now, req.params.id);
-
-    // Log activity
-    db.prepare(`
-      INSERT INTO crm_lead_activity (lead_id, activity_type, subject, details, created_by, created_at)
-      VALUES (?, 'follow_up_set', ?, ?, ?, ?)
-    `).run(
-      req.params.id,
-      `Follow-up ${next_follow_up ? `set for ${next_follow_up}` : 'cleared'}`,
-      follow_up_notes || null,
-      req.user?.userId || null,
-      now
-    );
-
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error('Set follow-up error:', err);
-    res.status(500).json({ error: 'Failed to set follow-up', code: 'SET_FOLLOWUP_ERROR' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// FEATURE 14: Lead Source Tracking
-// Track where leads come from (website, referral, cold call, etc.)
-// ════════════════════════════════════════════════════════════
-
-router.get('/leads/source-analytics', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { days = '90' } = req.query;
-    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
-
-    const bySource = db.prepare(`
-      SELECT
-        COALESCE(source, 'unknown') as source,
-        COUNT(*) as total_leads,
-        SUM(CASE WHEN pipeline_stage = 'won' THEN 1 ELSE 0 END) as won,
-        SUM(CASE WHEN pipeline_stage = 'lost' THEN 1 ELSE 0 END) as lost,
-        COALESCE(SUM(estimated_value), 0) as total_value,
-        COALESCE(AVG(lead_score), 0) as avg_score,
-        COALESCE(AVG(CASE WHEN pipeline_stage = 'won' THEN estimated_value END), 0) as avg_won_value
-      FROM crm_leads
-      WHERE created_at >= ?
-      GROUP BY source
-      ORDER BY total_leads DESC
-    `).all(cutoff);
-
-    // Conversion rate by source
-    const enriched = bySource.map((s: any) => ({
-      ...s,
-      conversion_rate: s.total_leads > 0 ? Math.round((s.won / s.total_leads) * 100) : 0,
-      active: s.total_leads - s.won - s.lost,
-    }));
-
-    res.json({ data: enriched, period_days: parseInt(days as string, 10) });
-  } catch (err: any) {
-    console.error('Source analytics error:', err);
-    res.status(500).json({ error: 'Failed to source analytics', code: 'SOURCE_ANALYTICS_ERROR' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// FEATURE 15: Revenue Forecast
-// Expected revenue = sum(deal_value * probability)
-// ════════════════════════════════════════════════════════════
-
-router.get('/revenue-forecast', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-
-    // Probability by stage
-    const stageProbability: Record<string, number> = {
-      new: 0.05,
-      contacted: 0.10,
-      qualified: 0.25,
-      proposal: 0.50,
-      negotiation: 0.75,
-      won: 1.0,
-      lost: 0,
-      dismissed: 0,
-    };
-
-    const leads = db.prepare(`
-      SELECT id, business_name, pipeline_stage, estimated_value, assigned_to, next_follow_up
-      FROM crm_leads
-      WHERE pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-        AND estimated_value IS NOT NULL AND estimated_value > 0
-      ORDER BY estimated_value DESC
-    
-      LIMIT 1000
-    `).all() as any[];
-
-    let totalExpected = 0;
-    let totalPipeline = 0;
-    const forecast = leads.map((l: any) => {
-      const probability = stageProbability[l.pipeline_stage] || 0;
-      const expected = (l.estimated_value || 0) * probability;
-      totalExpected += expected;
-      totalPipeline += l.estimated_value || 0;
-      return {
-        ...l,
-        probability: Math.round(probability * 100),
-        expected_revenue: Math.round(expected * 100) / 100,
-      };
-    });
-
-    // Won revenue (actual)
-    const wonRevenue = (db.prepare(`
-      SELECT COALESCE(SUM(estimated_value), 0) as total
-      FROM crm_leads WHERE pipeline_stage = 'won' AND estimated_value IS NOT NULL
-    `).get() as any)?.total || 0;
-
-    // By stage breakdown
-    const byStage = db.prepare(`
-      SELECT pipeline_stage,
-        COUNT(*) as count,
-        COALESCE(SUM(estimated_value), 0) as total_value
-      FROM crm_leads
-      WHERE pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-        AND estimated_value IS NOT NULL AND estimated_value > 0
-      GROUP BY pipeline_stage
-    `).all() as any[];
-
-    const stageBreakdown = byStage.map((s: any) => ({
-      ...s,
-      probability: Math.round((stageProbability[s.pipeline_stage] || 0) * 100),
-      expected: Math.round(s.total_value * (stageProbability[s.pipeline_stage] || 0) * 100) / 100,
-    }));
-
-    res.json({
-      total_pipeline: Math.round(totalPipeline * 100) / 100,
-      total_expected: Math.round(totalExpected * 100) / 100,
-      won_revenue: wonRevenue,
-      active_deals: leads.length,
-      by_stage: stageBreakdown,
-      deals: forecast.slice(0, 50),
-    });
-  } catch (err: any) {
-    console.error('Revenue forecast error:', err);
-    res.status(500).json({ error: 'Failed to revenue forecast', code: 'REVENUE_FORECAST_ERROR' });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

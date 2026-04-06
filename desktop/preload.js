@@ -43,9 +43,6 @@ contextBridge.exposeInMainWorld('electron', {
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
 
-  // Force clear all caches and reload (for update propagation)
-  forceRefresh: () => ipcRenderer.invoke('app:force-refresh'),
-
   // ─── Offline Mode API ──────────────────────────────────
   // Route an API request through the local SQLite database
   localApi: (method, path, body) =>

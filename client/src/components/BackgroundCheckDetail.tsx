@@ -63,9 +63,9 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
   } catch { /* */ }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-surface-base border border-rmpg-700 rounded-sm shadow-md w-full max-w-2xl max-h-[85vh] flex flex-col"
+        className="bg-dark-800 border border-rmpg-700 rounded-lg shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -79,7 +79,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               CONFIDENTIAL
             </span>
           </div>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close" title="Close">
+          <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-300">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -163,7 +163,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
                           {r.state && <div>State: <span className="text-rmpg-300">{r.state}</span></div>}
-                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
+                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition}</span></div>}
                           {r.sentence && <div>Sentence: <span className="text-rmpg-300">{r.sentence}</span></div>}
                         </div>
                       </div>
@@ -176,20 +176,20 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               {court.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                    <Gavel className="w-3.5 h-3.5 text-gray-400" />
+                    <Gavel className="w-3.5 h-3.5 text-blue-400" />
                     Court / Public Records ({court.length})
                   </div>
                   <div className="space-y-1.5">
                     {court.map((r, i) => (
-                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-gray-500/50">
+                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-blue-500/50">
                         <div className="text-[11px] font-medium text-rmpg-100">{r.offense || 'Court Record'}</div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.offense_date && <div>Filed: <span className="text-rmpg-300">{r.offense_date}</span></div>}
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
                           {r.state && <div>State: <span className="text-rmpg-300">{r.state}</span></div>}
-                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
-                          {r.status && <div>Status: <span className="text-rmpg-300">{r.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
+                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition}</span></div>}
+                          {r.status && <div>Status: <span className="text-rmpg-300">{r.status}</span></div>}
                         </div>
                       </div>
                     ))}
@@ -217,7 +217,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.state && <div>State: <span className="text-red-300/80">{r.state}</span></div>}
-                          {r.status && <div>Status: <span className="text-red-300/80">{r.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span></div>}
+                          {r.status && <div>Status: <span className="text-red-300/80">{r.status}</span></div>}
                           {r.offense_date && <div>Date: <span className="text-red-300/80">{r.offense_date}</span></div>}
                           {r.court && <div>Jurisdiction: <span className="text-red-300/80">{r.court}</span></div>}
                           {r.registry_address && (

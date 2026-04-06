@@ -7,12 +7,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon,
-  Briefcase, Calendar, Route, Navigation, Loader2, X, CheckCircle, Circle,
+  Briefcase, Calendar, Route, Navigation, Loader2, X,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { useAuth } from '../context/AuthContext';
+import { useWebSocket } from '../context/WebSocketContext';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
@@ -20,12 +19,11 @@ import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
-import ExportButton from '../components/ExportButton';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
 const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-const TABS = ['Queue', 'Route', 'Map', 'Stats'] as const;
+const TABS = ['Queue', 'Map', 'Stats'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -38,12 +36,12 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ];
 
 const MARKER_COLORS: Record<string, string> = {
-  pending: '#888888',
+  pending: '#3b82f6',
   in_progress: '#eab308',
   served: '#22c55e',
   failed: '#ef4444',
-  skipped: '#666666',
-  archived: '#555555',
+  skipped: '#6b7280',
+  archived: '#4b5563',
 };
 
 const DOCUMENT_TYPES = [
@@ -74,22 +72,17 @@ interface StatsSummary {
 
 export default function ServePage() {
   const isMobile = useIsMobile();
-  const { user } = useAuth();
+  const { subscribe } = useWebSocket();
+
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>('Queue');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  // ── Officers for route planner ──────────────────────────────────────
-  const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
-  // ── Saved route state ───────────────────────────────────────────────
-  const [savedRoute, setSavedRoute] = useState<any>(null);
 
   // ── Data ────────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<ServeJob[]>([]);
-  const [linkedCalls, setLinkedCalls] = useState<Record<number, any>>({});
   const [stats, setStats] = useState<StatsSummary | null>(null);
   const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState('');
   const [syncing, setSyncing] = useState(false);
 
   // ── Expanded card tracking ─────────────────────────────────────────
@@ -124,34 +117,6 @@ export default function ServePage() {
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  // ── Feature 10: Affidavit Generation ──
-  const [affidavitData, setAffidavitData] = useState<any>(null);
-  // ── Feature 12: Deadline Tracking ──
-  const [deadlines, setDeadlines] = useState<any>(null);
-  // ── Feature 14: Success Rate Stats ──
-  const [successRates, setSuccessRates] = useState<any>(null);
-
-  const handleGenerateAffidavit = async (jobId: number) => {
-    try {
-      const data = await apiFetch<any>(`/process-server/${jobId}/affidavit`);
-      setAffidavitData(data);
-    } catch { /* ignore */ }
-  };
-
-  const handleLoadDeadlines = async () => {
-    try {
-      const data = await apiFetch<any>('/process-server/deadlines');
-      setDeadlines(data);
-    } catch { /* ignore */ }
-  };
-
-  const handleLoadSuccessRates = async () => {
-    try {
-      const data = await apiFetch<any>('/process-server/success-rates?days=90');
-      setSuccessRates(data);
-    } catch { /* ignore */ }
-  };
-
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -174,30 +139,11 @@ export default function ServePage() {
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
-    setFetchError('');
     try {
-      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}`);
-      const fetchedJobs = data || [];
-      setJobs(fetchedJobs);
-
-      // Fetch linked dispatch calls for jobs that have call_id
-      const jobsWithCalls = fetchedJobs.filter((j: any) => j.call_id);
-      if (jobsWithCalls.length > 0) {
-        const callMap: Record<number, any> = {};
-        await Promise.all(
-          jobsWithCalls.map(async (j: any) => {
-            try {
-              const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
-              if (call) callMap[j.id] = call;
-            } catch {}
-          })
-        );
-        setLinkedCalls(callMap);
-      } else {
-        setLinkedCalls({});
-      }
-    } catch (err: any) {
-      setFetchError(err?.message || 'Failed to load data');
+      const data = await apiFetch<ServeJob[]>(`/api/process-server?date=${selectedDate}`);
+      setJobs(data || []);
+    } catch {
+      // silently fail — user can retry
     } finally {
       setLoading(false);
     }
@@ -205,7 +151,7 @@ export default function ServePage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const data = await apiFetch<StatsSummary>(`/process-server/stats/summary?date=${selectedDate}`);
+      const data = await apiFetch<StatsSummary>(`/api/process-server/stats/summary?date=${selectedDate}`);
       setStats(data);
     } catch {
       // stats are non-critical
@@ -223,32 +169,14 @@ export default function ServePage() {
   }, [refreshJobs]);
 
   // ── WebSocket live updates ─────────────────────────────────────────
-  useLiveSync('process-server', refreshJobs);
-
-  // ── Fetch officers for route planner ─────────────────────────────
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await apiFetch<any>('/personnel?status=active');
-        if (cancelled) return;
-        const list = Array.isArray(res) ? res : res?.data ?? [];
-        setOfficers(list.map((u: any) => ({ id: u.id, name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
-      } catch { /* non-critical */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // ── Fetch saved route for today ──────────────────────────────────
-  const fetchSavedRoute = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const route = await apiFetch<any>(`/process-server/routes/${selectedDate}?officer_id=${Number(user.id)}`);
-      setSavedRoute(route);
-    } catch { setSavedRoute(null); }
-  }, [selectedDate, user?.id]);
-
-  useEffect(() => { fetchSavedRoute(); }, [fetchSavedRoute]);
+    const unsubs = [
+      subscribe('serve:created' as any, () => refreshJobs()),
+      subscribe('serve:updated' as any, () => refreshJobs()),
+      subscribe('serve:attempt' as any, () => refreshJobs()),
+    ];
+    return () => { unsubs.forEach(u => u()); };
+  }, [subscribe, refreshJobs]);
 
   // ══════════════════════════════════════════════════════════════════════
   // Handlers
@@ -257,7 +185,7 @@ export default function ServePage() {
   const handleSyncFromSM = useCallback(async () => {
     setSyncing(true);
     try {
-      await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
+      await apiFetch('/api/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
       // sync failed
@@ -269,23 +197,22 @@ export default function ServePage() {
   const handleNavigate = useCallback((jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
     if (!job) return;
-    if (job.recipient_lat != null && job.recipient_lng != null) {
+    if (job.recipient_lat && job.recipient_lng) {
       window.open(
         `https://www.google.com/maps/dir/?api=1&destination=${job.recipient_lat},${job.recipient_lng}`,
         '_blank',
-        'noopener,noreferrer',
       );
     } else if (job.recipient_address) {
       const addr = encodeURIComponent(
         `${job.recipient_address} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
       );
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, '_blank', 'noopener,noreferrer');
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, '_blank');
     }
   }, [jobs]);
 
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {
-      await apiFetch(`/process-server/${jobId}`, {
+      await apiFetch(`/api/process-server/${jobId}`, {
         method: 'PUT',
         body: JSON.stringify({ notes: 'BAD ADDRESS \u2014 needs verification', status: 'skipped' }),
       });
@@ -316,16 +243,15 @@ export default function ServePage() {
     setRouteData({ orderedIds: orderedJobIds, ...data });
     // Persist sort order to server
     try {
-      await apiFetch('/process-server/reorder', {
+      await apiFetch('/api/process-server/reorder', {
         method: 'PUT',
         body: JSON.stringify({ orderedIds: orderedJobIds }),
       });
       refreshJobs();
-      fetchSavedRoute(); // Refresh saved route for Route tab
     } catch {
       // reorder failed — local state still updated
     }
-  }, [refreshJobs, fetchSavedRoute]);
+  }, [refreshJobs]);
 
   const handleSkipTraceAddToRoute = useCallback((_addr: ServeSkipAddress) => {
     // Could update the job's address — for now just close and refresh
@@ -382,12 +308,12 @@ export default function ServePage() {
     setFormSubmitting(true);
     try {
       if (editJob) {
-        await apiFetch(`/process-server/${editJob.id}`, {
+        await apiFetch(`/api/process-server/${editJob.id}`, {
           method: 'PUT',
           body: JSON.stringify(formData),
         });
       } else {
-        await apiFetch('/process-server', {
+        await apiFetch('/api/process-server', {
           method: 'POST',
           body: JSON.stringify({ ...formData, serve_date: selectedDate }),
         });
@@ -425,46 +351,10 @@ export default function ServePage() {
   // Filtered Jobs
   // ══════════════════════════════════════════════════════════════════════
 
-  // ── Feature 1: Priority Queue Sort ──
-  const [sortByUrgency, setSortByUrgency] = useState(false);
-  // ── Feature 5: Cost Calculator ──
-  const [costEstimate, setCostEstimate] = useState<any>(null);
-  const [costJobId, setCostJobId] = useState<number | null>(null);
-
-  const handleLoadCostEstimate = async (jobId: number) => {
-    setCostJobId(jobId);
-    try {
-      const data = await apiFetch<any>(`/process-server/${jobId}/cost-estimate`);
-      setCostEstimate(data);
-    } catch { setCostEstimate(null); }
-  };
-
-  // ── Feature 3: Serve Completion Notification ──
-  const handleNotifyCompletion = async (jobId: number) => {
-    try {
-      await apiFetch(`/process-server/${jobId}/notify-completion`, { method: 'POST' });
-    } catch { /* ignore */ }
-  };
-
   const filteredJobs = useMemo(() => {
-    let result = statusFilter === 'all' ? jobs : jobs.filter(j => j.status === statusFilter);
-
-    // Feature 1: Sort by deadline urgency
-    if (sortByUrgency) {
-      result = [...result].sort((a, b) => {
-        // Priority: overdue > no deadline is last
-        const getUrgencyScore = (j: ServeJob) => {
-          if (!j.deadline) return 999;
-          const daysLeft = (new Date(j.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-          if (daysLeft < 0) return -100 + daysLeft; // overdue: most negative first
-          return daysLeft;
-        };
-        return getUrgencyScore(a) - getUrgencyScore(b);
-      });
-    }
-
-    return result;
-  }, [jobs, statusFilter, sortByUrgency]);
+    if (statusFilter === 'all') return jobs;
+    return jobs.filter(j => j.status === statusFilter);
+  }, [jobs, statusFilter]);
 
   // ══════════════════════════════════════════════════════════════════════
   // Map Tab
@@ -524,7 +414,7 @@ export default function ServePage() {
     let hasMarkers = false;
 
     jobs.forEach(job => {
-      if (job.recipient_lat == null || job.recipient_lng == null) return;
+      if (!job.recipient_lat || !job.recipient_lng) return;
       hasMarkers = true;
       const pos = { lat: job.recipient_lat, lng: job.recipient_lng };
       bounds.extend(pos);
@@ -548,10 +438,10 @@ export default function ServePage() {
         const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
           .filter(Boolean).join(', ');
         infoWindowRef.current?.setContent(`
-          <div style="color:#fff;background:#0a0a0a;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
+          <div style="color:#fff;background:#141e2b;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
             <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
             <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
+            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace('_', ' ')} &middot; ${job.document_type}</div>
           </div>
         `);
         infoWindowRef.current?.open(mapRef.current!, marker);
@@ -571,7 +461,7 @@ export default function ServePage() {
         polylineRef.current = new google.maps.Polyline({
           path,
           geodesic: true,
-          strokeColor: '#888888',
+          strokeColor: '#3b82f6',
           strokeOpacity: 0.8,
           strokeWeight: 3,
           map: mapRef.current,
@@ -592,114 +482,68 @@ export default function ServePage() {
   // Render
   // ══════════════════════════════════════════════════════════════════════
 
-  // Set document title
-  useEffect(() => { document.title = 'Process Server \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setCreateJobOpen(false); setEditJob(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
   return (
-    <div className="flex flex-col h-full bg-surface-base" role="main">
-      {fetchError && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-[2px] text-red-400 text-xs flex items-center gap-2 animate-in fade-in duration-200">
-          <span>⚠ {fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 transition-colors" aria-label="Dismiss error">✕</button>
-        </div>
-      )}
+    <div className="flex flex-col h-full bg-surface-base">
       {/* ─── Header Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#222222] bg-[#050505] flex-wrap" role="toolbar" aria-label="Process Server controls">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap">
         <div className="flex items-center gap-1.5">
-          <Briefcase size={16} className="text-[#d4a017]" />
-          {!isMobile && <span className="text-sm font-semibold text-white tracking-wider">PROCESS SERVER</span>}
-          {!isMobile && <span className="block h-px w-full bg-[#d4a017]/30 mt-0.5" />}
+          <Briefcase size={16} className="text-brand-400" />
+          {!isMobile && <span className="text-sm font-semibold text-white">Process Server</span>}
         </div>
 
-        {/* Date picker + route stats */}
+        {/* Date picker */}
         <div className="flex items-center gap-1 ml-auto sm:ml-2">
           <Calendar size={14} className="text-rmpg-400" />
           <input
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            className="px-2 py-1 text-xs bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+            className="px-2 py-1 text-xs bg-[#141e2b] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
           />
-          {/* Route stats inline (Step 3.5) */}
-          {savedRoute && savedRoute.optimized_order_json && (() => {
-            const orderIds: number[] = (() => {
-              try {
-                return typeof savedRoute.optimized_order_json === 'string'
-                  ? JSON.parse(savedRoute.optimized_order_json)
-                  : savedRoute.optimized_order_json;
-              } catch { return []; }
-            })();
-            const stopCount = orderIds.length;
-            const dist = savedRoute.total_distance_miles;
-            const mins = savedRoute.total_time_minutes;
-            if (stopCount === 0) return null;
-            return (
-              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px]" style={{ color: '#d4a017', background: '#d4a01710', border: '1px solid #d4a01720' }}>
-                {stopCount} stops
-                {dist ? ` / ${Number(dist).toFixed(0)} mi` : ''}
-                {mins ? ` / ~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : ''}
-              </span>
-            );
-          })()}
         </div>
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5">
-          <button type="button"
+          <button
             onClick={() => setRoutePlannerOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded transition-colors"
             title="Plan Route"
-            aria-label="Plan Route"
           >
             <Route size={12} />
             {!isMobile && 'Plan Route'}
           </button>
-          <button type="button"
+          <button
             onClick={handleSyncFromSM}
             disabled={syncing}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-cyan-400 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-700/40 rounded-[2px] transition-all duration-150 disabled:opacity-40 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-cyan-400 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-700/40 rounded transition-colors disabled:opacity-40"
             title="Sync from ServeManager"
-            aria-label="Sync from ServeManager"
           >
             {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             {!isMobile && 'Sync from SM'}
           </button>
-          <button type="button"
+          <button
             onClick={openCreate}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(34,197,94,0.15)] focus:outline-none focus:ring-1 focus:ring-green-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded transition-colors"
             title="Add Job"
-            aria-label="Add serve job"
           >
             <Plus size={12} />
             {!isMobile && 'Add Job'}
           </button>
-          <ExportButton exportUrl="/api/process-server/export/csv" exportFilename="serve-jobs.csv" />
         </div>
       </div>
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
-      <div className="flex items-center border-b border-[#222222] bg-[#050505]" role="tablist" aria-label="Process Server views">
+      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520]">
         {TABS.map(tab => {
-          const Icon = tab === 'Queue' ? List : tab === 'Route' ? Route : tab === 'Map' ? MapIcon : BarChart3;
+          const Icon = tab === 'Queue' ? List : tab === 'Map' ? MapIcon : BarChart3;
           return (
-            <button type="button"
+            <button
               key={tab}
-              role="tab"
-              aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
                 activeTab === tab
-                  ? 'text-[#d4a017] border-[#d4a017] bg-[#d4a017]/5'
-                  : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
+                  ? 'text-white border-brand-500'
+                  : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-600'
               }`}
             >
               <Icon size={14} />
@@ -715,67 +559,38 @@ export default function ServePage() {
         {activeTab === 'Queue' && (
           <div className="h-full flex flex-col">
             {/* Filter buttons */}
-            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#222222] overflow-x-auto">
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#1e3048] overflow-x-auto">
               {STATUS_FILTERS.map(f => (
-                <button type="button"
+                <button
                   key={f.value}
-                  role="button"
-                  aria-pressed={statusFilter === f.value}
                   onClick={() => setStatusFilter(f.value)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#888888]/50 ${
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded border transition-colors whitespace-nowrap ${
                     statusFilter === f.value
-                      ? 'text-white bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(136,136,136,0.3)]'
-                      : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
+                      ? 'text-white bg-brand-700 border-brand-500'
+                      : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400'
                   }`}
                 >
                   {f.label}
                   {f.value !== 'all' && (
-                    <span className="ml-1 text-[10px] tabular-nums font-mono text-rmpg-500">
+                    <span className="ml-1 text-[10px] text-rmpg-500">
                       {jobs.filter(j => j.status === f.value).length}
                     </span>
                   )}
                 </button>
               ))}
-              {/* Feature 1: Priority Sort Toggle */}
-              <button type="button"
-                role="button"
-                aria-pressed={sortByUrgency}
-                onClick={() => setSortByUrgency(prev => !prev)}
-                className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap ml-auto focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
-                  sortByUrgency
-                    ? 'text-amber-400 bg-amber-900/30 border-amber-600 shadow-[0_0_6px_rgba(245,158,11,0.2)]'
-                    : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
-                }`}
-                title="Sort by deadline urgency"
-              >
-                {sortByUrgency ? '⚡ Urgent First' : '↕ Priority Sort'}
-              </button>
             </div>
 
-            {/* Feature 1: Urgency color indicators */}
-            {sortByUrgency && filteredJobs.length > 0 && (
-              <div className="px-3 py-1 border-b border-[#222222] flex items-center gap-3 text-[9px] text-rmpg-500">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Overdue</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" /> {'<'}24h</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {'<'}3d</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500 inline-block" /> {'<'}7d</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> 7d+</span>
-              </div>
-            )}
-
             {/* Job list */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-dark">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {loading && jobs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-xs text-rmpg-400">
-                  <Loader2 size={16} className="animate-spin mr-2 text-[#888888]" />
-                  <span className="text-rmpg-400">Loading jobs...</span>
+                  <Loader2 size={16} className="animate-spin mr-2" />
+                  Loading jobs...
                 </div>
               ) : filteredJobs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-40 text-center">
-                  <div className="w-12 h-12 rounded-full bg-[#050505] flex items-center justify-center mb-3">
-                    <Briefcase size={20} className="text-rmpg-500" />
-                  </div>
-                  <p className="text-sm text-rmpg-400 font-medium">
+                <div className="flex flex-col items-center justify-center h-32 text-center">
+                  <Briefcase size={24} className="text-rmpg-600 mb-2" />
+                  <p className="text-sm text-rmpg-400">
                     {statusFilter !== 'all'
                       ? `No ${statusFilter.replace('_', ' ')} jobs for this date.`
                       : 'No jobs for today. Sync from ServeManager or add manually.'
@@ -787,7 +602,6 @@ export default function ServePage() {
                   <ServeJobCard
                     key={job.id}
                     job={job}
-                    linkedCall={linkedCalls[job.id] || null}
                     onAttempt={(id) => {
                       const j = jobs.find(jj => jj.id === id);
                       if (j) setAttemptJob(j);
@@ -808,176 +622,12 @@ export default function ServePage() {
           </div>
         )}
 
-        {/* ── Route Tab (Step 3.4) ──────────────────────────────── */}
-        {activeTab === 'Route' && (
-          <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-dark">
-            {savedRoute && savedRoute.optimized_order_json ? (() => {
-              const orderIds: number[] = (() => {
-                try {
-                  return typeof savedRoute.optimized_order_json === 'string'
-                    ? JSON.parse(savedRoute.optimized_order_json)
-                    : savedRoute.optimized_order_json;
-                } catch { return []; }
-              })();
-              const routeJobs = orderIds
-                .map(id => jobs.find(j => j.id === id))
-                .filter((j): j is ServeJob => !!j);
-              const completedCount = routeJobs.filter(j => j.status === 'served').length;
-              const totalStops = routeJobs.length;
-              const progressPct = totalStops > 0 ? Math.round((completedCount / totalStops) * 100) : 0;
-
-              return (
-                <>
-                  {/* Stats bar */}
-                  <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#050505] border border-[#222222] rounded-[2px]" role="status" aria-label="Route statistics">
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-gray-400" />
-                      <span className="font-mono tabular-nums text-white">{totalStops}</span> stops
-                    </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <Navigation size={12} className="text-emerald-400" />
-                      <span className="font-mono tabular-nums text-white">
-                        {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <Calendar size={12} className="text-amber-400" />
-                      <span className="font-mono tabular-nums text-white">
-                        {savedRoute.total_time_minutes
-                          ? `~${Math.floor(savedRoute.total_time_minutes / 60)}h ${Math.round(savedRoute.total_time_minutes % 60)}m`
-                          : '--'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs ml-auto">
-                      <span className="font-mono tabular-nums" style={{ color: '#d4a017' }}>
-                        {completedCount}/{totalStops} done ({progressPct}%)
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="w-full h-1.5 bg-[#141414] rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${progressPct}%`,
-                        background: progressPct === 100 ? '#22c55e' : '#d4a017',
-                        boxShadow: `0 0 6px ${progressPct === 100 ? '#22c55e' : '#d4a017'}40`,
-                      }}
-                    />
-                  </div>
-
-                  {/* Ordered stop list */}
-                  <div className="space-y-1">
-                    {routeJobs.map((job, idx) => {
-                      const isCompleted = job.status === 'served';
-                      const isFailed = job.status === 'failed';
-                      return (
-                        <div
-                          key={job.id}
-                          className={`flex items-center gap-3 px-3 py-2 rounded-[2px] border transition-all duration-150 ${
-                            isCompleted
-                              ? 'bg-green-900/10 border-green-800/30 opacity-60'
-                              : isFailed
-                                ? 'bg-red-900/10 border-red-800/30 opacity-60'
-                                : 'bg-[#0a0a0a] border-[#222222] hover:border-[#888888]/30'
-                          }`}
-                        >
-                          {/* Stop number */}
-                          <span
-                            className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0"
-                            style={{
-                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#888888',
-                            }}
-                          >
-                            {idx + 1}
-                          </span>
-
-                          {/* Completion indicator */}
-                          {isCompleted ? (
-                            <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
-                          ) : (
-                            <Circle size={14} className="text-rmpg-600 flex-shrink-0" />
-                          )}
-
-                          {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className={`text-xs font-medium truncate ${isCompleted ? 'text-rmpg-400 line-through' : 'text-white'}`}>
-                              {job.recipient_name}
-                            </div>
-                            <div className="text-[10px] text-rmpg-500 truncate">
-                              {job.recipient_address || 'No address'}
-                              {job.recipient_city ? `, ${job.recipient_city}` : ''}
-                            </div>
-                          </div>
-
-                          {/* Status badge */}
-                          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0" style={{
-                            background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#88888820',
-                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
-                            border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#88888830'}`,
-                          }}>
-                            {job.status.replace('_', ' ')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-2 pt-2">
-                    <button type="button"
-                      onClick={() => setRoutePlannerOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
-                      aria-label="Open Route Planner"
-                    >
-                      <Route size={12} />
-                      Open Route Planner
-                    </button>
-                    <button type="button"
-                      onClick={() => {
-                        // Build Google Maps URL with all waypoints
-                        const geocoded = routeJobs.filter(j => j.status !== 'served' && j.recipient_lat != null && j.recipient_lng != null);
-                        if (geocoded.length === 0) return;
-                        const dest = geocoded[geocoded.length - 1];
-                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lat},${j.recipient_lng}`).join('|');
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : ''}&travelmode=driving`;
-                        window.open(url, '_blank', 'noopener,noreferrer');
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(16,185,129,0.15)] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-                      aria-label="Start Navigation"
-                    >
-                      <Navigation size={12} />
-                      Start Navigation
-                    </button>
-                  </div>
-                </>
-              );
-            })() : (
-              <div className="flex flex-col items-center justify-center h-40 text-center">
-                <div className="w-12 h-12 rounded-full bg-[#141414] flex items-center justify-center mb-3">
-                  <Route size={20} className="text-rmpg-500" />
-                </div>
-                <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
-                <button type="button"
-                  onClick={() => setRoutePlannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
-                  aria-label="Open Route Planner"
-                >
-                  <Route size={12} />
-                  Plan a Route
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ── Map Tab ─────────────────────────────────────────────── */}
         {activeTab === 'Map' && (
           <div className="h-full relative">
             <div ref={mapContainerRef} className="absolute inset-0" />
             {!mapReady && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#050505]">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#0d1520]">
                 <div className="flex items-center gap-2 text-xs text-rmpg-400">
                   <Loader2 size={14} className="animate-spin" />
                   Loading map...
@@ -987,9 +637,9 @@ export default function ServePage() {
 
             {/* Navigate to Next button */}
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
-              <button type="button"
+              <button
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(136,136,136,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg border border-blue-500 transition-colors"
               >
                 <Navigation size={16} />
                 Navigate to Next
@@ -1000,15 +650,15 @@ export default function ServePage() {
 
         {/* ── Stats Tab ───────────────────────────────────────────── */}
         {activeTab === 'Stats' && (
-          <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-dark">
+          <div className="h-full overflow-y-auto p-4 space-y-4">
             {/* Summary cards */}
             <div className={`grid gap-3 ${isMobile ? 'grid-cols-2' : 'grid-cols-4'}`}>
               <StatCard
                 label="Jobs Remaining"
                 value={(stats?.pending ?? 0) + (stats?.in_progress ?? 0)}
-                color="text-gray-400"
-                bg="bg-gray-900/20"
-                border="border-gray-700/40"
+                color="text-blue-400"
+                bg="bg-blue-900/20"
+                border="border-blue-700/40"
               />
               <StatCard
                 label="Served Today"
@@ -1035,9 +685,9 @@ export default function ServePage() {
 
             {/* Mileage / efficiency */}
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-              <div className="px-4 py-3 bg-[#0a0a0a] border border-[#222222] rounded-[2px] transition-colors hover:border-[#888888]/30">
-                <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
-                <div className="text-lg font-bold text-white font-mono tabular-nums">
+              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded">
+                <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-1">Mileage Today</div>
+                <div className="text-lg font-bold text-white font-mono">
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
                     : stats?.mileage
@@ -1051,128 +701,21 @@ export default function ServePage() {
                   </div>
                 )}
               </div>
-              <div className="px-4 py-3 bg-[#0a0a0a] border border-[#222222] rounded-[2px] transition-colors hover:border-[#888888]/30">
-                <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
-                <div className="text-lg font-bold text-white font-mono tabular-nums">
+              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded">
+                <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-1">Route Efficiency</div>
+                <div className="text-lg font-bold text-white font-mono">
                   {routeData && stats?.planned_mileage && stats.planned_mileage > 0
-                    ? `${Math.round((stats.planned_mileage / (routeData.totalDistance || 1)) * 100)}%`
+                    ? `${Math.round((stats.planned_mileage / routeData.totalDistance) * 100)}%`
                     : '--'
                   }
                 </div>
                 {routeData && (
                   <div className="text-[10px] text-rmpg-400 mt-1">
-                    Est. drive time: {Math.floor((routeData.totalDuration || 0) / 60)}h {Math.round((routeData.totalDuration || 0) % 60)}m
+                    Est. drive time: {Math.floor(routeData.totalDuration / 60)}h {Math.round(routeData.totalDuration % 60)}m
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Feature 5: Cost Calculator */}
-            <div className="p-3 bg-[#0a0a0a] border border-[#222222] rounded-[2px]">
-              <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={costJobId || ''}
-                  onChange={e => { const v = parseInt(e.target.value, 10); if (v) handleLoadCostEstimate(v); }}
-                  className="flex-1 px-2 py-1 text-xs bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
-                >
-                  <option value="">Select a job...</option>
-                  {jobs.map(j => (
-                    <option key={j.id} value={j.id}>{j.recipient_name} - {j.document_type || 'N/A'}</option>
-                  ))}
-                </select>
-              </div>
-              {costEstimate && (
-                <div className="mt-2 space-y-1 text-[10px]">
-                  <div className="flex justify-between"><span className="text-rmpg-400">Base Fee:</span><span className="text-white">${costEstimate.costs.base_fee.toFixed(2)}</span></div>
-                  {costEstimate.costs.extra_attempts > 0 && (
-                    <div className="flex justify-between"><span className="text-rmpg-400">Extra Attempts ({costEstimate.costs.extra_attempts}):</span><span className="text-white">${costEstimate.costs.extra_attempt_fee.toFixed(2)}</span></div>
-                  )}
-                  {costEstimate.costs.rush_surcharge > 0 && (
-                    <div className="flex justify-between"><span className="text-amber-400">Rush Surcharge:</span><span className="text-white">${costEstimate.costs.rush_surcharge.toFixed(2)}</span></div>
-                  )}
-                  {costEstimate.costs.skip_trace_count > 0 && (
-                    <div className="flex justify-between"><span className="text-rmpg-400">Skip Traces ({costEstimate.costs.skip_trace_count}):</span><span className="text-white">${costEstimate.costs.skip_trace_fee.toFixed(2)}</span></div>
-                  )}
-                  {costEstimate.costs.mileage > 0 && (
-                    <div className="flex justify-between"><span className="text-rmpg-400">Mileage ({costEstimate.costs.mileage.toFixed(1)} mi):</span><span className="text-white">${costEstimate.costs.mileage_fee.toFixed(2)}</span></div>
-                  )}
-                  <div className="flex justify-between border-t border-rmpg-700 pt-1 font-bold"><span className="text-brand-400">Total:</span><span className="text-brand-300">${costEstimate.costs.total.toFixed(2)}</span></div>
-                </div>
-              )}
-            </div>
-
-            {/* Feature 12: Deadline Tracking + Feature 14: Success Rates */}
-            <div className="flex gap-2">
-              <button type="button" onClick={handleLoadDeadlines} className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5">
-                <Calendar className="w-3.5 h-3.5" /> Deadline Tracker
-              </button>
-              <button type="button" onClick={handleLoadSuccessRates} className="toolbar-btn text-xs px-3 py-1.5">
-                <BarChart3 className="w-3.5 h-3.5" /> Success Rates
-              </button>
-            </div>
-
-            {/* Feature 12: Deadline Tracking Panel */}
-            {deadlines && (
-              <div className="p-3 bg-[#0a0a0a] border border-[#222222] rounded-[2px] space-y-2">
-                <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Deadline Tracker ({deadlines.total} active)</div>
-                  <button type="button" onClick={() => setDeadlines(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close deadline tracker">Close</button>
-                </div>
-                {deadlines.overdue?.length > 0 && (
-                  <div>
-                    <div className="text-[9px] text-red-400 font-bold uppercase">Overdue ({deadlines.overdue.length})</div>
-                    {deadlines.overdue.map((d: any) => (
-                      <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
-                        <span>{d.recipient_name}</span>
-                        <span className="text-rmpg-500">{(d.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                        <span className="ml-auto">{Math.abs(Math.round(d.days_remaining))}d overdue</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {deadlines.urgent?.length > 0 && (
-                  <div>
-                    <div className="text-[9px] text-amber-400 font-bold uppercase">Due within 3 days ({deadlines.urgent.length})</div>
-                    {deadlines.urgent.map((d: any) => (
-                      <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-amber-300">
-                        <span>{d.recipient_name}</span>
-                        <span className="text-rmpg-500">{d.deadline}</span>
-                        <span className="ml-auto">{Math.round(d.days_remaining)}d left</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Feature 14: Success Rate Stats Panel */}
-            {successRates && (
-              <div className="p-3 bg-[#0a0a0a] border border-[#222222] rounded-[2px] space-y-2">
-                <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Success Rates ({successRates.period_days}d)</div>
-                  <button type="button" onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close success rates">Close</button>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                  <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>
-                  <div><div className="text-lg font-bold tabular-nums font-mono text-white" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
-                  <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.served}</div><div className="text-[9px] text-rmpg-400">Served</div></div>
-                  <div><div className="text-lg font-bold tabular-nums font-mono text-white" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.avg_attempts?.toFixed(1)}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
-                </div>
-                {successRates.by_officer?.length > 0 && (
-                  <div>
-                    <div className="text-[9px] text-rmpg-400 uppercase font-semibold mb-1">By Officer</div>
-                    {successRates.by_officer.map((o: any) => (
-                      <div key={o.officer_id} className="text-[10px] flex gap-2 py-0.5">
-                        <span className="text-white flex-1">{o.officer_name || 'Unassigned'}</span>
-                        <span className="text-green-400">{o.success_rate}%</span>
-                        <span className="text-rmpg-500">{o.served}/{o.total}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -1196,8 +739,6 @@ export default function ServePage() {
         isOpen={routePlannerOpen}
         onClose={() => setRoutePlannerOpen(false)}
         jobs={jobs.filter(j => j.status !== 'served' && j.status !== 'archived')}
-        officers={officers}
-        currentUserId={user?.id ? Number(user.id) : undefined}
         onRouteOptimized={handleRouteOptimized}
       />
 
@@ -1235,7 +776,7 @@ export default function ServePage() {
               required
               value={formData.recipient_name}
               onChange={e => handleFormChange('recipient_name', e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               placeholder="Full name"
             />
           </div>
@@ -1248,7 +789,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.recipient_address}
                 onChange={e => handleFormChange('recipient_address', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
                 placeholder="Street address"
               />
             </div>
@@ -1258,7 +799,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.recipient_city}
                 onChange={e => handleFormChange('recipient_city', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -1268,7 +809,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_state}
                   onChange={e => handleFormChange('recipient_state', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
                   maxLength={2}
                 />
               </div>
@@ -1278,7 +819,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_zip}
                   onChange={e => handleFormChange('recipient_zip', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
                   maxLength={10}
                 />
               </div>
@@ -1292,7 +833,7 @@ export default function ServePage() {
               <select
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               >
                 {DOCUMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -1302,7 +843,7 @@ export default function ServePage() {
               <select
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               >
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
@@ -1319,7 +860,7 @@ export default function ServePage() {
               <select
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               >
                 <option value="morning">Morning</option>
                 <option value="afternoon">Afternoon</option>
@@ -1333,7 +874,7 @@ export default function ServePage() {
                 type="date"
                 value={formData.deadline}
                 onChange={e => handleFormChange('deadline', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -1346,7 +887,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.case_number}
                 onChange={e => handleFormChange('case_number', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div>
@@ -1355,7 +896,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.court_name}
                 onChange={e => handleFormChange('court_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div>
@@ -1364,7 +905,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.jurisdiction}
                 onChange={e => handleFormChange('jurisdiction', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -1377,7 +918,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div>
@@ -1386,7 +927,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.attorney_name}
                 onChange={e => handleFormChange('attorney_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -1401,7 +942,7 @@ export default function ServePage() {
                 max={10}
                 value={formData.max_attempts}
                 onChange={e => handleFormChange('max_attempts', parseInt(e.target.value, 10) || 3)}
-                className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -1413,7 +954,7 @@ export default function ServePage() {
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none resize-none"
               placeholder="Special instructions for service..."
             />
           </div>
@@ -1423,7 +964,7 @@ export default function ServePage() {
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none resize-none"
               placeholder="Internal notes..."
             />
           </div>
@@ -1449,9 +990,9 @@ function StatCard({
   border: string;
 }) {
   return (
-    <div className={`px-4 py-3 rounded-[2px] border ${bg} ${border} transition-all duration-150 hover:shadow-md hover:scale-[1.01]`}>
-      <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">{label}</div>
-      <div className={`text-2xl font-bold font-mono tabular-nums ${color}`} style={{ textShadow: '0 0 4px currentColor' }}>{value}</div>
+    <div className={`px-4 py-3 rounded border ${bg} ${border}`}>
+      <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-1">{label}</div>
+      <div className={`text-2xl font-bold font-mono ${color}`}>{value}</div>
     </div>
   );
 }

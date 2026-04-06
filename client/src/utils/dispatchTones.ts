@@ -6,7 +6,7 @@
 // Respects the user's sound toggle (localStorage 'rmpg-sound').
 // ============================================================
 
-type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert' | 'chirp' | 'double_chirp' | 'descending' | 'p1_alert' | 'panic_continuous';
+type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm';
 
 let audioCtx: AudioContext | null = null;
 
@@ -43,199 +43,58 @@ interface ToneProfile {
   steps: ToneStep[];
 }
 
-// ─── Motorola Spillman Flex / MCC7500 / P25 Emergency Radio Tone Profiles ──
-// Frequencies and cadences match real Motorola CAD console and APX radio tones:
-//   • Quick Call II two-tone paging (853.1 / 960.0 Hz standard pair)
-//   • P25 "3-pip" attention getter (A5 → C6 → E6 major triad)
-//   • Hi-Lo siren yelp pattern (1050 / 1450 Hz alternating)
-//   • APX panic warble (rapid 800 / 1000 Hz alternation)
-//   • MDT keystroke acknowledgment pip (1000 Hz, 50ms)
-// All tones use sine waves for clean, radio-like audio. Gain is calibrated
-// so tones are audible but not jarring through laptop speakers.
-
 const PROFILES: Record<ToneType, ToneProfile> = {
-
-  // ── Info: MDT keystroke acknowledgment pip ───────────────────
-  // Single 1000 Hz sine pip, 50ms — the classic Spillman Flex
-  // "command accepted" beep heard on every successful MDT action.
+  // ── Info: Short confirmation beep (command acknowledged)
   info: {
     type: 'sine',
-    gain: 0.18,
-    steps: [
-      { freq: 1000, start: 0, dur: 0.05 },
-    ],
+    gain: 0.2,
+    steps: [{ freq: 880, start: 0, dur: 0.08 }],
   },
 
-  // ── Caution: Quick Call II dispatch attention tone ───────────
-  // Sequential two-tone paging: 853.1 Hz → 960.0 Hz, each 330ms.
-  // This is the standard Motorola Quick Call II pair used by
-  // dispatchers to get a unit's attention before voice traffic.
-  // Heard on every new dispatch assignment and call broadcast.
+  // ── Caution: Single low tone (address has prior calls, no warnings)
   caution: {
-    type: 'sine',
-    gain: 0.25,
-    steps: [
-      { freq: 853,  start: 0,    dur: 0.33 },
-      { freq: 960,  start: 0.35, dur: 0.33 },
-    ],
-  },
-
-  // ── Warning: Hi-Lo siren yelp (high-priority flag) ──────────
-  // Alternating 1050 / 1450 Hz at ~3 Hz cadence — matches the
-  // Motorola "Yelp" siren pattern used for priority dispatch.
-  // Triggers on ARMED, WARRANT, DV, or other caution flags.
-  // Three full cycles for unmistakable urgency.
-  warning: {
     type: 'sine',
     gain: 0.28,
     steps: [
-      { freq: 1050, start: 0,    dur: 0.15 },
-      { freq: 1450, start: 0.17, dur: 0.15 },
-      { freq: 1050, start: 0.34, dur: 0.15 },
-      { freq: 1450, start: 0.51, dur: 0.15 },
-      { freq: 1050, start: 0.68, dur: 0.15 },
-      { freq: 1450, start: 0.85, dur: 0.15 },
+      { freq: 440, start: 0, dur: 0.3 },
     ],
   },
 
-  // ── Error: Descending minor third (negative acknowledgment) ─
-  // 440 Hz → 349 Hz (A4 → F4), each 120ms with square wave for
-  // that classic "error buzz" feel. Universally recognized as a
-  // failure/rejection tone. Used for command errors, API failures.
-  error: {
-    type: 'square',
-    gain: 0.12,
-    steps: [
-      { freq: 440, start: 0,    dur: 0.12 },
-      { freq: 349, start: 0.15, dur: 0.12 },
-    ],
-  },
-
-  // ── Alert: P25 three-pip attention getter ───────────────────
-  // A5 → C6 → E6 (880 → 1047 → 1319 Hz) ascending major triad,
-  // each 80ms with 30ms gaps. This is the standard P25 digital
-  // radio "3-beep" alert heard before BOLO broadcasts, warrant
-  // hits, backup requests, and all-units advisories.
-  alert: {
-    type: 'sine',
-    gain: 0.30,
-    steps: [
-      { freq: 880,  start: 0,    dur: 0.08 },
-      { freq: 1047, start: 0.11, dur: 0.08 },
-      { freq: 1319, start: 0.22, dur: 0.10 },
-    ],
-  },
-
-  // ── Alarm: APX emergency warble (panic / officer down) ──────
-  // Rapid 800 / 1000 Hz alternation at ~5 Hz — matches the
-  // Motorola APX radio emergency beacon and Knox-Box panic alarm
-  // cadence. Six half-cycles create the distinctive "warble" that
-  // every officer recognizes as panic/emergency. Used for panic
-  // button activation, pursuit alerts, and dispatch timer overdue.
-  alarm: {
+  // ── Warning: Double ascending tone (prior calls WITH warnings — ARMED, WARRANT, DV)
+  warning: {
     type: 'sine',
     gain: 0.32,
     steps: [
-      { freq: 800,  start: 0,    dur: 0.09 },
-      { freq: 1000, start: 0.10, dur: 0.09 },
-      { freq: 800,  start: 0.20, dur: 0.09 },
-      { freq: 1000, start: 0.30, dur: 0.09 },
-      { freq: 800,  start: 0.40, dur: 0.09 },
-      { freq: 1000, start: 0.50, dur: 0.09 },
-      { freq: 800,  start: 0.60, dur: 0.09 },
-      { freq: 1000, start: 0.70, dur: 0.09 },
+      { freq: 660,  start: 0,    dur: 0.2 },
+      { freq: 880,  start: 0.25, dur: 0.2 },
+      { freq: 660,  start: 0.5,  dur: 0.2 },
+      { freq: 880,  start: 0.75, dur: 0.2 },
     ],
   },
 
-  // ── Chirp: Brief MDT acknowledgment chirp ──────────────────
-  // Single quick rising pip — used for unit en route confirmation.
-  // 800 Hz → 1200 Hz sweep in 60ms. Minimal and non-intrusive.
-  chirp: {
-    type: 'sine',
-    gain: 0.20,
+  // ── Error: Descending two-tone (command failed / error)
+  error: {
+    type: 'square',
+    gain: 0.15,
     steps: [
-      { freq: 800,  start: 0,    dur: 0.03 },
-      { freq: 1200, start: 0.03, dur: 0.03 },
+      { freq: 400, start: 0,    dur: 0.15 },
+      { freq: 280, start: 0.18, dur: 0.15 },
     ],
   },
 
-  // ── Double Chirp: Unit on scene confirmation ───────────────
-  // Two quick rising pips with 80ms gap — confirms arrival.
-  // Slightly louder than single chirp for emphasis.
-  double_chirp: {
-    type: 'sine',
-    gain: 0.22,
+  // ── Alarm: Repeating urgent two-tone (dispatch timer overdue)
+  alarm: {
+    type: 'square',
+    gain: 0.25,
     steps: [
-      { freq: 800,  start: 0,    dur: 0.03 },
-      { freq: 1200, start: 0.03, dur: 0.03 },
-      { freq: 800,  start: 0.14, dur: 0.03 },
-      { freq: 1200, start: 0.17, dur: 0.03 },
+      { freq: 800, start: 0,    dur: 0.12 },
+      { freq: 600, start: 0.15, dur: 0.12 },
+      { freq: 800, start: 0.35, dur: 0.12 },
+      { freq: 600, start: 0.50, dur: 0.12 },
+      { freq: 800, start: 0.70, dur: 0.12 },
+      { freq: 600, start: 0.85, dur: 0.12 },
     ],
   },
-
-  // ── Descending: Call cleared / closed tone ─────────────────
-  // C6 → A5 → F5 descending minor arpeggio (1047 → 880 → 698 Hz).
-  // Each note 80ms. Universally recognized "task complete" feel.
-  descending: {
-    type: 'sine',
-    gain: 0.18,
-    steps: [
-      { freq: 1047, start: 0,    dur: 0.08 },
-      { freq: 880,  start: 0.10, dur: 0.08 },
-      { freq: 698,  start: 0.20, dur: 0.10 },
-    ],
-  },
-
-  // ── P1 Alert: Double high-low-high emergency attention tone ─
-  // For Priority 1 calls — two cycles of 1200 / 800 / 1200 Hz
-  // sweep creating an unmistakable siren-like warble. Louder gain.
-  p1_alert: {
-    type: 'sine',
-    gain: 0.35,
-    steps: [
-      { freq: 1200, start: 0,    dur: 0.10 },
-      { freq: 800,  start: 0.12, dur: 0.10 },
-      { freq: 1200, start: 0.24, dur: 0.10 },
-      { freq: 800,  start: 0.40, dur: 0.10 },
-      { freq: 1200, start: 0.52, dur: 0.10 },
-      { freq: 800,  start: 0.64, dur: 0.10 },
-    ],
-  },
-
-  // ── Panic Continuous: Extended alarm for panic events ───────
-  // 12 rapid warble cycles (~2.5 seconds) — impossible to ignore.
-  // Used exclusively for panic button activations.
-  panic_continuous: {
-    type: 'sine',
-    gain: 0.35,
-    steps: [
-      { freq: 800,  start: 0,    dur: 0.09 },
-      { freq: 1100, start: 0.10, dur: 0.09 },
-      { freq: 800,  start: 0.20, dur: 0.09 },
-      { freq: 1100, start: 0.30, dur: 0.09 },
-      { freq: 800,  start: 0.40, dur: 0.09 },
-      { freq: 1100, start: 0.50, dur: 0.09 },
-      { freq: 800,  start: 0.60, dur: 0.09 },
-      { freq: 1100, start: 0.70, dur: 0.09 },
-      { freq: 800,  start: 0.80, dur: 0.09 },
-      { freq: 1100, start: 0.90, dur: 0.09 },
-      { freq: 800,  start: 1.00, dur: 0.09 },
-      { freq: 1100, start: 1.10, dur: 0.09 },
-      { freq: 800,  start: 1.20, dur: 0.09 },
-      { freq: 1100, start: 1.30, dur: 0.09 },
-      { freq: 800,  start: 1.40, dur: 0.09 },
-      { freq: 1100, start: 1.50, dur: 0.09 },
-      { freq: 800,  start: 1.60, dur: 0.09 },
-      { freq: 1100, start: 1.70, dur: 0.09 },
-      { freq: 800,  start: 1.80, dur: 0.09 },
-      { freq: 1100, start: 1.90, dur: 0.09 },
-      { freq: 800,  start: 2.00, dur: 0.09 },
-      { freq: 1100, start: 2.10, dur: 0.09 },
-      { freq: 800,  start: 2.20, dur: 0.09 },
-      { freq: 1100, start: 2.30, dur: 0.09 },
-    ],
-  },
-
 };
 
 /**

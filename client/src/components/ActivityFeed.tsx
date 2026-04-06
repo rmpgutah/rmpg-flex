@@ -43,9 +43,7 @@ const ACTION_CONFIG: Record<ActivityAction, { icon: React.ElementType; color: st
 };
 
 function formatTime(dateStr: string, showDate: boolean): string {
-  if (!dateStr) return '--:--:--';
   const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return '--:--:--';
   if (showDate) {
     return date.toLocaleString('en-US', {
       month: 'short',
@@ -90,7 +88,7 @@ export default React.memo(function ActivityFeed({
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-rmpg-200 leading-relaxed">
                     {entry.user_name && (
-                      <span className="font-semibold text-rmpg-200">{entry.user_name} </span>
+                      <span className="font-semibold text-gray-200">{entry.user_name} </span>
                     )}
                     {entry.description}
                   </p>

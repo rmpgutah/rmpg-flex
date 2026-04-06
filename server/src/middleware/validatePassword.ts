@@ -18,11 +18,6 @@ export function validatePassword(password: string): PasswordValidationResult {
     errors.push(`Password must be at least ${minLength} characters`);
   }
 
-  // [FIX 101] Enforce maximum password length to prevent bcrypt DoS (bcrypt truncates at 72 bytes)
-  if (password.length > 128) {
-    errors.push('Password must not exceed 128 characters');
-  }
-
   if (requireUppercase && !/[A-Z]/.test(password)) {
     errors.push('Password must contain at least one uppercase letter');
   }
@@ -94,6 +89,7 @@ export function isPasswordExpired(
   if (!passwordChangedAt) return true; // Never changed = expired
 
   const changedAt = new Date(passwordChangedAt);
+  if (isNaN(changedAt.getTime())) return true; // Invalid date = treat as expired
   const expiryDate = new Date(changedAt.getTime() + expiryDays * 24 * 60 * 60 * 1000);
   return new Date() > expiryDate;
 }

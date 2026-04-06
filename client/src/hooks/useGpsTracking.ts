@@ -140,7 +140,6 @@ function haversineMeters(
   lat1: number, lng1: number,
   lat2: number, lng2: number,
 ): number {
-  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const R = 6371000; // Earth radius in meters
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
@@ -266,26 +265,23 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
-    let cancelled = false;
     apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
       .then((unit) => {
-        if (unit && !cancelled) {
+        if (unit) {
           unitIdRef.current = unit.id;
           setState((prev) => ({ ...prev, unitCallSign: unit.call_sign, unitId: unit.id }));
           gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })
-      .catch((err) => {
-        console.warn('[useGpsTracking] Unit fetch failed (user may not have a unit assigned):', err);
+      .catch(() => {
+        // User may not have a unit assigned — that's fine, GPS still mandatory
       });
-    return () => { cancelled = true; };
   }, []);
 
   // ─── Batch send ───────────────────────────────────────────
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
   const isSendingRef = useRef(false);
-  const mountedRef = useRef(true);
   const sendBatch = useCallback(async () => {
     // Guard against concurrent sends (interval can fire while await is pending)
     if (isSendingRef.current) return;
@@ -320,7 +316,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (needsUnitFetch) {
           apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
             .then((unit) => {
-              if (unit && mountedRef.current) {
+              if (unit) {
                 unitIdRef.current = unit.id;
                 setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
               }
@@ -358,8 +354,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         lastSentAt: new Date().toISOString(),
         error: null,
       }));
-    } catch (err) {
-      console.warn('[useGpsTracking] Immediate GPS send failed, queuing for next batch:', err);
+    } catch {
+      // Will be retried in next batch
       queueRef.current.push(point);
     }
   }, []);
@@ -464,14 +460,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           sendImmediate(point);
         }
       }
-    } catch (err) {
-      console.warn('[useGpsTracking] IP geolocation fallback failed:', err);
+    } catch {
+      // IP fallback failed — degrade gracefully
     }
   }, [maxSpeedMs, sendImmediate]);
 
   // Starts the periodic IP fallback poller (Electron desktop only)
   const startIpFallbackPoller = useCallback(() => {
     if (!IS_ELECTRON || ipFallbackIntervalRef.current) return;
+    console.log('[GPS] Browser geolocation unavailable — starting IP fallback poller');
     tryIpFallback(); // Immediate first attempt
     ipFallbackIntervalRef.current = setInterval(tryIpFallback, DEFAULT_BATCH_INTERVAL);
   }, [tryIpFallback]);
@@ -727,7 +724,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   useEffect(() => {
     startTracking();
     return () => {
-      mountedRef.current = false;
       // Flush remaining points and clean up all timers/watchers
       cleanupTracking(true);
     };
@@ -759,11 +755,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     const handleNetworkChange = () => {
       const newType = conn.type || conn.effectiveType || 'unknown';
       const newConnType = getConnectionType();
+      console.log(`[GPS] Network changed: ${prevType} → ${newType} (${newConnType})`);
       setState((prev) => ({ ...prev, connectionType: newConnType }));
 
-      // Flush any queued points before restarting (fire-and-forget; restart waits 1s anyway)
+      // Flush any queued points before restarting
       if (queueRef.current.length > 0) {
-        sendBatch().catch((e) => console.warn('[GPS] sendBatch on network change failed:', e));
+        sendBatch();
       }
 
       // Restart watchPosition to force re-acquisition on the new network
@@ -793,12 +790,14 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Handle browser online/offline events (covers WiFi disconnect/reconnect)
   useEffect(() => {
     const handleOnline = () => {
+      console.log('[GPS] Browser online — restarting tracking');
       setState((prev) => ({ ...prev, connectionType: getConnectionType() }));
       if (!isTracking) {
         startTracking();
       }
     };
     const handleOffline = () => {
+      console.log('[GPS] Browser offline — queueing locally');
       setState((prev) => ({ ...prev, connectionType: 'none' }));
     };
     window.addEventListener('online', handleOnline);
@@ -823,8 +822,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           wakeLock = await (navigator as any).wakeLock.request('screen');
           wakeLock.addEventListener('release', handleWakeLockRelease);
         }
-      } catch (err) {
-        console.warn('[useGpsTracking] WakeLock request failed:', err);
+      } catch {
+        // WakeLock not available or permission denied — degrade gracefully
       }
     };
 

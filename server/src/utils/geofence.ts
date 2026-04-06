@@ -171,17 +171,6 @@ export function identifyBeat(lat: number, lng: number): BeatMatch | null {
 }
 
 /**
- * Force-reload the beat features from disk.
- * Call this after beat geometry has been updated to ensure
- * subsequent identifyBeat() calls use the new polygons.
- */
-export function reloadGeofence(): void {
-  beatFeatures = null;
-  loadBeats();
-  console.log('[geofence] Reloaded beat features from disk');
-}
-
-/**
  * Batch-identify beats for an array of coordinates.
  * More efficient than calling identifyBeat() in a loop since
  * features are loaded once.
@@ -191,44 +180,4 @@ export function identifyBeats(
 ): (BeatMatch | null)[] {
   loadBeats();
   return points.map((p) => identifyBeat(p.lat, p.lng));
-}
-
-// ----------------------------------------------------------
-// Nearest-beat fallback (centroid distance)
-// ----------------------------------------------------------
-
-function featureCentroid(feature: BeatFeature): { lat: number; lng: number } {
-  const ring = feature.subPolygons[0]?.[0];
-  if (!ring || ring.length === 0) return { lat: 0, lng: 0 };
-  let sumLng = 0, sumLat = 0;
-  for (const [lng, lat] of ring) { sumLng += lng; sumLat += lat; }
-  return { lng: sumLng / ring.length, lat: sumLat / ring.length };
-}
-
-function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 3958.8;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-/**
- * Find the nearest beat to a GPS coordinate by centroid distance.
- * Returns null if the nearest beat is more than 1.25 miles away.
- */
-export function findNearestBeat(lat: number, lng: number): (BeatMatch & { exact: boolean; distance_mi: number }) | null {
-  const features = loadBeats();
-  if (features.length === 0) return null;
-  let bestFeature: BeatFeature | null = null;
-  let bestDist = Infinity;
-  for (const feature of features) {
-    const centroid = featureCentroid(feature);
-    const dist = haversineMiles(lat, lng, centroid.lat, centroid.lng);
-    if (dist < bestDist) { bestDist = dist; bestFeature = feature; }
-  }
-  if (!bestFeature || bestDist > 1.25) return null;
-  const p = bestFeature.properties;
-  return { beat_id: p.beat_id, beat_code: p.beat_code, city: p.city, city_code: p.city_code, district_letter: p.district_letter, beat_number: p.beat_number, exact: false, distance_mi: Math.round(bestDist * 100) / 100 };
 }

@@ -19,14 +19,11 @@ import {
   LogOut,
   Globe,
   Clock,
-  Users,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';
 import { toDisplayLabel } from '../../utils/formatters';
 import { apiFetch } from '../../hooks/useApi';
-import { useToast } from '../../components/ToastProvider';
-import { safeDateTimeStr } from '../../utils/dateUtils';
 
 // ============================================================
 // Shared types
@@ -62,7 +59,6 @@ const ROLE_COLORS: Record<UserRole, string> = {
   dispatcher: 'bg-green-900/50 text-green-400 border-green-700/50',
   client_viewer: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   contract_manager: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
-  human_resources: 'bg-pink-900/50 text-pink-400 border-pink-700/50',
 };
 
 type UserStatus = 'active' | 'inactive' | 'terminated';
@@ -103,20 +99,6 @@ interface AdminUsersTabProps {
 // Component
 // ============================================================
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminUsersTab({
   users,
   loadingUsers,
@@ -130,7 +112,6 @@ export default function AdminUsersTab({
   onStatusChange,
   LoadingSpinner,
 }: AdminUsersTabProps) {
-  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'security' | 'activity' | 'email'>('profile');
   const [securityActionLoading, setSecurityActionLoading] = useState<string | null>(null);
@@ -146,10 +127,8 @@ export default function AdminUsersTab({
     try {
       await apiFetch(`/admin/users/${userId}/reset-2fa`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
-      addToast('2FA reset successfully', 'success');
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to reset 2FA' });
-      addToast(err.message || 'Failed to reset 2FA', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -180,10 +159,8 @@ export default function AdminUsersTab({
       const result = await apiFetch<{ message: string; count: number }>(`/admin/users/${userId}/revoke-sessions`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: result.message || `All sessions revoked.` });
       setUserSessions([]);
-      addToast('All sessions revoked', 'success');
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to revoke sessions' });
-      addToast(err.message || 'Failed to revoke sessions', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -199,14 +176,12 @@ export default function AdminUsersTab({
       setSecurityMsg({ type: 'success', text: result.message || `Role changed to ${newRole}` });
       setRoleEditing(false);
       setPendingRole(null);
-      addToast(`Role changed to ${newRole}`, 'success');
       // Update local state
       if (selectedUser) {
         setSelectedUser({ ...selectedUser, role: newRole } as any);
       }
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to change role' });
-      addToast(err.message || 'Failed to change role', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -217,10 +192,8 @@ export default function AdminUsersTab({
     try {
       await apiFetch(`/admin/users/${userId}/force-password-change`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: 'User will be required to change their password on next login.' });
-      addToast('Password change required on next login', 'success');
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to force password change' });
-      addToast(err.message || 'Failed to force password change', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -228,32 +201,27 @@ export default function AdminUsersTab({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
-      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-[#181818] flex flex-col overflow-hidden transition-all duration-200`}>
-        <div className="px-4 py-3 flex items-center justify-between border-b border-[#181818] flex-shrink-0 bg-surface-sunken">
+      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0">
           <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark pl-9 text-xs min-h-[36px]"
-              placeholder="Search users..." aria-label="Search users"
+              className="input-dark pl-9 text-xs"
+              placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            {searchQuery && (
-              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-rmpg-300 transition-colors" aria-label="Clear search">
-                <XCircle className="w-3 h-3" />
-              </button>
-            )}
           </div>
-          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" onClick={openAddUser} aria-label="Add new user">
-            <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add User
+          <button className="toolbar-btn toolbar-btn-primary" onClick={openAddUser}>
+            <Plus className="w-3.5 h-3.5" /> Add User
           </button>
         </div>
 
         {loadingUsers ? (
           <LoadingSpinner />
         ) : (
-          <div className="flex-1 overflow-auto scrollbar-dark">
+          <div className="flex-1 overflow-auto">
             {users
               .filter((u) => {
                 if (!searchQuery) return true;
@@ -261,28 +229,23 @@ export default function AdminUsersTab({
                 return (
                   u.username.toLowerCase().includes(q) ||
                   `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) ||
-                  u.email.toLowerCase().includes(q) ||
-                  (u.badge_number || '').toLowerCase().includes(q)
+                  u.email.toLowerCase().includes(q)
                 );
               })
-              .map((user, idx) => (
+              .map((user) => (
                 <div
                   key={user.id}
                   onClick={() => { setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); } }}
-                  aria-label={`Select ${user.first_name} ${user.last_name}`}
-                  className={`px-4 py-3 border-b border-[#181818]/60 cursor-pointer transition-all duration-150 ${
+                  className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors ${
                     selectedUser?.id === user.id
                       ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                      : `hover:bg-[rgba(136,136,136,0.06)] border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
+                      : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold select-none transition-colors ${
-                      user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500 opacity-60'
-                    }`} aria-hidden="true">
+                    <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
+                      user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500'
+                    }`}>
                       {user.first_name?.[0]}{user.last_name?.[0]}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -307,10 +270,6 @@ export default function AdminUsersTab({
                         <span className="font-mono">@{user.username}</span>
                         {user.badge_number && <span>Badge: {user.badge_number}</span>}
                         {user.rank && <span>{user.rank}</span>}
-                        {/* Enhancement 45: Active sessions count */}
-                        {(user as any).active_sessions > 0 && (
-                          <span className="text-green-400 font-mono">{(user as any).active_sessions} session{(user as any).active_sessions > 1 ? 's' : ''}</span>
-                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
@@ -325,11 +284,10 @@ export default function AdminUsersTab({
                           </span>
                         );
                       })()}
-                      <button type="button"
+                      <button
                         onClick={(e) => { e.stopPropagation(); openEditUser(user); }}
-                        className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors rounded-sm"
-                        title="Edit user"
-                        aria-label={`Edit ${user.first_name} ${user.last_name}`}
+                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
+                        title="Edit"
                       >
                         <Edit className="w-3 h-3" />
                       </button>
@@ -338,11 +296,7 @@ export default function AdminUsersTab({
                 </div>
               ))}
             {users.length === 0 && !loadingUsers && (
-              <div className="flex flex-col items-center justify-center text-center text-rmpg-400 py-16 gap-2">
-                <Users className="w-8 h-8 text-rmpg-600" aria-hidden="true" />
-                <span className="text-xs font-medium text-rmpg-500">No users found</span>
-                <span className="text-[9px] text-rmpg-600">{searchQuery ? 'Try a different search term' : 'Add personnel to get started'}</span>
-              </div>
+              <div className="text-center text-rmpg-400 py-12">No users found</div>
             )}
           </div>
         )}
@@ -352,7 +306,7 @@ export default function AdminUsersTab({
       {selectedUser && (
         <div className="w-[60%] flex flex-col overflow-hidden">
           {/* Detail Header */}
-          <div className="p-4 border-b border-[#181818] bg-surface-sunken flex-shrink-0">
+          <div className="p-4 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 {selectedUser.profile_image ? (
@@ -377,19 +331,18 @@ export default function AdminUsersTab({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button"
+                <button
                   onClick={() => openEditUser(selectedUser)}
-                  className="toolbar-btn focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
-                  aria-label={`Edit ${selectedUser.first_name} ${selectedUser.last_name}`}
+                  className="toolbar-btn"
                 >
-                  <Edit className="w-3.5 h-3.5" aria-hidden="true" /> Edit
+                  <Edit className="w-3.5 h-3.5" /> Edit
                 </button>
                 {/* Suspend / Reactivate quick-actions */}
                 {(() => {
                   const rawStatus = ((selectedUser as any).raw_status || (selectedUser.is_active ? 'active' : 'inactive')) as UserStatus;
                   if (rawStatus === 'active' && onStatusChange) {
                     return (
-                      <button type="button"
+                      <button
                         onClick={() => { if (window.confirm(`Suspend ${selectedUser.first_name} ${selectedUser.last_name}? Their sessions will be terminated.`)) onStatusChange(selectedUser.id, 'inactive'); }}
                         className="toolbar-btn text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
                         title="Suspend user"
@@ -399,7 +352,7 @@ export default function AdminUsersTab({
                     );
                   } else if (rawStatus === 'inactive' && onStatusChange) {
                     return (
-                      <button type="button"
+                      <button
                         onClick={() => { if (window.confirm(`Reactivate ${selectedUser.first_name} ${selectedUser.last_name}?`)) onStatusChange(selectedUser.id, 'active'); }}
                         className="toolbar-btn text-green-400 hover:text-green-300 hover:bg-green-900/30"
                         title="Reactivate user"
@@ -411,11 +364,11 @@ export default function AdminUsersTab({
                   return null;
                 })()}
                 {(selectedUser as any).totp_enabled ? (
-                  <button type="button"
+                  <button
                     onClick={() => {
                       if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
                         apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
-                          .then(() => { setSelectedUser({ ...selectedUser, totp_enabled: false } as any); })
+                          .then(() => { (selectedUser as any).totp_enabled = false; setSelectedUser({ ...selectedUser }); })
                           .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); });
                     }}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"
@@ -424,14 +377,14 @@ export default function AdminUsersTab({
                     <ShieldOff className="w-3.5 h-3.5" /> Reset 2FA
                   </button>
                 ) : null}
-                <button type="button"
+                <button
                   onClick={() => openDeleteUser(selectedUser)}
                   className="toolbar-btn text-red-400 hover:text-red-300 hover:bg-red-900/30"
                   title="Terminate user"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Terminate
                 </button>
-                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors rounded-sm" aria-label="Close user details">
+                <button onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -439,7 +392,7 @@ export default function AdminUsersTab({
           </div>
 
           {/* Detail Tabs */}
-          <div className="flex gap-0.5 px-4 pt-2 border-b border-[#181818] flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
+          <div className="flex gap-1 px-4 pt-2 border-b border-rmpg-600 flex-shrink-0">
             {([
               { id: 'profile' as const, label: 'Profile' },
               { id: 'personal' as const, label: 'Personal' },
@@ -448,30 +401,27 @@ export default function AdminUsersTab({
               { id: 'activity' as const, label: 'Activity Log' },
               { id: 'email' as const, label: 'Email Integration' },
             ]).map((tab) => (
-              <button type="button"
+              <button
                 key={tab.id}
-                role="tab"
-                aria-selected={userDetailTab === tab.id}
                 onClick={() => setUserDetailTab(tab.id)}
-                className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
+                className={`px-3 py-1.5 text-[10px] font-medium transition-colors ${
                   userDetailTab === tab.id
-                    ? 'bg-[#141414] text-white border border-[#181818] border-b-[#141414]'
-                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(136,136,136,0.08)]'
+                    ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
+                    : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
                 }`}
               >
                 {tab.label}
-                {userDetailTab === tab.id && <div className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" aria-hidden="true" />}
               </button>
             ))}
           </div>
 
           {/* Detail Content */}
-          <div className="flex-1 overflow-auto scrollbar-dark p-4 space-y-4" role="tabpanel">
+          <div className="flex-1 overflow-auto p-4 space-y-4">
             {/* Profile Tab */}
             {userDetailTab === 'profile' && (
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
-                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-[#181818] pb-1.5">Employment Information</h3>
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Employment Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Department:</span> <span className="text-rmpg-200 ml-1">{selectedUser.department || '--'}</span></div>
                     <div><span className="text-rmpg-400">Rank:</span> <span className="text-rmpg-200 ml-1">{selectedUser.rank || '--'}</span></div>
@@ -556,7 +506,7 @@ export default function AdminUsersTab({
                   {selectedUser.certifications ? (
                     <div className="flex flex-wrap gap-2">
                       {selectedUser.certifications.split(',').map((cert, i) => (
-                        <span key={cert.trim()} className="px-2 py-1 bg-brand-900/30 text-brand-300 text-[10px] font-medium border border-brand-700/40">
+                        <span key={i} className="px-2 py-1 bg-brand-900/30 text-brand-300 text-[10px] font-medium border border-brand-700/40">
                           {cert.trim()}
                         </span>
                       ))}
@@ -587,7 +537,7 @@ export default function AdminUsersTab({
                         {toDisplayLabel(selectedUser.role)}
                       </span>
                       {!roleEditing && (
-                        <button type="button" onClick={() => { setRoleEditing(true); setPendingRole(selectedUser.role); }} className="toolbar-btn text-[9px]">
+                        <button onClick={() => { setRoleEditing(true); setPendingRole(selectedUser.role); }} className="toolbar-btn text-[9px]">
                           <Edit className="w-3 h-3" /> Change Role
                         </button>
                       )}
@@ -596,7 +546,7 @@ export default function AdminUsersTab({
                   {roleEditing && (
                     <div className="mt-3 flex items-center gap-2">
                       <select
-                        className="input-dark text-xs flex-1 min-h-[36px]"
+                        className="input-dark text-xs flex-1"
                         value={pendingRole || selectedUser.role}
                         onChange={(e) => setPendingRole(e.target.value as UserRole)}
                       >
@@ -604,15 +554,15 @@ export default function AdminUsersTab({
                           <option key={r} value={r}>{toDisplayLabel(r)}</option>
                         ))}
                       </select>
-                      <button type="button"
+                      <button
                         onClick={() => pendingRole && handleRoleChange(selectedUser.id, pendingRole)}
                         disabled={securityActionLoading === 'role-change' || pendingRole === selectedUser.role}
                         className="toolbar-btn toolbar-btn-primary text-[9px]"
                       >
-                        {securityActionLoading === 'role-change' ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3" />}
+                        {securityActionLoading === 'role-change' ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
                         Apply
                       </button>
-                      <button type="button" onClick={() => { setRoleEditing(false); setPendingRole(null); }} className="toolbar-btn text-[9px]">
+                      <button onClick={() => { setRoleEditing(false); setPendingRole(null); }} className="toolbar-btn text-[9px]">
                         Cancel
                       </button>
                     </div>
@@ -650,7 +600,7 @@ export default function AdminUsersTab({
                         </>
                       )}
                     </div>
-                    <button type="button"
+                    <button
                       onClick={() => handleReset2FA(selectedUser.id)}
                       disabled={securityActionLoading === 'reset-2fa'}
                       className="toolbar-btn text-[9px] flex items-center gap-1"
@@ -663,7 +613,7 @@ export default function AdminUsersTab({
                       Reset 2FA
                     </button>
                   </div>
-                  <p className="text-[9px] mt-2" style={{ color: '#555555' }}>
+                  <p className="text-[9px] mt-2" style={{ color: '#4b5563' }}>
                     Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
                   </p>
                 </div>
@@ -697,7 +647,7 @@ export default function AdminUsersTab({
                       </span>
                     </div>
                   </div>
-                  <button type="button"
+                  <button
                     onClick={() => handleForcePasswordChange(selectedUser.id)}
                     disabled={securityActionLoading === 'force-pw'}
                     className="toolbar-btn text-[9px] flex items-center gap-1"
@@ -718,7 +668,7 @@ export default function AdminUsersTab({
                       Active Sessions ({userSessions.length})
                     </h3>
                     <div className="flex items-center gap-2">
-                      <button type="button"
+                      <button
                         onClick={() => loadUserSessions(selectedUser.id)}
                         disabled={loadingSessions}
                         className="toolbar-btn text-[9px] flex items-center gap-1"
@@ -727,7 +677,7 @@ export default function AdminUsersTab({
                         Refresh
                       </button>
                       {userSessions.length > 0 && (
-                        <button type="button"
+                        <button
                           onClick={() => {
                             if (window.confirm(`Revoke all ${userSessions.length} active sessions for ${selectedUser.first_name} ${selectedUser.last_name}? They will be logged out from all devices.`))
                               handleRevokeAllSessions(selectedUser.id);
@@ -736,7 +686,7 @@ export default function AdminUsersTab({
                           className="toolbar-btn text-[9px] text-red-400 hover:text-red-300 hover:bg-red-900/30 flex items-center gap-1"
                         >
                           {securityActionLoading === 'revoke-sessions' ? (
-                            <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+                            <Loader2 className="w-3 h-3 animate-spin" />
                           ) : (
                             <LogOut className="w-3 h-3" />
                           )}
@@ -746,7 +696,7 @@ export default function AdminUsersTab({
                     </div>
                   </div>
                   {loadingSessions ? (
-                    <div className="flex items-center gap-2 py-3"><Loader2 className="w-3 h-3 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[11px] text-rmpg-400">Loading sessions...</span></div>
+                    <div className="flex items-center gap-2 py-3"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading sessions...</span></div>
                   ) : userSessions.length > 0 ? (
                     <div className="space-y-1.5">
                       {userSessions.map((session) => (
@@ -793,13 +743,15 @@ export default function AdminUsersTab({
                   Recent Activity ({userActivity.length})
                 </h3>
                 {loadingUserActivity ? (
-                  <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
+                  <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
                 ) : userActivity.length > 0 ? (
                   <div className="space-y-1">
                     {userActivity.map((entry) => (
                       <div key={entry.id} className="flex items-center gap-3 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700">
                         <span className="text-rmpg-400 font-mono text-[10px] flex-shrink-0">
-                          {safeDateTimeStr(entry.timestamp)}
+                          {new Date(entry.timestamp).toLocaleString('en-US', {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+                          })}
                         </span>
                         <span className="text-brand-400 font-medium">{entry.action}</span>
                         <span className="text-rmpg-300 flex-1 truncate">{entry.details}</span>
@@ -818,15 +770,13 @@ export default function AdminUsersTab({
                 <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Microsoft 365 Business Email</h3>
                 <div className="py-8 text-center border border-dashed border-rmpg-700">
                   <Settings className="w-8 h-8 text-rmpg-500 mx-auto mb-3" />
-                  <p className="text-sm text-rmpg-300 font-medium">Microsoft 365 Email Integration</p>
+                  <p className="text-sm text-rmpg-300 font-medium">Email Integration Coming Soon</p>
                   <p className="text-[11px] text-rmpg-500 mt-1 max-w-sm mx-auto">
-                    Microsoft 365 integration requires Azure AD application registration and admin consent.
-                    Contact your system administrator to configure the OAuth2 app credentials for this deployment.
+                    Microsoft 365 business email connection will be established when online live integration between dispatchers and officers is implemented.
                   </p>
-                  <div className="mt-3 text-[10px] text-rmpg-500 space-y-0.5">
-                    <p>Required: Azure AD App ID, Client Secret, Tenant ID</p>
-                    <p>Configure in Admin &rarr; System &rarr; Integrations</p>
-                  </div>
+                  <button className="toolbar-btn mt-4 opacity-50 cursor-not-allowed" disabled>
+                    Connect Microsoft 365
+                  </button>
                 </div>
               </div>
             )}

@@ -33,7 +33,7 @@ import type {
 // ── Stage colors ──────────────────────────────────────────
 const PROPOSAL_STAGE_CLASSES: Record<ProposalStage, string> = {
   draft: 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50',
-  sent: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
+  sent: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
   viewed: 'text-purple-400 bg-purple-900/30 border-purple-700/50',
   accepted: 'text-green-400 bg-green-900/30 border-green-700/50',
   rejected: 'text-red-400 bg-red-900/30 border-red-700/50',
@@ -49,11 +49,11 @@ function formatCurrency(val: number | null | undefined): string {
 
 function formatDate(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // ════════════════════════════════════════════════════════
@@ -105,7 +105,7 @@ export default function ProposalsTab() {
       const params = new URLSearchParams();
       if (filterStage) params.set('stage', filterStage);
       const qs = params.toString();
-      const data = await apiFetch<CrmProposal[]>(`/crm/proposals${qs ? `?${qs}` : ''}`);
+      const data = await apiFetch<CrmProposal[]>(`/api/crm/proposals${qs ? `?${qs}` : ''}`);
       if (data) setProposals(data);
     } catch {
       addToast('Failed to load proposals', 'error');
@@ -116,21 +116,21 @@ export default function ProposalsTab() {
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const data = await apiFetch<CrmProposalTemplate[]>('/crm/proposal-templates');
+      const data = await apiFetch<CrmProposalTemplate[]>('/api/crm/proposal-templates');
       if (data) setTemplates(data);
     } catch { /* silent */ }
   }, []);
 
   const fetchLeads = useCallback(async () => {
     try {
-      const data = await apiFetch<CrmLead[]>('/crm/leads?pipeline_stage=qualified');
+      const data = await apiFetch<CrmLead[]>('/api/crm/leads?pipeline_stage=qualified');
       if (data) setLeads(data);
     } catch { /* silent */ }
   }, []);
 
   const fetchClients = useCallback(async () => {
     try {
-      const data = await apiFetch<Client[]>('/clients');
+      const data = await apiFetch<Client[]>('/api/clients');
       if (data) setClients(data);
     } catch { /* silent */ }
   }, []);
@@ -161,7 +161,7 @@ export default function ProposalsTab() {
   // ── Stage change ────────────────────────────────────
   const handleStageChange = async (id: number | string, stage: ProposalStage) => {
     try {
-      await apiFetch(`/crm/proposals/${id}/stage`, {
+      await apiFetch(`/api/crm/proposals/${id}/stage`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage }),
@@ -181,7 +181,7 @@ export default function ProposalsTab() {
     if (!selectedProposal) return;
     setSaving(true);
     try {
-      await apiFetch(`/crm/proposals/${selectedProposal.id}`, {
+      await apiFetch(`/api/crm/proposals/${selectedProposal.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
@@ -190,7 +190,7 @@ export default function ProposalsTab() {
       setEditMode(false);
       fetchProposals();
       // Refresh selected
-      const updated = await apiFetch<CrmProposal>(`/crm/proposals/${selectedProposal.id}`);
+      const updated = await apiFetch<CrmProposal>(`/api/crm/proposals/${selectedProposal.id}`);
       if (updated) setSelectedProposal(updated);
     } catch {
       addToast('Failed to update proposal', 'error');
@@ -205,7 +205,7 @@ export default function ProposalsTab() {
     if (!form.title.trim()) return;
     setSaving(true);
     try {
-      await apiFetch('/crm/proposals', {
+      await apiFetch('/api/crm/proposals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -234,11 +234,11 @@ export default function ProposalsTab() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar ──────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#0a0a0a] border-b border-rmpg-700">
+      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#141e2b] border-b border-rmpg-700">
         <select
           value={filterStage}
           onChange={e => setFilterStage(e.target.value)}
-          className="bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Stages</option>
           {PROPOSAL_STAGES.map(s => (
@@ -248,7 +248,7 @@ export default function ProposalsTab() {
         <select
           value={filterTemplate}
           onChange={e => setFilterTemplate(e.target.value)}
-          className="bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Templates</option>
           {templates.map(t => (
@@ -256,7 +256,7 @@ export default function ProposalsTab() {
           ))}
         </select>
         <div className="flex-1" />
-        <button type="button"
+        <button
           onClick={() => setShowCreateModal(true)}
           className="bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1"
         >
@@ -280,7 +280,7 @@ export default function ProposalsTab() {
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-[#050505] border-b border-rmpg-700 sticky top-0 z-10">
+                <tr className="bg-[#0d1520] border-b border-rmpg-700 sticky top-0 z-10">
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Proposal #</th>
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Title</th>
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Lead/Client</th>
@@ -298,7 +298,7 @@ export default function ProposalsTab() {
                   <tr
                     key={prop.id}
                     onClick={() => { setSelectedProposal(prop); setEditMode(false); }}
-                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedProposal?.id === prop.id ? 'bg-brand-600/10' : 'hover:bg-[#141414]'}`}
+                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedProposal?.id === prop.id ? 'bg-brand-600/10' : 'hover:bg-[#1a2636]'}`}
                   >
                     <td className="px-2 py-1.5 text-xs text-brand-400 font-mono">{prop.proposal_number}</td>
                     <td className="px-2 py-1.5 text-xs text-white font-medium truncate max-w-[200px]">{prop.title}</td>
@@ -323,9 +323,9 @@ export default function ProposalsTab() {
 
         {/* ── Proposal detail side panel ────────────── */}
         {selectedProposal && (
-          <div className="w-[400px] min-w-[360px] overflow-y-auto bg-[#0a0a0a] flex flex-col">
+          <div className="w-[400px] min-w-[360px] overflow-y-auto bg-[#141e2b] flex flex-col">
             {/* Header */}
-            <div className="px-3 py-2 bg-[#050505] border-b border-rmpg-700 flex items-center gap-2">
+            <div className="px-3 py-2 bg-[#0d1520] border-b border-rmpg-700 flex items-center gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-brand-400 font-mono">{selectedProposal.proposal_number}</span>
@@ -337,14 +337,14 @@ export default function ProposalsTab() {
               </div>
               <div className="flex items-center gap-1">
                 {selectedProposal.stage === 'draft' && (
-                  <button type="button"
+                  <button
                     onClick={() => { setEditMode(!editMode); setEditForm(selectedProposal); }}
                     className={`text-xs p-1 rounded-sm ${editMode ? 'text-brand-400' : 'text-rmpg-400 hover:text-white'}`}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
                 )}
-                <button type="button" onClick={() => setSelectedProposal(null)} className="text-rmpg-400 hover:text-white">
+                <button onClick={() => setSelectedProposal(null)} className="text-rmpg-400 hover:text-white">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -354,21 +354,21 @@ export default function ProposalsTab() {
               {/* Stage action buttons */}
               <div className="flex gap-1.5 flex-wrap">
                 {selectedProposal.stage === 'draft' && (
-                  <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'sent')} className="bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-bold px-2 py-1 rounded-sm border border-gray-700/50 flex items-center gap-1">
+                  <button onClick={() => handleStageChange(selectedProposal.id, 'sent')} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-bold px-2 py-1 rounded-sm border border-blue-700/50 flex items-center gap-1">
                     <Send className="w-3 h-3" /> Send
                   </button>
                 )}
                 {selectedProposal.stage === 'sent' && (
-                  <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'viewed')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50 flex items-center gap-1">
+                  <button onClick={() => handleStageChange(selectedProposal.id, 'viewed')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50 flex items-center gap-1">
                     <Eye className="w-3 h-3" /> Mark Viewed
                   </button>
                 )}
                 {(selectedProposal.stage === 'sent' || selectedProposal.stage === 'viewed') && (
                   <>
-                    <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'accepted')} className="bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs font-bold px-2 py-1 rounded-sm border border-green-700/50 flex items-center gap-1">
+                    <button onClick={() => handleStageChange(selectedProposal.id, 'accepted')} className="bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs font-bold px-2 py-1 rounded-sm border border-green-700/50 flex items-center gap-1">
                       <CheckCircle className="w-3 h-3" /> Accept
                     </button>
-                    <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'rejected')} className="bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-bold px-2 py-1 rounded-sm border border-red-700/50 flex items-center gap-1">
+                    <button onClick={() => handleStageChange(selectedProposal.id, 'rejected')} className="bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-bold px-2 py-1 rounded-sm border border-red-700/50 flex items-center gap-1">
                       <XCircle className="w-3 h-3" /> Reject
                     </button>
                   </>
@@ -401,7 +401,7 @@ export default function ProposalsTab() {
                           type="number"
                           value={editForm.monthly_value || ''}
                           onChange={e => setEditForm(f => ({ ...f, monthly_value: Number(e.target.value) }))}
-                          className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
@@ -410,7 +410,7 @@ export default function ProposalsTab() {
                           type="number"
                           value={editForm.total_value || ''}
                           onChange={e => setEditForm(f => ({ ...f, total_value: Number(e.target.value) }))}
-                          className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -419,7 +419,7 @@ export default function ProposalsTab() {
                       <select
                         value={editForm.billing_frequency || 'monthly'}
                         onChange={e => setEditForm(f => ({ ...f, billing_frequency: e.target.value }))}
-                        className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                        className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                       >
                         <option value="monthly">Monthly</option>
                         <option value="quarterly">Quarterly</option>
@@ -453,7 +453,7 @@ export default function ProposalsTab() {
                           type="date"
                           value={editForm.proposed_start || ''}
                           onChange={e => setEditForm(f => ({ ...f, proposed_start: e.target.value }))}
-                          className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
@@ -462,7 +462,7 @@ export default function ProposalsTab() {
                           type="date"
                           value={editForm.proposed_end || ''}
                           onChange={e => setEditForm(f => ({ ...f, proposed_end: e.target.value }))}
-                          className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -473,7 +473,7 @@ export default function ProposalsTab() {
                           type="date"
                           value={editForm.valid_until || ''}
                           onChange={e => setEditForm(f => ({ ...f, valid_until: e.target.value }))}
-                          className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
@@ -482,7 +482,7 @@ export default function ProposalsTab() {
                           type="number"
                           value={editForm.contract_length_months || ''}
                           onChange={e => setEditForm(f => ({ ...f, contract_length_months: Number(e.target.value) }))}
-                          className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -523,7 +523,7 @@ export default function ProposalsTab() {
                     value={editForm.scope_of_work || ''}
                     onChange={e => setEditForm(f => ({ ...f, scope_of_work: e.target.value }))}
                     rows={5}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                   />
                 ) : (
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedProposal.scope_of_work || 'No scope defined'}</div>
@@ -538,7 +538,7 @@ export default function ProposalsTab() {
                     value={editForm.terms || ''}
                     onChange={e => setEditForm(f => ({ ...f, terms: e.target.value }))}
                     rows={4}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                   />
                 ) : (
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedProposal.terms || 'No terms defined'}</div>
@@ -553,7 +553,7 @@ export default function ProposalsTab() {
                     value={editForm.notes || ''}
                     onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                     rows={3}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                   />
                 ) : (
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedProposal.notes || '\u2014'}</div>
@@ -563,7 +563,7 @@ export default function ProposalsTab() {
               {/* Save edits button */}
               {editMode && (
                 <div className="flex justify-end pt-1">
-                  <button type="button"
+                  <button
                     onClick={handleSaveEdits}
                     disabled={saving}
                     className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1"
@@ -579,10 +579,10 @@ export default function ProposalsTab() {
 
       {/* ── Create Proposal Modal ────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-[#0a0a0a] border border-rmpg-700 rounded-sm w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
+          <div className="bg-[#141e2b] border border-rmpg-700 rounded-sm w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Proposal" icon={FileText}>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
+              <button onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </PanelTitleBar>
@@ -594,7 +594,7 @@ export default function ProposalsTab() {
                   required
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -602,7 +602,7 @@ export default function ProposalsTab() {
                 <select
                   value={form.template_type}
                   onChange={e => handleTemplateChange(e.target.value)}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 >
                   <option value="">Select template...</option>
                   {templates.filter(t => t.is_active).map(t => (
@@ -616,7 +616,7 @@ export default function ProposalsTab() {
                   <select
                     value={form.lead_id}
                     onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="">None</option>
                     {leads.map(l => (
@@ -629,7 +629,7 @@ export default function ProposalsTab() {
                   <select
                     value={form.client_id}
                     onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="">None</option>
                     {clients.map(c => (
@@ -644,7 +644,7 @@ export default function ProposalsTab() {
                   value={form.scope_of_work}
                   onChange={e => setForm(f => ({ ...f, scope_of_work: e.target.value }))}
                   rows={4}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div>
@@ -653,7 +653,7 @@ export default function ProposalsTab() {
                   value={form.terms}
                   onChange={e => setForm(f => ({ ...f, terms: e.target.value }))}
                   rows={3}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -664,7 +664,7 @@ export default function ProposalsTab() {
                     step="0.01"
                     value={form.monthly_value}
                     onChange={e => setForm(f => ({ ...f, monthly_value: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -674,7 +674,7 @@ export default function ProposalsTab() {
                     step="0.01"
                     value={form.total_value}
                     onChange={e => setForm(f => ({ ...f, total_value: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -682,7 +682,7 @@ export default function ProposalsTab() {
                   <select
                     value={form.billing_frequency}
                     onChange={e => setForm(f => ({ ...f, billing_frequency: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="monthly">Monthly</option>
                     <option value="quarterly">Quarterly</option>
@@ -698,7 +698,7 @@ export default function ProposalsTab() {
                     type="date"
                     value={form.proposed_start}
                     onChange={e => setForm(f => ({ ...f, proposed_start: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -707,7 +707,7 @@ export default function ProposalsTab() {
                     type="date"
                     value={form.proposed_end}
                     onChange={e => setForm(f => ({ ...f, proposed_end: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -716,7 +716,7 @@ export default function ProposalsTab() {
                     type="number"
                     value={form.contract_length_months}
                     onChange={e => setForm(f => ({ ...f, contract_length_months: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -726,7 +726,7 @@ export default function ProposalsTab() {
                   type="date"
                   value={form.valid_until}
                   onChange={e => setForm(f => ({ ...f, valid_until: e.target.value }))}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -735,7 +735,7 @@ export default function ProposalsTab() {
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   rows={2}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">

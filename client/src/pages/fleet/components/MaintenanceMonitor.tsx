@@ -29,7 +29,7 @@ function daysUntil(dateStr: string | null): number | null {
 function formatDate(d: string | null): string {
   if (!d) return '—';
   try {
-    return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return d; }
 }
 
@@ -40,7 +40,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiFetch<any>('/fleet?per_page=200');
+        const res = await apiFetch<any>('/api/fleet?per_page=200');
         setVehicles(res?.vehicles || res?.data || []);
       } catch { /* ignore */ }
       setLoading(false);
@@ -80,7 +80,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
       <div className="p-3">
         <div className="panel-beveled p-4 bg-surface-base border-t-2 border-t-brand-500">
           <div className="flex items-center gap-2">
-            <Loader2 className="w-4 h-4 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+            <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
             <span className="text-xs text-rmpg-300">Loading maintenance data…</span>
           </div>
         </div>
@@ -132,7 +132,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
             {overdue.map(v => {
               const days = daysUntil(v.next_service_due);
               return (
-                <button type="button"
+                <button
                   key={v.id}
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-red-900/20 border border-red-800/30 hover:bg-red-900/40 transition-colors text-left"
@@ -163,7 +163,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
             {dueSoon.map(v => {
               const days = daysUntil(v.next_service_due);
               return (
-                <button type="button"
+                <button
                   key={v.id}
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-amber-900/15 border border-amber-800/30 hover:bg-amber-900/30 transition-colors text-left"
@@ -194,7 +194,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
             {upcoming.slice(0, 5).map(v => {
               const days = daysUntil(v.next_service_due);
               return (
-                <button type="button"
+                <button
                   key={v.id}
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700 hover:bg-rmpg-700 transition-colors text-left"

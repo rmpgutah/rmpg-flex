@@ -85,7 +85,7 @@ export default function ForcePasswordChangeModal() {
         logout();
       }, 2000);
     } catch (err: any) {
-      setError(err?.message || 'Failed to change password');
+      setError(err.message || 'Failed to change password');
     } finally {
       setSaving(false);
     }
@@ -101,19 +101,19 @@ export default function ForcePasswordChangeModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#0a0a0a',
-          border: '1px solid #222222',
-          borderTop: '3px solid #888888',
+          background: '#141e2b',
+          border: '1px solid #1e3048',
+          borderTop: '3px solid #1a5a9e',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <Shield style={{ width: 20, height: 20, color: '#888888' }} />
+            <Shield style={{ width: 20, height: 20, color: '#1a5a9e' }} />
             <div className="text-lg font-bold text-white">Password Change Required</div>
           </div>
-          <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
+          <div className="text-xs text-gray-400 max-w-sm mx-auto">
             Your administrator has required you to change your password before continuing.
             This is a one-time requirement for account security.
           </div>
@@ -123,7 +123,7 @@ export default function ForcePasswordChangeModal() {
           <div className="text-center space-y-3 py-4">
             <Check style={{ width: 32, height: 32, color: '#22c55e', margin: '0 auto' }} />
             <div className="text-sm text-green-400 font-bold">Password changed successfully!</div>
-            <div className="text-xs text-rmpg-400">Redirecting to login...</div>
+            <div className="text-xs text-gray-400">Redirecting to login...</div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -198,9 +198,9 @@ export default function ForcePasswordChangeModal() {
                   {rule.met ? (
                     <Check style={{ width: 10, height: 10, color: '#22c55e', flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle style={{ width: 10, height: 10, color: '#666666', flexShrink: 0 }} />
+                    <AlertCircle style={{ width: 10, height: 10, color: '#5a6e80', flexShrink: 0 }} />
                   )}
-                  <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
+                  <span className={rule.met ? 'text-green-400' : 'text-gray-500'}>
                     {rule.label}
                   </span>
                 </div>

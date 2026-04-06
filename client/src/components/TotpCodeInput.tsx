@@ -9,7 +9,7 @@ import React, { useRef, useCallback, useEffect } from 'react';
 interface TotpCodeInputProps {
   value: string;
   onChange: (value: string) => void;
-  onComplete?: (code: string) => void;
+  onComplete: (code: string) => void;
   disabled?: boolean;
   error?: boolean;
 }
@@ -39,7 +39,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
     }
 
     // Auto-submit when all 6 digits entered
-    if (newValue.replace(/\s/g, '').length === 6 && onComplete) {
+    if (newValue.replace(/\s/g, '').length === 6) {
       setTimeout(() => onComplete(newValue.trim()), 50);
     }
   }, [digits, onChange, onComplete]);
@@ -73,7 +73,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
       const focusIdx = Math.min(pasted.length, 5);
       inputRefs.current[focusIdx]?.focus();
 
-      if (pasted.length === 6 && onComplete) {
+      if (pasted.length === 6) {
         setTimeout(() => onComplete(pasted), 50);
       }
     }
@@ -101,20 +101,20 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
             fontSize: 22,
             fontWeight: 700,
             fontFamily: 'monospace',
-            background: '#050505',
-            border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222'}`,
+            background: '#0d1520',
+            border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048'}`,
             borderRadius: 2,
             color: '#fff',
             outline: 'none',
-            caretColor: '#888888',
+            caretColor: '#1a5a9e',
             transition: 'border-color 0.15s',
           }}
           onFocus={(e) => {
-            e.target.style.borderColor = '#888888';
+            e.target.style.borderColor = '#1a5a9e';
             e.target.select();
           }}
           onBlur={(e) => {
-            e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222';
+            e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048';
           }}
         />
       ))}

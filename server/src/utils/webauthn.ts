@@ -18,7 +18,6 @@ import {
 } from '@simplewebauthn/server';
 import { getDb } from '../models/database';
 import config from '../config';
-import { localNow } from './timeUtils';
 
 // ── Relying Party config ──────────────────────────────────
 const RP_NAME = 'RMPG Flex';
@@ -32,9 +31,8 @@ function getOrigin(): string[] {
   const origins: string[] = [];
   const domain = config.primaryDomain;
   if (domain && domain !== 'localhost') {
-    const cleanDomain = domain.replace(/^https?:\/\//, '');
-    origins.push(`https://${cleanDomain}`);
-    origins.push(`https://www.${cleanDomain}`);
+    origins.push(`https://${domain}`);
+    origins.push(`https://www.${domain}`);
   }
   // Always allow localhost origins for development + Electron
   origins.push('http://localhost:5173');
@@ -77,30 +75,12 @@ function getCredentialById(credentialId: string): (WebAuthnCredential & { userna
 // Maps challenge → { userId, expires }
 const pendingChallenges = new Map<string, { userId: number; expires: number }>();
 
-// Periodic cleanup of expired challenges — prevents stale entries from accumulating
-// when no new challenges are created for extended periods
-setInterval(() => {
+function storePendingChallenge(challenge: string, userId: number): void {
+  // Clean expired entries
   const now = Date.now();
   for (const [key, val] of pendingChallenges) {
     if (val.expires < now) pendingChallenges.delete(key);
   }
-}, 5 * 60 * 1000).unref();
-
-function storePendingChallenge(challenge: string, userId: number): void {
-  // Clean expired entries (collect keys first to avoid delete-during-iteration)
-  const now = Date.now();
-  const expired: string[] = [];
-  for (const [key, val] of pendingChallenges) {
-    if (val.expires < now) expired.push(key);
-  }
-  for (const key of expired) pendingChallenges.delete(key);
-
-  // Cap pending challenges to prevent unbounded memory growth
-  if (pendingChallenges.size >= 1000) {
-    const oldest = [...pendingChallenges.entries()].sort((a, b) => a[1].expires - b[1].expires);
-    for (let i = 0; i < 100 && i < oldest.length; i++) pendingChallenges.delete(oldest[i][0]);
-  }
-
   // Store with 5-minute expiry
   pendingChallenges.set(challenge, { userId, expires: now + 5 * 60 * 1000 });
 }
@@ -176,7 +156,7 @@ export async function completeRegistration(
 
   // Store credential in database
   const db = getDb();
-  const now = localNow();
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
   db.prepare(`
     INSERT INTO webauthn_credentials (user_id, credential_id, public_key, sign_count, device_name, transports, device_type, backed_up, created_at)
@@ -256,7 +236,7 @@ export async function verifyAuthentication(
         id: storedCred.credential_id,
         publicKey: new Uint8Array(Buffer.from(storedCred.public_key, 'base64url')),
         counter: storedCred.sign_count,
-        transports: (() => { try { return JSON.parse(storedCred.transports || '[]'); } catch { return []; } })(),
+        transports: JSON.parse(storedCred.transports || '[]'),
       },
     });
   } catch (err: any) {

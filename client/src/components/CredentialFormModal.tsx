@@ -211,10 +211,8 @@ export default function CredentialFormModal({
           onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
           rows={3}
           placeholder="Additional notes..."
-          maxLength={2000}
           className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
       </div>
     </FormModal>
   );

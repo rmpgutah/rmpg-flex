@@ -6,7 +6,6 @@ import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { playRadioTone } from '../utils/radioTones';
 import { useToast } from './ToastProvider';
-import { safeTimeStr } from '../utils/dateUtils';
 
 // ─── Panic Alarm — loops the unified panicWarble tone ────────────
 // Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
@@ -76,7 +75,7 @@ interface PanicButtonProps {
   longitude?: number | null;
 }
 
-export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
+export default function PanicButton({ latitude, longitude }: PanicButtonProps = {}) {
   const { user } = useAuth();
   const { subscribe } = useWebSocket();
   const panicAudio = usePanicAudio();
@@ -266,7 +265,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       <div className="relative">
         {confirmVisible ? (
           <div className="flex items-center gap-1">
-            <button type="button"
+            <button
               onClick={handleConfirm}
               className="panic-btn-confirm animate-emergency-blink"
               title="CONFIRM — Send emergency alert NOW"
@@ -274,16 +273,16 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               <AlertTriangle style={{ width: 11, height: 11 }} />
               CONFIRM
             </button>
-            <button type="button"
+            <button
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#222222', border: '1px solid #2e2e2e', color: '#888888' }}
+              style={{ background: '#1e3048', border: '1px solid #2a3e58', color: '#8a9aaa' }}
             >
               Cancel
             </button>
           </div>
         ) : (
-          <button type="button"
+          <button
             onClick={handlePanicClick}
             disabled={sending || panicAudio.isBroadcasting}
             className="panic-btn"
@@ -324,7 +323,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               <span className="text-sm font-bold uppercase tracking-widest text-white">
                 Emergency Panic Alert
               </span>
-              <button type="button"
+              <button
                 onClick={dismissAlert}
                 className="ml-auto p-1 hover:bg-red-800/50 transition-colors"
               >
@@ -333,21 +332,21 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: '#050505', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: '#0d1520', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
                 </div>
-                <div className="text-xs font-mono" style={{ color: '#888888' }}>
+                <div className="text-xs font-mono" style={{ color: '#8a9aaa' }}>
                   {incomingAlert.badge_number && `Badge: ${incomingAlert.badge_number} | `}
-                  {(incomingAlert.role || '').toUpperCase()}
+                  {incomingAlert.role?.toUpperCase()}
                   {incomingAlert.unit_call_sign && ` | Unit: ${incomingAlert.unit_call_sign}`}
                 </div>
               </div>
 
               {/* Auto-created dispatch card info */}
               {incomingAlert.call_number && (
-                <div className="text-center p-2" style={{ background: '#050505', border: '1px solid #dc2626' }}>
+                <div className="text-center p-2" style={{ background: '#0d1520', border: '1px solid #dc2626' }}>
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider animate-emergency-blink"
@@ -372,29 +371,29 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#050505', border: '1px solid #222222' }}>
+                <div className="text-xs text-center text-white p-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#050505', border: '1px solid #222222' }}>
+                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
               )}
 
               {/* Raw GPS coordinates */}
-              {(incomingAlert.latitude != null && incomingAlert.longitude != null) && (
-                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#666666' }}>
+              {(incomingAlert.latitude && incomingAlert.longitude) && (
+                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#5a6e80' }}>
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}
                 </div>
               )}
 
-              <div className="text-center text-[10px] font-mono" style={{ color: '#383838' }}>
-                {safeTimeStr(incomingAlert.triggered_at)}
+              <div className="text-center text-[10px] font-mono" style={{ color: '#3a5070' }}>
+                {new Date(incomingAlert.triggered_at).toLocaleTimeString('en-US', { hour12: false })}
               </div>
 
               {/* Live Audio Indicator — shows when receiving panic mic broadcast */}
@@ -414,7 +413,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               {/* Respond Button — talk back to panic sender */}
               <div className="flex gap-2">
                 {!panicAudio.isReceiving && panicAudio.panicSenderUserId && (
-                  <button type="button"
+                  <button
                     onClick={() => {
                       if (panicAudio.isResponding) {
                         panicAudio.stopResponse();
@@ -441,9 +440,8 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     )}
                   </button>
                 )}
-                <button type="button"
+                <button
                   onClick={dismissAlert}
-                  aria-label="Acknowledge panic alert"
                   className={`${!panicAudio.isReceiving && panicAudio.panicSenderUserId ? '' : 'w-full'} btn-danger py-2 justify-center flex-1`}
                 >
                   ACKNOWLEDGE

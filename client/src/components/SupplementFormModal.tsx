@@ -47,16 +47,12 @@ export default function SupplementFormModal({
       setForm(EMPTY_FORM);
       snapshot(EMPTY_FORM);
     }
-  }, [isOpen, snapshot]);
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await onSubmit(form);
-      setForm(EMPTY_FORM);
-    } catch {
-      // Keep form data on failure so user can retry
-    }
+    await onSubmit(form);
+    setForm(EMPTY_FORM);
   };
 
   return (
@@ -73,7 +69,7 @@ export default function SupplementFormModal({
     >
       <div className="space-y-3">
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Report Type</label>
+          <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Report Type</label>
           <select
             className="select-dark w-full text-[11px]"
             value={form.report_type}
@@ -85,19 +81,17 @@ export default function SupplementFormModal({
           </select>
         </div>
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Subject *</label>
+          <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Subject *</label>
           <input
             className="input-dark w-full text-[11px]"
             value={form.subject}
             onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
             placeholder="Brief subject of this supplement"
             required
-            autoFocus
-            maxLength={200}
           />
         </div>
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Narrative *</label>
+          <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Narrative *</label>
           <textarea
             className="textarea-dark w-full text-[11px]"
             rows={10}
@@ -105,9 +99,7 @@ export default function SupplementFormModal({
             onChange={(e) => setForm((prev) => ({ ...prev, narrative: e.target.value }))}
             placeholder="Enter detailed narrative..."
             required
-            maxLength={10000}
           />
-          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.narrative.length}/10000</div>
         </div>
       </div>
     </FormModal>

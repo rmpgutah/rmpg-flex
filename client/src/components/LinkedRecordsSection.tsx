@@ -31,9 +31,9 @@ export function getRecordTypeIcon(type: string): LucideIcon {
 
 const TYPE_COLOR_MAP: Record<string, { text: string; bg: string; border: string }> = {
   person: {
-    text: 'text-gray-400',
-    bg: 'bg-gray-900/30',
-    border: 'border-gray-700/50',
+    text: 'text-blue-400',
+    bg: 'bg-blue-900/30',
+    border: 'border-blue-700/50',
   },
   vehicle: {
     text: 'text-cyan-400',
@@ -133,7 +133,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
   /* ---- Render ---------------------------------------------------- */
 
   return (
-    <div className="panel-beveled p-3" style={{ background: '#0a0a0a' }}>
+    <div className="panel-beveled p-3" style={{ background: '#141e2b' }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -180,7 +180,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
             return (
               <div
                 key={link.id}
-                className="flex items-center gap-2 py-1.5 px-2 hover:bg-rmpg-700/50 rounded-sm text-xs"
+                className="flex items-center gap-2 py-1.5 px-2 hover:bg-rmpg-700/50 rounded text-xs"
               >
                 {/* Type icon */}
                 <Icon size={14} className={color.text} />
@@ -190,13 +190,13 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
 
                 {/* Type badge */}
                 <span
-                  className={`text-[9px] px-1.5 py-0.5 font-bold uppercase rounded-sm border ${color.text} ${color.bg} ${color.border}`}
+                  className={`text-[9px] px-1.5 py-0.5 font-bold uppercase rounded border ${color.text} ${color.bg} ${color.border}`}
                 >
                   {link.linked_type}
                 </span>
 
                 {/* Relationship badge */}
-                <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 border border-rmpg-600 rounded-sm">
+                <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 border border-rmpg-600 rounded">
                   {link.relationship}
                 </span>
 
@@ -207,7 +207,6 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
                   disabled={isDeleting}
                   onClick={() => handleDelete(link.id)}
                   title="Remove link"
-                  aria-label={`Remove link to ${link.linked_label}`}
                 >
                   {isDeleting ? (
                     <Loader2 size={12} className="animate-spin" />

@@ -39,7 +39,7 @@ function getSmConfig(key: string): string | null {
       "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
     ).get(key) as { config_value: string } | undefined;
     return row?.config_value || null;
-  } catch (e: any) { console.warn('[ServeManagerPoller] Config read failed:', e?.message); return null; }
+  } catch { return null; }
 }
 
 function setSmConfig(key: string, value: string): void {
@@ -62,7 +62,7 @@ function getTargetClient(): string {
 }
 
 function getPollIntervalMs(): number {
-  const secs = parseInt(getSmConfig(CONFIG_KEYS.pollInterval) || String(DEFAULT_POLL_INTERVAL), 10);
+  const secs = parseInt(getSmConfig(CONFIG_KEYS.pollInterval, 10) || String(DEFAULT_POLL_INTERVAL), 10);
   return Math.max(60, Math.min(1800, secs)) * 1000;
 }
 
@@ -97,7 +97,7 @@ function guessProcessType(documents: any[]): string {
 
 function mapSmJobToCallData(job: SmJobRow) {
   let addresses: any[] = [];
-  try { addresses = JSON.parse(job.addresses_json || '[]'); } catch (e: any) { console.warn('[ServeManagerPoller] Malformed addresses_json:', e?.message); }
+  try { addresses = JSON.parse(job.addresses_json || '[]'); } catch { /* malformed — use empty */ }
   if (!Array.isArray(addresses)) addresses = [];
   const primary = addresses.find((a: any) => a.primary) || addresses[0];
 
@@ -106,11 +106,11 @@ function mapSmJobToCallData(job: SmJobRow) {
         .filter(Boolean).join(', ')
     : 'Address pending — see ServeManager';
 
-  const latitude = primary?.lat ?? primary?.latitude ?? null;
-  const longitude = primary?.lng ?? primary?.longitude ?? null;
+  const latitude = primary?.lat || primary?.latitude || null;
+  const longitude = primary?.lng || primary?.longitude || null;
 
   let documents: any[] = [];
-  try { documents = JSON.parse(job.documents_json || '[]'); } catch (e: any) { console.warn('[ServeManagerPoller] Malformed documents_json:', e?.message); }
+  try { documents = JSON.parse(job.documents_json || '[]'); } catch { /* malformed — use empty */ }
   if (!Array.isArray(documents)) documents = [];
   const docNames = documents.map((d: any) => d.title).filter(Boolean).join(', ');
 
@@ -229,7 +229,7 @@ async function pollOnce(): Promise<{ synced: number; callsCreated: number }> {
             callData.process_attempts, now, now
           );
 
-          const newCallId = Number(result.lastInsertRowid) as number;
+          const newCallId = result.lastInsertRowid as number;
 
           // Link SM job to prevent future duplicates
           db.prepare('UPDATE sm_jobs SET linked_call_id = ? WHERE id = ?').run(newCallId, job.id);
@@ -245,11 +245,10 @@ async function pollOnce(): Promise<{ synced: number; callsCreated: number }> {
         })();
 
         // Post-transaction: geocode, broadcast, notify
-        if (!callId) continue;
         const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
 
         if (!callData.latitude) {
-          geocodeCallIfNeeded(callId, callData.location_address, null, null);
+          geocodeCallIfNeeded(callId as number, callData.location_address, null, null);
         }
 
         broadcastDispatchUpdate({ action: 'call_created', call });

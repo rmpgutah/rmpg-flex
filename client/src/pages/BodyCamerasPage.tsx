@@ -23,25 +23,10 @@ import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappe
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function BodyCamerasPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = user?.role === 'admin';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ----------------------------------------------------------
   // State
@@ -61,17 +46,9 @@ export default function BodyCamerasPage() {
   // Officer list for the form modal dropdown
   const [officers, setOfficers] = useState<{ id: string; name: string }[]>([]);
 
-  // ═══ NEW: Retention, Review, and Redaction Stats ═══
-  const [retentionStats, setRetentionStats] = useState<{ total_expired: number; total_storage_gb: number } | null>(null);
-  const [pendingReviews, setPendingReviews] = useState(0);
-  const [pendingRedactions, setPendingRedactions] = useState(0);
-
   // ----------------------------------------------------------
   // Data Fetching
   // ----------------------------------------------------------
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
-
   const fetchData = useCallback(async () => {
     try {
       const [cams, vids, personnelList] = await Promise.all([
@@ -96,23 +73,10 @@ export default function BodyCamerasPage() {
       if (mountedRef.current) setLoading(false);
     }
   }, []);
-  useEffect(() => {
-    fetchData();
-    // Fetch new upgrade data
-    const fetchUpgradeData = async () => {
-      try {
-        const [ret, rev, red] = await Promise.all([
-          apiFetch<any>('/personnel/bodycam-videos/retention/report').catch((err) => { console.warn('[BodyCameras] retention report fetch failed:', err); return null; }),
-          apiFetch<any>('/personnel/bodycam-videos/reviews/pending').catch((err) => { console.warn('[BodyCameras] pending reviews fetch failed:', err); return null; }),
-          apiFetch<any>('/personnel/bodycam-videos/redaction-requests').catch((err) => { console.warn('[BodyCameras] redaction requests fetch failed:', err); return null; }),
-        ]);
-        if (ret) setRetentionStats({ total_expired: ret.total_expired, total_storage_gb: ret.total_storage_gb });
-        if (rev) setPendingReviews(rev.count || 0);
-        if (red) setPendingRedactions((red.data || []).filter((r: any) => r.status === 'pending').length);
-      } catch (err) { console.warn('[BodyCameras] upgrade data fetch failed:', err); }
-    };
-    fetchUpgradeData();
-  }, [fetchData]);
+
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   // Live-sync for real-time updates from other users
   useLiveSync('body_cameras', fetchData);
@@ -154,7 +118,6 @@ export default function BodyCamerasPage() {
   };
 
   const handleDelete = async (camId: number) => {
-    if (!window.confirm('Delete this body camera and all associated videos? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -165,7 +128,6 @@ export default function BodyCamerasPage() {
   };
 
   const handleVideoDelete = async (videoId: number) => {
-    if (!window.confirm('Delete this video? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -247,44 +209,29 @@ export default function BodyCamerasPage() {
   // ----------------------------------------------------------
   // Render
   // ----------------------------------------------------------
-  // Set document title
-  useEffect(() => { document.title = 'Body Cameras \u2014 RMPG Flex'; }, []);
-
   return (
     <div className="flex flex-col h-full animate-fade-in">
 
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#050505' }}>
+      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
         <PanelTitleBar title="BODY CAMERAS" icon={Video}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
-          <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3" role="group" aria-label="Body camera statistics">
-            <Video className="w-3 h-3" aria-hidden="true" />
+          <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3">
+            <Video className="w-3 h-3" />
             <span>Cameras: <strong className="text-white">{cameras.length}</strong></span>
-            <span className="text-rmpg-600" aria-hidden="true">|</span>
+            <span className="text-rmpg-600">|</span>
             <span>Videos: <strong className="text-brand-400">{videos.length}</strong></span>
-            {pendingReviews > 0 && (<>
-              <span className="text-rmpg-600">|</span>
-              <span>Reviews: <strong className="text-amber-400">{pendingReviews}</strong></span>
-            </>)}
-            {pendingRedactions > 0 && (<>
-              <span className="text-rmpg-600">|</span>
-              <span>Redactions: <strong className="text-red-400">{pendingRedactions}</strong></span>
-            </>)}
-            {retentionStats && retentionStats.total_expired > 0 && (<>
-              <span className="text-rmpg-600">|</span>
-              <span>Expired: <strong className="text-red-400">{retentionStats.total_expired}</strong></span>
-            </>)}
           </div>
           <PrintButton />
         </PanelTitleBar>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark">
+      <div className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex items-center justify-center flex-1 py-20">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
           </div>
         )}
 
@@ -293,7 +240,7 @@ export default function BodyCamerasPage() {
             <div className="text-center">
               <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
               <p className="text-sm text-rmpg-300">{error}</p>
-              <button type="button" onClick={fetchData} className="toolbar-btn mt-3">Retry</button>
+              <button onClick={fetchData} className="toolbar-btn mt-3">Retry</button>
             </div>
           </div>
         )}

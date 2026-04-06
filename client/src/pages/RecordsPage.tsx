@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   Database,
   UserCircle,
@@ -29,7 +28,6 @@ import PrintRecordButton from '../components/PrintRecordButton';
 import ExportButton from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
-import { useToast } from '../components/ToastProvider';
 
 // Tab hooks + components
 import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
@@ -44,42 +42,14 @@ import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/Ev
 type TabId = 'persons' | 'vehicles' | 'properties' | 'evidence';
 
 // ============================================================
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 // Component
 // ============================================================
 
 export default function RecordsPage() {
   const isMobile = useIsMobile();
-  const { addToast } = useToast();
-  const [urlParams] = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-
-  // Handle cross-module navigation params (?tab=persons&personId=X)
-  useEffect(() => {
-    const tab = urlParams.get('tab');
-    const personId = urlParams.get('personId');
-    if (tab && ['persons', 'vehicles', 'properties', 'evidence'].includes(tab)) {
-      setActiveTab(tab as TabId);
-    }
-    if (personId && tab === 'persons') {
-      setSearchQuery(personId);
-    }
-  }, []); // Only on mount
 
   // Data state
   const [persons, setPersons] = useState<Person[]>([]);
@@ -156,7 +126,7 @@ export default function RecordsPage() {
     if (!options?.silent) setLoadingEvidence(true);
     try {
       const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=200&archived=${showArchived}`);
-      setEvidence(res?.data || []);
+      setEvidence(res.data || []);
     } catch {
       setEvidence([]);
     } finally {
@@ -180,7 +150,7 @@ export default function RecordsPage() {
     fetchProperties();
     fetchEvidence();
     fetchClients();
-  }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence, fetchClients]);
+  }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence]);
 
   // Live sync
   const silentRefreshAll = useCallback(() => {
@@ -222,9 +192,8 @@ export default function RecordsPage() {
       } else if (deleteTarget.type === 'evidence') {
         await fetchEvidence({ silent: true });
       }
-      addToast('Record deleted', 'success');
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to delete record', 'error');
+      setError(err instanceof Error ? err.message : 'Failed to delete record');
     } finally {
       setDeleting(false);
     }
@@ -239,9 +208,8 @@ export default function RecordsPage() {
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
       else if (type === 'evidence') { await fetchEvidence(); }
-      addToast('Record archived', 'success');
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to archive record', 'error');
+      setError(err instanceof Error ? err.message : 'Failed to archive record');
     }
   };
 
@@ -252,9 +220,8 @@ export default function RecordsPage() {
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
       else if (type === 'evidence') { await fetchEvidence(); }
-      addToast('Record unarchived', 'success');
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to unarchive record', 'error');
+      setError(err instanceof Error ? err.message : 'Failed to unarchive record');
     }
   };
 
@@ -321,7 +288,7 @@ export default function RecordsPage() {
   const selectedLabel = (() => {
     if (activeTab === 'persons' && personsState.selectedPerson) {
       const p = personsState.selectedPerson;
-      return `${p.last_name || ''}, ${p.first_name || ''}${p.middle_name ? ` ${p.middle_name[0]}.` : ''}`;
+      return `${p.last_name}, ${p.first_name}${p.middle_name ? ` ${p.middle_name[0]}.` : ''}`;
     }
     if (activeTab === 'vehicles' && vehiclesState.selectedVehicle) {
       return vehiclesState.selectedVehicle.license_plate;
@@ -379,7 +346,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
+              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Person
               </button>
@@ -390,7 +357,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/vehicles/export?format=csv&archived=${showArchived}`} exportFilename="vehicles_export.csv" />
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewVehicleTrigger(t => t + 1)}>
+              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewVehicleTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Vehicle
               </button>
@@ -400,7 +367,7 @@ export default function RecordsPage() {
         {activeTab === 'properties' && (
           <>
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
+              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
               </button>
@@ -411,7 +378,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/evidence/export?format=csv&archived=${showArchived}`} exportFilename="evidence_export.csv" />
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
+              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Evidence
               </button>
@@ -421,32 +388,29 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       {/* Tab Row */}
-      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`} role="tablist" aria-label="Record type tabs">
+      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
-            <button type="button"
+            <button
               key={tab.id}
-              role="tab"
-              aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 whitespace-nowrap relative
+                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium transition-colors whitespace-nowrap
                 ${activeTab === tab.id
-                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700 shadow-sm'
-                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 border border-transparent'
+                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
+                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
                 }
               `}
             >
-              <Icon className={`w-3.5 h-3.5 ${activeTab === tab.id ? 'text-brand-400' : ''}`} />
+              <Icon className="w-3.5 h-3.5" />
               {tab.label}
-              <span className={`text-[9px] font-mono tabular-nums ${activeTab === tab.id ? 'text-brand-400' : 'text-rmpg-500'}`}>({tab.count})</span>
-              {activeTab === tab.id && <span className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" />}
+              <span className="text-[9px] text-rmpg-500">({tab.count})</span>
             </button>
           );
         })}
         {/* Archive Toggle */}
-        <button type="button"
+        <button
           onClick={() => setShowArchived(!showArchived)}
           className={`ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
             showArchived
@@ -460,14 +424,14 @@ export default function RecordsPage() {
       </div>
 
       {/* Compact Stats Strip */}
-      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#050505' }}>
+      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`}>
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>
           <span className="text-white font-bold">{persons.length}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Car className="w-2.5 h-2.5 text-gray-400" />
+          <Car className="w-2.5 h-2.5 text-blue-400" />
           <span className="text-rmpg-400">V:</span>
           <span className="text-white font-bold">{vehicles.length}</span>
         </div>
@@ -515,10 +479,9 @@ export default function RecordsPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2" role="alert">
-          <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
-          <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 transition-colors underline" aria-label="Dismiss error">dismiss</button>
+        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline text-red-400 hover:text-red-300">dismiss</button>
         </div>
       )}
 
@@ -528,18 +491,18 @@ export default function RecordsPage() {
           <Archive className="w-3 h-3 text-amber-400" />
           <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Archives Mode</span>
           <span className="text-[10px] text-amber-400/70">Read-only</span>
-          <button type="button" onClick={() => setShowArchived(false)} className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 underline">
+          <button onClick={() => setShowArchived(false)} className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 underline">
             Exit
           </button>
         </div>
       )}
 
       {/* Active TabList Content */}
-      <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`} style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-hidden">
         {isLoading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading records" />
-            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading records...</span>
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <span className="ml-2 text-sm text-rmpg-300">Loading records...</span>
           </div>
         )}
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
@@ -577,13 +540,13 @@ export default function RecordsPage() {
             title="Print record"
           />
         )}
-        <button type="button" onClick={closeSelection} className="toolbar-btn" title="Close detail" aria-label="Close">
+        <button onClick={closeSelection} className="toolbar-btn" title="Close detail">
           <X className="w-3.5 h-3.5" />
         </button>
       </PanelTitleBar>
 
       {/* Active TabDetail Content */}
-      <div className="flex-1 overflow-hidden scrollbar-dark">
+      <div className="flex-1 overflow-hidden">
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
@@ -595,18 +558,6 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
   // RENDER — SplitPanel
   // ════════════════════════════════════════════════════
-
-  // Set document title
-  useEffect(() => { document.title = 'Records Management \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setLinkModalOpen(false); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">

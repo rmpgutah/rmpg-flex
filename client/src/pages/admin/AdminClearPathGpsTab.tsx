@@ -6,7 +6,6 @@ import {
   HardDrive, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -102,20 +101,6 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }: Props) {
   // Status
   const [status, setStatus] = useState<CpgStatus | null>(null);
@@ -178,7 +163,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ mappings: CpgMapping[] }>('/clearpathgps/mappings');
       setMappings(data.mappings || []);
-    } catch (e) { console.error('Failed to fetch GPS mappings:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   // ── Fetch units ──
@@ -186,7 +171,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<DispatchUnit[]>('/dispatch/units');
       setUnits(Array.isArray(data) ? data : []);
-    } catch (e) { console.error('Failed to fetch units:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   // ── Fetch settings ──
@@ -194,7 +179,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ history_backfill: boolean }>('/clearpathgps/settings');
       setHistoryBackfill(data.history_backfill);
-    } catch (e) { console.error('Failed to fetch GPS settings:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   // ── Fetch dashcam events ──
@@ -204,7 +189,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       const data = await apiFetch<{ events: DashcamEvent[]; total: number }>('/clearpathgps/dashcam-events?limit=50');
       setDashcamEvents(data.events || []);
       setDashcamTotal(data.total || 0);
-    } catch (e) { console.error('Failed to fetch dashcam events:', e); }
+    } catch { /* ignore */ }
     finally { setLoadingDashcam(false); }
   }, []);
 
@@ -215,7 +200,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setMediaStatus(data);
       setMediaSyncEnabled(data.media_sync_enabled);
       setMediaPollInterval(data.media_poll_interval_seconds || 300);
-    } catch (e) { console.error('Failed to fetch media status:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
@@ -442,30 +427,15 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
-  // Set document title
-  useEffect(() => { document.title = 'Admin - GPS \u2014 RMPG Flex'; }, []);
+  if (loading) return <LoadingSpinner />;
 
   // Units that are not already mapped
   const mappedUnitIds = new Set(mappings.map(m => m.unit_id));
   const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-4">
@@ -523,7 +493,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               placeholder={status?.configured ? 'Enter new password to replace...' : 'ClearPathGPS password...'}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <button type="button"
+            <button
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
             >
@@ -546,33 +516,33 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          <button type="button"
+          <button
             onClick={handleSaveCredentials}
             disabled={saving || !email.trim() || !password.trim() || !String(accountId).trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
           </button>
           {status?.configured && (
             <>
-              <button type="button"
+              <button
                 onClick={handleTest}
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                 Test Connection
               </button>
-              <button type="button"
+              <button
                 onClick={handleDiscoverAccounts}
                 disabled={discovering}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {discovering ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3 h-3" />}
+                {discovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                 Discover Accounts
               </button>
-              <button type="button"
+              <button
                 onClick={handleClear}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -603,7 +573,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           <div className="space-y-1.5">
             <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Available Accounts</div>
             {discoveredAccounts.map((acct) => (
-              <button type="button"
+              <button
                 key={acct.accountId}
                 onClick={() => setAccountId(String(acct.accountId))}
                 className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken hover:bg-brand-900/20 border border-rmpg-600 hover:border-brand-500 rounded-sm text-[11px] transition-colors text-left"
@@ -632,7 +602,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
           <div className="flex items-center gap-4">
             {/* Toggle */}
-            <button type="button"
+            <button
               onClick={handleToggleEnabled}
               className="flex items-center gap-2 text-[11px]"
             >
@@ -668,7 +638,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               {status.last_sync && (
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  Last: {safeTimeStr(status.last_sync)}
+                  Last: {new Date(status.last_sync).toLocaleTimeString()}
                 </span>
               )}
             </div>
@@ -676,7 +646,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
           {/* History backfill toggle */}
           <div className="flex items-center gap-4 pt-2 border-t border-rmpg-700/50">
-            <button type="button"
+            <button
               onClick={handleToggleBackfill}
               className="flex items-center gap-2 text-[11px]"
             >
@@ -707,12 +677,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               <Link2 className="w-3.5 h-3.5" />
               Device → Unit Mappings
             </div>
-            <button type="button"
+            <button
               onClick={handleFetchDevices}
               disabled={loadingDevices}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
             >
-              {loadingDevices ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Truck className="w-3 h-3" />}
+              {loadingDevices ? <Loader2 className="w-3 h-3 animate-spin" /> : <Truck className="w-3 h-3" />}
               Load Devices
             </button>
           </div>
@@ -735,7 +705,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       <span className="text-brand-400 font-mono font-medium">{m.call_sign || `Unit #${m.unit_id}`}</span>
                       {m.officer_name && <span className="text-rmpg-500 text-[10px]">({m.officer_name})</span>}
                       {m.ignition_state && (
-                        <span className={`text-[9px] px-1 py-0.5 rounded-sm ${
+                        <span className={`text-[9px] px-1 py-0.5 rounded ${
                           m.ignition_state === 'on' ? 'text-green-400 bg-green-950/30' : 'text-rmpg-500 bg-surface-sunken'
                         }`}>
                           IGN {m.ignition_state.toUpperCase()}
@@ -744,10 +714,10 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       {m.last_synced_at && (
                         <span className="ml-auto text-[9px] text-rmpg-600 flex items-center gap-1">
                           <Clock className="w-2.5 h-2.5" />
-                          {safeTimeStr(m.last_synced_at)}
+                          {new Date(m.last_synced_at).toLocaleTimeString()}
                         </span>
                       )}
-                      <button type="button"
+                      <button
                         onClick={() => handleRemoveMapping(m.id)}
                         className="ml-1 text-red-500 hover:text-red-400"
                         title="Remove mapping"
@@ -844,12 +814,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 <span className="text-rmpg-500 font-normal">({dashcamTotal} total)</span>
               )}
             </div>
-            <button type="button"
+            <button
               onClick={fetchDashcamEvents}
               disabled={loadingDashcam}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
             >
-              {loadingDashcam ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
+              {loadingDashcam ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               Refresh
             </button>
           </div>
@@ -862,7 +832,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   : /hard_brake|hard_turn|hard_accel|speeding/i.test(evt.event_type)
                   ? 'text-amber-400 bg-amber-950/30 border-amber-800/40'
                   : /video|camera|recording/i.test(evt.event_type)
-                  ? 'text-gray-400 bg-gray-950/30 border-gray-800/40'
+                  ? 'text-blue-400 bg-blue-950/30 border-blue-800/40'
                   : 'text-rmpg-300 bg-surface-sunken border-rmpg-600';
                 return (
                   <div
@@ -870,7 +840,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                     className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
                   >
                     <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
-                    <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase border ${typeColor}`}>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border ${typeColor}`}>
                       {evt.event_type.replace(/_/g, ' ')}
                     </span>
                     {evt.call_sign && (
@@ -885,7 +855,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       </span>
                     )}
                     <span className="ml-auto text-[9px] text-rmpg-600 whitespace-nowrap">
-                      {safeDateTimeStr(evt.event_timestamp)}
+                      {new Date(evt.event_timestamp).toLocaleString()}
                     </span>
                   </div>
                 );
@@ -909,7 +879,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               <h3 className="field-label text-purple-400">Dashcam Video Sync</h3>
               <span className={`w-1.5 h-1.5 rounded-full ${mediaSyncEnabled ? 'bg-purple-400 animate-pulse' : 'bg-rmpg-600'}`} />
             </div>
-            <button type="button"
+            <button
               onClick={handleToggleMediaSync}
               disabled={savingMedia}
               className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-white transition-colors"
@@ -950,7 +920,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             </div>
 
             {/* Sync Now button */}
-            <button type="button"
+            <button
               onClick={handleSyncNow}
               disabled={syncing || !status?.enabled}
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
@@ -958,7 +928,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                          disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {syncing ? (
-                <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+                <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <Download className="w-3 h-3" />
               )}

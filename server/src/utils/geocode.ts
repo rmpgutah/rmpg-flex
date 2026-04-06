@@ -3,13 +3,6 @@ import { broadcastDispatchUpdate } from './websocket';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
-// [FIX 54] Add request timeout for geocode API calls
-const GEOCODE_TIMEOUT_MS = 10_000;
-
-// [FIX 55] Simple rate limiter for geocode API calls to avoid quota exhaustion
-let lastGeocodeFetchMs = 0;
-const MIN_GEOCODE_INTERVAL_MS = 100; // 10 req/s max
-
 interface GeocodeResult {
   latitude: number;
   longitude: number;
@@ -21,35 +14,18 @@ interface GeocodeResult {
  */
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
   if (!GOOGLE_MAPS_API_KEY || !address.trim()) return null;
-  // [FIX 56] Validate address length to avoid sending huge payloads
-  if (address.length > 500) return null;
-
-  // [FIX 57] Enforce rate limit between API calls
-  const now = Date.now();
-  const wait = MIN_GEOCODE_INTERVAL_MS - (now - lastGeocodeFetchMs);
-  if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  lastGeocodeFetchMs = Date.now();
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-    // [FIX 58] Add AbortController timeout to prevent hanging requests
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) return null;
+    const res = await fetch(url);
+    if (!res.ok) return null;
 
-      const data = await res.json();
-      if (data.status === 'OK' && data.results?.length > 0) {
-        const loc = data.results[0].geometry?.location;
-        // [FIX 59] Null-check geometry.location before accessing lat/lng
-        if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return null;
-        return { latitude: loc.lat, longitude: loc.lng };
-      }
-      return null;
-    } finally {
-      clearTimeout(timeout);
+    const data = await res.json();
+    if (data.status === 'OK' && data.results?.length > 0) {
+      const loc = data.results[0].geometry.location;
+      return { latitude: loc.lat, longitude: loc.lng };
     }
+    return null;
   } catch (err) {
     console.error('[geocode] Error geocoding address:', err);
     return null;
@@ -62,27 +38,17 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
  */
 export async function reverseGeocodeAddress(lat: number, lng: number): Promise<string | null> {
   if (!GOOGLE_MAPS_API_KEY) return null;
-  // [FIX 60] Validate coordinate ranges before making API call
-  if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
-    // [FIX 61] Add timeout to reverse geocode fetch
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) return null;
+    const res = await fetch(url);
+    if (!res.ok) return null;
 
-      const data = await res.json();
-      if (data.status === 'OK' && data.results?.length > 0) {
-        return data.results[0].formatted_address || null;
-      }
-      return null;
-    } finally {
-      clearTimeout(timeout);
+    const data = await res.json();
+    if (data.status === 'OK' && data.results?.length > 0) {
+      return data.results[0].formatted_address;
     }
+    return null;
   } catch (err) {
     console.error('[geocode] Error reverse-geocoding:', err);
     return null;
@@ -106,20 +72,10 @@ export interface DetailedGeocodeResult {
  */
 export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<DetailedGeocodeResult | null> {
   if (!GOOGLE_MAPS_API_KEY) return null;
-  // [FIX 62] Validate coordinates for detailed reverse geocode
-  if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address|route|intersection&key=${GOOGLE_MAPS_API_KEY}`;
-    // [FIX 63] Add timeout to detailed reverse geocode fetch
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
-    let res;
-    try {
-      res = await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timeout);
-    }
+    const res = await fetch(url);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -167,9 +123,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
  * After successful geocoding, broadcasts the updated call so the map updates in real-time.
  */
 export function geocodeCallIfNeeded(callId: number, address: string, lat: any, lng: any): void {
-  // [FIX 102] Validate callId is a positive integer
-  if (!callId || typeof callId !== 'number' || callId < 1) return;
-  if (lat || lng || !address || !address.trim()) return;
+  if (lat || lng || !address.trim()) return;
 
   geocodeAddress(address).then((result) => {
     if (!result) return;

@@ -65,20 +65,6 @@ const UTAH_COUNTIES = [
   'Rich', 'San Juan', 'Wasatch', 'Wayne', 'Garfield', 'Kane', 'Piute', 'Daggett',
 ];
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Props) {
   const [status, setStatus] = useState<ArrestStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,7 +128,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         setRecords(data.records || []);
         setRecordsTotal(data.total || 0);
       }
-    } catch (e) { console.error('Failed to fetch arrest records:', e); }
+    } catch { /* ignore */ }
     finally { setRecordsLoading(false); }
   }, []);
 
@@ -151,7 +137,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       const data = await apiFetch<any>('/jail-roster/status');
       setScraperStatus(data);
-    } catch (e) { console.error('Failed to fetch scraper status:', e); }
+    } catch { /* ignore */ }
     finally { setScraperLoading(false); }
   }, []);
 
@@ -310,21 +296,9 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     finally { setSyncing(false); }
   };
 
-  const totalPages = Math.ceil(recordsTotal / 25);
-
-  // Set document title
-  useEffect(() => { document.title = 'Admin - Arrests \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setEditingId(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
   if (loading) return <LoadingSpinner />;
 
+  const totalPages = Math.ceil(recordsTotal / 25);
 
   return (
     <div className="p-4 space-y-4">
@@ -356,14 +330,14 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
       {/* ═══ Action Bar ═══ */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button type="button"
+        <button
           onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ ...EMPTY_BOOKING }); }}
           className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white"
         >
           <Plus className="w-3 h-3" />
           Add Booking
         </button>
-        <button type="button"
+        <button
           onClick={() => { setShowCsvImport(!showCsvImport); setCsvResult(null); }}
           className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200"
         >
@@ -391,11 +365,11 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
-            placeholder="Search by name..." aria-label="Search by name..."
+            placeholder="Search by name..."
             className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
           {searchTerm && (
-            <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+            <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -472,15 +446,15 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           </div>
 
           <div className="flex items-center gap-2">
-            <button type="button"
+            <button
               onClick={handleSubmitBooking}
               disabled={formSaving || !form.full_name.trim()}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
             >
-              {formSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
+              {formSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
               {editingId ? 'Update Record' : 'Save Booking'}
             </button>
-            <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
+            <button onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
               Cancel
             </button>
           </div>
@@ -539,15 +513,15 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           )}
 
           <div className="flex items-center gap-2">
-            <button type="button"
+            <button
               onClick={handleCsvImport}
               disabled={csvImporting || !csvData.trim()}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
             >
-              {csvImporting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Upload className="w-3 h-3" />}
+              {csvImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               {csvImporting ? 'Importing...' : 'Import Records'}
             </button>
-            <button type="button" onClick={() => setShowCsvImport(false)} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
+            <button onClick={() => setShowCsvImport(false)} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
               Cancel
             </button>
           </div>
@@ -563,16 +537,16 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             <span className="text-brand-400">({recordsTotal})</span>
           </div>
           <div className="flex items-center gap-1 text-[10px] text-rmpg-500">
-            <button type="button" disabled={recordsPage <= 1} onClick={() => setRecordsPage(p => p - 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">‹</button>
+            <button disabled={recordsPage <= 1} onClick={() => setRecordsPage(p => p - 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">‹</button>
             <span>{recordsPage} / {totalPages || 1}</span>
-            <button type="button" disabled={recordsPage >= totalPages} onClick={() => setRecordsPage(p => p + 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">›</button>
+            <button disabled={recordsPage >= totalPages} onClick={() => setRecordsPage(p => p + 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">›</button>
           </div>
         </div>
 
         {recordsLoading ? (
-          <div className="flex flex-col items-center justify-center py-6 gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
-            <span className="text-[10px] text-rmpg-500">Loading booking records...</span>
+          <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-4 justify-center">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Loading...
           </div>
         ) : records.length === 0 ? (
           <div className="text-center text-[10px] text-rmpg-500 py-6">
@@ -588,7 +562,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 {/* Source badge */}
                 <div className={`shrink-0 w-1 h-8 rounded-full ${
                   rec.entry_source === 'manual' ? 'bg-brand-500' :
-                  rec.entry_source === 'csv' ? 'bg-gray-500' :
+                  rec.entry_source === 'csv' ? 'bg-blue-500' :
                   rec.entry_source === 'scraper' ? 'bg-emerald-500' : 'bg-rmpg-600'
                 }`} />
 
@@ -596,11 +570,11 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold text-rmpg-100 truncate">{rec.full_name}</span>
                     {rec.booking_number && <span className="text-[9px] font-mono text-rmpg-500">#{rec.booking_number}</span>}
-                    <span className={`text-[8px] font-bold uppercase px-1 rounded-sm ${
+                    <span className={`text-[8px] font-bold uppercase px-1 rounded ${
                       rec.status === 'active' ? 'bg-red-900/40 text-red-400' :
                       rec.status === 'released' ? 'bg-green-900/40 text-green-400' :
                       'bg-rmpg-700 text-rmpg-400'
-                    }`}>{(rec.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                    }`}>{rec.status}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[9px] text-rmpg-500">
                     {rec.booking_date && <span>Booked: {rec.booking_date.split('T')[0]}</span>}
@@ -617,10 +591,10 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button type="button" onClick={() => handleEdit(rec)} className="p-1 text-rmpg-500 hover:text-brand-400" title="Edit">
+                  <button onClick={() => handleEdit(rec)} className="p-1 text-rmpg-500 hover:text-brand-400" title="Edit">
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button type="button" onClick={() => handleDelete(rec.id)} className="p-1 text-rmpg-500 hover:text-red-400" title="Delete">
+                  <button onClick={() => handleDelete(rec.id)} className="p-1 text-rmpg-500 hover:text-red-400" title="Delete">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -632,7 +606,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
       {/* ═══ Legacy API Settings (Collapsible) ═══ */}
       <div className="panel-beveled bg-surface-base rounded-sm">
-        <button type="button"
+        <button
           onClick={() => setShowApiSettings(!showApiSettings)}
           className="w-full flex items-center gap-2 p-3 text-left"
         >
@@ -670,26 +644,26 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                   placeholder={status?.configured ? 'Enter new key to replace...' : 'Enter RapidAPI key...'}
                   className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
                 />
-                <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+                <button onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
                   {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <button type="button" onClick={handleSaveKey} disabled={saving || !apiKey.trim() || apiKey.trim().length < 10}
+              <button onClick={handleSaveKey} disabled={saving || !apiKey.trim() || apiKey.trim().length < 10}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50">
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Key className="w-3 h-3" />}
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />}
                 Save Key
               </button>
               {status?.configured && (
                 <>
-                  <button type="button" onClick={handleSync} disabled={syncing}
+                  <button onClick={handleSync} disabled={syncing}
                     className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 disabled:opacity-50">
-                    {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
+                    {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                     {syncing ? 'Syncing...' : 'Sync Now'}
                   </button>
-                  <button type="button" onClick={async () => {
+                  <button onClick={async () => {
                     try { await apiFetch('/arrests/credentials', { method: 'DELETE' }); fetchStatus(); } catch { /* handled by apiFetch */ }
                   }} className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300">
                     <Trash2 className="w-3 h-3" /> Clear Key
@@ -710,7 +684,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
       {/* ═══ Jail Roster Scraper (Collapsible) ═══ */}
       <div className="panel-beveled bg-surface-base rounded-sm">
-        <button type="button"
+        <button
           onClick={() => { setShowScraper(!showScraper); if (!scraperStatus) fetchScraperStatus(); }}
           className="w-full flex items-center gap-2 p-3 text-left"
         >
@@ -728,9 +702,8 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         {showScraper && (
           <div className="px-3 pb-3 space-y-3 border-t border-rmpg-700/50">
             {scraperLoading ? (
-              <div className="flex flex-col items-center justify-center py-6 gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
-                <span className="text-[10px] text-rmpg-500">Loading scraper status...</span>
+              <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-4 justify-center">
+                <Loader2 className="w-3 h-3 animate-spin" /> Loading scraper status...
               </div>
             ) : scraperStatus ? (
               <>
@@ -770,12 +743,12 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           <span className="text-[11px] font-bold text-rmpg-100 flex-1">{county.display_name}</span>
 
                           {/* Type badge */}
-                          <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${
-                            county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-gray-900/40 text-gray-400'
+                          <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                            county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-blue-900/40 text-blue-400'
                           }`}>{county.roster_type}</span>
 
                           {/* Enable/Disable toggle */}
-                          <button type="button"
+                          <button
                             onClick={() => handleScraperToggle(county.county, !county.enabled)}
                             className="text-rmpg-500 hover:text-rmpg-200"
                             title={county.enabled ? 'Disable' : 'Enable'}
@@ -813,13 +786,13 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           </select>
 
                           {/* Sync Now button */}
-                          <button type="button"
+                          <button
                             onClick={() => handleScraperSync(county.county)}
                             disabled={syncingCounty === county.county}
                             className="flex items-center gap-1 text-[9px] text-brand-400 hover:text-brand-300 disabled:opacity-50"
                           >
                             {syncingCounty === county.county ? (
-                              <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
                             ) : (
                               <Zap className="w-2.5 h-2.5" />
                             )}
@@ -828,7 +801,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
                           {/* Reset Errors button */}
                           {isCircuitBroken && (
-                            <button type="button"
+                            <button
                               onClick={() => handleResetErrors(county.county)}
                               className="flex items-center gap-1 text-[9px] text-red-400 hover:text-red-300"
                             >
@@ -875,7 +848,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 )}
 
                 {/* Refresh button */}
-                <button type="button"
+                <button
                   onClick={fetchScraperStatus}
                   className="flex items-center gap-1 text-[9px] text-rmpg-500 hover:text-rmpg-300"
                 >

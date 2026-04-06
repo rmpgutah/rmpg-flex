@@ -48,9 +48,8 @@ import {
   Mail,
   GraduationCap,
   Microscope,
-  Globe,
 } from 'lucide-react';
-import { Navigation2, Sun, Moon } from 'lucide-react';
+import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, OfflineUnauthorizedError } from '../hooks/useApi';
@@ -77,10 +76,6 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
 import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
-import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
-import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
-import { useVoiceChannel } from '../hooks/useVoiceChannel';
-import VoiceChannelIndicator from './VoiceChannelIndicator';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -95,7 +90,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
-  '/national-warrants': 'National Warrant Search',
   '/citations': 'Citations',
   '/field-interviews': 'Field Interviews',
   '/trespass-orders': 'Trespass Orders',
@@ -116,13 +110,11 @@ const PAGE_TITLES: Record<string, string> = {
   '/sex-offender-registry': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensics': 'Connection Analysis',
-  '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
   '/crm': 'Overwatch',
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
-  '/hr': 'HR Console',
   '/admin': 'Admin',
 };
 
@@ -152,25 +144,22 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/microbilt', icon: Search, label: 'MicroBilt' },
+    { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
-    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
-    { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/forensics', icon: Microscope, label: 'Forensic Lab' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
-    { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
-    { path: '/national-warrants', icon: Globe, label: 'National Warrant Search' },
-    { path: '/citations', icon: FileWarning, label: 'Citations' },
-    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
-    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
-    { path: '/court', icon: Gavel, label: 'Court Tracker' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/serve', icon: Briefcase, label: 'Process Server' },
+  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
+    { path: '/warrants', icon: AlertTriangle, label: 'Warrants', newWindow: true },
+    { path: '/citations', icon: FileWarning, label: 'Citations', newWindow: true },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders', newWindow: true },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },
+    { path: '/court', icon: Gavel, label: 'Court Tracker', newWindow: true },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry', newWindow: true },
+    { path: '/serve', icon: Briefcase, label: 'Process Server', newWindow: true },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
-    { path: '/hr', icon: ClipboardCheck, label: 'HR Console' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
@@ -216,21 +205,6 @@ export default function Layout() {
 
   const gps = useGpsTracking();
   const presence = usePresence();
-
-  // ── Voice channel (unified voice I/O state machine) ──
-  const { alert: voiceAlert } = useVoiceChannel();
-
-  // ── Dispatch voice alerts + visual banner state ──
-  const [dispatchAlerts, setDispatchAlerts] = useState<AlertBannerItem[]>([]);
-  const addDispatchAlert = useCallback((alert: AlertBannerItem) => {
-    setDispatchAlerts(prev => [...prev, alert]);
-  }, []);
-  const dismissDispatchAlert = useCallback((id: string) => {
-    setDispatchAlerts(prev => prev.filter(a => a.id !== id));
-  }, []);
-  const dismissAllDispatchAlerts = useCallback(() => setDispatchAlerts([]), []);
-  useDispatchVoiceAlerts({ onAlert: addDispatchAlert, voiceAlert });
-
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
@@ -337,67 +311,14 @@ export default function Layout() {
       // Fire-and-forget — don't await so the modal closes immediately
       refreshUser();
     } catch (err: any) {
-      setSetupError(err?.message || 'Failed to save. Try again.');
+      setSetupError(err.message || 'Failed to save. Try again.');
     } finally {
       setSetupSaving(false);
     }
   };
 
-  // ── Feature 21: Password expiry warning ──
-  const [showPasswordExpiryWarning, setShowPasswordExpiryWarning] = useState(false);
-  const [passwordExpiryDays, setPasswordExpiryDays] = useState(0);
-
-  useEffect(() => {
-    if (!user?.last_password_change && !user?.passwordChangedAt) return;
-    const changedAt = user.passwordChangedAt || user.last_password_change;
-    if (!changedAt) return;
-    const EXPIRY_DAYS = 90; // 90-day password policy
-    const changed = new Date(changedAt).getTime();
-    const expiresAt = changed + EXPIRY_DAYS * 86400000;
-    const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
-    if (daysLeft <= 7 && daysLeft > 0) {
-      setShowPasswordExpiryWarning(true);
-      setPasswordExpiryDays(daysLeft);
-    } else {
-      setShowPasswordExpiryWarning(false);
-    }
-  }, [user?.last_password_change, user?.passwordChangedAt]);
-
-  // ── Feature 22: Session timeout warning — DISABLED ──
-  // Access tokens auto-refresh via AuthContext, so JWT expiry warnings
-  // are misleading. Real session timeouts (1hr idle / 12hr max) are
-  // handled by AuthContext and show messages on the login page.
-  const showSessionWarning = false;
-
-  // ── Feature 24: Auto-logout on idle ──
-  const lastActivityRef = useRef(Date.now());
-  const [showIdleDialog, setShowIdleDialog] = useState(false);
-  const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes of no activity
-  const IDLE_WARNING_MS = 55 * 60 * 1000; // Warn at 55 minutes
-
-  useEffect(() => {
-    const resetActivity = () => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); };
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach(ev => window.addEventListener(ev, resetActivity));
-
-    const checkIdle = setInterval(() => {
-      const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_TIMEOUT_MS) {
-        logout();
-      } else if (idle >= IDLE_WARNING_MS) {
-        setShowIdleDialog(true);
-      }
-    }, 30000); // check every 30s
-
-    return () => {
-      events.forEach(ev => window.removeEventListener(ev, resetActivity));
-      clearInterval(checkIdle);
-    };
-  }, [logout]);
-
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
-  const [callsByPriority, setCallsByPriority] = useState<{priority: string; count: number}[]>([]);
   const [activeBOLOs, setActiveBOLOs] = useState(0);
   const [emailUnreadCount, setEmailUnreadCount] = useState(0);
 
@@ -458,7 +379,7 @@ export default function Layout() {
         const url = token
           ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
           : item.externalUrl;
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.open(url, '_blank', 'noopener');
         return;
       }
 
@@ -469,95 +390,6 @@ export default function Layout() {
     window.addEventListener('keydown', handleFKey);
     return () => window.removeEventListener('keydown', handleFKey);
   }, [navigate, isAdmin, isClientViewer]);
-
-  // ── Keyboard Shortcut Help Modal ────────────────────────
-  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
-
-  // ── Command Palette (Ctrl+K / Cmd+K) ─────────────────────
-  const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState('');
-  const paletteInputRef = useRef<HTMLInputElement>(null);
-
-  // ── Unsaved Changes Warning ─────────────────────────────
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-
-  // Global keyboard shortcuts: ? for help, Ctrl/Cmd+K for palette, beforeunload for unsaved
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      // ? key — show shortcut help
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        setShowShortcutHelp(prev => !prev);
-        return;
-      }
-    };
-
-    // Ctrl/Cmd+K — command palette (needs to work even when in inputs)
-    const paletteHandler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setShowCommandPalette(prev => !prev);
-        setPaletteQuery('');
-        return;
-      }
-      if (e.key === 'Escape' && showCommandPalette) {
-        setShowCommandPalette(false);
-      }
-      if (e.key === 'Escape' && showShortcutHelp) {
-        setShowShortcutHelp(false);
-      }
-    };
-
-    window.addEventListener('keydown', handler);
-    window.addEventListener('keydown', paletteHandler);
-    return () => {
-      window.removeEventListener('keydown', handler);
-      window.removeEventListener('keydown', paletteHandler);
-    };
-  }, [showCommandPalette, showShortcutHelp]);
-
-  // Beforeunload warning for unsaved changes
-  useEffect(() => {
-    if (!hasUnsavedChanges) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [hasUnsavedChanges]);
-
-  // Expose unsaved changes setter globally via window for form pages
-  useEffect(() => {
-    (window as any).__rmpgSetUnsavedChanges = setHasUnsavedChanges;
-    return () => { delete (window as any).__rmpgSetUnsavedChanges; };
-  }, []);
-
-  // Clear unsaved changes on navigation
-  useEffect(() => {
-    setHasUnsavedChanges(false);
-  }, [location.pathname]);
-
-  // Command palette search results
-  const paletteResults = paletteQuery.trim().length > 0
-    ? TOOLBAR_NAV.flatMap(item => {
-        const items: { path: string; label: string; icon: React.ElementType }[] = [];
-        if (item.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-          items.push({ path: item.path, label: item.label, icon: item.icon });
-        }
-        if (item.children) {
-          item.children.forEach(child => {
-            if (child.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-              items.push({ path: child.path, label: child.label, icon: child.icon });
-            }
-          });
-        }
-        return items;
-      }).slice(0, 10)
-    : [];
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -599,7 +431,6 @@ export default function Layout() {
     try {
       const stats = await apiFetch<any>('/dispatch/stats');
       setActiveCallCount(stats.activeCalls || 0);
-      if (Array.isArray(stats.callsByPriority)) setCallsByPriority(stats.callsByPriority);
     } catch { /* silent */ }
     try {
       const bolos = await apiFetch<any>('/comms/bolos/active');
@@ -622,7 +453,7 @@ export default function Layout() {
   useEffect(() => {
     const unsub1 = subscribe('dispatch_update', () => fetchHeaderStats());
     const unsub2 = subscribe('bolo_alert', () => fetchHeaderStats());
-    const unsub3 = subscribe('email:new_messages', () => {
+    const unsub3 = subscribe('email:new_messages' as any, () => {
       apiFetch<{ count: number }>('/email/unread-count')
         .then(r => setEmailUnreadCount(r.count || 0))
         .catch((err) => { console.warn('[Layout] fetch email unread count failed:', err); });
@@ -708,15 +539,12 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col text-white overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
+    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
       {/* Offline Status Bar (shows when offline or syncing — Electron and browser) */}
       <OfflineStatusBar />
-
-      {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
-      <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
 
       {/* GPS tracking runs silently — no blocking gate */}
 
@@ -728,21 +556,18 @@ export default function Layout() {
           className="fixed inset-0 flex items-center justify-center"
           style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          {/* 18: Name setup modal with shield icon and improved shadow */}
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#0a0a0a',
-              border: '1px solid #222222',
-              borderTop: '3px solid #888888',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+              background: '#141e2b',
+              border: '1px solid #1e3048',
+              borderTop: '3px solid #1a5a9e',
               WebkitAppRegion: 'no-drag',
             } as React.CSSProperties}
           >
             <div className="text-center space-y-1">
-              <Shield className="w-8 h-8 text-brand-400 mx-auto mb-2" />
               <div className="text-lg font-bold text-white">Operator Identification Required</div>
-              <div className="text-xs text-rmpg-400">
+              <div className="text-xs text-gray-400">
                 Enter your name to continue. This will appear in the OPR system and all reports.
               </div>
             </div>
@@ -777,19 +602,16 @@ export default function Layout() {
               </div>
             )}
 
-            <button type="button"
+            <button
               onClick={handleNameSetupSave}
               disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
-              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+              className="btn-primary w-full justify-center"
             >
               {setupSaving ? 'Saving...' : 'Continue'}
             </button>
           </div>
         </div>
       )}
-
-      {/* Fix 30: Skip to main content link for keyboard/screen reader users */}
-      <a href="#main-content" className="skip-to-content">Skip to main content</a>
 
       {/* ============================================================ */}
       {/* MOBILE: Compact header + context bar + drawer + bottom nav   */}
@@ -839,42 +661,39 @@ export default function Layout() {
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
             paddingRight: '12px',
-            background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
-            borderBottom: '1px solid #222222',
+            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+            borderBottom: '1px solid #1e3048',
             flexShrink: 0,
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
-          {/* 1: Blue accent line with subtle glow at top of brand bar */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)', zIndex: 1, boxShadow: '0 1px 4px rgba(136,136,136,0.25)' }} />
+          {/* Blue accent at very top */}
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)', zIndex: 1 }} />
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
+            <div onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2" title="Rocky Mountain Protective Group — Dashboard">
               <RmpgLogo height={44} />
-              {/* 2: Tighter line-height on app name for compact branding */}
-              <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
+              <div className="flex flex-col">
                 <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
-                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#aaaaaa' }}>FLEX</span>
+                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#3b8ad4' }}>FLEX</span>
               </div>
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#2e2e2e' }} />
-              {/* 3: Page title with subtle letter-spacing and smoother color */}
-              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-300" style={{ letterSpacing: '0.08em' }}>
+              <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
                 {pageTitle.toUpperCase()}
               </span>
               {/* Pop-out button — opens current page in a new window */}
               {POPOUT_PAGES[location.pathname] && (
-                <button type="button"
+                <button
                   onClick={() => openPageWindow(location.pathname)}
-                  className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                  className="toolbar-btn ml-1"
                   title="Open in new window"
-                  aria-label="Open current page in new window"
                   style={{ padding: '2px 4px' }}
                 >
-                  <ExternalLink className="w-3 h-3" style={{ color: '#666666' }} />
+                  <ExternalLink className="w-3 h-3" style={{ color: '#5a6e80' }} />
                 </button>
               )}
             </div>
@@ -884,27 +703,25 @@ export default function Layout() {
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             {/* Status indicators — compact inline */}
             <div className="hidden lg:flex items-center gap-1.5">
-              {/* 4: Active Calls indicator with count highlight on non-zero */}
-              <button type="button"
+              {/* Active Calls */}
+              <button
                 onClick={() => navigate('/dispatch')}
-                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-                aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
+                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
               >
-                <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
+                <Phone style={{ width: 9, height: 9 }} className="text-red-500" />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-white'}`}>{activeCallCount}</span>
+                <span className="text-[9px] font-mono font-bold text-white">{activeCallCount}</span>
               </button>
 
-              {/* 5: BOLO Indicator with improved glow effect */}
+              {/* BOLO Indicator */}
               {activeBOLOs > 0 && (
-                <button type="button"
+                <button
                   onClick={() => navigate('/communications')}
-                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-                  style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b', boxShadow: '0 0 8px rgba(220, 38, 38, 0.2)' }}
-                  aria-label={`${activeBOLOs} active BOLOs. Click to open communications.`}
+                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer"
+                  style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
                 >
                   <span className="led-dot led-red animate-led-blink" />
-                  <span className="text-[9px] font-mono font-bold tabular-nums" style={{ color: '#ef7a7a' }}>
+                  <span className="text-[9px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
                     BOLO: {activeBOLOs}
                   </span>
                 </button>
@@ -913,50 +730,28 @@ export default function Layout() {
               {/* GPS */}
               <div
                 className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
-                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#050505' }}
+                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#0d1520' }}
                 title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || 'no unit'}` : 'GPS acquiring...'}
               >
-                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#666666', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#5a6e80', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
-              {/* 6: WS + Users with tabular-nums for stable count display */}
-              <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken" title={`${isConnected ? 'Connected' : 'Disconnected'} - ${presence.count} users online`}>
+              {/* WS + Users */}
+              <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken">
                 <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
                 <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
-                <span className="text-[9px] font-mono font-bold text-rmpg-300 tabular-nums">{presence.count}</span>
+                <span className="text-[9px] font-mono font-bold text-rmpg-300">{presence.count}</span>
               </div>
 
               {/* Notifications */}
               <NotificationCenter />
 
-              {/* Theme Toggle */}
-              <button type="button"
-                onClick={() => {
-                  const html = document.documentElement;
-                  const isLight = html.classList.contains('theme-light');
-                  html.classList.remove('theme-dark', 'theme-light');
-                  html.classList.add(isLight ? 'theme-dark' : 'theme-light');
-                  // Persist via API
-                  try { apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }); } catch {}
-                }}
-                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97]"
-                title="Toggle Light/Dark Theme"
-                aria-label="Toggle theme"
-                style={{ padding: '2px 6px' }}
-              >
-                {document.documentElement.classList.contains('theme-light')
-                  ? <Moon style={{ width: 10, height: 10 }} />
-                  : <Sun style={{ width: 10, height: 10 }} />
-                }
-              </button>
-
               {/* Search */}
-              <button type="button"
+              <button
                 onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                className="toolbar-btn"
                 title="Search (Ctrl+K)"
-                aria-label="Global search"
                 style={{ padding: '2px 6px' }}
               >
                 <Search style={{ width: 10, height: 10 }} />
@@ -964,45 +759,40 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: '#2a3e58' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="w-px h-7" style={{ background: '#2a3e58' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
-              <button type="button"
+              <button
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className={`flex items-center gap-2 px-2 py-1 transition-all duration-150 border focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97] ${
+                className={`flex items-center gap-2 px-2 py-1 transition-all duration-100 border ${
                   profileDropdownOpen
                     ? 'bg-rmpg-700 border-rmpg-600'
                     : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
                 }`}
-                aria-haspopup="true"
-                aria-expanded={profileDropdownOpen}
-                aria-label="User profile menu"
               >
                 {/* Avatar icon only */}
-                {/* 7: Avatar with smooth ring transition on hover */}
                 {user?.profile_image ? (
                   <img
                     src={user.profile_image}
                     alt={user.first_name}
-                    className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #383838', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none' }}
+                    className="w-8 h-8 object-cover"
+                    style={{ border: '2px solid #3a5070', borderRadius: '50%' }}
                   />
                 ) : (
                   <div
-                    className="w-8 h-8 flex items-center justify-center text-[11px] font-bold transition-shadow duration-150"
+                    className="w-8 h-8 flex items-center justify-center text-[11px] font-bold"
                     style={{
-                      background: 'linear-gradient(135deg, #333333, #888888)',
+                      background: 'linear-gradient(135deg, #124070, #1a5a9e)',
                       color: '#fff',
-                      border: '2px solid #aaaaaa',
+                      border: '2px solid #3b8ad4',
                       borderRadius: '50%',
-                      boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none',
                     }}
                   >
                     {initials}
@@ -1013,27 +803,25 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: '#666666',
+                    color: '#5a6e80',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
                 />
               </button>
 
-              {/* 8: Profile Dropdown with enhanced shadow depth */}
+              {/* Profile Dropdown */}
               {profileDropdownOpen && (
                 <div
-                  className="menu-dropdown absolute right-0 top-full mt-0.5 animate-dropdown-appear"
-                  role="menu"
-                  aria-label="User profile options"
-                  style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
+                  className="menu-dropdown absolute right-0 top-full mt-0.5"
+                  style={{ minWidth: 200, zIndex: 9995 }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(13, 21, 32, 0.5)' }}>
+                  <div className="px-3 py-2 border-b border-rmpg-700">
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
+                    <div className="text-[9px] font-mono text-rmpg-500">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -1049,20 +837,20 @@ export default function Layout() {
                   </div>
 
                   {/* Menu items */}
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('profile')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button onClick={() => openProfileModal('profile')} className="menu-item w-full">
                     <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Edit Profile</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('password')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button onClick={() => openProfileModal('password')} className="menu-item w-full">
                     <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Change Password</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('sessions')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button onClick={() => openProfileModal('sessions')} className="menu-item w-full">
                     <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Active Sessions</span>
                   </button>
                   {isAdmin && (
-                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                    <button onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full">
                       <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
                       <span className="menu-item-label">System Settings</span>
                     </button>
@@ -1070,8 +858,7 @@ export default function Layout() {
 
                   <div className="menu-separator" />
 
-                  {/* 9: Sign Out button with red hover bg for destructive emphasis */}
-                  <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
@@ -1088,7 +875,7 @@ export default function Layout() {
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #0a0a0a, #1e1e1e, #0a0a0a)',
+            background: 'linear-gradient(90deg, #141e2b, #1e2a1e, #141e2b)',
             borderBottom: '1px solid #2a3a2a',
             flexShrink: 0,
           }}
@@ -1109,8 +896,8 @@ export default function Layout() {
         className="hidden md:flex items-center justify-between px-2"
         style={{
           height: '22px',
-          background: 'linear-gradient(180deg, #222222 0%, #141414 100%)',
-          borderBottom: '1px solid #0a0a0a',
+          background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
+          borderBottom: '1px solid #141e2b',
           flexShrink: 0,
         }}
       >
@@ -1118,17 +905,16 @@ export default function Layout() {
         <MenuBar
           isAdmin={isAdmin}
           isConnected={isConnected}
-          onlineCount={presence.count}
           onLogout={logout}
           onSearch={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
           onShowShortcuts={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
           onRefreshData={fetchHeaderStats}
         />
 
-        {/* 19: Operator info with distinct badge highlight */}
+        {/* Right side — Operator info (persists name + badge from user profile) */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400">
           <span>
-            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-rmpg-500">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
+            OPR: {user?.badge_number ? `#${user.badge_number}` : '---'} {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} | {toDisplayLabel(user?.role || '---').toUpperCase()}
           </span>
         </div>
       </div>
@@ -1139,12 +925,10 @@ export default function Layout() {
       {/* ============================================================ */}
       <div
         className="hidden md:flex items-center gap-0 px-1 select-none"
-        role="toolbar"
-        aria-label="Module navigation"
         style={{
           height: 46,
-          background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
-          borderBottom: '1px solid #222222',
+          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+          borderBottom: '1px solid #1e3048',
           flexShrink: 0,
         }}
         data-nav-dropdown
@@ -1154,27 +938,25 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Back (Alt+←)"
-          aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
         >
-          <ChevronLeft style={{ width: 14, height: 14 }} />
+          <ChevronLeft style={{ width: 16, height: 16 }} />
         </button>
         <button
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Forward (Alt+→)"
-          aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
         >
-          <ChevronRight style={{ width: 14, height: 14 }} />
+          <ChevronRight style={{ width: 16, height: 16 }} />
         </button>
         <div
           className="self-stretch mx-0.5"
-          style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+          style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
         />
 
         {(() => {
@@ -1196,22 +978,21 @@ export default function Layout() {
               return (
                 <React.Fragment key={item.path}>
                   {showSep && <div className="toolbar-separator" style={{ height: 36 }} />}
-                  <button type="button"
+                  <button
                     onClick={() => {
                       setOpenDropdown(null);
                       const token = localStorage.getItem('rmpg_token');
                       const url = token
                         ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
                         : item.externalUrl!;
-                      window.open(url, '_blank', 'noopener,noreferrer');
+                      window.open(url, '_blank', 'noopener');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                    className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                    className="toolbar-btn"
                     title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
-                    aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
-                    <Icon style={{ width: 16, height: 16, color: '#666666', marginBottom: 1 }} />
+                    <Icon style={{ width: 16, height: 16, color: '#5a6e80', marginBottom: 1 }} />
                     <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
                   </button>
                 </React.Fragment>
@@ -1223,7 +1004,7 @@ export default function Layout() {
                 {showSep && (
                   <div
                     className="self-stretch mx-0.5"
-                    style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+                    style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
                   />
                 )}
                 <div className="relative">
@@ -1235,24 +1016,24 @@ export default function Layout() {
                       } else {
                         setOpenDropdown(null);
                         if (item.newWindow) {
-                          window.open(item.path, '_blank', 'noopener,noreferrer');
+                          window.open(item.path, '_blank');
                         } else {
                           navigate(item.path);
                         }
                       }
                     }}
-                    className="flex flex-col items-center justify-center transition-all duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                    className="flex flex-col items-center justify-center transition-all"
                     style={{
                       width: 52,
                       height: 42,
                       padding: '2px 4px',
                       background: isActive
-                        ? 'linear-gradient(180deg, rgba(136,136,136,0.45) 0%, rgba(136,136,136,0.20) 100%)'
+                        ? 'linear-gradient(180deg, rgba(26,90,158,0.35) 0%, rgba(26,90,158,0.15) 100%)'
                         : isDropdownOpen
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
-                      borderBottom: isActive ? '2px solid #5aa8e8' : '2px solid transparent',
-                      color: isActive ? '#ffffff' : '#888888',
+                      borderBottom: isActive ? '2px solid #3b8ad4' : '2px solid transparent',
+                      color: isActive ? '#ffffff' : '#8a9aaa',
                       cursor: 'pointer',
                     }}
                     onMouseEnter={(e) => {
@@ -1266,29 +1047,25 @@ export default function Layout() {
                       }
                     }}
                     title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
-                    aria-label={`${item.label}${hasChildren ? ' menu' : ''}`}
-                    aria-haspopup={hasChildren ? 'true' : undefined}
-                    aria-expanded={hasChildren ? isDropdownOpen : undefined}
                   >
                     <Icon
                       style={{
                         width: 16,
                         height: 16,
-                        color: isActive ? '#999999' : '#666666',
+                        color: isActive ? '#3b8ad4' : '#5a6e80',
                         marginBottom: 1,
                       }}
                     />
                     {/* Email unread badge on Comms toolbar button */}
                     {item.path === '/communications' && emailUnreadCount > 0 && (
                       <span
-                        className="absolute flex items-center justify-center font-bold animate-pulse"
+                        className="absolute flex items-center justify-center font-bold"
                         style={{
                           top: 1, left: 30,
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #0a0a0a',
-                          boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
+                          borderRadius: 7, border: '1px solid #141e2b',
                         }}
                       >
                         {emailUnreadCount > 99 ? '99+' : emailUnreadCount}
@@ -1307,7 +1084,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? '#999999' : '#3a3a3a',
+                          color: isActive ? '#3b8ad4' : '#3a4e60',
                         }}
                       >
                         {item.shortcut}
@@ -1321,7 +1098,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: '#3a3a3a',
+                          color: '#3a4e60',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1330,18 +1107,15 @@ export default function Layout() {
                   </button>
 
                   {/* Dropdown menu for items with children */}
-                  {/* 10: Toolbar dropdown with stronger shadow + left-edge align fix */}
                   {hasChildren && isDropdownOpen && (
                     <div
                       className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
-                      role="menu"
-                      aria-label={`${item.label} submenu`}
                       style={{
-                        minWidth: 210,
-                        background: '#141414',
-                        border: '1px solid #2e2e2e',
-                        borderTop: '2px solid #888888',
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
+                        minWidth: 200,
+                        background: '#1a2636',
+                        border: '1px solid #2a3e58',
+                        borderTop: '2px solid #1a5a9e',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                       }}
                     >
                       {item.children!.filter(child => {
@@ -1358,33 +1132,19 @@ export default function Layout() {
                             onClick={() => {
                               setOpenDropdown(null);
                               if (child.newWindow || item.newWindow) {
-                                window.open(child.path, '_blank', 'noopener,noreferrer');
+                                window.open(child.path, '_blank');
                               } else {
                                 navigate(child.path);
                               }
                             }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
-                            role="menuitem"
+                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
                             style={{
-                              color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(136,136,136,0.15)' : 'transparent',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(136,136,136,0.2) 0%, rgba(136,136,136,0.1) 100%)';
-                                (e.currentTarget as HTMLElement).style.color = '#ffffff';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                                (e.currentTarget as HTMLElement).style.color = '#aaaaaa';
-                              }
+                              color: childActive ? '#ffffff' : '#b0bcc8',
+                              background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
                             }}
                           >
-                            {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : '#666666', flexShrink: 0 }} />
-                            <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#3b8ad4' : '#5a6e80', flexShrink: 0 }} />
+                            <span className="text-[11px] font-medium">{child.label}</span>
                           </button>
                         );
                       })}
@@ -1412,25 +1172,7 @@ export default function Layout() {
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
-        {/* 12: Main content area with subtle inset shadow for depth */}
-        <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
-          {/* Feature 21: Password expiry warning banner */}
-          {showPasswordExpiryWarning && (
-            <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-amber-200">
-                Your password expires in <strong>{passwordExpiryDays} day{passwordExpiryDays !== 1 ? 's' : ''}</strong>.
-                Please change it in your profile settings.
-              </span>
-              <button type="button" onClick={() => { setProfileModalOpen(true); setProfileModalTab('password'); setShowPasswordExpiryWarning(false); }} className="ml-auto text-[10px] text-amber-400 hover:text-amber-200 font-bold transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-amber-400 focus-visible:outline-none">
-                Change Password
-              </button>
-              <button type="button" onClick={() => setShowPasswordExpiryWarning(false)} className="text-amber-500 hover:text-amber-300 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-amber-400 focus-visible:outline-none" aria-label="Dismiss password expiry warning"><X className="w-3 h-3" /></button>
-            </div>
-          )}
-
-          {/* Feature 22: Session timeout warning — removed (tokens auto-refresh) */}
-
+        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>
@@ -1450,7 +1192,6 @@ export default function Layout() {
           isConnected={isConnected}
           user={user}
           activeCallCount={activeCallCount}
-          callsByPriority={callsByPriority}
           activeBOLOs={activeBOLOs}
           gpsTracking={gps.isTracking}
           gpsUnitCallSign={gps.unitCallSign}
@@ -1477,119 +1218,6 @@ export default function Layout() {
 
       {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
       <Force2FASetupModal />
-
-      {/* Feature 24: Auto-logout idle warning dialog */}
-      {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
-          {/* 13: Idle dialog with stronger visual hierarchy */}
-          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear" style={{ borderTop: '3px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold text-base mb-2">Are you still there?</h3>
-            <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
-            <button type="button"
-              onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-sm transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-              autoFocus
-            >
-              I'm still here
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Keyboard Shortcut Help Modal */}
-      {showShortcutHelp && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
-          {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505]">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
-              <div className="space-y-1.5">
-                <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Module Navigation</div>
-                {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
-                  <div key={item.shortcut} className="flex items-center justify-between py-1">
-                    <span className="text-xs text-rmpg-200">{item.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#050505] border border-[#2e2e2e] text-brand-400 rounded-sm">{item.shortcut}</kbd>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-[#222222] pt-3 space-y-1.5">
-                <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
-                {[
-                  { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
-                  { label: 'Keyboard Shortcuts', keys: '?' },
-                  { label: 'Global Search', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
-                  { label: 'Navigate Back', keys: 'Alt+Left' },
-                  { label: 'Navigate Forward', keys: 'Alt+Right' },
-                  { label: 'Close Modal', keys: 'Escape' },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center justify-between py-1">
-                    <span className="text-xs text-rmpg-200">{s.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#050505] border border-[#2e2e2e] text-brand-400 rounded-sm">{s.keys}</kbd>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Command Palette */}
-      {showCommandPalette && (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
-          {/* 15: Command palette with top accent and deeper shadow */}
-          <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#222222]">
-              <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
-              <input
-                ref={paletteInputRef}
-                autoFocus
-                value={paletteQuery}
-                onChange={e => setPaletteQuery(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && paletteResults.length > 0) {
-                    navigate(paletteResults[0].path);
-                    setShowCommandPalette(false);
-                  }
-                  if (e.key === 'Escape') setShowCommandPalette(false);
-                }}
-                placeholder="Search pages, modules..."
-                className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
-              />
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#050505] border border-[#2e2e2e] text-rmpg-500 rounded-sm">ESC</kbd>
-            </div>
-            <div className="max-h-80 overflow-y-auto scrollbar-dark">
-              {paletteQuery.trim() === '' ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules<span className="text-rmpg-600 ml-1">-- start typing</span></div>
-              ) : paletteResults.length === 0 ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">No results found</div>
-              ) : (
-                paletteResults.map((result, idx) => {
-                  const Icon = result.icon;
-                  return (
-                    <button type="button"
-                      key={`${result.path}-${idx}`}
-                      onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#222222]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
-                    >
-                      {/* 17: Command palette results with matched text style */}
-                      <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />
-                      <span className="text-sm text-white font-medium">{result.label}</span>
-                      <span className="text-[10px] text-rmpg-500 ml-auto font-mono">{result.path}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Voice Channel floating indicator (mic button + state overlay) */}
-      <VoiceChannelIndicator />
     </div>
   );
 }

@@ -19,15 +19,12 @@ import type {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { getDb } from '../models/database';
 import { authenticateToken, generateAccessToken, generateRefreshToken, generateTempToken, JwtPayload } from '../middleware/auth';
-import { mfaRateLimit } from '../middleware/rateLimiter';
 import { createSecurityNotification, trustDevice, hashDeviceFingerprint, parseDeviceName } from '../utils/deviceFingerprint';
 import { isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
-import { validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -92,21 +89,6 @@ function parseTransports(json: string | null): AuthenticatorTransportFuture[] | 
 }
 
 
-// ─── GET /api/auth/webauthn/status ─────────────────
-// Check if user has any registered security keys
-router.get('/status', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const creds = getCredentialsForUser(req.user!.userId);
-    res.json({
-      enabled: creds.length > 0,
-      credentialCount: creds.length,
-    });
-  } catch (error: any) {
-    console.error('WebAuthn status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to webauthn status', code: 'WEBAUTHN_STATUS_ERROR' });
-  }
-});
-
 // ─── GET /api/auth/webauthn/credentials ─────────────
 // List registered security keys for the authenticated user
 router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
@@ -123,14 +105,14 @@ router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
     })));
   } catch (error: any) {
     console.error('WebAuthn list credentials error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to webauthn list credentials', code: 'WEBAUTHN_LIST_CREDENTIALS_ERROR' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 
 // ─── POST /api/auth/webauthn/register-options ───────
 // Generate registration options — user must be authenticated
-router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/register-options', authenticateToken, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const db = getDb();
@@ -138,7 +120,7 @@ router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Re
       .get(userId) as { id: number; username: string; full_name: string } | undefined;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
+      res.status(404).json({ error: 'User not found' });
       return;
     }
 
@@ -174,14 +156,14 @@ router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Re
     res.json({ options, challengeId });
   } catch (error: any) {
     console.error('WebAuthn register-options error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to webauthn register-options', code: 'WEBAUTHN_REGISTEROPTIONS_ERROR' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 
 // ─── POST /api/auth/webauthn/register-verify ────────
 // Verify registration response and store credential
-router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/register-verify', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { challengeId, response: regResponse, name } = req.body as {
       challengeId: string;
@@ -190,31 +172,19 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     };
 
     if (!challengeId || !regResponse) {
-      res.status(400).json({ error: 'Missing challengeId or response', code: 'MISSING_CHALLENGEID_OR_RESPONSE' });
-      return;
-    }
-
-    // Validate challengeId format (hex string from randomBytes(16))
-    if (typeof challengeId !== 'string' || challengeId.length > 64 || !/^[a-f0-9]+$/.test(challengeId)) {
-      res.status(400).json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' });
-      return;
-    }
-
-    // Validate name length
-    if (name !== undefined && name !== null && (typeof name !== 'string' || name.length > 100)) {
-      res.status(400).json({ error: 'Security key name must be 100 characters or less', code: 'SECURITY_KEY_NAME_MUST' });
+      res.status(400).json({ error: 'Missing challengeId or response' });
       return;
     }
 
     const stored = challengeStore.get(challengeId);
     if (!stored || stored.expiresAt < Date.now()) {
       challengeStore.delete(challengeId);
-      res.status(400).json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED_PLEASE_TRY' });
+      res.status(400).json({ error: 'Challenge expired. Please try again.' });
       return;
     }
 
     if (stored.userId !== req.user!.userId) {
-      res.status(403).json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' });
+      res.status(403).json({ error: 'Challenge mismatch' });
       return;
     }
 
@@ -229,7 +199,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     challengeStore.delete(challengeId);
 
     if (!verification.verified || !verification.registrationInfo) {
-      res.status(400).json({ error: 'Verification failed. Please try again.', code: 'VERIFICATION_FAILED_PLEASE_TRY' });
+      res.status(400).json({ error: 'Verification failed. Please try again.' });
       return;
     }
 
@@ -270,9 +240,6 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     );
 
     const lastRow = db.prepare('SELECT last_insert_rowid() as id').get() as { id: number } | undefined;
-
-    auditLog(req, 'CREATE', 'user', req.user!.userId, `WEBAUTHN_REGISTER: Registered security key "${credName}" (credentialId: ${credential.id})`);
-
     res.json({
       success: true,
       credential: {
@@ -284,24 +251,24 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     });
   } catch (error: any) {
     console.error('WebAuthn register-verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to webauthn register-verify', code: 'WEBAUTHN_REGISTERVERIFY_ERROR' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 
 // ─── DELETE /api/auth/webauthn/credentials/:id ──────
 // Remove a registered security key
-router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
+router.delete('/credentials/:id', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const credId = parseInt(req.params.id as string, 10);
-    if (isNaN(credId)) { res.status(400).json({ error: 'Invalid credential ID', code: 'INVALID_CREDENTIAL_ID' }); return; }
+    if (isNaN(credId)) { res.status(400).json({ error: 'Invalid credential ID' }); return; }
     const cred = db.prepare(
       'SELECT id, name FROM webauthn_credentials WHERE id = ? AND user_id = ?'
     ).get(credId, req.user!.userId) as { id: number; name: string } | undefined;
 
     if (!cred) {
-      res.status(404).json({ error: 'Credential not found', code: 'CREDENTIAL_NOT_FOUND' });
+      res.status(404).json({ error: 'Credential not found' });
       return;
     }
 
@@ -335,12 +302,10 @@ router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, 
       req.ip || 'unknown',
     );
 
-    auditLog(req, 'DELETE', 'user', credId, `WEBAUTHN_DELETE: Removed security key "${cred.name}" (credentialId: ${credId})`);
-
     res.json({ message: 'Security key removed' });
   } catch (error: any) {
     console.error('WebAuthn delete credential error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to webauthn delete credential', code: 'WEBAUTHN_DELETE_CREDENTIAL_ERROR' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -348,7 +313,7 @@ router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, 
 // ─── POST /api/auth/webauthn/authenticate-options ───
 // Generate authentication options — called during 2FA step
 // Accepts a tempToken (2FA-pending JWT) OR requires authenticated session
-router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/authenticate-options', async (req: Request, res: Response) => {
   try {
     const { tempToken } = req.body;
 
@@ -360,18 +325,18 @@ router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Res
       try {
         decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
       } catch {
-        res.status(401).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED_PLEASE_LOG' });
+        res.status(401).json({ error: 'Session expired. Please log in again.' });
         return;
       }
-      if (decoded.type !== '2fa_pending') {
-        res.status(403).json({ error: 'Invalid token type', code: 'INVALID_TOKEN_TYPE' });
+      if (decoded.type !== 'mfa_pending') {
+        res.status(403).json({ error: 'Invalid token type' });
         return;
       }
       userId = decoded.userId;
     } else if (req.user?.userId) {
       userId = req.user.userId;
     } else {
-      res.status(401).json({ error: 'Authentication required', code: 'AUTHENTICATION_REQUIRED' });
+      res.status(401).json({ error: 'Authentication required' });
       return;
     }
 
@@ -403,14 +368,14 @@ router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Res
     res.json({ options, challengeId, hasSecurityKeys: true });
   } catch (error: any) {
     console.error('WebAuthn authenticate-options error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to webauthn authenticate-options', code: 'WEBAUTHN_AUTHENTICATEOPTIONS_ERROR' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 
 // ─── POST /api/auth/webauthn/authenticate-verify ────
 // Verify authentication response — completes 2FA via security key
-router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/authenticate-verify', async (req: Request, res: Response) => {
   try {
     const { challengeId, tempToken, response: authResponse, trustDevice: shouldTrust, deviceFingerprint } = req.body as {
       challengeId: string;
@@ -421,22 +386,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     };
 
     if (!challengeId || !tempToken || !authResponse) {
-      res.status(400).json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' });
-      return;
-    }
-
-    // Validate field types and lengths
-    if (typeof challengeId !== 'string' || challengeId.length > 64 || !/^[a-f0-9]+$/.test(challengeId)) {
-      res.status(400).json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' });
-      return;
-    }
-    if (typeof tempToken !== 'string' || tempToken.length > 2048) {
-      res.status(400).json({ error: 'Invalid tempToken', code: 'INVALID_TEMPTOKEN' });
-      return;
-    }
-    if (deviceFingerprint !== undefined && deviceFingerprint !== null &&
-        (typeof deviceFingerprint !== 'string' || deviceFingerprint.length > 500)) {
-      res.status(400).json({ error: 'Invalid deviceFingerprint', code: 'INVALID_DEVICEFINGERPRINT' });
+      res.status(400).json({ error: 'Missing required fields' });
       return;
     }
 
@@ -445,12 +395,12 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     try {
       decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
     } catch {
-      res.status(401).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED_PLEASE_LOG' });
+      res.status(401).json({ error: 'Session expired. Please log in again.' });
       return;
     }
 
-    if (decoded.type !== '2fa_pending') {
-      res.status(403).json({ error: 'Invalid token type', code: 'INVALID_TOKEN_TYPE' });
+    if (decoded.type !== 'mfa_pending') {
+      res.status(403).json({ error: 'Invalid token type' });
       return;
     }
 
@@ -458,12 +408,12 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     const stored = challengeStore.get(challengeId);
     if (!stored || stored.expiresAt < Date.now()) {
       challengeStore.delete(challengeId);
-      res.status(400).json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED_PLEASE_TRY' });
+      res.status(400).json({ error: 'Challenge expired. Please try again.' });
       return;
     }
 
     if (stored.userId !== decoded.userId) {
-      res.status(403).json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' });
+      res.status(403).json({ error: 'Challenge mismatch' });
       return;
     }
 
@@ -481,8 +431,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     } | undefined;
 
     if (!cred) {
-      auditLog(req, 'user_login', 'user', decoded.userId, `WEBAUTHN_AUTH_FAILED: Security key not recognized (credentialId: ${credentialIdBase64})`);
-      res.status(400).json({ error: 'Security key not recognized', code: 'SECURITY_KEY_NOT_RECOGNIZED' });
+      res.status(400).json({ error: 'Security key not recognized' });
       return;
     }
 
@@ -503,8 +452,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     challengeStore.delete(challengeId);
 
     if (!verification.verified) {
-      auditLog(req, 'user_login', 'user', decoded.userId, `WEBAUTHN_AUTH_FAILED: Security key verification failed (credentialId: ${cred.credential_id})`);
-      res.status(401).json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' });
+      res.status(401).json({ error: 'Security key verification failed' });
       return;
     }
 
@@ -518,12 +466,12 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     ).get(decoded.userId) as any;
 
     if (!user) {
-      res.status(401).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
+      res.status(401).json({ error: 'User not found' });
       return;
     }
 
     if (user.status !== 'active') {
-      res.status(403).json({ error: 'Account is disabled or suspended', code: 'ACCOUNT_IS_DISABLED_OR' });
+      res.status(403).json({ error: 'Account is disabled or suspended' });
       return;
     }
 
@@ -538,14 +486,12 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     };
 
     // ── Check if password change is required before issuing final tokens ──
-    let _pwExpired = false;
-    try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
     const needsPasswordChange = user.must_change_password === 1
       || user.force_password_change === 1
-      || _pwExpired;
+      || isPasswordExpired(user.password_changed_at);
 
     if (needsPasswordChange) {
-      const pwTempToken = generateTempToken(payload);
+      const pwTempToken = generateTempToken(payload, ['password_change']);
       res.json({
         step: 'password_change',
         requiresPasswordChange: true,
@@ -584,8 +530,6 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
     `).run(localNow(), user.id);
 
-    auditLog(req, 'user_login', 'user', user.id, `WEBAUTHN_AUTH: 2FA login completed for ${user.username} (credentialId: ${cred.credential_id})`);
-
     res.json({
       token: accessToken,
       refreshToken,
@@ -609,7 +553,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     });
   } catch (error: any) {
     console.error('WebAuthn authenticate-verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to webauthn authenticate-verify', code: 'WEBAUTHN_AUTHENTICATEVERIFY_ERROR' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

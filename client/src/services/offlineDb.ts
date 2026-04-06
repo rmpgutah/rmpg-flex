@@ -10,7 +10,7 @@ import { openDB, IDBPDatabase, DBSchema } from 'idb';
 // ─── Database Version & Name ─────────────────────────────────
 
 const DB_NAME = 'rmpg-flex-offline';
-const DB_VERSION = 2;
+const DB_VERSION = 1;
 
 // ─── Schema Type Definitions ─────────────────────────────────
 
@@ -180,217 +180,6 @@ interface VehicleRecord {
   updated_at: string | null;
 }
 
-interface Citation {
-  id: number;
-  local_id: string | null;
-  server_id: number | null;
-  citation_number: string | null;
-  type: string;
-  status: string;
-  person_id: number | null;
-  person_name: string | null;
-  person_dob: string | null;
-  person_dl: string | null;
-  person_address: string | null;
-  vehicle_description: string | null;
-  vehicle_plate: string | null;
-  vehicle_state: string | null;
-  statute_id: number | null;
-  statute_citation: string | null;
-  violation_description: string | null;
-  offense_level: string | null;
-  fine_amount: number | null;
-  violation_date: string;
-  violation_time: string | null;
-  location: string | null;
-  incident_id: number | null;
-  call_id: number | null;
-  issuing_officer_id: number | null;
-  issuing_officer_name: string | null;
-  badge_number: string | null;
-  court_date: string | null;
-  court_name: string | null;
-  court_address: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string | null;
-  is_dirty: number;
-  synced_at: string | null;
-}
-
-interface FieldInterview {
-  id: number;
-  local_id: string | null;
-  server_id: number | null;
-  fi_number: string | null;
-  person_id: number | null;
-  subject_first_name: string | null;
-  subject_last_name: string | null;
-  subject_dob: string | null;
-  subject_gender: string | null;
-  subject_race: string | null;
-  subject_height: string | null;
-  subject_weight: string | null;
-  subject_hair: string | null;
-  subject_eye: string | null;
-  subject_clothing: string | null;
-  subject_description: string | null;
-  location: string;
-  latitude: number | null;
-  longitude: number | null;
-  property_id: number | null;
-  contact_reason: string;
-  contact_type: string | null;
-  action_taken: string | null;
-  narrative: string | null;
-  vehicle_plate: string | null;
-  vehicle_description: string | null;
-  vehicle_id: number | null;
-  associated_call_id: string | null;
-  associated_incident_id: string | null;
-  officer_id: number;
-  officer_name: string | null;
-  status: string;
-  created_at: string;
-  archived_at: string | null;
-  is_dirty: number;
-  synced_at: string | null;
-}
-
-interface Evidence {
-  id: number;
-  local_id: string | null;
-  server_id: number | null;
-  evidence_number: string | null;
-  incident_id: number | null;
-  description: string | null;
-  evidence_type: string | null;
-  category: string | null;
-  storage_location: string | null;
-  collected_by: number | null;
-  status: string;
-  chain_of_custody: string;
-  location_found: string | null;
-  condition: string | null;
-  quantity: number;
-  collected_date: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string | null;
-  is_dirty: number;
-  synced_at: string | null;
-}
-
-interface CriminalHistory {
-  id: number;
-  local_id: string | null;
-  server_id: number | null;
-  person_id: number;
-  record_type: string;
-  offense: string;
-  offense_level: string | null;
-  statute: string | null;
-  case_number: string | null;
-  agency: string | null;
-  jurisdiction: string | null;
-  offense_date: string | null;
-  disposition: string | null;
-  disposition_date: string | null;
-  sentence: string | null;
-  source: string | null;
-  notes: string | null;
-  created_by: number;
-  created_at: string;
-  updated_at: string;
-  is_dirty: number;
-  synced_at: string | null;
-}
-
-interface PatrolScan {
-  id: number;
-  local_id: string | null;
-  server_id: number | null;
-  checkpoint_id: number;
-  officer_id: number;
-  scanned_at: string;
-  latitude: number | null;
-  longitude: number | null;
-  notes: string | null;
-  status: string;
-  is_dirty: number;
-  synced_at: string | null;
-}
-
-interface TrespassOrder {
-  id: number;
-  local_id: string | null;
-  server_id: number | null;
-  order_number: string | null;
-  person_id: number | null;
-  subject_first_name: string;
-  subject_last_name: string;
-  subject_dob: string | null;
-  subject_description: string | null;
-  property_id: number | null;
-  property_name: string | null;
-  location: string;
-  order_type: string;
-  status: string;
-  reason: string | null;
-  conditions: string | null;
-  duration_days: number | null;
-  effective_date: string | null;
-  expiration_date: string | null;
-  served_at: string | null;
-  served_by: number | null;
-  originating_call_id: string | null;
-  originating_incident_id: string | null;
-  issued_by: number;
-  issued_by_name: string | null;
-  authorized_by: string | null;
-  notes: string | null;
-  archived_at: string | null;
-  created_at: string;
-  updated_at: string | null;
-  is_dirty: number;
-  synced_at: string | null;
-}
-
-interface Warrant {
-  id: number;
-  warrant_number: string | null;
-  type: string;
-  status: string;
-  subject_person_id: number | null;
-  issuing_court: string | null;
-  issuing_judge: string | null;
-  charge_description: string;
-  bail_amount: number | null;
-  offense_level: string | null;
-  entered_by: number;
-  served_by: number | null;
-  served_at: string | null;
-  served_location: string | null;
-  expires_at: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface PatrolCheckpoint {
-  id: number;
-  property_id: number;
-  name: string;
-  description: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  qr_code: string | null;
-  sequence_order: number;
-  scan_required_interval_minutes: number;
-  is_active: number;
-  created_at: string;
-}
-
 interface GpsBreadcrumb {
   id?: number; // autoIncrement
   unit_id: number | null;
@@ -492,83 +281,6 @@ interface RmpgOfflineDB extends DBSchema {
     value: VehicleRecord;
     indexes: { 'by-plate': string };
   };
-  citations: {
-    key: number;
-    value: Citation;
-    indexes: {
-      'by-local-id': string;
-      'by-server-id': number;
-      'by-dirty': number;
-      'by-synced-at': string;
-      'by-citation-number': string;
-    };
-  };
-  field_interviews: {
-    key: number;
-    value: FieldInterview;
-    indexes: {
-      'by-local-id': string;
-      'by-server-id': number;
-      'by-dirty': number;
-      'by-synced-at': string;
-    };
-  };
-  evidence: {
-    key: number;
-    value: Evidence;
-    indexes: {
-      'by-local-id': string;
-      'by-server-id': number;
-      'by-dirty': number;
-      'by-synced-at': string;
-      'by-evidence-number': string;
-    };
-  };
-  criminal_history: {
-    key: number;
-    value: CriminalHistory;
-    indexes: {
-      'by-local-id': string;
-      'by-server-id': number;
-      'by-dirty': number;
-      'by-synced-at': string;
-    };
-  };
-  patrol_scans: {
-    key: number;
-    value: PatrolScan;
-    indexes: {
-      'by-local-id': string;
-      'by-server-id': number;
-      'by-dirty': number;
-      'by-synced-at': string;
-    };
-  };
-  patrol_checkpoints: {
-    key: number;
-    value: PatrolCheckpoint;
-    indexes: {
-      'by-property': number;
-    };
-  };
-  trespass_orders: {
-    key: number;
-    value: TrespassOrder;
-    indexes: {
-      'by-local-id': string;
-      'by-server-id': number;
-      'by-dirty': number;
-      'by-synced-at': string;
-    };
-  };
-  warrants: {
-    key: number;
-    value: Warrant;
-    indexes: {
-      'by-person': number;
-      'by-status': string;
-    };
-  };
   gps_breadcrumbs: {
     key: number;
     value: GpsBreadcrumb;
@@ -603,10 +315,10 @@ let autoIncrementCounters: Record<string, number> = {};
 export async function initOfflineDb(): Promise<IDBPDatabase<RmpgOfflineDB>> {
   if (db) return db;
 
+  console.log('[OFFLINE-DB] Initializing IndexedDB:', DB_NAME);
+
   db = await openDB<RmpgOfflineDB>(DB_NAME, DB_VERSION, {
-    upgrade(database, oldVersion) {
-      // ── V1 → Original stores ────────────────────────────
-      if (oldVersion < 1) {
+    upgrade(database) {
       // ── Mirror Tables (10) ──────────────────────────────
       const usersStore = database.createObjectStore('users', { keyPath: 'id' });
       usersStore.createIndex('by-username', 'username', { unique: true });
@@ -681,76 +393,10 @@ export async function initOfflineDb(): Promise<IDBPDatabase<RmpgOfflineDB>> {
 
       database.createObjectStore('sync_metadata', { keyPath: 'table_name' });
       database.createObjectStore('local_config', { keyPath: 'key' });
-      } // end v1
-
-      // ── V2 → Expanded offline record stores ────────────
-      if (oldVersion < 2) {
-        const citStore = database.createObjectStore('citations', {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        citStore.createIndex('by-local-id', 'local_id', { unique: true });
-        citStore.createIndex('by-server-id', 'server_id');
-        citStore.createIndex('by-dirty', 'is_dirty');
-        citStore.createIndex('by-synced-at', 'synced_at');
-        citStore.createIndex('by-citation-number', 'citation_number');
-
-        const fiStore = database.createObjectStore('field_interviews', {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        fiStore.createIndex('by-local-id', 'local_id', { unique: true });
-        fiStore.createIndex('by-server-id', 'server_id');
-        fiStore.createIndex('by-dirty', 'is_dirty');
-        fiStore.createIndex('by-synced-at', 'synced_at');
-
-        const evidStore = database.createObjectStore('evidence', {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        evidStore.createIndex('by-local-id', 'local_id', { unique: true });
-        evidStore.createIndex('by-server-id', 'server_id');
-        evidStore.createIndex('by-dirty', 'is_dirty');
-        evidStore.createIndex('by-synced-at', 'synced_at');
-        evidStore.createIndex('by-evidence-number', 'evidence_number');
-
-        const crimStore = database.createObjectStore('criminal_history', {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        crimStore.createIndex('by-local-id', 'local_id', { unique: true });
-        crimStore.createIndex('by-server-id', 'server_id');
-        crimStore.createIndex('by-dirty', 'is_dirty');
-        crimStore.createIndex('by-synced-at', 'synced_at');
-
-        const scanStore = database.createObjectStore('patrol_scans', {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        scanStore.createIndex('by-local-id', 'local_id', { unique: true });
-        scanStore.createIndex('by-server-id', 'server_id');
-        scanStore.createIndex('by-dirty', 'is_dirty');
-        scanStore.createIndex('by-synced-at', 'synced_at');
-
-        const cpStore = database.createObjectStore('patrol_checkpoints', { keyPath: 'id' });
-        cpStore.createIndex('by-property', 'property_id');
-
-        const tresStore = database.createObjectStore('trespass_orders', {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        tresStore.createIndex('by-local-id', 'local_id', { unique: true });
-        tresStore.createIndex('by-server-id', 'server_id');
-        tresStore.createIndex('by-dirty', 'is_dirty');
-        tresStore.createIndex('by-synced-at', 'synced_at');
-
-        const warStore = database.createObjectStore('warrants', { keyPath: 'id' });
-        warStore.createIndex('by-person', 'subject_person_id');
-        warStore.createIndex('by-status', 'status');
-      } // end v2
     },
   });
 
+  console.log('[OFFLINE-DB] Ready');
   return db;
 }
 
@@ -769,8 +415,6 @@ export function isOfflineDbReady(): boolean {
 type StoreName =
   | 'users' | 'clients' | 'properties' | 'calls_for_service' | 'units'
   | 'incidents' | 'time_entries' | 'persons' | 'vehicles_records'
-  | 'citations' | 'field_interviews' | 'evidence' | 'criminal_history'
-  | 'patrol_scans' | 'patrol_checkpoints' | 'trespass_orders' | 'warrants'
   | 'gps_breadcrumbs' | 'sync_queue' | 'pin_sessions' | 'pin_attempts'
   | 'sync_metadata' | 'local_config';
 
@@ -954,14 +598,6 @@ export type {
   TimeEntry,
   Person,
   VehicleRecord,
-  Citation,
-  FieldInterview,
-  Evidence,
-  CriminalHistory,
-  PatrolScan,
-  PatrolCheckpoint,
-  TrespassOrder,
-  Warrant,
   GpsBreadcrumb,
   SyncQueueItem,
   PinSession,

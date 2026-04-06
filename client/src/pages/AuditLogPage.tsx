@@ -10,13 +10,7 @@ import {
   Calendar,
   Loader2,
   Clock,
-  X,
-  Plus,
-  Edit,
-  Trash2,
-  LogIn,
-  LogOut,
-  Eye,
+  X
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -24,7 +18,6 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import { localToday } from '../utils/dateUtils';
-import { useToast } from '../components/ToastProvider';
 
 interface AuditLogEntry {
   id: number;
@@ -56,39 +49,7 @@ interface Filters {
   search: string;
 }
 
-// Enhancement 44: Action type icons
-const getActionIcon = (action: string): React.ElementType => {
-  if (!action) return ScrollText;
-  const a = action.toLowerCase();
-  if (a.includes('created') || a.includes('create')) return Plus;
-  if (a.includes('updated') || a.includes('update') || a.includes('status_change')) return Edit;
-  if (a.includes('deleted') || a.includes('delete') || a.includes('cancelled')) return Trash2;
-  if (a.includes('login') || a.includes('clock_in')) return LogIn;
-  if (a.includes('logout') || a.includes('clock_out')) return LogOut;
-  if (a.includes('view') || a.includes('export') || a.includes('download')) return Eye;
-  return ScrollText;
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 const AuditLogPage: React.FC = () => {
-  const { addToast } = useToast();
-
-  // Set document title
-  useEffect(() => { document.title = 'Audit Log \u2014 RMPG Flex'; }, []);
-
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,10 +68,6 @@ const AuditLogPage: React.FC = () => {
     endDate: '',
     search: ''
   });
-
-  // ═══ NEW: Compliance report + index stats ═══
-  const [complianceReport, setComplianceReport] = useState<any>(null);
-  const [indexStats, setIndexStats] = useState<{ total_entries: number; estimated_size_mb: number } | null>(null);
 
   // Memoized filter dropdown values — derived from logs, recalculated only when logs change
   const uniqueActions = useMemo(() => {
@@ -170,7 +127,6 @@ const AuditLogPage: React.FC = () => {
     } catch (err) {
       console.error('Error fetching audit logs:', err);
       setError('Failed to load audit logs. Please try again.');
-      addToast('Failed to load audit logs', 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -185,7 +141,6 @@ const AuditLogPage: React.FC = () => {
     } catch (err) {
       console.error('Error fetching audit stats:', err);
       setError('Failed to load audit statistics.');
-      addToast('Failed to load audit statistics', 'error');
     }
   }, []);
 
@@ -193,9 +148,6 @@ const AuditLogPage: React.FC = () => {
   useEffect(() => {
     fetchLogs();
     fetchStats();
-    // Fetch new upgrade data
-    apiFetch<any>('/audit/compliance-report?days=30').then(d => { if (d) setComplianceReport(d); }).catch(() => {});
-    apiFetch<any>('/audit/index-stats').then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
   }, [fetchLogs, fetchStats]);
 
   // Auto-refresh every 60 seconds
@@ -219,7 +171,6 @@ const AuditLogPage: React.FC = () => {
 
   // Get action color — stable callback, no dependencies
   const getActionColor = useCallback((action: string): string => {
-    if (!action) return 'text-rmpg-300';
     const actionLower = action.toLowerCase();
 
     // Green: creates, login success, clock in
@@ -314,11 +265,11 @@ const AuditLogPage: React.FC = () => {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden mb-6">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Audit Log</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -326,7 +277,7 @@ const AuditLogPage: React.FC = () => {
       {/* Header */}
       <div className="mb-6">
         <PanelTitleBar title="AUDIT TRAIL" icon={ScrollText}>
-          <button type="button"
+          <button
             onClick={() => {
               fetchLogs(true);
               fetchStats();
@@ -339,10 +290,10 @@ const AuditLogPage: React.FC = () => {
           </button>
           <ExportButton exportUrl="/audit/export?format=csv" exportFilename="audit_log_export.csv" />
           <PrintButton />
-          <button type="button"
+          <button
             onClick={exportToCSV}
             disabled={logs.length === 0}
-            className="toolbar-btn toolbar-btn-primary print:hidden"
+            className="toolbar-btn toolbar-btn-primary"
           >
             <Download className="w-3.5 h-3.5" />
             Export CSV
@@ -351,23 +302,22 @@ const AuditLogPage: React.FC = () => {
 
         {/* Stats Row */}
         {stats && (
-          <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-            <div className="panel-beveled p-3" style={{ background: '#050505' }}>
+            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <ScrollText className="w-4 h-4 text-brand-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Total Entries</span>
               </div>
               <div className="text-2xl font-bold text-brand-400 font-mono">{stats.totalEntries.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: stats.entriesToday > 0 ? '#0a1a0a' : '#050505' }}>
+            <div className="panel-beveled p-3" style={{ background: stats.entriesToday > 0 ? '#0a1a0a' : '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="w-4 h-4 text-green-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Today</span>
               </div>
               <div className="text-2xl font-bold text-green-400 font-mono">{stats.entriesToday.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#050505' }}>
+            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top Action (30d)</span>
@@ -381,7 +331,7 @@ const AuditLogPage: React.FC = () => {
               {stats.topActions.length > 1 && (
                 <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/50 space-y-0.5">
                   {stats.topActions.slice(1, 4).map((a, i) => (
-                    <div key={a.action} className="flex items-center justify-between text-[9px]">
+                    <div key={i} className="flex items-center justify-between text-[9px]">
                       <span className="text-rmpg-400 truncate">{a.action}</span>
                       <span className="text-rmpg-500 font-mono ml-2">{a.count}</span>
                     </div>
@@ -389,7 +339,7 @@ const AuditLogPage: React.FC = () => {
                 </div>
               )}
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#050505' }}>
+            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Filter className="w-4 h-4 text-cyan-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top User (30d)</span>
@@ -404,7 +354,7 @@ const AuditLogPage: React.FC = () => {
               {stats.topUsers.length > 1 && (
                 <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/50 space-y-0.5">
                   {stats.topUsers.slice(1, 4).map((u, i) => (
-                    <div key={u.user_name} className="flex items-center justify-between text-[9px]">
+                    <div key={i} className="flex items-center justify-between text-[9px]">
                       <span className="text-rmpg-400 truncate">{u.user_name}</span>
                       <span className="text-rmpg-500 font-mono ml-2">{u.count}</span>
                     </div>
@@ -413,48 +363,6 @@ const AuditLogPage: React.FC = () => {
               )}
             </div>
           </div>
-
-          {/* ═══ NEW: Compliance + Index Stats Row ═══ */}
-          {(complianceReport || indexStats) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
-              {complianceReport && (
-                <>
-                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
-                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Login Failure Rate</div>
-                    <div className={`text-xl font-bold font-mono ${complianceReport.login_stats?.failure_rate > 20 ? 'text-red-400' : 'text-green-400'}`}>
-                      {complianceReport.login_stats?.failure_rate ?? 0}%
-                    </div>
-                    <div className="text-[9px] text-rmpg-500 mt-0.5">
-                      {complianceReport.login_stats?.failed ?? 0} failed / {(complianceReport.login_stats?.successful ?? 0) + (complianceReport.login_stats?.failed ?? 0)} total
-                    </div>
-                  </div>
-                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
-                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Active Users (30d)</div>
-                    <div className="text-xl font-bold font-mono text-purple-400">
-                      {complianceReport.active_users ?? 0}
-                    </div>
-                  </div>
-                </>
-              )}
-              {indexStats && (
-                <>
-                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
-                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Total Log Entries</div>
-                    <div className="text-xl font-bold font-mono text-rmpg-200">
-                      {indexStats.total_entries.toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
-                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Est. Log Size</div>
-                    <div className="text-xl font-bold font-mono text-rmpg-200">
-                      {indexStats.estimated_size_mb} MB
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          </>
         )}
       </div>
 
@@ -464,9 +372,10 @@ const AuditLogPage: React.FC = () => {
           <Filter className="w-4 h-4 text-rmpg-300" />
           <span className="text-sm font-semibold">Filters</span>
           {hasActiveFilters && (
-            <button type="button"
+            <button
               onClick={clearFilters}
-              className="ml-auto px-3 py-1 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 transition-colors">
+              className="ml-auto px-3 py-1 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600"
+            >
               <X className="w-3 h-3" />
               Clear All
             </button>
@@ -529,7 +438,7 @@ const AuditLogPage: React.FC = () => {
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                className="input-dark text-xs min-h-[36px]"
+                className="input-dark text-xs"
               />
               <Calendar className="absolute right-2 top-2.5 w-4 h-4 text-rmpg-400 pointer-events-none" />
             </div>
@@ -543,7 +452,7 @@ const AuditLogPage: React.FC = () => {
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                className="input-dark text-xs min-h-[36px]"
+                className="input-dark text-xs"
               />
               <Calendar className="absolute right-2 top-2.5 w-4 h-4 text-rmpg-400 pointer-events-none" />
             </div>
@@ -557,9 +466,8 @@ const AuditLogPage: React.FC = () => {
                 type="text"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
-                placeholder="Search details..." aria-label="Search audit log details"
-                autoComplete="off"
-                className="input-dark text-xs pl-8 min-h-[36px]"
+                placeholder="Search..."
+                className="input-dark text-xs pl-8"
               />
               <Search className="absolute left-2 top-2.5 w-4 h-4 text-rmpg-400 pointer-events-none" />
             </div>
@@ -571,7 +479,7 @@ const AuditLogPage: React.FC = () => {
       {error && (
         <div className="mx-0 mb-3 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -585,15 +493,13 @@ const AuditLogPage: React.FC = () => {
       {/* Table */}
       <div className="panel-beveled overflow-hidden bg-surface-base">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-2">
-            <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
-            <span className="text-[10px] text-rmpg-500">Loading audit entries...</span>
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
           </div>
         ) : logs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-rmpg-400 gap-1">
-            <ScrollText className="w-10 h-10 mb-2 text-rmpg-600" />
-            <p className="text-xs font-semibold">No audit logs found</p>
-            <p className="text-[10px] text-rmpg-500">Try adjusting your filters or date range</p>
+          <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
+            <ScrollText className="w-12 h-12 mb-3 opacity-50" />
+            <p>No audit logs found</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -625,8 +531,7 @@ const AuditLogPage: React.FC = () => {
                       {log.badge_number || <span className="text-rmpg-400">-</span>}
                     </td>
                     <td className="px-3 py-1.5 whitespace-nowrap">
-                      <span className={`font-semibold inline-flex items-center gap-1 ${getActionColor(log.action)}`}>
-                        {(() => { const Icon = getActionIcon(log.action); return <Icon className="w-3 h-3" />; })()}
+                      <span className={`font-semibold ${getActionColor(log.action)}`}>
                         {log.action}
                       </span>
                     </td>
@@ -657,10 +562,10 @@ const AuditLogPage: React.FC = () => {
             Page {page} of {totalPages}
           </div>
           <div className="flex items-center gap-2">
-            <button type="button"
+            <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" />
               Previous
@@ -679,7 +584,7 @@ const AuditLogPage: React.FC = () => {
                 }
 
                 return (
-                  <button type="button"
+                  <button
                     key={pageNum}
                     onClick={() => setPage(pageNum)}
                     className={`px-3 py-2 text-xs border ${
@@ -693,10 +598,10 @@ const AuditLogPage: React.FC = () => {
                 );
               })}
             </div>
-            <button type="button"
+            <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
               <ChevronRight className="w-4 h-4" />

@@ -78,19 +78,8 @@ import {
   Mic,
   MicOff,
   Video,
-  ClipboardCheck,
-  Contrast,
-  Droplets,
-  Flame,
-  Leaf,
-  Tv,
-  Brain,
-  SlidersHorizontal,
-  AudioLines,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
-import { setVoiceChannelConfig, setVoiceChannelEnabled, isVoiceChannelEnabled, getVoiceChannelConfig } from '../utils/voiceChannel';
-import { setDetailLevel, getDetailLevel, type NarrativeDetail } from '../utils/narrativeComposer';
 import { apiFetch } from '../hooks/useApi';
 
 // ============================================================
@@ -139,7 +128,6 @@ interface MenuDefinition {
 interface MenuBarProps {
   isAdmin: boolean;
   isConnected: boolean;
-  onlineCount?: number;
   onLogout: () => void;
   onSearch: () => void;
   onShowShortcuts: () => void;
@@ -153,7 +141,6 @@ interface MenuBarProps {
 export default function MenuBar({
   isAdmin,
   isConnected,
-  onlineCount = 0,
   onLogout,
   onSearch,
   onShowShortcuts,
@@ -169,12 +156,6 @@ export default function MenuBar({
   const [scanLinesEnabled, setScanLinesEnabled] = useState(() => {
     return localStorage.getItem('rmpg-scanlines') !== 'false';
   });
-  const [vignetteEnabled, setVignetteEnabled] = useState(() => localStorage.getItem('rmpg-fx-vignette') === 'true');
-  const [bloomEnabled, setBloomEnabled] = useState(() => localStorage.getItem('rmpg-fx-bloom') === 'true');
-  const [amberTintEnabled, setAmberTintEnabled] = useState(() => localStorage.getItem('rmpg-fx-amber') === 'true');
-  const [greenPhosphorEnabled, setGreenPhosphorEnabled] = useState(() => localStorage.getItem('rmpg-fx-green') === 'true');
-  const [highContrastEnabled, setHighContrastEnabled] = useState(() => localStorage.getItem('rmpg-fx-highcontrast') === 'true');
-  const [noiseEnabled, setNoiseEnabled] = useState(() => localStorage.getItem('rmpg-fx-noise') === 'true');
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem('rmpg-sound') !== 'false';
   });
@@ -185,30 +166,6 @@ export default function MenuBar({
   const [compactMode, setCompactMode] = useState(() => {
     return localStorage.getItem('rmpg-compact') === 'true';
   });
-  const [voiceEngine, setVoiceEngine] = useState<'edge-tts' | 'browser'>(() => {
-    return (localStorage.getItem('rmpg-voice-engine') as 'edge-tts' | 'browser') || 'edge-tts';
-  });
-  const [alertMinTier, setAlertMinTier] = useState<'minor' | 'moderate' | 'major'>(() => {
-    return (localStorage.getItem('rmpg-alert-min-tier') as 'minor' | 'moderate' | 'major') || 'minor';
-  });
-  const [aiAssistEnabled, setAiAssistEnabled] = useState(() => {
-    return localStorage.getItem('rmpg-ai-assist') !== 'false';
-  });
-  // Voice Channel settings
-  const [vcEnabled, setVcEnabled] = useState(() => isVoiceChannelEnabled());
-  const [vcListenMode, setVcListenMode] = useState<'auto' | 'wake' | 'manual'>(() => getVoiceChannelConfig().listenMode);
-  const [vcListenDuration, setVcListenDuration] = useState<number>(() => getVoiceChannelConfig().listenDuration);
-  const [vcWakeWord, setVcWakeWord] = useState(() => getVoiceChannelConfig().wakeWord);
-  const [vcConfirmMode, setVcConfirmMode] = useState<'speak' | 'beep' | 'silent'>(() => getVoiceChannelConfig().confirmMode);
-  const [vcDetailLevel, setVcDetailLevel] = useState<NarrativeDetail>(() => getDetailLevel());
-
-  // Advanced Voice Channel settings
-  const [stressDetection, setStressDetection] = useState(() => localStorage.getItem('rmpg-voice-stress-detection') !== 'false');
-  const [welfareChecks, setWelfareChecks] = useState(() => localStorage.getItem('rmpg-voice-welfare-checks') !== 'false');
-  const [proximityAlerts, setProximityAlerts] = useState(() => localStorage.getItem('rmpg-voice-proximity-alerts') !== 'false');
-  const [tacticalAssessments, setTacticalAssessments] = useState(() => localStorage.getItem('rmpg-voice-tactical-assessments') !== 'false');
-  const [nearestUnitsAuto, setNearestUnitsAuto] = useState(() => localStorage.getItem('rmpg-voice-nearest-units') !== 'false');
-
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [show10Codes, setShow10Codes] = useState(false);
   const [showLawBooks, setShowLawBooks] = useState(false);
@@ -257,66 +214,12 @@ export default function MenuBar({
   }, [closeMenus]);
 
   // Toggle helpers
-  // Apply persisted display effects on mount
-  useEffect(() => {
-    if (vignetteEnabled) document.body.classList.add('fx-vignette');
-    if (bloomEnabled) document.body.classList.add('fx-bloom');
-    if (amberTintEnabled) document.body.classList.add('fx-amber');
-    if (greenPhosphorEnabled) document.body.classList.add('fx-green');
-    if (highContrastEnabled) document.body.classList.add('fx-highcontrast');
-    if (noiseEnabled) document.body.classList.add('fx-noise');
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const toggleScanLines = useCallback(() => {
     const next = !scanLinesEnabled;
     setScanLinesEnabled(next);
     localStorage.setItem('rmpg-scanlines', String(next));
     document.body.classList.toggle('no-scanlines', !next);
   }, [scanLinesEnabled]);
-
-  const toggleVignette = useCallback(() => {
-    const next = !vignetteEnabled;
-    setVignetteEnabled(next);
-    localStorage.setItem('rmpg-fx-vignette', String(next));
-    document.body.classList.toggle('fx-vignette', next);
-  }, [vignetteEnabled]);
-
-  const toggleBloom = useCallback(() => {
-    const next = !bloomEnabled;
-    setBloomEnabled(next);
-    localStorage.setItem('rmpg-fx-bloom', String(next));
-    document.body.classList.toggle('fx-bloom', next);
-  }, [bloomEnabled]);
-
-  const toggleNoise = useCallback(() => {
-    const next = !noiseEnabled;
-    setNoiseEnabled(next);
-    localStorage.setItem('rmpg-fx-noise', String(next));
-    document.body.classList.toggle('fx-noise', next);
-  }, [noiseEnabled]);
-
-  const toggleAmber = useCallback(() => {
-    const next = !amberTintEnabled;
-    setAmberTintEnabled(next);
-    localStorage.setItem('rmpg-fx-amber', String(next));
-    document.body.classList.toggle('fx-amber', next);
-    if (next) { setGreenPhosphorEnabled(false); localStorage.setItem('rmpg-fx-green', 'false'); document.body.classList.remove('fx-green'); }
-  }, [amberTintEnabled]);
-
-  const toggleGreen = useCallback(() => {
-    const next = !greenPhosphorEnabled;
-    setGreenPhosphorEnabled(next);
-    localStorage.setItem('rmpg-fx-green', String(next));
-    document.body.classList.toggle('fx-green', next);
-    if (next) { setAmberTintEnabled(false); localStorage.setItem('rmpg-fx-amber', 'false'); document.body.classList.remove('fx-amber'); }
-  }, [greenPhosphorEnabled]);
-
-  const toggleHighContrast = useCallback(() => {
-    const next = !highContrastEnabled;
-    setHighContrastEnabled(next);
-    localStorage.setItem('rmpg-fx-highcontrast', String(next));
-    document.body.classList.toggle('fx-highcontrast', next);
-  }, [highContrastEnabled]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
@@ -342,92 +245,6 @@ export default function MenuBar({
     localStorage.setItem('rmpg-compact', String(next));
     document.body.classList.toggle('compact-mode', next);
   }, [compactMode]);
-
-  const toggleVoiceEngine = useCallback(() => {
-    const next = voiceEngine === 'edge-tts' ? 'browser' : 'edge-tts';
-    setVoiceEngine(next);
-    localStorage.setItem('rmpg-voice-engine', next);
-  }, [voiceEngine]);
-
-  const setAlertTier = useCallback((tier: 'minor' | 'moderate' | 'major') => {
-    setAlertMinTier(tier);
-    localStorage.setItem('rmpg-alert-min-tier', tier);
-  }, []);
-
-  const toggleAiAssist = useCallback(() => {
-    const next = !aiAssistEnabled;
-    setAiAssistEnabled(next);
-    localStorage.setItem('rmpg-ai-assist', String(next));
-  }, [aiAssistEnabled]);
-
-  // Voice Channel toggles
-  const toggleVcEnabled = useCallback(() => {
-    const next = !vcEnabled;
-    setVcEnabled(next);
-    setVoiceChannelEnabled(next);
-  }, [vcEnabled]);
-
-  const cycleVcListenMode = useCallback(() => {
-    const modes: Array<'auto' | 'wake' | 'manual'> = ['auto', 'wake', 'manual'];
-    const idx = modes.indexOf(vcListenMode);
-    const next = modes[(idx + 1) % modes.length];
-    setVcListenMode(next);
-    setVoiceChannelConfig({ listenMode: next });
-  }, [vcListenMode]);
-
-  const cycleVcListenDuration = useCallback(() => {
-    const durations = [3000, 5000, 8000, 10000];
-    const idx = durations.indexOf(vcListenDuration);
-    const next = durations[(idx + 1) % durations.length];
-    setVcListenDuration(next);
-    setVoiceChannelConfig({ listenDuration: next });
-  }, [vcListenDuration]);
-
-  const cycleVcConfirmMode = useCallback(() => {
-    const modes: Array<'speak' | 'beep' | 'silent'> = ['speak', 'beep', 'silent'];
-    const idx = modes.indexOf(vcConfirmMode);
-    const next = modes[(idx + 1) % modes.length];
-    setVcConfirmMode(next);
-    setVoiceChannelConfig({ confirmMode: next });
-  }, [vcConfirmMode]);
-
-  const cycleVcDetailLevel = useCallback(() => {
-    const levels: NarrativeDetail[] = ['minimal', 'standard', 'full'];
-    const idx = levels.indexOf(vcDetailLevel);
-    const next = levels[(idx + 1) % levels.length];
-    setVcDetailLevel(next);
-    setDetailLevel(next);
-  }, [vcDetailLevel]);
-
-  const toggleStressDetection = useCallback(() => {
-    const next = !stressDetection;
-    setStressDetection(next);
-    localStorage.setItem('rmpg-voice-stress-detection', String(next));
-  }, [stressDetection]);
-
-  const toggleWelfareChecks = useCallback(() => {
-    const next = !welfareChecks;
-    setWelfareChecks(next);
-    localStorage.setItem('rmpg-voice-welfare-checks', String(next));
-  }, [welfareChecks]);
-
-  const toggleProximityAlerts = useCallback(() => {
-    const next = !proximityAlerts;
-    setProximityAlerts(next);
-    localStorage.setItem('rmpg-voice-proximity-alerts', String(next));
-  }, [proximityAlerts]);
-
-  const toggleTacticalAssessments = useCallback(() => {
-    const next = !tacticalAssessments;
-    setTacticalAssessments(next);
-    localStorage.setItem('rmpg-voice-tactical-assessments', String(next));
-  }, [tacticalAssessments]);
-
-  const toggleNearestUnitsAuto = useCallback(() => {
-    const next = !nearestUnitsAuto;
-    setNearestUnitsAuto(next);
-    localStorage.setItem('rmpg-voice-nearest-units', String(next));
-  }, [nearestUnitsAuto]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -457,7 +274,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
           { type: 'action', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'Warrant', icon: Gavel, action: () => window.open('/warrants', '_blank') },
           { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Service Job', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'separator' },
@@ -478,7 +295,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
-          { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'Warrants', icon: Gavel, action: () => window.open('/warrants', '_blank') },
           { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
           { type: 'separator' },
@@ -492,7 +309,6 @@ export default function MenuBar({
           { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Shift Plans', icon: CalendarDays, action: () => navigate('/shift-plans') },
-          { type: 'action', label: 'Dispatch Geography', icon: MapPin, action: () => navigate('/geography') },
           { type: 'separator' },
           { type: 'action', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
           { type: 'action', label: 'Radio', icon: Radio, action: () => navigate('/radio') },
@@ -501,7 +317,6 @@ export default function MenuBar({
           { type: 'action', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
           { type: 'action', label: 'Daily Activity', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
-          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit'), adminOnly: true },
           { type: 'action', label: 'Administration', icon: Settings, action: () => navigate('/admin'), adminOnly: true },
@@ -543,17 +358,9 @@ export default function MenuBar({
       {
         type: 'submenu',
         label: 'Display Effects',
-        icon: Tv,
+        icon: Monitor,
         items: [
           { type: 'toggle', label: 'CRT Scan Lines', icon: Activity, checked: scanLinesEnabled, action: toggleScanLines },
-          { type: 'toggle', label: 'CRT Vignette', icon: Eye, checked: vignetteEnabled, action: toggleVignette },
-          { type: 'toggle', label: 'Phosphor Bloom', icon: Sparkles, checked: bloomEnabled, action: toggleBloom },
-          { type: 'toggle', label: 'Film Grain', icon: Droplets, checked: noiseEnabled, action: toggleNoise },
-          { type: 'separator' },
-          { type: 'toggle', label: 'Amber Phosphor', icon: Flame, checked: amberTintEnabled, action: toggleAmber },
-          { type: 'toggle', label: 'Green Phosphor', icon: Leaf, checked: greenPhosphorEnabled, action: toggleGreen },
-          { type: 'separator' },
-          { type: 'toggle', label: 'High Contrast', icon: Contrast, checked: highContrastEnabled, action: toggleHighContrast },
         ],
       },
       {
@@ -565,45 +372,6 @@ export default function MenuBar({
           { type: 'toggle', label: 'Sound Effects', icon: soundEnabled ? Volume2 : VolumeX, checked: soundEnabled, action: toggleSound },
           { type: 'toggle', label: 'Voice Alerts', icon: voiceAlertsEnabled ? Mic : MicOff, checked: voiceAlertsEnabled, action: toggleVoiceAlerts },
           { type: 'action', label: 'Test Voice Alerts', icon: Sparkles, action: () => demoAllVoiceAlerts() },
-          { type: 'separator' },
-          { type: 'toggle', label: `Voice Engine: ${voiceEngine === 'edge-tts' ? 'Neural AI' : 'Browser'}`, icon: AudioLines, checked: voiceEngine === 'edge-tts', action: toggleVoiceEngine },
-          { type: 'separator' },
-          { type: 'action', label: `Alert Level: ${alertMinTier === 'minor' ? 'All Alerts' : alertMinTier === 'moderate' ? 'Important Only' : 'Emergencies Only'}`, icon: SlidersHorizontal, action: () => {
-            // Cycle through tiers: minor → moderate → major → minor
-            const next = alertMinTier === 'minor' ? 'moderate' : alertMinTier === 'moderate' ? 'major' : 'minor';
-            setAlertTier(next);
-          }},
-          { type: 'separator' },
-          { type: 'toggle', label: 'AI Dispatch Assistant', icon: Brain, checked: aiAssistEnabled, action: toggleAiAssist },
-        ],
-      },
-      {
-        type: 'submenu',
-        label: 'Voice Channel',
-        icon: Radio,
-        items: [
-          { type: 'toggle', label: 'Voice Channel Enabled', icon: vcEnabled ? Mic : MicOff, checked: vcEnabled, action: toggleVcEnabled },
-          { type: 'separator' },
-          { type: 'action', label: `Listen Mode: ${vcListenMode === 'auto' ? 'Auto' : vcListenMode === 'wake' ? 'Wake Word' : 'Manual Only'}`, icon: AudioLines, action: cycleVcListenMode },
-          { type: 'action', label: `Listen Duration: ${vcListenDuration / 1000}s`, icon: Clock, action: cycleVcListenDuration },
-          ...(vcListenMode === 'wake' ? [
-            { type: 'action' as const, label: `Wake Word: "${vcWakeWord}"`, icon: Mic, action: () => {
-              const word = prompt('Enter wake word:', vcWakeWord);
-              if (word && word.trim()) {
-                setVcWakeWord(word.trim().toLowerCase());
-                setVoiceChannelConfig({ wakeWord: word.trim().toLowerCase() });
-              }
-            }},
-          ] : []),
-          { type: 'separator' },
-          { type: 'action', label: `Confirmation: ${vcConfirmMode === 'speak' ? 'Speak' : vcConfirmMode === 'beep' ? 'Beep Only' : 'Silent'}`, icon: Volume2, action: cycleVcConfirmMode },
-          { type: 'action', label: `Alert Detail: ${vcDetailLevel === 'minimal' ? 'Minimal' : vcDetailLevel === 'standard' ? 'Standard' : 'Full Tactical'}`, icon: SlidersHorizontal, action: cycleVcDetailLevel },
-          { type: 'separator' },
-          { type: 'toggle', label: 'Stress Detection', checked: stressDetection, action: toggleStressDetection },
-          { type: 'toggle', label: 'Welfare Checks', checked: welfareChecks, action: toggleWelfareChecks },
-          { type: 'toggle', label: 'Proximity Alerts', checked: proximityAlerts, action: toggleProximityAlerts },
-          { type: 'toggle', label: 'Tactical Assessments', checked: tacticalAssessments, action: toggleTacticalAssessments },
-          { type: 'toggle', label: 'Auto Nearest Units', checked: nearestUnitsAuto, action: toggleNearestUnitsAuto },
         ],
       },
       { type: 'separator' },
@@ -618,35 +386,6 @@ export default function MenuBar({
       { type: 'action', label: 'Global Search', icon: Search, shortcut: 'Ctrl+K', action: onSearch },
       { type: 'action', label: 'NCIC Query Terminal', icon: Terminal, action: () => navigate('/ncic') },
       { type: 'separator' },
-      { type: 'action', label: 'Quick Timer', icon: Clock, action: () => {
-        const input = prompt('Timer duration in minutes:', '15');
-        if (!input) return;
-        const minutes = parseInt(input, 10);
-        if (isNaN(minutes) || minutes <= 0 || minutes > 999) return;
-        const endTime = Date.now() + minutes * 60 * 1000;
-        const timerInterval = setInterval(() => {
-          const remaining = endTime - Date.now();
-          if (remaining <= 0) {
-            clearInterval(timerInterval);
-            document.title = 'TIMER DONE - RMPG Flex';
-            try {
-              const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-              for (let i = 0; i < 3; i++) {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.type = 'sine'; osc.frequency.value = 800;
-                gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.3);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.3 + 0.25);
-                osc.start(ctx.currentTime + i * 0.3); osc.stop(ctx.currentTime + i * 0.3 + 0.25);
-              }
-            } catch {}
-            alert(`Timer: ${minutes} minutes elapsed!`);
-            document.title = 'RMPG Flex';
-          }
-        }, 1000);
-      }},
-      { type: 'separator' },
       {
         type: 'submenu',
         label: 'Dispatch & Field',
@@ -658,7 +397,6 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Patrol Scanner', icon: QrCode, action: () => navigate('/patrol') },
           { type: 'action', label: 'Shift Planning', icon: CalendarDays, action: () => navigate('/shift-plans') },
-          { type: 'action', label: 'Geography / Zones', icon: MapPin, action: () => navigate('/geography') },
           { type: 'action', label: 'Daily Activity Reports', icon: Clipboard, action: () => navigate('/dar') },
         ],
       },
@@ -674,12 +412,9 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Arrest Records', icon: Scale, action: () => navigate('/arrest-records') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank') },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
-          { type: 'separator' },
-          { type: 'action', label: 'MicroBilt', icon: Search, action: () => navigate('/microbilt') },
-          { type: 'action', label: 'Web Research', icon: Globe, action: () => navigate('/web-research') },
         ],
       },
       {
@@ -693,7 +428,6 @@ export default function MenuBar({
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
           { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
-          { type: 'action', label: 'Serve Intake Upload', icon: Upload, action: () => navigate('/serve-intake') },
         ],
       },
       {
@@ -714,7 +448,6 @@ export default function MenuBar({
         icon: BarChart3,
         items: [
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
-          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
           { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
           { type: 'action', label: 'Custom Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
           { type: 'separator' },
@@ -736,7 +469,6 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
           { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
-          { type: 'action', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
         ],
       },
     ],
@@ -778,7 +510,6 @@ export default function MenuBar({
         icon: isConnected ? Wifi : WifiOff,
         items: [
           { type: 'action', label: `WebSocket: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`, icon: isConnected ? Wifi : WifiOff, disabled: true, action: () => {} },
-          { type: 'action', label: `Users Online: ${onlineCount}`, icon: Users, disabled: true, action: () => {} },
           { type: 'action', label: 'Server: RMPG-FLEX-01', icon: Server, disabled: true, action: () => {} },
           { type: 'action', label: `Page: ${currentPage}`, icon: Globe, disabled: true, action: () => {} },
           { type: 'separator' },
@@ -789,7 +520,6 @@ export default function MenuBar({
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
       { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/') },
-      // Version string with monospace for alignment
       { type: 'action', label: 'Version 5.3.9', icon: Shield, disabled: true, action: () => {} },
     ],
   };
@@ -834,14 +564,13 @@ export default function MenuBar({
           onMouseEnter={() => setActiveSubmenu(submenuId)}
           onMouseLeave={() => setActiveSubmenu(null)}
         >
-          {/* 20: Submenu parent with highlight when open + smoother chevron rotation */}
-          <div className={`menu-item transition-colors duration-150 ${isDisabled ? 'menu-item-disabled' : ''} ${isSubmenuOpen ? 'bg-white/[0.04]' : ''}`}>
+          <div className={`menu-item ${isDisabled ? 'menu-item-disabled' : ''}`}>
             <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
             <span className="menu-item-label">{item.label}</span>
-            <span className="menu-item-arrow"><ChevronRight style={{ width: 10, height: 10, transition: 'transform 0.2s ease', transform: isSubmenuOpen ? 'rotate(90deg)' : 'rotate(0deg)' }} /></span>
+            <span className="menu-item-arrow"><ChevronRight style={{ width: 10, height: 10 }} /></span>
           </div>
           {isSubmenuOpen && (
-            <div className="menu-dropdown menu-submenu animate-dropdown-appear">
+            <div className="menu-dropdown menu-submenu">
               {item.items.map((sub, si) => renderMenuItem(sub, si, depth + 1))}
             </div>
           )}
@@ -851,18 +580,15 @@ export default function MenuBar({
 
     if (item.type === 'toggle') {
       return (
-        <button type="button"
+        <button
           key={`toggle-${index}`}
-          className={`menu-item transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none ${isDisabled ? 'menu-item-disabled' : ''}`}
+          className={`menu-item ${isDisabled ? 'menu-item-disabled' : ''}`}
           onClick={() => !isDisabled && handleAction(item.action)}
           disabled={isDisabled}
-          role="menuitemcheckbox"
-          aria-checked={item.checked}
         >
           <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
           <span className="menu-item-label">{item.label}</span>
-          {/* 21: Toggle check with brand color when checked */}
-          <span className={`menu-item-check ${item.checked ? 'text-brand-400' : ''}`} style={{ fontWeight: item.checked ? 700 : 400 }}>{item.checked ? '✓' : ''}</span>
+          <span className="menu-item-check">{item.checked ? '✓' : ''}</span>
           {item.shortcut && <span className="menu-item-shortcut">{item.shortcut}</span>}
         </button>
       );
@@ -870,12 +596,11 @@ export default function MenuBar({
 
     // Regular action
     return (
-      <button type="button"
+      <button
         key={`action-${index}`}
-        className={`menu-item transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none ${isDisabled ? 'menu-item-disabled' : ''}`}
+        className={`menu-item ${isDisabled ? 'menu-item-disabled' : ''}`}
         onClick={() => !isDisabled && handleAction(item.action)}
         disabled={isDisabled}
-        role="menuitem"
       >
         <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
         <span className="menu-item-label">{item.label}</span>
@@ -886,47 +611,41 @@ export default function MenuBar({
 
   return (
     <>
-      <nav className="flex items-center gap-0" ref={menuBarRef} role="menubar" aria-label="Main application menu">
+      <div className="flex items-center gap-0" ref={menuBarRef}>
         {menus.map((menu) => (
-          <div key={menu.label} className="relative" role="none">
-            <button type="button"
-              className={`menu-bar-btn transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none ${openMenu === menu.label ? 'menu-bar-btn-active' : ''}`}
+          <div key={menu.label} className="relative">
+            <button
+              className={`menu-bar-btn ${openMenu === menu.label ? 'menu-bar-btn-active' : ''}`}
               onClick={() => handleMenuClick(menu.label)}
               onMouseEnter={() => handleMenuHover(menu.label)}
-              role="menuitem"
-              aria-haspopup="true"
-              aria-expanded={openMenu === menu.label}
-              aria-label={`${menu.label} menu`}
             >
               {menu.label}
             </button>
             {openMenu === menu.label && (
-              <div className="menu-dropdown menu-dropdown-root animate-dropdown-appear" role="menu" aria-label={`${menu.label} submenu`}>
+              <div className="menu-dropdown menu-dropdown-root">
                 {menu.items.map((item, i) => renderMenuItem(item, i))}
               </div>
             )}
           </div>
         ))}
-      </nav>
+      </div>
 
       {/* ── 10-Codes Reference Modal ── */}
       {show10Codes && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShow10Codes(false)} role="dialog" aria-modal="true" aria-label="10-Codes Quick Reference">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setShow10Codes(false)}>
           <div
-            className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col animate-dropdown-appear"
-            style={{ background: '#0a0a0a' }}
+            className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col"
+            style={{ background: '#141e2b' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 23: 10-codes header with top accent and version tag */}
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
-                <span className="text-[8px] font-mono text-rmpg-500 bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
               </h2>
-              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
+              <button onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
             </div>
-            <div className="flex-1 overflow-auto p-4 scrollbar-dark">
+            <div className="flex-1 overflow-auto p-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* General Codes */}
                 <div>
@@ -1062,8 +781,8 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#050505' }}>
-              <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#0d1520' }}>
+              <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
         </div>
@@ -1093,7 +812,7 @@ const OFFENSE_COLORS: Record<string, string> = {
   class_a_misdemeanor: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
   class_b_misdemeanor: 'bg-amber-900/30 text-amber-400 border-amber-700/30',
   class_c_misdemeanor: 'bg-yellow-900/30 text-yellow-400 border-yellow-700/30',
-  infraction: 'bg-gray-900/30 text-gray-400 border-gray-700/30',
+  infraction: 'bg-blue-900/30 text-blue-400 border-blue-700/30',
   enhancement: 'bg-purple-900/30 text-purple-400 border-purple-700/30',
 };
 
@@ -1155,34 +874,34 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
   }, [search, activeState, activeCategory, fetchStatutes]);
 
   const formatOffense = (level: string | null) =>
-    level ? level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
+    level ? level.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Law reference" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="panel-beveled w-[800px] max-h-[85vh] overflow-hidden flex flex-col animate-dropdown-appear"
-        style={{ background: '#0a0a0a' }}
+        className="panel-beveled w-[800px] max-h-[85vh] overflow-hidden flex flex-col"
+        style={{ background: '#141e2b' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 24: Law reference header with top accent */}
-        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <Scale className="w-4 h-4 text-brand-400" />
             Law Reference — Criminal & Vehicle Code
           </h2>
           <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
             <span>{total} statutes</span>
-            <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close law reference">ESC</button>
+            <button onClick={onClose} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
           </div>
         </div>
 
         {/* State Tabs */}
-        <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-dark" style={{ background: '#050505' }}>
+        <div className="flex border-b border-rmpg-700 overflow-x-auto" style={{ background: '#0d1520' }}>
           {LAW_STATE_CODES.map(st => (
-            <button type="button"
+            <button
               key={st}
               onClick={() => setActiveState(st)}
-              className={`flex-shrink-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none ${
+              className={`flex-shrink-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
                 activeState === st
                   ? 'text-brand-300 border-b-2 border-brand-500 bg-brand-900/20'
                   : 'text-rmpg-500 hover:text-rmpg-200 hover:bg-rmpg-700/30'
@@ -1197,10 +916,10 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex gap-0.5">
             {(['all', 'criminal', 'vehicle'] as const).map(cat => (
-              <button type="button"
+              <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
-                className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none ${
+                className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
                   activeCategory === cat
                     ? 'bg-brand-900/30 text-brand-300 border border-brand-700/50'
                     : 'text-rmpg-500 hover:text-rmpg-200 border border-transparent'
@@ -1217,13 +936,13 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by citation or keyword..."
-              className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888]"
+              className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none"
             />
           </div>
         </div>
 
         {/* Results */}
-        <div className="flex-1 overflow-y-auto scrollbar-dark">
+        <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="p-8 text-center text-xs text-rmpg-400">Loading statutes...</div>
           ) : statutes.length === 0 ? (
@@ -1233,16 +952,15 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
           ) : (
             statutes.map(s => (
               <div key={s.id} className="border-b border-rmpg-700/30">
-                <button type="button"
+                <button
                   onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
-                  className="w-full text-left px-3 py-2 hover:bg-rmpg-700/20 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                  className="w-full text-left px-3 py-2 hover:bg-rmpg-700/20 transition-colors"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-1 py-0 text-[8px] font-bold uppercase bg-rmpg-700/60 text-rmpg-300 border border-rmpg-600 leading-tight">
                       {s.state}
                     </span>
-                    {/* 25: Citation with wider letter spacing for legal readability */}
-                    <span className="text-xs font-mono text-brand-400 font-bold" style={{ letterSpacing: '0.03em' }}>{s.citation}</span>
+                    <span className="text-xs font-mono text-brand-400 font-bold">{s.citation}</span>
                     {s.offense_level && (
                       <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
                         OFFENSE_COLORS[s.offense_level] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
@@ -1281,12 +999,12 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Footer */}
-        <div className="p-2 border-t border-rmpg-700 flex items-center justify-between" style={{ background: '#050505' }}>
+        <div className="p-2 border-t border-rmpg-700 flex items-center justify-between" style={{ background: '#0d1520' }}>
           <span className="text-[9px] text-rmpg-500">
             {activeState !== 'ALL' && `${LAW_STATE_LABELS[activeState]} — `}
             {statutes.length} of {total} statutes shown
           </span>
-          <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
+          <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
         </div>
       </div>
     </div>

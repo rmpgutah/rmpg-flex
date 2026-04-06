@@ -28,14 +28,7 @@ export function encryptApiKey(plaintext: string): string {
 
 export function decryptApiKey(stored: string): string {
   const key = deriveKey();
-  const parts = stored.split(':');
-  if (parts.length !== 3) {
-    throw new Error('Invalid encrypted API key format: expected iv:authTag:ciphertext');
-  }
-  const [ivHex, authTagHex, ciphertext] = parts;
-  if (!ivHex || !authTagHex || !ciphertext) {
-    throw new Error('Invalid encrypted API key format: empty segment');
-  }
+  const [ivHex, authTagHex, ciphertext] = stored.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -56,9 +49,7 @@ export function getApiKey(): string | null {
     if (row?.config_value) {
       return decryptApiKey(row.config_value);
     }
-  } catch (err) {
-    console.error('[ServeManagerClient] Failed to resolve API key from DB:', err instanceof Error ? err.message : err);
-  }
+  } catch { /* DB key not set or decrypt failed */ }
 
   return config.serveManagerApiKey || null;
 }
@@ -128,7 +119,6 @@ export async function smFetch<T = any>(
     fetchOpts.body = JSON.stringify({ data: body });
   }
 
-  fetchOpts.signal = AbortSignal.timeout(30_000); // 30 second timeout on all SM API calls
   const response = await fetch(url, fetchOpts);
 
   if (!response.ok) {
@@ -141,16 +131,7 @@ export async function smFetch<T = any>(
     );
   }
 
-  let json: any;
-  try {
-    json = await response.json();
-  } catch (parseErr) {
-    throw new ServeManagerError(
-      `ServeManager API returned invalid JSON: ${response.status}`,
-      response.status,
-      null
-    );
-  }
+  const json = await response.json();
   return json;
 }
 

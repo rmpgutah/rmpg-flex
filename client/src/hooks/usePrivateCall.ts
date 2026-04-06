@@ -137,7 +137,7 @@ export function usePrivateCall() {
         if (event.data.size > 0 && isInCallRef.current && !isMutedRef.current) {
           const reader = new FileReader();
           reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1] || '';
+            const base64 = (reader.result as string).split(',')[1];
             send({
               type: 'private_call_audio',
               data: { audio: base64, mimeType },
@@ -161,6 +161,7 @@ export function usePrivateCall() {
 
       // 200ms chunks — same as radio for consistent latency
       recorder.start(200);
+      console.log('[PrivateCall] Audio stream started, mimeType:', mimeType);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Microphone access denied';
       setError(
@@ -322,6 +323,7 @@ export function usePrivateCall() {
 
       // Confirmation tone
       playRadioTone('channelChange');
+      console.log(`[PrivateCall] CONNECTED with ${data.partnerName}`);
     });
 
     // Call declined (by receiver or auto-timeout)
@@ -365,6 +367,7 @@ export function usePrivateCall() {
 
       // End-of-call tone
       playRadioTone('receiveEnd');
+      console.log(`[PrivateCall] ENDED (${data.duration || 0}s)`);
     });
 
     // Error from server

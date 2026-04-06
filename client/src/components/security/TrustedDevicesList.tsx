@@ -57,7 +57,7 @@ export default function TrustedDevicesList() {
     try {
       const res = await fetch(`/api/auth/security/trusted-devices/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setDevices(prev => prev.filter(d => d.id !== id));
     } catch { /* ignore */ }
@@ -67,7 +67,7 @@ export default function TrustedDevicesList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
+        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#6b7280' }} />
       </div>
     );
   }
@@ -75,9 +75,9 @@ export default function TrustedDevicesList() {
   if (devices.length === 0) {
     return (
       <div className="text-center py-6">
-        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
-        <p className="text-[10px]" style={{ color: '#666666' }}>No trusted devices</p>
-        <p className="text-[9px] mt-1" style={{ color: '#555555' }}>
+        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2a3e58' }} />
+        <p className="text-[10px]" style={{ color: '#6b7280' }}>No trusted devices</p>
+        <p className="text-[9px] mt-1" style={{ color: '#4b5563' }}>
           Trust a device during login to skip 2FA for 30 days
         </p>
       </div>
@@ -90,23 +90,23 @@ export default function TrustedDevicesList() {
         <div
           key={device.id}
           className="flex items-center gap-3 px-3 py-2 panel-beveled"
-          style={{ background: '#0a0a0a' }}
+          style={{ background: '#141e2b' }}
         >
           {/* Device icon */}
-          <div className="p-1.5 panel-inset" style={{ color: '#888888', background: 'rgba(74,144,196,0.1)' }}>
+          <div className="p-1.5 panel-inset" style={{ color: '#4a90c4', background: 'rgba(74,144,196,0.1)' }}>
             {deviceIcon(device.device_name)}
           </div>
 
           {/* Device info */}
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-semibold truncate" style={{ color: '#e0e0e0' }}>
+            <div className="text-[11px] font-semibold truncate" style={{ color: '#e5e7eb' }}>
               {device.device_name}
             </div>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-[9px] font-mono" style={{ color: '#666666' }}>
+              <span className="text-[9px] font-mono" style={{ color: '#6b7280' }}>
                 {device.ip_address}
               </span>
-              <span className="text-[9px]" style={{ color: '#555555' }}>
+              <span className="text-[9px]" style={{ color: '#4b5563' }}>
                 Last used {timeAgo(device.last_used_at)}
               </span>
             </div>
@@ -114,17 +114,17 @@ export default function TrustedDevicesList() {
 
           {/* Expiry */}
           <div className="text-right flex-shrink-0">
-            <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
+            <div className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>
               {daysUntil(device.trusted_until)} left
             </div>
           </div>
 
           {/* Revoke button */}
-          <button type="button"
+          <button
             onClick={() => revokeDevice(device.id)}
             disabled={revoking === device.id}
             className="toolbar-btn flex items-center gap-1 text-[9px]"
-            style={{ color: revoking === device.id ? '#555555' : '#ef4444' }}
+            style={{ color: revoking === device.id ? '#4b5563' : '#ef4444' }}
             title="Revoke trust"
           >
             <Trash2 className="w-3 h-3" />
@@ -132,7 +132,7 @@ export default function TrustedDevicesList() {
         </div>
       ))}
 
-      <div className="text-[9px] pt-1" style={{ color: '#555555' }}>
+      <div className="text-[9px] pt-1" style={{ color: '#4b5563' }}>
         {devices.length} trusted device{devices.length !== 1 ? 's' : ''} — revoking a device will require 2FA on next login from it
       </div>
     </div>

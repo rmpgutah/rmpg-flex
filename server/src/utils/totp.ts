@@ -86,30 +86,18 @@ export async function generateQrCodeDataUrl(otpauthUrl: string): Promise<string>
  * Allows a window of ±1 period (30s) to accommodate clock drift.
  */
 export function verifyTotpCode(secret: string, code: string): boolean {
-  // [FIX 93] Validate inputs before TOTP verification
-  if (!secret || typeof secret !== 'string') return false;
-  if (!code || typeof code !== 'string') return false;
-  // [FIX 94] Strip whitespace and validate code is digits-only, correct length
-  const cleanCode = code.replace(/\s/g, '');
-  if (cleanCode.length !== DIGITS || !/^\d+$/.test(cleanCode)) return false;
+  const totp = new OTPAuth.TOTP({
+    issuer: ISSUER,
+    algorithm: 'SHA1',
+    digits: DIGITS,
+    period: PERIOD,
+    secret: OTPAuth.Secret.fromBase32(secret),
+  });
 
-  try {
-    const totp = new OTPAuth.TOTP({
-      issuer: ISSUER,
-      algorithm: 'SHA1',
-      digits: DIGITS,
-      period: PERIOD,
-      secret: OTPAuth.Secret.fromBase32(secret),
-    });
-
-    // validate() returns the time step difference (0 = exact match, ±1 = drift)
-    // or null if invalid
-    const delta = totp.validate({ token: cleanCode, window: 1 });
-    return delta !== null;
-  } catch {
-    // [FIX 95] Handle invalid base32 secret gracefully
-    return false;
-  }
+  // validate() returns the time step difference (0 = exact match, ±1 = drift)
+  // or null if invalid
+  const delta = totp.validate({ token: code, window: 1 });
+  return delta !== null;
 }
 
 // ----------------------------------------------------------

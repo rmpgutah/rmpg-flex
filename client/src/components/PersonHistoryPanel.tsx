@@ -96,7 +96,7 @@ interface PersonHistoryPanelProps {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -130,7 +130,7 @@ const WARRANT_STATUS_CLASSES: Record<string, string> = {
 };
 
 const CITATION_STATUS_CLASSES: Record<string, string> = {
-  issued: 'bg-gray-900/60 text-gray-300 border-gray-600/60',
+  issued: 'bg-blue-900/60 text-blue-300 border-blue-600/60',
   paid: 'bg-green-900/50 text-green-400 border-green-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -142,7 +142,7 @@ const CITATION_TYPE_CLASSES: Record<string, string> = {
   traffic: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
   criminal: 'bg-red-900/50 text-red-300 border-red-700/50',
   parking: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
-  warning: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
+  warning: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
 };
 
 // ── Component ──────────────────────────────────────
@@ -259,7 +259,7 @@ export default function PersonHistoryPanel({
     onToggle: () => void;
     critical?: boolean;
   }) => (
-    <button type="button"
+    <button
       onClick={onToggle}
       className={`w-full flex items-center gap-1.5 text-left py-1 group ${
         critical ? 'text-red-400' : 'text-rmpg-400'
@@ -523,10 +523,8 @@ export default function PersonHistoryPanel({
   return (
     <div className="panel-beveled bg-surface-base overflow-hidden">
       {/* Panel Header */}
-      <button type="button"
+      <button
         onClick={() => setExpanded(!expanded)}
-        aria-expanded={expanded}
-        aria-label={`System history for ${personName}`}
         className="w-full flex items-center justify-between p-3 hover:bg-rmpg-700/20 transition-colors"
       >
         <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">

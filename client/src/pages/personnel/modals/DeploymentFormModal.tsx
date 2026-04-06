@@ -115,15 +115,15 @@ export default function DeploymentFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Start Date <span className="text-red-400">*</span></label>
-            <input type="date" required value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-dark min-h-[36px]" />
+            <input type="date" required value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-dark" />
           </div>
           <div>
             <label className="field-label">End Date</label>
-            <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input-dark min-h-[36px]" />
+            <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input-dark" />
           </div>
           <div>
             <label className="field-label">Hours / Week</label>
-            <input type="number" min="0" max="168" value={form.hours_per_week} onChange={e => set('hours_per_week', e.target.value)} placeholder="40" className="input-dark min-h-[36px]" />
+            <input type="number" min="0" max="168" value={form.hours_per_week} onChange={e => set('hours_per_week', e.target.value)} placeholder="40" className="input-dark" />
           </div>
         </div>
       </div>
@@ -134,8 +134,7 @@ export default function DeploymentFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Deployment notes..." className="textarea-dark" maxLength={3000} />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
+        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Deployment notes..." className="textarea-dark" />
       </div>
     </FormModal>
   );

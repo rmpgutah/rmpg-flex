@@ -13,7 +13,6 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId, validateParamIdMiddleware, validateStr, validateDateStr, requireInt, requireFloat, validateEnum } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import config from '../config';
 import {
@@ -25,12 +24,9 @@ import {
   getCountyRecordCounts,
   discoverUtahSources,
   UTAH_COUNTY_DEFAULTS,
-  scheduleArrestSync,
-  stopArrestSync,
 } from '../utils/arrestScraper';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
+import { broadcastRecordUpdate } from '../utils/websocket';
 
 const router = Router();
 router.use(authenticateToken);
@@ -135,39 +131,17 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
   try {
     const db = getDb();
     const now = localNow();
-    const user = req.user!;
+    const user = (req as any).user;
     const b = req.body;
 
-    // ── Input validation ──
-    const ARREST_STATUSES = ['active', 'released', 'transferred', 'bonded', 'closed'] as const;
-    const GENDERS = ['male', 'female', 'non_binary', 'unknown'] as const;
-
-    const fullName = validateStr(b.full_name, 'full_name', 200);
+    // Require at minimum a name
+    const fullName = (b.full_name || '').trim();
     if (!fullName || fullName.length < 2) {
-      return res.status(400).json({ error: 'Full name is required (min 2 characters)', code: 'FULL_NAME_IS_REQUIRED' });
+      return res.status(400).json({ error: 'Full name is required (min 2 characters)' });
     }
 
-    const validDob = validateDateStr(b.date_of_birth, 'date_of_birth');
-    const validBookingDate = validateDateStr(b.booking_date, 'booking_date');
-    const validReleaseDate = validateDateStr(b.release_date, 'release_date');
-    const validStatus = validateEnum(b.status, ARREST_STATUSES, 'status') || 'active';
-    const validBail = requireFloat(b.bail_amount, 'bail_amount', 0, 100_000_000);
-    const validCounty = validateStr(b.county, 'county', 100) || '';
-    const validState = validateStr(b.state, 'state', 2) || 'UT';
-    const validBookingNum = validateStr(b.booking_number, 'booking_number', 100);
-    const validAgency = validateStr(b.agency, 'agency', 200);
-    const validGender = validateStr(b.gender, 'gender', 50);
-    const validRace = validateStr(b.race, 'race', 50);
-    const validHeight = validateStr(b.height, 'height', 20);
-    const validWeight = validateStr(b.weight, 'weight', 20);
-    const validHairColor = validateStr(b.hair_color, 'hair_color', 50);
-    const validEyeColor = validateStr(b.eye_color, 'eye_color', 50);
-    const validAddress = validateStr(b.address, 'address', 500);
-    const validHoldReason = validateStr(b.hold_reason, 'hold_reason', 1000);
-    const validNotes = validateStr(b.notes, 'notes', 5000);
-
     const { first, middle, last } = splitName(fullName);
-    const charges = Array.isArray(b.charges) ? JSON.stringify(b.charges.slice(0, 100))
+    const charges = Array.isArray(b.charges) ? JSON.stringify(b.charges)
       : typeof b.charges === 'string' ? b.charges : '[]';
 
     const result = db.prepare(`
@@ -191,45 +165,38 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     `).run(
       `manual-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
       fullName, first || b.first_name || '', last || b.last_name || '', middle || b.middle_name || '',
-      validDob, validBookingDate || now, validReleaseDate,
-      charges, validCounty, validState, validStatus, validBookingNum, validAgency,
-      validGender, validRace, validHeight, validWeight, validHairColor, validEyeColor,
-      validAddress, validBail, validHoldReason, validNotes,
-      user?.userId || null, now, now,
+      b.date_of_birth || null, b.booking_date || now, b.release_date || null,
+      charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
+      b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
+      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
+      user?.id || null, now, now,
     );
 
-    const newId = Number(result.lastInsertRowid) as number;
+    const newId = result.lastInsertRowid as number;
 
     auditLog(req, 'arrest_created', 'arrest_record', newId,
       `Manual booking: ${fullName}`);
     broadcastRecordUpdate({ type: 'arrest_created', id: newId });
-    broadcastDispatchUpdate({
-      action: 'arrest_created',
-      arrest: { id: newId, subject_name: fullName, charge: charges, booking_number: validBookingNum, officer_name: user?.username || '' },
-    });
 
     // Run cross-linking for the new record
     try { crossLinkArrests(); } catch { /* non-critical */ }
 
-    res.status(201).json({ success: true, id: newId, message: 'Booking record created' });
+    res.json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
-    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
-      res.status(400).json({ error: err.message }); return;
-    }
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── PUT /manual/:id — Update a booking record ───────────────
-router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
 
     const b = req.body;
     const updates: string[] = [];
@@ -269,7 +236,7 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
     }
 
     if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
+      return res.status(400).json({ error: 'No fields to update' });
     }
 
     updates.push('updated_at = ?');
@@ -278,34 +245,24 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
 
     db.prepare(`UPDATE arrest_records SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    // God Mode: admin can change status to anything, edit booking number — log override
-    if (req.user?.role === 'admin' && (b.status !== undefined || b.booking_number !== undefined)) {
-      auditLog(req, 'ADMIN_OVERRIDE', 'arrest_record', id, `Admin God Mode: updated arrest record #${id} (status/booking_number change)`);
-    }
-
     auditLog(req, 'arrest_updated', 'arrest_record', id, `Updated arrest record #${id}`);
     broadcastRecordUpdate({ type: 'arrest_updated', id });
 
     res.json({ success: true, message: 'Record updated' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── DELETE /manual/:id — Delete a booking record ────────────
-router.delete('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    // God Mode: admin can delete any arrest record regardless of status
-    if (req.user?.role === 'admin') {
-      auditLog(req, 'ADMIN_OVERRIDE', 'arrest_record', id, `Admin God Mode: deleting arrest record #${id} (bypassed restrictions)`);
-    }
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
 
     // Delete cross-links first (FK cascade should handle, but be explicit)
     db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
@@ -316,19 +273,19 @@ router.delete('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'ma
 
     res.json({ success: true, message: 'Record deleted' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── GET /manual/:id — Get a single booking record ───────────
-router.get('/manual/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
+router.get('/manual/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
 
     // Parse charges
     try { record.charges = JSON.parse(record.charges || '[]'); } catch { record.charges = []; }
@@ -337,13 +294,11 @@ router.get('/manual/:id', validateParamIdMiddleware, (req: Request, res: Respons
     const links = db.prepare(`
       SELECT linked_type, linked_id, match_type, match_confidence, created_at
       FROM arrest_cross_links WHERE arrest_record_id = ?
-    
-      LIMIT 1000
     `).all(id);
 
     res.json({ ...record, cross_links: links });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -352,15 +307,15 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const db = getDb();
     const now = localNow();
-    const user = req.user!;
+    const user = (req as any).user;
     const { records, county, agency } = req.body;
 
     if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: 'records array is required and must not be empty', code: 'RECORDS_ARRAY_IS_REQUIRED' });
+      return res.status(400).json({ error: 'records array is required and must not be empty' });
     }
 
     if (records.length > 500) {
-      return res.status(400).json({ error: 'Maximum 500 records per import', code: 'MAXIMUM_500_RECORDS_PER' });
+      return res.status(400).json({ error: 'Maximum 500 records per import' });
     }
 
     const insert = db.prepare(`
@@ -430,17 +385,15 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             r.hair_color || r.HairColor || r.HAIR_COLOR || null,
             r.eye_color || r.EyeColor || r.EYE_COLOR || null,
             r.address || r.Address || r.ADDRESS || null,
-            (() => { const v = parseFloat(r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT); return isNaN(v) || !isFinite(v) ? null : v; })(),
+            r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT ?? null,
             r.hold_reason || r.HoldReason || null,
             r.notes || null,
-            user?.userId || null, now, now,
+            user?.id || null, now, now,
           );
           imported++;
         } catch (rowErr: any) {
           skipped++;
-          // Log full error server-side for debugging; return generic message to client
-          console.error(`[Arrests Import] Row ${i + 1} error:`, rowErr.message);
-          if (errors.length < 5) errors.push(`Row ${i + 1}: Import failed`);
+          if (errors.length < 5) errors.push(`Row ${i + 1}: ${rowErr.message}`);
         }
       }
     });
@@ -463,12 +416,11 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
         errors: errors.length > 0 ? errors : undefined,
         message: `Imported ${imported} of ${records.length} records`,
       });
-    } catch (e: any) {
-      console.warn('[Arrests] Cross-link after import failed:', e?.message);
+    } catch {
       res.json({ success: true, imported, skipped, total: records.length, errors: errors.length > 0 ? errors : undefined });
     }
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -510,7 +462,7 @@ router.get('/status', (_req: Request, res: Response) => {
       apiOffline,
     });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -519,7 +471,7 @@ router.put('/credentials', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const { apiKey } = req.body;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.length < 10) {
-      return res.status(400).json({ error: 'Invalid API key', code: 'INVALID_API_KEY' });
+      return res.status(400).json({ error: 'Invalid API key' });
     }
     setConfigValue(CONFIG_KEYS.apiKey, apiKey.trim(), true);
     if (getConfigValue(CONFIG_KEYS.enabled) !== 'true') {
@@ -527,7 +479,7 @@ router.put('/credentials', requireRole('admin', 'manager'), (req: Request, res: 
     }
     res.json({ success: true, message: 'API key saved and encrypted' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -538,7 +490,7 @@ router.delete('/credentials', requireRole('admin', 'manager'), (_req: Request, r
     setConfigValue(CONFIG_KEYS.enabled, 'false');
     res.json({ success: true, message: 'API key removed' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -549,30 +501,7 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
     setConfigValue(CONFIG_KEYS.enabled, enabled ? 'true' : 'false');
     res.json({ success: true, enabled: !!enabled });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
-  }
-});
-
-// ── POST /poller/restart — Restart the arrest sync poller ────
-router.post('/poller/restart', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
-  try {
-    stopArrestSync();
-    scheduleArrestSync();
-    res.json({ success: true, message: 'Arrest sync poller restarted' });
-  } catch (err: any) {
-    console.error('[Arrests] Failed to restart poller:', err?.message || err);
-    res.status(500).json({ error: 'Failed to restart poller', code: 'POLLER_RESTART_ERROR' });
-  }
-});
-
-// ── POST /poller/stop — Stop the arrest sync poller ────
-router.post('/poller/stop', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
-  try {
-    stopArrestSync();
-    res.json({ success: true, message: 'Arrest sync poller stopped' });
-  } catch (err: any) {
-    console.error('[Arrests] Failed to stop poller:', err?.message || err);
-    res.status(500).json({ error: 'Failed to stop poller', code: 'POLLER_STOP_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -581,7 +510,7 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
   try {
     const apiKey = getDecryptedValue(CONFIG_KEYS.apiKey);
     if (!apiKey) {
-      return res.status(400).json({ success: false, error: 'No RapidAPI key configured.' });
+      return res.json({ success: false, error: 'No RapidAPI key configured.' });
     }
     const url = `https://jailbase-jailbase.p.rapidapi.com/sources?state=UT`;
     const controller = new AbortController();
@@ -592,16 +521,16 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    if (apiRes.status === 403) return res.status(502).json({ success: false, status: 403, error: 'API key invalid or subscription inactive.' });
-    if (apiRes.status === 429) return res.status(502).json({ success: false, status: 429, error: 'Rate limited. Wait and retry.' });
-    if (apiRes.status === 404) return res.status(502).json({ success: false, status: 404, error: 'JailBase API offline — all endpoints returning 404. The service appears deprecated. Cached records remain searchable.' });
-    if (!apiRes.ok) return res.status(502).json({ success: false, status: apiRes.status, error: `API returned ${apiRes.status}` });
+    if (apiRes.status === 403) return res.json({ success: false, status: 403, error: 'API key invalid or subscription inactive.' });
+    if (apiRes.status === 429) return res.json({ success: false, status: 429, error: 'Rate limited. Wait and retry.' });
+    if (apiRes.status === 404) return res.json({ success: false, status: 404, error: 'JailBase API offline — all endpoints returning 404. The service appears deprecated. Cached records remain searchable.' });
+    if (!apiRes.ok) return res.json({ success: false, status: apiRes.status, error: `API returned ${apiRes.status}` });
     const body = await apiRes.json();
     res.json({ success: true, status: 200, message: `API key valid. ${body.records?.length || 0} source(s).` });
   } catch (err: any) {
-    if (err.name === 'AbortError') return res.status(504).json({ success: false, error: 'Timed out after 10s' });
+    if (err.name === 'AbortError') return res.json({ success: false, error: 'Timed out after 10s' });
     console.error('[arrests] API test error:', err.message);
-    res.status(502).json({ success: false, error: 'Connection failed' });
+    res.json({ success: false, error: 'Connection failed' });
   }
 });
 
@@ -609,7 +538,7 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const name = (req.query.name as string || '').trim();
-    if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)', code: 'NAME_REQUIRED_MIN_2' });
+    if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)' });
     const result = await searchArrests(name);
 
     // Apply optional client-side filters (source, source_id/county) that searchArrests doesn't handle
@@ -626,7 +555,7 @@ router.get('/search', async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -681,20 +610,20 @@ router.get('/recent', (req: Request, res: Response) => {
 
     res.json({ records: parsed, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── GET /sync-status ────────────────────────────────────────
 router.get('/sync-status', (_req: Request, res: Response) => {
   try { res.json(getArrestSyncStatus()); }
-  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /usage ──────────────────────────────────────────────
 router.get('/usage', (_req: Request, res: Response) => {
   try { res.json(getArrestUsageStats()); }
-  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── POST /sync — Manual API sync ────────────────────────────
@@ -702,7 +631,7 @@ router.post('/sync', requireRole('admin', 'manager'), async (_req: Request, res:
   try {
     const result = await syncArrestData();
     res.json({ success: true, ...result });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /states — Record counts by state ────────────────────
@@ -716,7 +645,7 @@ router.get('/states', (_req: Request, res: Response) => {
       ORDER BY count DESC
     `).all() as { state: string; count: number }[];
     res.json({ states });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /counties ───────────────────────────────────────────
@@ -737,45 +666,45 @@ router.get('/counties', async (req: Request, res: Response) => {
       enabled: enabled.length === 0 || enabled.includes(c.sourceId),
     }));
     res.json({ sources, discovered: false });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── PUT /counties ───────────────────────────────────────────
 router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const { counties } = req.body;
-    if (!Array.isArray(counties)) return res.status(400).json({ error: 'counties must be an array', code: 'COUNTIES_MUST_BE_AN' });
+    if (!Array.isArray(counties)) return res.status(400).json({ error: 'counties must be an array' });
     setConfigValue(CONFIG_KEYS.enabledCounties, JSON.stringify(counties));
     res.json({ success: true, enabledCounties: counties });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /:id/cross-links ────────────────────────────────────
-router.get('/:id/cross-links', validateParamIdMiddleware, (req: Request, res: Response) => {
+router.get('/:id/cross-links', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
     const links = db.prepare(
       'SELECT linked_type, linked_id, match_type, match_confidence, created_at FROM arrest_cross_links WHERE arrest_record_id = ?'
     ).all(id) as any[];
     res.json({ arrestRecordId: id, links });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── PUT /:id/link-person ────────────────────────────────────
 // Manually link an arrest record to a person record
-router.put('/:id/link-person', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
     const { person_id } = req.body;
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID', code: 'INVALID_ARREST_RECORD_ID' });
-    if (!person_id) return res.status(400).json({ error: 'person_id is required', code: 'PERSONID_IS_REQUIRED' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID' });
+    if (!person_id) return res.status(400).json({ error: 'person_id is required' });
 
     // Verify person exists
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
-    if (!person) return res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
+    if (!person) return res.status(404).json({ error: 'Person not found' });
 
     // Update arrest record with person_id
     db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = ? WHERE id = ?')
@@ -796,19 +725,19 @@ router.put('/:id/link-person', validateParamIdMiddleware, requireRole('admin', '
     broadcastRecordUpdate({ type: 'arrest_linked', arrestId: id, personId: person_id });
 
     res.json({ success: true, person: { id: person.id, name: `${person.last_name}, ${person.first_name}` } });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── DELETE /:id/link-person ─────────────────────────────────
 // Remove manual person link from arrest record
-router.delete('/:id/link-person', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID', code: 'INVALID_ARREST_RECORD_ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID' });
 
     const record = db.prepare('SELECT person_id FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Arrest record not found', code: 'ARREST_RECORD_NOT_FOUND' });
+    if (!record) return res.status(404).json({ error: 'Arrest record not found' });
 
     db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = ? WHERE id = ?')
       .run(localNow(), id);
@@ -825,357 +754,7 @@ router.delete('/:id/link-person', validateParamIdMiddleware, requireRole('admin'
     broadcastRecordUpdate({ type: 'arrest_unlinked', arrestId: id });
 
     res.json({ success: true });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
-});
-
-// ─── GET /export/csv ────────────────────────────────────
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT booking_number, full_name as arrestee_name, charges as charge,
-             booking_date as arrest_date, county as location,
-             agency as arresting_officer, status
-      FROM arrest_records
-      ORDER BY booking_date DESC
-    
-      LIMIT 1000
-    `).all() as any[];
-
-    // Parse charges JSON to a readable string
-    for (const row of rows) {
-      if (row.charge) {
-        try {
-          const parsed = JSON.parse(row.charge);
-          if (Array.isArray(parsed)) {
-            row.charge = parsed.map((c: any) => typeof c === 'string' ? c : c.description || c.charge || c.name || JSON.stringify(c)).join('; ');
-          }
-        } catch { /* keep raw string */ }
-      }
-    }
-
-    sendCsv(res, 'arrests-export.csv', [
-      { key: 'booking_number', header: 'Booking Number' },
-      { key: 'arrestee_name', header: 'Arrestee Name' },
-      { key: 'charge', header: 'Charge' },
-      { key: 'arrest_date', header: 'Arrest Date' },
-      { key: 'location', header: 'Location' },
-      { key: 'arresting_officer', header: 'Arresting Officer' },
-      { key: 'status', header: 'Status' },
-    ], rows);
-  } catch (error: any) {
-    console.error('Arrests CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// UPGRADE: Booking Checklist
-// ════════════════════════════════════════════════════════════
-
-router.get('/manual/:id/checklist', validateParamIdMiddleware, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    let checklist: any = {};
-    try { checklist = JSON.parse(record.booking_checklist || '{}'); } catch { /* ignore */ }
-
-    // Define standard checklist items
-    const standardItems = [
-      { key: 'miranda_read', label: 'Miranda Rights Read', required: true },
-      { key: 'miranda_acknowledged', label: 'Miranda Acknowledged', required: true },
-      { key: 'personal_search', label: 'Personal Search Completed', required: true },
-      { key: 'property_inventory', label: 'Property Inventory Completed', required: true },
-      { key: 'fingerprinted', label: 'Fingerprinted', required: true },
-      { key: 'photographed', label: 'Booking Photo Taken', required: true },
-      { key: 'medical_screening', label: 'Medical Screening', required: true },
-      { key: 'phone_call_offered', label: 'Phone Call Offered', required: true },
-      { key: 'warrant_verified', label: 'Warrant Verified', required: false },
-      { key: 'vehicle_secured', label: 'Vehicle Secured/Towed', required: false },
-      { key: 'evidence_secured', label: 'Evidence Secured', required: false },
-      { key: 'supervisor_notified', label: 'Supervisor Notified', required: false },
-      { key: 'bail_info_provided', label: 'Bail Information Provided', required: false },
-    ];
-
-    const itemsWithStatus = standardItems.map(item => ({
-      ...item,
-      completed: !!checklist[item.key],
-      completed_at: checklist[item.key]?.at || null,
-      completed_by: checklist[item.key]?.by || null,
-      notes: checklist[item.key]?.notes || null,
-    }));
-
-    const completedCount = itemsWithStatus.filter(i => i.completed).length;
-    const requiredCount = standardItems.filter(i => i.required).length;
-    const requiredCompleted = itemsWithStatus.filter(i => i.required && i.completed).length;
-
-    res.json({
-      data: {
-        arrest_id: id,
-        items: itemsWithStatus,
-        total_items: standardItems.length,
-        completed_count: completedCount,
-        required_count: requiredCount,
-        required_completed: requiredCompleted,
-        is_complete: requiredCompleted >= requiredCount,
-      },
-    });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to get booking checklist', code: 'BOOKING_CHECKLIST_ERROR' });
-  }
-});
-
-router.put('/manual/:id/checklist', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    const { item_key, completed, notes } = req.body;
-    if (!item_key) return res.status(400).json({ error: 'item_key required', code: 'ITEM_KEY_REQUIRED' });
-
-    const now = localNow();
-    let checklist: any = {};
-    try { checklist = JSON.parse(record.booking_checklist || '{}'); } catch { /* ignore */ }
-
-    if (completed) {
-      const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-      checklist[item_key] = { at: now, by: user?.full_name || '', by_id: req.user!.userId, notes: notes || '' };
-    } else {
-      delete checklist[item_key];
-    }
-
-    db.prepare('UPDATE arrest_records SET booking_checklist = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(checklist), now, id);
-
-    auditLog(req, 'checklist_updated', 'arrest_record', id, `Checklist item ${item_key}: ${completed ? 'completed' : 'unchecked'}`);
-    res.json({ data: { arrest_id: id, item_key, completed: !!completed } });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to update checklist', code: 'CHECKLIST_UPDATE_ERROR' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// UPGRADE: Property Inventory at Arrest
-// ════════════════════════════════════════════════════════════
-
-router.get('/manual/:id/property', validateParamIdMiddleware, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    let inventory: any[] = [];
-    try { inventory = JSON.parse(record.property_inventory || '[]'); } catch { /* ignore */ }
-
-    res.json({ data: { arrest_id: id, items: inventory, total_items: inventory.length } });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to get property inventory', code: 'PROPERTY_INVENTORY_ERROR' });
-  }
-});
-
-router.post('/manual/:id/property', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    const { description, category, quantity, serial_number, estimated_value, disposition, notes } = req.body;
-    if (!description) return res.status(400).json({ error: 'description required', code: 'DESCRIPTION_REQUIRED' });
-
-    const now = localNow();
-    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-
-    let inventory: any[] = [];
-    try { inventory = JSON.parse(record.property_inventory || '[]'); } catch { /* ignore */ }
-
-    const item = {
-      id: `PROP-${Date.now()}-${inventory.length + 1}`,
-      description,
-      category: category || 'personal_item',
-      quantity: quantity || 1,
-      serial_number: serial_number || null,
-      estimated_value: estimated_value || null,
-      disposition: disposition || 'held',
-      notes: notes || '',
-      logged_by: user?.full_name || '',
-      logged_by_id: req.user!.userId,
-      logged_at: now,
-    };
-
-    inventory.push(item);
-
-    db.prepare('UPDATE arrest_records SET property_inventory = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(inventory), now, id);
-
-    auditLog(req, 'property_added', 'arrest_record', id, `Property item added: ${description}`);
-    broadcastRecordUpdate({ type: 'arrest_property_added', id });
-    res.status(201).json({ data: item });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to add property item', code: 'ADD_PROPERTY_ERROR' });
-  }
-});
-
-router.delete('/manual/:id/property/:itemId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    let inventory: any[] = [];
-    try { inventory = JSON.parse(record.property_inventory || '[]'); } catch { /* ignore */ }
-
-    const newInventory = inventory.filter((i: any) => i.id !== req.params.itemId);
-    if (newInventory.length === inventory.length) return res.status(404).json({ error: 'Property item not found', code: 'ITEM_NOT_FOUND' });
-
-    db.prepare('UPDATE arrest_records SET property_inventory = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(newInventory), localNow(), id);
-
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to remove property item', code: 'REMOVE_PROPERTY_ERROR' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// UPGRADE: Miranda Rights Acknowledgment Tracking
-// ════════════════════════════════════════════════════════════
-
-router.post('/manual/:id/miranda', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    const { read_at, acknowledged, waived_rights, requested_attorney, language,
-      interpreter_used, interpreter_name, witness_officer_id, notes } = req.body;
-
-    const now = localNow();
-    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-    const witnessOfficer = witness_officer_id
-      ? db.prepare('SELECT full_name FROM users WHERE id = ?').get(witness_officer_id) as any
-      : null;
-
-    const mirandaData = {
-      read_at: read_at || now,
-      read_by: user?.full_name || '',
-      read_by_id: req.user!.userId,
-      acknowledged: acknowledged !== false,
-      waived_rights: !!waived_rights,
-      requested_attorney: !!requested_attorney,
-      language: language || 'English',
-      interpreter_used: !!interpreter_used,
-      interpreter_name: interpreter_name || null,
-      witness_officer_id: witness_officer_id || null,
-      witness_officer_name: witnessOfficer?.full_name || null,
-      notes: notes || '',
-      recorded_at: now,
-    };
-
-    db.prepare('UPDATE arrest_records SET miranda_data = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(mirandaData), now, id);
-
-    // Also update the booking checklist
-    let checklist: any = {};
-    try { checklist = JSON.parse(record.booking_checklist || '{}'); } catch { /* ignore */ }
-    checklist.miranda_read = { at: now, by: user?.full_name || '', by_id: req.user!.userId };
-    if (acknowledged !== false) {
-      checklist.miranda_acknowledged = { at: now, by: user?.full_name || '', by_id: req.user!.userId };
-    }
-    db.prepare('UPDATE arrest_records SET booking_checklist = ? WHERE id = ?')
-      .run(JSON.stringify(checklist), id);
-
-    auditLog(req, 'miranda_recorded', 'arrest_record', id,
-      `Miranda rights read: ${acknowledged !== false ? 'acknowledged' : 'refused'}${waived_rights ? ', rights waived' : ''}${requested_attorney ? ', attorney requested' : ''}`);
-
-    res.json({ data: mirandaData });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to record Miranda rights', code: 'MIRANDA_ERROR' });
-  }
-});
-
-router.get('/manual/:id/miranda', validateParamIdMiddleware, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    let mirandaData: any = null;
-    try { mirandaData = JSON.parse(record.miranda_data || 'null'); } catch { /* ignore */ }
-
-    res.json({ data: { arrest_id: id, miranda: mirandaData } });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to get Miranda data', code: 'MIRANDA_DATA_ERROR' });
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// UPGRADE: Cross-Link Arrests to Court Events
-// ════════════════════════════════════════════════════════════
-
-router.get('/manual/:id/linked-records', validateParamIdMiddleware, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id, 10);
-    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
-
-    // Get cross-links
-    const crossLinks = db.prepare(`
-      SELECT linked_type, linked_id, match_type, match_confidence, created_at
-      FROM arrest_cross_links WHERE arrest_record_id = ?
-      LIMIT 100
-    `).all(id) as any[];
-
-    const links: any = { warrants: [], court_events: [], citations: [], incidents: [], cross_links: crossLinks };
-
-    // Find warrants by name
-    if (record.full_name) {
-      try {
-        links.warrants = db.prepare(`
-          SELECT id, warrant_number, warrant_type, status, subject_name FROM warrants
-          WHERE subject_name LIKE ? AND status = 'active' LIMIT 10
-        `).all(`%${record.last_name}%`);
-      } catch { /* warrants table may not exist */ }
-    }
-
-    // Find court events by name
-    if (record.full_name) {
-      links.court_events = db.prepare(`
-        SELECT id, event_number, event_type, event_date, status, outcome FROM court_events
-        WHERE defendant_name LIKE ? ORDER BY event_date DESC LIMIT 10
-      `).all(`%${record.last_name}%`);
-    }
-
-    // Find citations by name
-    if (record.full_name) {
-      links.citations = db.prepare(`
-        SELECT id, citation_number, violation, person_name, status FROM citations
-        WHERE person_name LIKE ? ORDER BY created_at DESC LIMIT 10
-      `).all(`%${record.last_name}%`);
-    }
-
-    res.json({ data: links });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to get linked records', code: 'LINKED_RECORDS_ERROR' });
-  }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 export default router;

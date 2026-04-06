@@ -32,7 +32,6 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { formatPhoneInput } from '../../utils/formatters';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import ScraperAdminPanel from './ScraperAdminPanel';
@@ -47,18 +46,18 @@ import type {
 
 // ── Stage colors ──────────────────────────────────────────
 const STAGE_COLORS: Record<PipelineStage, string> = {
-  new: '#888888',
+  new: '#3b82f6',
   contacted: '#8b5cf6',
   qualified: '#d4a017',
   proposal: '#f59e0b',
   negotiation: '#f97316',
   won: '#22c55e',
   lost: '#ef4444',
-  dismissed: '#666666',
+  dismissed: '#6b7280',
 };
 
 const STAGE_BADGE_CLASSES: Record<PipelineStage, string> = {
-  new: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
+  new: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
   contacted: 'text-purple-400 bg-purple-900/30 border-purple-700/50',
   qualified: 'text-yellow-400 bg-yellow-900/30 border-yellow-700/50',
   proposal: 'text-amber-400 bg-amber-900/30 border-amber-700/50',
@@ -88,7 +87,7 @@ const SOURCE_BADGE_CLASSES: Record<LeadSource, string> = {
   construction_permit: 'text-amber-400 bg-amber-900/30 border-amber-700/50',
   commercial_re: 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50',
   liquor_license: 'text-purple-400 bg-purple-900/30 border-purple-700/50',
-  utah_bar: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
+  utah_bar: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
   ut_commerce_collections: 'text-orange-400 bg-orange-900/30 border-orange-700/50',
   ut_consumer_protection: 'text-rose-400 bg-rose-900/30 border-rose-700/50',
   ut_courts: 'text-indigo-400 bg-indigo-900/30 border-indigo-700/50',
@@ -107,16 +106,16 @@ function formatCurrency(val: number | null | undefined): string {
 
 function formatDate(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function scoreColor(score: number): string {
@@ -185,7 +184,7 @@ export default function LeadsTab() {
       if (filterScoreMin) params.set('score_min', filterScoreMin);
       if (filterService) params.set('service_interest', filterService);
       const qs = params.toString();
-      const data = await apiFetch<CrmLead[]>(`/crm/leads${qs ? `?${qs}` : ''}`);
+      const data = await apiFetch<CrmLead[]>(`/api/crm/leads${qs ? `?${qs}` : ''}`);
       if (data) setLeads(Array.isArray(data) ? data : []);
     } catch {
       addToast('Failed to load leads', 'error');
@@ -196,7 +195,7 @@ export default function LeadsTab() {
 
   const fetchPipeline = useCallback(async () => {
     try {
-      const data = await apiFetch<PipelineSummary[]>('/crm/leads/pipeline-summary');
+      const data = await apiFetch<PipelineSummary[]>('/api/crm/leads/pipeline-summary');
       if (data) setPipelineSummary(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
   }, []);
@@ -210,7 +209,7 @@ export default function LeadsTab() {
     setEditNotes(selectedLead.notes || '');
     (async () => {
       try {
-        const data = await apiFetch<CrmLeadActivity[]>(`/crm/lead-activity/${selectedLead.id}`);
+        const data = await apiFetch<CrmLeadActivity[]>(`/api/crm/lead-activity/${selectedLead.id}`);
         if (data) setLeadActivities(data);
       } catch { /* silent */ }
     })();
@@ -222,7 +221,7 @@ export default function LeadsTab() {
   // ── Actions ─────────────────────────────────────────
   const handleStageChange = async (leadId: number | string, stage: PipelineStage) => {
     try {
-      await apiFetch(`/crm/leads/${leadId}/stage`, {
+      await apiFetch(`/api/crm/leads/${leadId}/stage`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage }),
@@ -240,7 +239,7 @@ export default function LeadsTab() {
 
   const handleConvert = async (leadId: number | string) => {
     try {
-      const result = await apiFetch<{ client_id: number }>(`/crm/leads/${leadId}/convert`, { method: 'POST' });
+      const result = await apiFetch<{ client_id: number }>(`/api/crm/leads/${leadId}/convert`, { method: 'POST' });
       if (result) {
         addToast('Lead converted to client', 'success');
         fetchLeads();
@@ -256,7 +255,7 @@ export default function LeadsTab() {
     if (!selectedLead) return;
     setSaving(true);
     try {
-      await apiFetch(`/crm/leads/${selectedLead.id}`, {
+      await apiFetch(`/api/crm/leads/${selectedLead.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes: editNotes }),
@@ -273,7 +272,7 @@ export default function LeadsTab() {
   const handleAddNote = async () => {
     if (!selectedLead || !newNoteSubject.trim()) return;
     try {
-      await apiFetch('/crm/lead-activity', {
+      await apiFetch('/api/crm/lead-activity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -286,7 +285,7 @@ export default function LeadsTab() {
       setNewNoteSubject('');
       setNewNoteDetails('');
       // Refresh activities
-      const data = await apiFetch<CrmLeadActivity[]>(`/crm/lead-activity/${selectedLead.id}`);
+      const data = await apiFetch<CrmLeadActivity[]>(`/api/crm/lead-activity/${selectedLead.id}`);
       if (data) setLeadActivities(data);
       addToast('Note added', 'success');
     } catch {
@@ -297,7 +296,7 @@ export default function LeadsTab() {
   const handleBulkAction = async (action: string, assignedTo?: string) => {
     if (selectedIds.size === 0) return;
     try {
-      await apiFetch('/crm/leads/bulk-action', {
+      await apiFetch('/api/crm/leads/bulk-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -320,7 +319,7 @@ export default function LeadsTab() {
     if (!createForm.business_name.trim()) return;
     setSaving(true);
     try {
-      await apiFetch('/crm/leads', {
+      await apiFetch('/api/crm/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -363,7 +362,7 @@ export default function LeadsTab() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar ──────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#0a0a0a] border-b border-rmpg-700">
+      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#141e2b] border-b border-rmpg-700">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
@@ -371,13 +370,13 @@ export default function LeadsTab() {
             placeholder="Search leads..."
             value={filterSearch}
             onChange={e => setFilterSearch(e.target.value)}
-            className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+            className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
         </div>
         <select
           value={filterSource}
           onChange={e => setFilterSource(e.target.value)}
-          className="bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Sources</option>
           <option value="utah_biz">Utah Biz</option>
@@ -396,7 +395,7 @@ export default function LeadsTab() {
         <select
           value={filterService}
           onChange={e => setFilterService(e.target.value)}
-          className="bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Services</option>
           <option value="process_serving">Process Serving</option>
@@ -406,7 +405,7 @@ export default function LeadsTab() {
         <select
           value={filterStage}
           onChange={e => setFilterStage(e.target.value)}
-          className="bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Stages</option>
           {PIPELINE_STAGES.map(s => (
@@ -416,7 +415,7 @@ export default function LeadsTab() {
         <select
           value={filterScoreMin}
           onChange={e => setFilterScoreMin(e.target.value)}
-          className="bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">Min Score</option>
           <option value="20">20+</option>
@@ -424,15 +423,15 @@ export default function LeadsTab() {
           <option value="60">60+</option>
           <option value="80">80+</option>
         </select>
-        <button type="button"
+        <button
           onClick={() => setShowCreateModal(true)}
           className="bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1"
         >
           <Plus className="w-3.5 h-3.5" /> Add Lead
         </button>
-        <button type="button"
+        <button
           onClick={() => setShowScraperPanel(!showScraperPanel)}
-          className={`text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 border ${showScraperPanel ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'bg-[#050505] border-rmpg-700 text-rmpg-300 hover:border-rmpg-600'}`}
+          className={`text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 border ${showScraperPanel ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'bg-[#0d1520] border-rmpg-700 text-rmpg-300 hover:border-rmpg-600'}`}
         >
           <RefreshCw className="w-3.5 h-3.5" /> Scrapers
         </button>
@@ -445,7 +444,7 @@ export default function LeadsTab() {
 
       {/* ── Pipeline summary bar ─────────────────────── */}
       {pipelineSummary.length > 0 && (
-        <div className="px-3 py-2 bg-[#050505] border-b border-rmpg-700">
+        <div className="px-3 py-2 bg-[#0d1520] border-b border-rmpg-700">
           <div className="flex h-6 rounded-sm overflow-hidden border border-rmpg-700">
             {pipelineSummary.map(ps => {
               const pct = pipelineTotal > 0 ? (ps.count / pipelineTotal) * 100 : 0;
@@ -478,13 +477,13 @@ export default function LeadsTab() {
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-600/10 border-b border-brand-700/50">
           <span className="text-xs text-brand-400 font-bold">{selectedIds.size} selected</span>
-          <button type="button" onClick={() => handleBulkAction('mark_contacted')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50">
+          <button onClick={() => handleBulkAction('mark_contacted')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50">
             Mark Contacted
           </button>
-          <button type="button" onClick={() => handleBulkAction('dismiss')} className="bg-rmpg-700/30 hover:bg-rmpg-700/50 text-rmpg-300 text-xs font-bold px-2 py-1 rounded-sm border border-rmpg-600/50">
+          <button onClick={() => handleBulkAction('dismiss')} className="bg-rmpg-700/30 hover:bg-rmpg-700/50 text-rmpg-300 text-xs font-bold px-2 py-1 rounded-sm border border-rmpg-600/50">
             Dismiss
           </button>
-          <button type="button" onClick={() => { setSelectedIds(new Set()); }} className="text-rmpg-400 hover:text-rmpg-200 text-xs ml-2">
+          <button onClick={() => { setSelectedIds(new Set()); }} className="text-rmpg-400 hover:text-rmpg-200 text-xs ml-2">
             Clear Selection
           </button>
         </div>
@@ -506,9 +505,9 @@ export default function LeadsTab() {
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-[#050505] border-b border-rmpg-700 sticky top-0 z-10">
+                <tr className="bg-[#0d1520] border-b border-rmpg-700 sticky top-0 z-10">
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left w-8">
-                    <button type="button" onClick={toggleSelectAll} className="text-rmpg-400 hover:text-white">
+                    <button onClick={toggleSelectAll} className="text-rmpg-400 hover:text-white">
                       {selectedIds.size === leads.length && leads.length > 0 ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
                     </button>
                   </th>
@@ -527,7 +526,7 @@ export default function LeadsTab() {
                   <tr
                     key={lead.id}
                     onClick={() => setSelectedLead(lead)}
-                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedLead?.id === lead.id ? 'bg-brand-600/10' : 'hover:bg-[#141414]'}`}
+                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedLead?.id === lead.id ? 'bg-brand-600/10' : 'hover:bg-[#1a2636]'}`}
                   >
                     <td className="px-2 py-1.5" onClick={e => { e.stopPropagation(); toggleSelect(lead.id); }}>
                       {selectedIds.has(lead.id) ? <CheckSquare className="w-3.5 h-3.5 text-brand-400" /> : <Square className="w-3.5 h-3.5 text-rmpg-500" />}
@@ -564,9 +563,9 @@ export default function LeadsTab() {
 
         {/* ── Lead detail side panel ───────────────── */}
         {selectedLead && (
-          <div className="w-[380px] min-w-[340px] overflow-y-auto bg-[#0a0a0a] flex flex-col">
+          <div className="w-[380px] min-w-[340px] overflow-y-auto bg-[#141e2b] flex flex-col">
             {/* Header */}
-            <div className="px-3 py-2 bg-[#050505] border-b border-rmpg-700 flex items-center gap-2">
+            <div className="px-3 py-2 bg-[#0d1520] border-b border-rmpg-700 flex items-center gap-2">
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-bold text-white truncate">{selectedLead.business_name}</h3>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -576,7 +575,7 @@ export default function LeadsTab() {
                   <span className="text-[10px] text-rmpg-400 font-mono">Score: {selectedLead.lead_score}</span>
                 </div>
               </div>
-              <button type="button" onClick={() => setSelectedLead(null)} className="text-rmpg-400 hover:text-white">
+              <button onClick={() => setSelectedLead(null)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -588,7 +587,7 @@ export default function LeadsTab() {
                 <select
                   value={selectedLead.pipeline_stage}
                   onChange={e => handleStageChange(selectedLead.id, e.target.value as PipelineStage)}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 >
                   {PIPELINE_STAGES.map(s => (
                     <option key={s} value={s}>{toDisplayLabel(s)}</option>
@@ -644,7 +643,7 @@ export default function LeadsTab() {
                   {selectedLead.source_id && <span className="text-[10px] text-rmpg-400 font-mono">#{selectedLead.source_id}</span>}
                 </div>
                 {selectedLead.source_url && (
-                  <a href={/^https?:\/\//i.test(selectedLead.source_url) ? selectedLead.source_url : '#'} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-400 hover:underline flex items-center gap-1">
+                  <a href={selectedLead.source_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-400 hover:underline flex items-center gap-1">
                     <ExternalLink className="w-3 h-3" /> View Source
                   </a>
                 )}
@@ -686,10 +685,10 @@ export default function LeadsTab() {
                   value={editNotes}
                   onChange={e => setEditNotes(e.target.value)}
                   rows={3}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
                 <div className="flex justify-end mt-1">
-                  <button type="button"
+                  <button
                     onClick={handleSaveNotes}
                     disabled={saving || editNotes === (selectedLead.notes || '')}
                     className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-[10px] font-bold px-2 py-1 rounded-sm flex items-center gap-1"
@@ -707,17 +706,17 @@ export default function LeadsTab() {
                   placeholder="Subject"
                   value={newNoteSubject}
                   onChange={e => setNewNoteSubject(e.target.value)}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none mb-1"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none mb-1"
                 />
                 <textarea
                   placeholder="Details (optional)"
                   value={newNoteDetails}
                   onChange={e => setNewNoteDetails(e.target.value)}
                   rows={2}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
                 <div className="flex justify-end mt-1">
-                  <button type="button"
+                  <button
                     onClick={handleAddNote}
                     disabled={!newNoteSubject.trim()}
                     className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-[10px] font-bold px-2 py-1 rounded-sm flex items-center gap-1"
@@ -753,7 +752,7 @@ export default function LeadsTab() {
 
               {/* Action buttons */}
               <div className="flex flex-col gap-1.5 pt-2 border-t border-rmpg-700">
-                <button type="button"
+                <button
                   onClick={() => {
                     // Navigate to proposals creation (parent CRM page can handle this)
                     addToast('Open Proposals tab to create a proposal for this lead', 'info');
@@ -763,7 +762,7 @@ export default function LeadsTab() {
                   <FileText className="w-3.5 h-3.5" /> Create Proposal
                 </button>
                 {selectedLead.pipeline_stage === 'won' && !selectedLead.client_id && (
-                  <button type="button"
+                  <button
                     onClick={() => handleConvert(selectedLead.id)}
                     className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 justify-center"
                   >
@@ -771,7 +770,7 @@ export default function LeadsTab() {
                   </button>
                 )}
                 {selectedLead.pipeline_stage !== 'dismissed' && selectedLead.pipeline_stage !== 'won' && (
-                  <button type="button"
+                  <button
                     onClick={() => handleStageChange(selectedLead.id, 'dismissed')}
                     className="bg-rmpg-700/30 hover:bg-rmpg-700/50 text-rmpg-400 text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 justify-center border border-rmpg-600/50"
                   >
@@ -786,10 +785,10 @@ export default function LeadsTab() {
 
       {/* ── Create Lead Modal ────────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-[#0a0a0a] border border-rmpg-700 rounded-sm w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
+          <div className="bg-[#141e2b] border border-rmpg-700 rounded-sm w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Add Lead" icon={Plus}>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
+              <button onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </PanelTitleBar>
@@ -801,7 +800,7 @@ export default function LeadsTab() {
                   required
                   value={createForm.business_name}
                   onChange={e => setCreateForm(f => ({ ...f, business_name: e.target.value }))}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -811,7 +810,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.contact_name}
                     onChange={e => setCreateForm(f => ({ ...f, contact_name: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -819,7 +818,7 @@ export default function LeadsTab() {
                   <select
                     value={createForm.business_type}
                     onChange={e => setCreateForm(f => ({ ...f, business_type: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="">Select...</option>
                     <option value="retail">Retail</option>
@@ -842,7 +841,7 @@ export default function LeadsTab() {
                     type="email"
                     value={createForm.contact_email}
                     onChange={e => setCreateForm(f => ({ ...f, contact_email: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -850,8 +849,8 @@ export default function LeadsTab() {
                   <input
                     type="tel"
                     value={createForm.contact_phone}
-                    onChange={e => setCreateForm(f => ({ ...f, contact_phone: formatPhoneInput(e.target.value) }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    onChange={e => setCreateForm(f => ({ ...f, contact_phone: e.target.value }))}
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -861,7 +860,7 @@ export default function LeadsTab() {
                   type="text"
                   value={createForm.address}
                   onChange={e => setCreateForm(f => ({ ...f, address: e.target.value }))}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -871,7 +870,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.city}
                     onChange={e => setCreateForm(f => ({ ...f, city: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -880,7 +879,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.state}
                     onChange={e => setCreateForm(f => ({ ...f, state: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -889,7 +888,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.zip}
                     onChange={e => setCreateForm(f => ({ ...f, zip: e.target.value }))}
-                    className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -900,7 +899,7 @@ export default function LeadsTab() {
                   step="0.01"
                   value={createForm.estimated_value}
                   onChange={e => setCreateForm(f => ({ ...f, estimated_value: e.target.value }))}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -909,7 +908,7 @@ export default function LeadsTab() {
                   value={createForm.notes}
                   onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
                   rows={3}
-                  className="w-full bg-[#050505] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">

@@ -9,8 +9,6 @@ import { getDb } from '../models/database';
 import { createNotification } from '../routes/notifications';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
-// [FIX 96] Store startup timeout handle so it can be cleared on stop
-let startupTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
 export function startPatrolMonitor(intervalMs: number = 5 * 60 * 1000): void {
   if (intervalHandle) return; // Already running
@@ -24,11 +22,10 @@ export function startPatrolMonitor(intervalMs: number = 5 * 60 * 1000): void {
       console.error('[Patrol Monitor] Error during scan check:', err);
     }
   }, intervalMs);
-  // [FIX 97] Unref interval so it doesn't prevent process exit
   intervalHandle.unref();
 
   // Run once immediately
-  startupTimeoutHandle = setTimeout(() => {
+  setTimeout(() => {
     try { checkOverdueScans(); } catch (err) {
       console.error('[Patrol Monitor] Initial check error:', err);
     }
@@ -36,11 +33,6 @@ export function startPatrolMonitor(intervalMs: number = 5 * 60 * 1000): void {
 }
 
 export function stopPatrolMonitor(): void {
-  // [FIX 98] Also clear startup timeout on stop
-  if (startupTimeoutHandle) {
-    clearTimeout(startupTimeoutHandle);
-    startupTimeoutHandle = null;
-  }
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
@@ -104,7 +96,8 @@ function checkOverdueScans(): void {
           body,
           'patrol_checkpoint',
           cp.id,
-          'high'
+          'high',
+          'patrol.checkpoint_missed',
         );
       }
 
@@ -122,7 +115,8 @@ function checkOverdueScans(): void {
             body,
             'patrol_checkpoint',
             cp.id,
-            'high'
+            'high',
+            'patrol.checkpoint_missed',
           );
         }
       }

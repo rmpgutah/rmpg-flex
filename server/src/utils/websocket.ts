@@ -4,7 +4,13 @@ import { Server as HttpsServer } from 'https';
 import jwt from 'jsonwebtoken';
 import config from '../config';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import database from '../models/database';
+
+const __ws_filename = fileURLToPath(import.meta.url);
+const __ws_dirname = path.dirname(__ws_filename);
 
 interface JwtPayload {
   userId: number;
@@ -23,34 +29,34 @@ interface WSClient {
   role?: string;
   authenticated: boolean;
   channels: Set<string>;
+  /** Unit call sign (e.g. "1A12") for MDC selcall addressing */
+  unitCallSign?: string;
   /** Current radio channel (null = not on radio) */
   radioChannel: string | null;
   /** Active private call ID (null = not in a call) */
   privateCallId: string | null;
   /** Client ID of private call partner */
   privateCallPartner: string | null;
-  /** IP address of the connected client */
-  ip?: string;
-  /** ISO timestamp when the client connected */
-  connectedAt: string;
-  /** Heartbeat tracking — set to true on pong, false on ping */
-  isAlive: boolean;
+  /** Channels being scanned (monitored) in addition to the primary radio channel */
+  scanChannels?: string[];
 }
 
 const clients: Map<string, WSClient> = new Map();
 let wss: WebSocketServer | null = null;
 
-// Authentication timeout — disconnect clients that don't authenticate within 10 seconds
-const AUTH_TIMEOUT_MS = 10_000;
+/** Safe send — only sends if the WebSocket is OPEN, prevents unhandled errors */
+function safeSend(ws: WebSocket, data: string): boolean {
+  if (ws.readyState === WebSocket.OPEN) {
+    try { ws.send(data); return true; } catch { return false; }
+  }
+  return false;
+}
 
-// [FIX 29] Cap max concurrent WebSocket connections to prevent resource exhaustion
-const MAX_WS_CLIENTS = 500;
-
-// [FIX 30] Max message size to prevent memory exhaustion from large payloads
-const MAX_MESSAGE_SIZE = 1024 * 1024; // 1MB
+// Authentication timeout — disconnect clients that don't authenticate within 3 seconds
+const AUTH_TIMEOUT_MS = 3_000;
 
 // All channels every authenticated client auto-subscribes to
-const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence'];
+const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email'];
 
 // ─── Radio State ────────────────────────────────────────────
 // Tracks which radio channel each client is on, and who is
@@ -58,6 +64,51 @@ const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet',
 
 /** channel → clientId of the active transmitter (null = channel is clear) */
 const activeTransmitters: Map<string, string> = new Map();
+
+/** Track which transmissions have been logged (to avoid spamming console with per-chunk logs) */
+const loggedTransmissions: Set<string> = new Set();
+
+/** Buffer audio chunks per transmission for saving to disk: "channel:clientId" → Buffer[] */
+const audioBuffers: Map<string, Buffer[]> = new Map();
+
+/** Audio buffer timeout timers: "channel:clientId" → timer (auto-end unterminated transmissions) */
+const audioBufferTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+const AUDIO_BUFFER_TIMEOUT_MS = 120_000; // 2 minutes
+
+/** Emergency override auto-clear timers: channel → timer */
+const emergencyOverrideTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+const EMERGENCY_OVERRIDE_DURATION_MS = 30_000; // 30 seconds
+
+/** Per-client message rate limiting */
+const clientMessageRates: Map<string, { count: number; resetAt: number }> = new Map();
+const WS_RATE_LIMIT_WINDOW_MS = 1000; // 1 second window
+const WS_RATE_LIMIT_MAX = 30;         // max messages per second
+
+// Periodic cleanup of stale rate-limit entries and orphaned radio state (every 5 min)
+setInterval(() => {
+  const now = Date.now();
+  // Clean expired rate-limit entries for disconnected clients
+  for (const [id, rate] of clientMessageRates) {
+    if (now > rate.resetAt && !clients.has(id)) clientMessageRates.delete(id);
+  }
+  // Clean stale loggedTransmissions for clients that are no longer connected
+  for (const key of loggedTransmissions) {
+    const clientId = key.split(':')[1];
+    if (clientId && !clients.has(clientId)) loggedTransmissions.delete(key);
+  }
+  // Clean orphaned audio buffers for disconnected clients
+  for (const key of audioBuffers.keys()) {
+    const clientId = key.split(':')[1];
+    if (clientId && !clients.has(clientId)) {
+      audioBuffers.delete(key);
+      const timer = audioBufferTimers.get(key);
+      if (timer) { clearTimeout(timer); audioBufferTimers.delete(key); }
+    }
+  }
+}, 5 * 60 * 1000);
+
+/** Directory where radio recordings are saved */
+const RADIO_UPLOAD_DIR = path.resolve(__ws_dirname, '../../uploads/radio');
 
 const DEFAULT_RADIO_CHANNELS = ['dispatch', 'tac-1', 'tac-2', 'tac-3', 'patrol', 'admin'];
 
@@ -73,20 +124,32 @@ function getRadioChannelNames(): string[] {
   return DEFAULT_RADIO_CHANNELS;
 }
 
+// Allowed origins for WebSocket connections — only include dev origins outside production
+const ALLOWED_ORIGINS = new Set([
+  'https://rmpgutah.us',
+  ...(config.isProduction ? [] : [
+    'http://localhost:5173',   // Vite dev server
+    'http://localhost:3001',   // Express dev server
+  ]),
+]);
+
 export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
-  wss = new WebSocketServer({ server });
+  wss = new WebSocketServer({
+    server,
+    maxPayload: 1 * 1024 * 1024, // 1 MB — prevents oversized frame DoS
+  });
 
   wss.on('connection', (ws: WebSocket, req) => {
-    // [FIX 31] Reject new connections when at capacity
-    if (clients.size >= MAX_WS_CLIENTS) {
-      ws.close(1013, 'Server at capacity');
+    // ── Origin validation ──────────────────────────────────────
+    // Electron/Capacitor clients send no Origin header — allow those.
+    // Browser clients must match an allowed origin.
+    const origin = req.headers.origin;
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+      console.warn(`[WS] Rejected connection from disallowed origin: ${origin}`);
+      ws.close(4003, 'Origin not allowed');
       return;
     }
-
     const clientId = generateClientId();
-    const clientIp = req.headers['x-forwarded-for']
-      ? String(req.headers['x-forwarded-for']).split(',')[0].trim()
-      : req.socket?.remoteAddress || 'unknown';
     const client: WSClient = {
       ws,
       authenticated: false,
@@ -94,9 +157,6 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       radioChannel: null,
       privateCallId: null,
       privateCallPartner: null,
-      ip: clientIp,
-      connectedAt: new Date().toISOString(),
-      isAlive: true,
     };
     clients.set(clientId, client);
 
@@ -104,22 +164,17 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
-      // [FIX 32] Catch decodeURIComponent errors for malformed URI sequences
-      try {
-        const token = decodeURIComponent(tokenMatch[1]);
-        authenticateClient(client, token);
-      } catch {
-        // Malformed token in URL — continue, client can still authenticate via message
-      }
+      const token = decodeURIComponent(tokenMatch[1]);
+      authenticateClient(client, token);
     }
 
     // Auto-disconnect unauthenticated clients after timeout
     const authTimer = setTimeout(() => {
       if (!client.authenticated) {
-        ws.send(JSON.stringify({
+        safeSend(ws, JSON.stringify({
           type: 'error',
           code: 'AUTH_TIMEOUT',
-          message: 'Authentication required within 10 seconds',
+          message: 'Authentication timeout',
         }));
         ws.close(4001, 'Authentication timeout');
         clients.delete(clientId);
@@ -127,86 +182,84 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     }, AUTH_TIMEOUT_MS);
 
     ws.on('message', (data: Buffer) => {
-      // [FIX 33] Reject oversized messages to prevent memory exhaustion
-      if (data.length > MAX_MESSAGE_SIZE) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Message too large' }));
+      // Per-client rate limiting
+      const now = Date.now();
+      let rate = clientMessageRates.get(clientId);
+      if (!rate || now > rate.resetAt) {
+        rate = { count: 0, resetAt: now + WS_RATE_LIMIT_WINDOW_MS };
+        clientMessageRates.set(clientId, rate);
+      }
+      rate.count++;
+      if (rate.count > WS_RATE_LIMIT_MAX) {
+        safeSend(ws, JSON.stringify({ type: 'error', code: 'RATE_LIMITED', message: 'Too many messages' }));
+        ws.close(4008, 'Rate limit exceeded');
+        clients.delete(clientId);
+        clientMessageRates.delete(clientId);
         return;
       }
+
       try {
         const message = JSON.parse(data.toString());
-        // [FIX 34] Validate message has a type field before processing
-        if (!message || typeof message.type !== 'string') {
-          return;
+        try {
+          handleClientMessage(clientId, message);
+        } catch (handlerErr) {
+          console.error(`[WS] Error handling message type=${message?.type}:`, handlerErr);
         }
-        handleClientMessage(clientId, message);
       } catch {
-        // Ignore malformed messages
+        // Log malformed messages (potential abuse detection)
+        const client = clients.get(clientId);
+        console.warn(`[WS] Malformed message from ${client?.username || clientId}`);
       }
     });
 
     ws.on('close', () => {
       clearTimeout(authTimer);
       // Clean up private call and radio state before removing client
-      handlePrivateCallDisconnect(clientId);
-      handleRadioDisconnect(clientId);
+      try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
+      try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
       clients.delete(clientId);
+      clientMessageRates.delete(clientId);
       // Broadcast updated presence when a user disconnects
-      setTimeout(() => broadcastPresence(), 100);
+      setTimeout(() => { try { broadcastPresence(); } catch (e) { console.error('[WS] Error broadcasting presence:', e); } }, 100);
     });
 
     ws.on('error', () => {
       clearTimeout(authTimer);
-      handlePrivateCallDisconnect(clientId);
-      handleRadioDisconnect(clientId);
+      try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
+      try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
       clients.delete(clientId);
-      setTimeout(() => broadcastPresence(), 100);
+      clientMessageRates.delete(clientId);
+      setTimeout(() => { try { broadcastPresence(); } catch (e) { console.error('[WS] Error broadcasting presence:', e); } }, 100);
     });
 
-    // Heartbeat: mark alive on pong response
-    ws.on('pong', () => {
-      client.isAlive = true;
-    });
-
-    // [FIX 35] Wrap welcome message send in try/catch in case connection closes during setup
-    try {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'connected',
-          clientId,
-          authenticated: client.authenticated,
-          timestamp: new Date().toISOString(),
-        }));
-      }
-    } catch {
-      // Connection may have closed between acceptance and this point
-    }
+    // Send welcome message (but don't confirm authentication yet)
+    safeSend(ws, JSON.stringify({
+      type: 'connected',
+      clientId,
+      authenticated: client.authenticated,
+      timestamp: new Date().toISOString(),
+    }));
   });
 
-  // Heartbeat interval — ping all clients every 30s, terminate dead ones
-  const heartbeatInterval = setInterval(() => {
-    clients.forEach((client, clientId) => {
-      if (!client.isAlive) {
-        // Client did not respond to last ping — terminate
-        try { client.ws.terminate(); } catch { /* already closed */ }
-        handlePrivateCallDisconnect(clientId);
-        handleRadioDisconnect(clientId);
-        clients.delete(clientId);
+  // ── Server-side keepalive — detect dead connections ──────────
+  const PING_INTERVAL_MS = 30_000;
+  const pingInterval = setInterval(() => {
+    wss!.clients.forEach((ws) => {
+      if ((ws as any).__isAlive === false) {
+        ws.terminate();
         return;
       }
-      client.isAlive = false;
-      try {
-        if (client.ws.readyState === WebSocket.OPEN) {
-          client.ws.ping();
-        }
-      } catch {
-        // Failed to ping — remove on next cycle
-      }
+      (ws as any).__isAlive = false;
+      ws.ping();
     });
-  }, 30_000);
+  }, PING_INTERVAL_MS);
 
-  // Clean up heartbeat when server closes
-  wss.on('close', () => {
-    clearInterval(heartbeatInterval);
+  wss.on('close', () => clearInterval(pingInterval));
+
+  // Mark connections alive on pong
+  wss.on('connection', (ws) => {
+    (ws as any).__isAlive = true;
+    ws.on('pong', () => { (ws as any).__isAlive = true; });
   });
 
   return wss;
@@ -217,21 +270,14 @@ function generateClientId(): string {
 }
 
 function authenticateClient(client: WSClient, token: string): boolean {
-  // [FIX 43] Validate token is a non-empty string
-  if (!token || typeof token !== 'string' || token.length > 4096) {
-    try {
-      client.ws.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token format' }));
-    } catch { /* ignore */ }
-    return false;
-  }
   try {
-    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
-    // Reject refresh tokens
-    if (decoded.type === 'refresh') {
-      client.ws.send(JSON.stringify({
+    // Only accept access tokens — reject refresh and mfa_pending tokens
+    if (decoded.type !== 'access') {
+      safeSend(client.ws, JSON.stringify({
         type: 'auth_error',
-        message: 'Invalid token type — use access token',
+        message: 'Invalid token type',
       }));
       return false;
     }
@@ -242,7 +288,18 @@ function authenticateClient(client: WSClient, token: string): boolean {
     client.role = decoded.role;
     client.authenticated = true;
 
-    client.ws.send(JSON.stringify({
+    // Auto-populate unitCallSign from units table (for selcall addressing)
+    try {
+      const db = database.getDb();
+      const unit = db.prepare(
+        "SELECT call_sign FROM units WHERE officer_user_id = ? AND status != 'off_duty' LIMIT 1"
+      ).get(decoded.userId) as { call_sign: string } | undefined;
+      if (unit?.call_sign) {
+        client.unitCallSign = unit.call_sign;
+      }
+    } catch { /* DB not ready or no unit assigned — unitCallSign stays undefined */ }
+
+    safeSend(client.ws, JSON.stringify({
       type: 'authenticated',
       userId: decoded.userId,
       username: decoded.username,
@@ -254,17 +311,10 @@ function authenticateClient(client: WSClient, token: string): boolean {
 
     return true;
   } catch (err: any) {
-    // [FIX 44] Wrap error response in try/catch — client may already be disconnected
-    try {
-      if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(JSON.stringify({
-          type: 'auth_error',
-          message: err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
-        }));
-      }
-    } catch {
-      // Client disconnected during auth error send
-    }
+    safeSend(client.ws, JSON.stringify({
+      type: 'auth_error',
+      message: err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
+    }));
     return false;
   }
 }
@@ -279,7 +329,7 @@ function handleClientMessage(clientId: string, message: any): void {
       if (message.token) {
         authenticateClient(client, message.token);
       } else {
-        client.ws.send(JSON.stringify({
+        safeSend(client.ws, JSON.stringify({
           type: 'auth_error',
           message: 'Token required for authentication',
         }));
@@ -288,14 +338,11 @@ function handleClientMessage(clientId: string, message: any): void {
 
     case 'subscribe':
       if (!client.authenticated) {
-        client.ws.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+        safeSend(client.ws, JSON.stringify({ type: 'error', message: 'Authentication required' }));
         return;
       }
-      // [FIX 41] Validate channel name is a non-empty string and limit channel set size
-      if (message.channel && typeof message.channel === 'string' && message.channel.length <= 64) {
-        if (client.channels.size < 50) {
-          client.channels.add(message.channel);
-        }
+      if (message.channel) {
+        client.channels.add(message.channel);
       }
       break;
 
@@ -306,14 +353,7 @@ function handleClientMessage(clientId: string, message: any): void {
       break;
 
     case 'ping':
-      // [FIX 42] Wrap pong reply in try/catch
-      try {
-        if (client.ws.readyState === WebSocket.OPEN) {
-          client.ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
-        }
-      } catch {
-        // Client may have disconnected
-      }
+      safeSend(client.ws, JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
       break;
 
     case 'panic_audio':
@@ -360,6 +400,31 @@ function handleClientMessage(clientId: string, message: any): void {
       relayRadioAudio(clientId, message.data);
       break;
 
+    // ─── MDC Selcall ────────────────────────────────────────
+    case 'selcall_page':
+      if (!client.authenticated) return;
+      handleSelcallPage(clientId, message.data);
+      break;
+    case 'emergency_override':
+      if (!client.authenticated) return;
+      handleEmergencyOverride(clientId, message.data);
+      break;
+    case 'set_call_sign':
+      if (!client.authenticated) return;
+      if (typeof message.callSign === 'string' && message.callSign.length <= 20) {
+        client.unitCallSign = message.callSign.trim() || undefined;
+      }
+      break;
+
+    case 'scan_subscribe':
+      if (!client.authenticated) return;
+      handleScanSubscribe(clientId, message.data);
+      break;
+    case 'scan_unsubscribe':
+      if (!client.authenticated) return;
+      handleScanUnsubscribe(clientId);
+      break;
+
     // ─── Private Calls (Full-Duplex) ─────────────────────
     case 'private_call_request':
       if (!client.authenticated) return;
@@ -391,110 +456,116 @@ function handleClientMessage(clientId: string, message: any): void {
 // ─── Generic Broadcast / Send ─────────────────────────────────
 
 export function broadcast(channel: string, type: string, data: any): void {
-  // [FIX 36] Wrap JSON.stringify in try/catch to handle circular references or BigInt
-  let payload: string;
-  try {
-    payload = JSON.stringify({
-      channel,
-      type,
-      data,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error('[WS] Failed to serialize broadcast payload:', err);
-    return;
-  }
+  const payload = JSON.stringify({
+    channel,
+    type,
+    data,
+    timestamp: new Date().toISOString(),
+  });
 
   clients.forEach((client) => {
-    if (client.authenticated && client.channels.has(channel) && client.ws.readyState === WebSocket.OPEN) {
-      // [FIX 37] Wrap individual sends in try/catch so one failed client doesn't halt broadcast
-      try {
-        client.ws.send(payload);
-      } catch {
-        // Client may have disconnected between readyState check and send
-      }
+    if (client.authenticated && client.channels.has(channel)) {
+      safeSend(client.ws, payload);
     }
   });
 }
 
 export function sendToUser(userId: number, type: string, data: any): void {
-  // [FIX 38] Validate userId before iteration
-  if (!userId || typeof userId !== 'number') return;
-
-  let payload: string;
-  try {
-    payload = JSON.stringify({
-      channel: 'direct',
-      type,
-      data,
-      timestamp: new Date().toISOString(),
-    });
-  } catch {
-    return;
-  }
+  const payload = JSON.stringify({
+    channel: 'direct',
+    type,
+    data,
+    timestamp: new Date().toISOString(),
+  });
 
   clients.forEach((client) => {
-    if (client.authenticated && client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
-      // [FIX 39] Wrap send in try/catch for resilience
-      try {
-        client.ws.send(payload);
-      } catch {
-        // Client may have disconnected
-      }
+    if (client.authenticated && client.userId === userId) {
+      safeSend(client.ws, payload);
     }
   });
 }
 
 // ─── Module-specific broadcast helpers ────────────────────────
 
+/** Strip caller PII from call objects before broadcasting to all subscribers.
+ *  Dispatch broadcasts go to ALL authenticated clients (including contract_manager),
+ *  but caller PII (name, phone, address) should only be accessible via
+ *  authenticated API calls where role checks apply. */
+function stripCallPii(call: any): any {
+  if (!call || typeof call !== 'object') return call;
+  const {
+    caller_name, caller_phone, caller_address, caller_relationship,
+    pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+    process_served_to, process_served_address,
+    ...safe
+  } = call;
+  return safe;
+}
+
 export function broadcastDispatchUpdate(data: any): void {
-  broadcast('dispatch', 'dispatch_update', data);
+  // Auto-strip PII from any call object nested in the broadcast data
+  const sanitized = data?.call ? { ...data, call: stripCallPii(data.call) } : data;
+  broadcast('dispatch', 'dispatch_update', sanitized);
 }
 
 export function broadcastAlert(data: any): void {
   broadcast('alerts', 'alert', data);
 }
 
+/** Strip officer PII (personal phone) from unit objects before broadcasting.
+ *  Unit broadcasts go to ALL authenticated clients including contract_manager,
+ *  who should not receive officer personal phone numbers. */
+function stripUnitPii(unit: any): any {
+  if (!unit || typeof unit !== 'object') return unit;
+  const { officer_phone, ...safe } = unit;
+  return safe;
+}
+
 export function broadcastUnitUpdate(data: any): void {
-  broadcast('dispatch', 'unit_update', data);
+  const sanitized = data?.unit ? { ...data, unit: stripUnitPii(data.unit) } : data;
+  broadcast('dispatch', 'unit_update', sanitized);
 }
 
 export function broadcastNewMessage(data: any): void {
-  broadcast('messages', 'new_message', data);
+  // Strip message content — broadcast only a notification with metadata.
+  // Full message text is fetched via authenticated API with role checks.
+  const minimal = data ? {
+    id: data.id,
+    channel: data.channel,
+    from_user_id: data.from_user_id,
+    from_name: data.from_name,
+    priority: data.priority,
+    created_at: data.created_at,
+  } : data;
+  broadcast('messages', 'new_message', minimal);
 }
 
 export function broadcastPanic(data: any): void {
   // Panic alerts bypass channel filtering — send to ALL authenticated clients
-  let payload: string;
-  try {
-    payload = JSON.stringify({
-      type: 'panic_alert',
-      data,
-      timestamp: new Date().toISOString(),
-    });
-  } catch {
-    return;
-  }
+  const payload = JSON.stringify({
+    type: 'panic_alert',
+    data,
+    timestamp: new Date().toISOString(),
+  });
 
   clients.forEach((client) => {
-    if (client.authenticated && client.ws.readyState === WebSocket.OPEN) {
-      // [FIX 40] Wrap panic send in try/catch — panic must not crash server
-      try {
-        client.ws.send(payload);
-      } catch {
-        // Client disconnected during send
-      }
+    if (client.authenticated) {
+      safeSend(client.ws, payload);
     }
   });
 }
 
 export function broadcastPanicAudio(senderClientId: string, data: any): void {
-  // Relay audio chunks to ALL authenticated clients EXCEPT the sender
-  // Inject the sender's userId so receivers can talk back
+  // Relay audio chunks to ALL authenticated clients EXCEPT the sender.
+  // Also skip other connections from the SAME userId to prevent echo/reverb
+  // when the officer has the app open on multiple devices (MDT + phone) in
+  // close physical proximity — speakers on one device feed back into the
+  // open mic on the other.
   const senderClient = clients.get(senderClientId);
+  const senderUserId = senderClient?.userId ?? null;
   const enrichedData = {
     ...data,
-    fromUserId: senderClient?.userId ?? null,
+    fromUserId: senderUserId,
     fromUser: senderClient?.username ?? null,
   };
 
@@ -505,8 +576,11 @@ export function broadcastPanicAudio(senderClientId: string, data: any): void {
   });
 
   clients.forEach((client, id) => {
-    if (id !== senderClientId && client.authenticated && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(payload);
+    // Skip the exact sender connection AND any other connections from the same user
+    if (id === senderClientId) return;
+    if (senderUserId && client.userId === senderUserId) return;
+    if (client.authenticated) {
+      safeSend(client.ws, payload);
     }
   });
 }
@@ -585,22 +659,6 @@ export function getConnectedUsers(): { userId: number; username: string; role: s
   return users;
 }
 
-export function getConnectedClients(): { userId: number; username: string; role: string; connectedAt: string; ip: string }[] {
-  const result: { userId: number; username: string; role: string; connectedAt: string; ip: string }[] = [];
-  clients.forEach((client) => {
-    if (client.authenticated && client.userId) {
-      result.push({
-        userId: client.userId,
-        username: client.username || 'Unknown',
-        role: client.role || 'unknown',
-        connectedAt: client.connectedAt,
-        ip: client.ip || 'unknown',
-      });
-    }
-  });
-  return result;
-}
-
 // ─── Radio System ─────────────────────────────────────────────
 // PTT two-way radio with named channels. Only one user can
 // transmit per channel at a time.
@@ -627,23 +685,27 @@ function getRadioChannelUsers(radioChannel: string): Array<{ userId: number; use
 
 /** Send a message to all clients on a specific radio channel */
 function broadcastToRadioChannel(radioChannel: string, type: string, data: any, excludeClientId?: string): void {
-  let payload: string;
-  try {
-    payload = JSON.stringify({ type, data, timestamp: new Date().toISOString() });
-  } catch { return; }
+  const payload = JSON.stringify({
+    type,
+    data,
+    timestamp: new Date().toISOString(),
+  });
 
   clients.forEach((client, id) => {
     if (
       client.authenticated &&
       client.radioChannel === radioChannel &&
-      client.ws.readyState === WebSocket.OPEN &&
       id !== excludeClientId
     ) {
-      // [FIX 45] Wrap radio broadcast send in try/catch
-      try {
-        client.ws.send(payload);
-      } catch {
-        // Client disconnected during send
+      safeSend(client.ws, payload);
+    }
+
+    // Also send to clients scanning this channel (for audio relay too)
+    const scanChannels = client.scanChannels;
+    if (scanChannels?.includes(radioChannel) && id !== excludeClientId) {
+      // Already sent above if client is on the channel, skip duplicates
+      if (client.radioChannel !== radioChannel) {
+        safeSend(client.ws, payload);
       }
     }
   });
@@ -683,26 +745,19 @@ function handleRadioJoin(clientId: string, radioChannel: string): void {
   const transmitterClientId = activeTransmitters.get(radioChannel);
   const transmitter = transmitterClientId ? clients.get(transmitterClientId) : null;
 
-  // [FIX 47] Wrap channel state send in try/catch
-  try {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(JSON.stringify({
-        type: 'radio_channel_state',
-        data: {
-          radioChannel,
-          users: getRadioChannelUsers(radioChannel),
-          activeSpeaker: transmitter ? {
-            userId: transmitter.userId,
-            username: transmitter.username,
-            fullName: transmitter.fullName,
-          } : null,
-        },
-        timestamp: new Date().toISOString(),
-      }));
-    }
-  } catch {
-    // Client disconnected during send
-  }
+  safeSend(client.ws, JSON.stringify({
+    type: 'radio_channel_state',
+    data: {
+      radioChannel,
+      users: getRadioChannelUsers(radioChannel),
+      activeSpeaker: transmitter ? {
+        userId: transmitter.userId,
+        username: transmitter.username,
+        fullName: transmitter.fullName,
+      } : null,
+    },
+    timestamp: new Date().toISOString(),
+  }));
 }
 
 /** Handle a client leaving their radio channel */
@@ -715,11 +770,18 @@ function handleRadioLeave(clientId: string): void {
   // If this client was transmitting, end the transmission
   if (activeTransmitters.get(channel) === clientId) {
     activeTransmitters.delete(channel);
+    loggedTransmissions.delete(`${channel}:${clientId}`);
     broadcastToRadioChannel(channel, 'radio_transmit_end', {
       userId: client.userId,
       username: client.username,
     }, clientId);
   }
+
+  // Clean up any orphaned audio buffers and timers for this client
+  const bufKey = `${channel}:${clientId}`;
+  if (audioBuffers.has(bufKey)) audioBuffers.delete(bufKey);
+  const bufTimer = audioBufferTimers.get(bufKey);
+  if (bufTimer) { clearTimeout(bufTimer); audioBufferTimers.delete(bufKey); }
 
   client.radioChannel = null;
 
@@ -745,18 +807,41 @@ function handleRadioTransmitStart(clientId: string): void {
   // Enforce one-at-a-time: reject if someone else is already transmitting
   const currentTransmitter = activeTransmitters.get(channel);
   if (currentTransmitter && currentTransmitter !== clientId) {
-    client.ws.send(JSON.stringify({
-      type: 'radio_transmit_start',
-      data: { denied: true, reason: 'Channel busy' },
-      timestamp: new Date().toISOString(),
-    }));
-    return;
+    // Defensive: if the transmitter's client no longer exists or is disconnected, clear the stale entry
+    const transmitterClient = clients.get(currentTransmitter);
+    if (!transmitterClient || transmitterClient.ws.readyState !== WebSocket.OPEN) {
+      activeTransmitters.delete(channel);
+      loggedTransmissions.delete(`${channel}:${currentTransmitter}`);
+      console.warn('[Radio] Cleared stale transmitter on', channel, '(client gone)');
+    } else {
+      safeSend(client.ws, JSON.stringify({
+        type: 'radio_transmit_start',
+        data: { denied: true, reason: 'Channel busy' },
+        timestamp: new Date().toISOString(),
+      }));
+      return;
+    }
   }
 
   activeTransmitters.set(channel, clientId);
 
-  // Notify all channel members (including sender for confirmation)
-  const payload = JSON.stringify({
+  // Initialize audio buffer for this transmission
+  const bufferKey = `${channel}:${clientId}`;
+  audioBuffers.set(bufferKey, []);
+
+  // Auto-end unterminated transmissions after 2 minutes
+  const existingTimer = audioBufferTimers.get(bufferKey);
+  if (existingTimer) clearTimeout(existingTimer);
+  audioBufferTimers.set(bufferKey, setTimeout(() => {
+    if (activeTransmitters.get(channel) === clientId) {
+      console.warn(`[Radio] Auto-ending unterminated transmission from ${client.username} on ${channel} (${AUDIO_BUFFER_TIMEOUT_MS / 1000}s timeout)`);
+      handleRadioTransmitEnd(clientId, { transcript: '[Transmission auto-ended — timeout]', duration: AUDIO_BUFFER_TIMEOUT_MS / 1000 });
+    }
+    audioBufferTimers.delete(bufferKey);
+  }, AUDIO_BUFFER_TIMEOUT_MS));
+
+  // Notify all channel members + scanners (including sender for confirmation)
+  const startPayload = JSON.stringify({
     type: 'radio_transmit_start',
     data: {
       userId: client.userId,
@@ -768,14 +853,17 @@ function handleRadioTransmitStart(clientId: string): void {
   });
 
   clients.forEach((c) => {
-    if (c.authenticated && c.radioChannel === channel && c.ws.readyState === WebSocket.OPEN) {
-      c.ws.send(payload);
+    if (!c.authenticated) return;
+    if (c.radioChannel === channel) {
+      safeSend(c.ws, startPayload);
+    } else if (c.scanChannels?.includes(channel)) {
+      safeSend(c.ws, startPayload);
     }
   });
 }
 
-/** Handle PTT key-up — stop transmitting, save transcript to DB */
-function handleRadioTransmitEnd(clientId: string, data?: any): void {
+/** Handle PTT key-up — stop transmitting */
+function handleRadioTransmitEnd(clientId: string, data?: { transcript?: string; duration?: number; linked_call_id?: number }): void {
   const client = clients.get(clientId);
   if (!client || !client.radioChannel) return;
 
@@ -785,30 +873,68 @@ function handleRadioTransmitEnd(clientId: string, data?: any): void {
   if (activeTransmitters.get(channel) !== clientId) return;
 
   activeTransmitters.delete(channel);
+  loggedTransmissions.delete(`${channel}:${clientId}`);
 
   const transcript = data?.transcript || null;
   const duration = data?.duration || 0;
+  const linkedCallId = data?.linked_call_id || null;
 
-  // Save transcript to database (non-blocking — don't let DB errors block radio)
+  // ── Save buffered audio to file ───────────────────────────
+  let audioFilePath: string | null = null;
+  let fileSize = 0;
+  const bufferKey = `${channel}:${clientId}`;
+  const chunks = audioBuffers.get(bufferKey);
+  audioBuffers.delete(bufferKey); // always clean up
+
+  // Clear audio buffer timeout timer
+  const bufferTimer = audioBufferTimers.get(bufferKey);
+  if (bufferTimer) { clearTimeout(bufferTimer); audioBufferTimers.delete(bufferKey); }
+
+  if (chunks && chunks.length > 0) {
+    try {
+      // Ensure upload directory exists
+      if (!fs.existsSync(RADIO_UPLOAD_DIR)) {
+        fs.mkdirSync(RADIO_UPLOAD_DIR, { recursive: true });
+      }
+      const combined = Buffer.concat(chunks);
+      fileSize = combined.length;
+      // Only save if there's meaningful audio (> 1KB to skip empty/glitch transmissions)
+      if (fileSize > 1024) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `radio-${channel}-${client.username || 'unknown'}-${timestamp}.webm`;
+        const filePath = path.join(RADIO_UPLOAD_DIR, filename);
+        fs.writeFileSync(filePath, combined);
+        audioFilePath = `radio/${filename}`; // relative path for DB storage
+        console.log(`[Radio] Saved audio recording: ${filename} (${(fileSize / 1024).toFixed(1)} KB)`);
+      }
+    } catch (err) {
+      console.error('[Radio] Failed to save audio file:', err);
+    }
+  }
+
+  // Save transcript + audio file path to database (non-blocking — don't let DB errors block radio)
   try {
     const db = database.getDb();
     db.prepare(
-      `INSERT INTO radio_transcripts (user_id, username, full_name, channel, transcript, duration, transmitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
+      `INSERT INTO radio_transcripts (user_id, username, full_name, channel, transcript, duration, audio_file, file_size, linked_call_id, transmitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
     ).run(
       client.userId,
       client.username || 'Unknown',
       client.fullName || client.username || 'Unknown',
       channel,
       transcript,
-      duration
+      duration,
+      audioFilePath,
+      fileSize > 1024 ? fileSize : null,
+      linkedCallId
     );
   } catch (err) {
     console.error('Failed to save radio transcript:', err);
   }
 
-  // Notify all channel members (include transcript so listeners can display it)
-  const payload = JSON.stringify({
+  // Notify all channel members + scanners (include transcript so listeners can display it)
+  const endPayload = JSON.stringify({
     type: 'radio_transmit_end',
     data: {
       userId: client.userId,
@@ -817,13 +943,17 @@ function handleRadioTransmitEnd(clientId: string, data?: any): void {
       role: client.role,
       transcript,
       duration,
+      hasAudio: !!audioFilePath,
     },
     timestamp: new Date().toISOString(),
   });
 
   clients.forEach((c) => {
-    if (c.authenticated && c.radioChannel === channel && c.ws.readyState === WebSocket.OPEN) {
-      c.ws.send(payload);
+    if (!c.authenticated) return;
+    if (c.radioChannel === channel) {
+      safeSend(c.ws, endPayload);
+    } else if (c.scanChannels?.includes(channel)) {
+      safeSend(c.ws, endPayload);
     }
   });
 }
@@ -850,8 +980,22 @@ function relayRadioAudio(senderClientId: string, data: any): void {
     return;
   }
 
+  // Accumulate audio chunk into buffer for file saving
+  if (data?.audio) {
+    const bufferKey = `${channel}:${senderClientId}`;
+    const chunks = audioBuffers.get(bufferKey);
+    if (chunks) {
+      try {
+        chunks.push(Buffer.from(data.audio, 'base64'));
+      } catch { /* ignore malformed base64 */ }
+    }
+  }
+
+  // Strip any client-injected internal flags before relaying
+  const { _logged, ...cleanData } = data || {};
+
   const enrichedData = {
-    ...data,
+    ...cleanData,
     fromUserId: sender.userId,
     fromUser: sender.username,
     fromFullName: sender.fullName,
@@ -866,29 +1010,197 @@ function relayRadioAudio(senderClientId: string, data: any): void {
 
   let recipientCount = 0;
   clients.forEach((client, id) => {
-    if (
-      id !== senderClientId &&
-      client.authenticated &&
-      client.radioChannel === channel &&
-      client.ws.readyState === WebSocket.OPEN
-    ) {
-      client.ws.send(payload);
-      recipientCount++;
+    if (id === senderClientId || !client.authenticated) return;
+
+    // Send to clients on the same radio channel
+    if (client.radioChannel === channel) {
+      if (safeSend(client.ws, payload)) recipientCount++;
+      return; // already sent, skip scan check to avoid duplicate
+    }
+
+    // Also relay to clients scanning this channel
+    if (client.scanChannels?.includes(channel)) {
+      if (safeSend(client.ws, payload)) recipientCount++;
     }
   });
 
-  // Log first chunk per transmission for debugging (don't spam every chunk)
-  if (!data._logged) {
+  // Log once per transmission session (not per chunk) to avoid console spam
+  const txKey = `${channel}:${senderClientId}`;
+  if (!loggedTransmissions.has(txKey)) {
+    loggedTransmissions.add(txKey);
     console.log('[Radio] audio relaying from', sender.username, 'on', channel, '→', recipientCount, 'recipients');
-    data._logged = true;
   }
 }
 
 /** Clean up radio state when a client disconnects */
 function handleRadioDisconnect(clientId: string): void {
   const client = clients.get(clientId);
-  if (!client || !client.radioChannel) return;
-  handleRadioLeave(clientId);
+  if (client?.radioChannel) {
+    handleRadioLeave(clientId);
+  }
+  // Also sweep any orphaned audioBuffers/timers for this clientId (handles edge cases
+  // where radioChannel was cleared but buffers remain from a stalled transmission)
+  for (const key of audioBuffers.keys()) {
+    if (key.endsWith(`:${clientId}`)) {
+      audioBuffers.delete(key);
+      const timer = audioBufferTimers.get(key);
+      if (timer) { clearTimeout(timer); audioBufferTimers.delete(key); }
+      loggedTransmissions.delete(key);
+    }
+  }
+}
+
+// ─── MDC Selcall System ──────────────────────────────────────
+// Motorola MDC-1200 inspired features: unit paging, emergency
+// override, silent monitor, and cross-patch.
+
+/** Page a specific unit — sends an alert tone + notification to target */
+function handleSelcallPage(senderClientId: string, data: any): void {
+  const sender = clients.get(senderClientId);
+  if (!sender || !sender.authenticated) return;
+
+  const targetUserId = data?.target_user_id;
+  const targetCallSign = data?.target_call_sign;
+  const message = data?.message || '';
+  const channel = data?.channel || sender.radioChannel;
+
+  if (!targetUserId && !targetCallSign) return;
+
+  console.log(`[Selcall] ${sender.username} paging ${targetCallSign || `user:${targetUserId}`} on ${channel || 'direct'}`);
+
+  // Find target client(s) — a user may have multiple sessions
+  const targets: string[] = [];
+  clients.forEach((client, id) => {
+    if (!client.authenticated) return;
+    if (targetUserId && client.userId === targetUserId) targets.push(id);
+    else if (targetCallSign && client.unitCallSign === targetCallSign) targets.push(id);
+  });
+
+  const pagePayload = JSON.stringify({
+    type: 'selcall_page',
+    data: {
+      from_user_id: sender.userId,
+      from_username: sender.username,
+      from_full_name: sender.fullName,
+      from_call_sign: sender.unitCallSign || null,
+      target_call_sign: targetCallSign || null,
+      channel,
+      message,
+      timestamp: new Date().toISOString(),
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  targets.forEach(id => {
+    const client = clients.get(id);
+    if (client) safeSend(client.ws, pagePayload);
+  });
+
+  // Confirm to sender
+  safeSend(sender.ws, JSON.stringify({
+    type: 'selcall_page_sent',
+    data: { target_call_sign: targetCallSign, target_user_id: targetUserId, delivered: targets.length },
+    timestamp: new Date().toISOString(),
+  }));
+}
+
+/** Emergency override — force-interrupts the current transmitter on a channel */
+function handleEmergencyOverride(clientId: string, data: any): void {
+  const client = clients.get(clientId);
+  if (!client || !client.authenticated) return;
+
+  const channel = data?.channel || client.radioChannel;
+  if (!channel) return;
+
+  // Check role — only supervisors+ or dispatchers can emergency override
+  const allowedRoles = ['admin', 'manager', 'supervisor', 'dispatcher'];
+  if (!allowedRoles.includes(client.role || '')) {
+    safeSend(client.ws, JSON.stringify({
+      type: 'emergency_override_denied',
+      data: { reason: 'Insufficient role for emergency override' },
+      timestamp: new Date().toISOString(),
+    }));
+    return;
+  }
+
+  console.log(`[Radio] EMERGENCY OVERRIDE by ${client.username} on ${channel}`);
+
+  // Force-end current transmitter
+  const currentTransmitter = activeTransmitters.get(channel);
+  if (currentTransmitter && currentTransmitter !== clientId) {
+    const transmitter = clients.get(currentTransmitter);
+    if (transmitter) {
+      // Notify the interrupted user
+      safeSend(transmitter.ws, JSON.stringify({
+        type: 'radio_transmit_end',
+        data: { forced: true, reason: 'Emergency override' },
+        timestamp: new Date().toISOString(),
+      }));
+    }
+    activeTransmitters.delete(channel);
+    loggedTransmissions.delete(`${channel}:${currentTransmitter}`);
+
+    // Clean up audio buffer
+    const bufKey = `${channel}:${currentTransmitter}`;
+    audioBuffers.delete(bufKey);
+    const bufTimer = audioBufferTimers.get(bufKey);
+    if (bufTimer) { clearTimeout(bufTimer); audioBufferTimers.delete(bufKey); }
+  }
+
+  // Clear any existing override timer for this channel
+  const existingOverrideTimer = emergencyOverrideTimers.get(channel);
+  if (existingOverrideTimer) clearTimeout(existingOverrideTimer);
+
+  // Broadcast emergency override notification to all channel members
+  broadcastToRadioChannel(channel, 'emergency_override', {
+    userId: client.userId,
+    username: client.username,
+    fullName: client.fullName,
+    channel,
+    duration: EMERGENCY_OVERRIDE_DURATION_MS / 1000,
+  });
+
+  // Auto-clear override after timeout — broadcast channel_clear so clients know it's safe
+  emergencyOverrideTimers.set(channel, setTimeout(() => {
+    emergencyOverrideTimers.delete(channel);
+    broadcastToRadioChannel(channel, 'emergency_override_clear', {
+      channel,
+      reason: 'Override expired',
+    });
+    console.log(`[Radio] Emergency override on ${channel} auto-cleared after ${EMERGENCY_OVERRIDE_DURATION_MS / 1000}s`);
+  }, EMERGENCY_OVERRIDE_DURATION_MS));
+}
+
+/** Channel scan subscription — client wants to monitor additional channels */
+function handleScanSubscribe(clientId: string, data: any): void {
+  const client = clients.get(clientId);
+  if (!client || !client.authenticated) return;
+
+  const channels: string[] = data?.channels || [];
+  const validChannels = getRadioChannelNames();
+  const validScanChannels = channels.filter(ch => validChannels.includes(ch) && ch !== client.radioChannel);
+
+  // Store scan channels on the client
+  client.scanChannels = validScanChannels;
+
+  safeSend(client.ws, JSON.stringify({
+    type: 'scan_subscribed',
+    data: { channels: validScanChannels },
+    timestamp: new Date().toISOString(),
+  }));
+}
+
+/** Unsubscribe from channel scanning */
+function handleScanUnsubscribe(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client) return;
+  client.scanChannels = [];
+
+  safeSend(client.ws, JSON.stringify({
+    type: 'scan_unsubscribed',
+    data: {},
+    timestamp: new Date().toISOString(),
+  }));
 }
 
 // ─── Private Call System (Full-Duplex) ──────────────────────
@@ -932,7 +1244,7 @@ function handlePrivateCallRequest(callerClientId: string, targetUserId: number):
 
   // Check if caller is already in a call
   if (caller.privateCallId) {
-    caller.ws.send(JSON.stringify({
+    safeSend(caller.ws, JSON.stringify({
       type: 'private_call_error',
       data: { error: 'You are already in a call' },
     }));
@@ -942,7 +1254,7 @@ function handlePrivateCallRequest(callerClientId: string, targetUserId: number):
   // Find the target user
   const target = findClientByUserId(targetUserId);
   if (!target) {
-    caller.ws.send(JSON.stringify({
+    safeSend(caller.ws, JSON.stringify({
       type: 'private_call_error',
       data: { error: 'User is not online' },
     }));
@@ -951,7 +1263,7 @@ function handlePrivateCallRequest(callerClientId: string, targetUserId: number):
 
   // Check if target is already in a call
   if (target.client.privateCallId) {
-    caller.ws.send(JSON.stringify({
+    safeSend(caller.ws, JSON.stringify({
       type: 'private_call_error',
       data: { error: 'User is already in a call' },
     }));
@@ -984,7 +1296,7 @@ function handlePrivateCallRequest(callerClientId: string, targetUserId: number):
   activeCalls.set(callId, call);
 
   // Notify caller that the call is ringing
-  caller.ws.send(JSON.stringify({
+  safeSend(caller.ws, JSON.stringify({
     type: 'private_call_ringing',
     data: {
       callId,
@@ -994,7 +1306,7 @@ function handlePrivateCallRequest(callerClientId: string, targetUserId: number):
   }));
 
   // Notify receiver of incoming call
-  target.client.ws.send(JSON.stringify({
+  safeSend(target.client.ws, JSON.stringify({
     type: 'private_call_incoming',
     data: {
       callId,
@@ -1040,13 +1352,13 @@ function handlePrivateCallAccept(receiverClientId: string, callId: string): void
   };
 
   // Send to caller
-  caller.ws.send(JSON.stringify({
+  safeSend(caller.ws, JSON.stringify({
     ...connectedPayload,
     data: { callId, partnerUserId: receiver.userId, partnerName: call.receiverName },
   }));
 
   // Send to receiver
-  receiver.ws.send(JSON.stringify({
+  safeSend(receiver.ws, JSON.stringify({
     ...connectedPayload,
     data: { callId, partnerUserId: caller.userId, partnerName: call.callerName },
   }));
@@ -1067,7 +1379,7 @@ function handlePrivateCallDecline(clientId: string, callId: string, autoDecline 
   // Notify the caller
   const caller = clients.get(call.callerClientId);
   if (caller && caller.ws.readyState === WebSocket.OPEN) {
-    caller.ws.send(JSON.stringify({
+    safeSend(caller.ws, JSON.stringify({
       type: 'private_call_declined',
       data: {
         callId,
@@ -1079,7 +1391,7 @@ function handlePrivateCallDecline(clientId: string, callId: string, autoDecline 
   // Notify the receiver too (in case they also need to clean up UI)
   const receiver = clients.get(call.receiverClientId);
   if (receiver && receiver.ws.readyState === WebSocket.OPEN) {
-    receiver.ws.send(JSON.stringify({
+    safeSend(receiver.ws, JSON.stringify({
       type: 'private_call_declined',
       data: {
         callId,
@@ -1117,7 +1429,7 @@ function handlePrivateCallEnd(clientId: string): void {
 
       // Notify partner
       if (partner.ws.readyState === WebSocket.OPEN) {
-        partner.ws.send(JSON.stringify({
+        safeSend(partner.ws, JSON.stringify({
           type: 'private_call_ended',
           data: {
             callId,
@@ -1129,21 +1441,15 @@ function handlePrivateCallEnd(clientId: string): void {
     }
   }
 
-  // [FIX 46] Wrap end-call notify in try/catch and readyState check
-  try {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(JSON.stringify({
-        type: 'private_call_ended',
-        data: {
-          callId,
-          endedBy: client.userId,
-          duration: durationSeconds,
-        },
-      }));
-    }
-  } catch {
-    // Client disconnected
-  }
+  // Notify the ender too
+  safeSend(client.ws, JSON.stringify({
+    type: 'private_call_ended',
+    data: {
+      callId,
+      endedBy: client.userId,
+      duration: durationSeconds,
+    },
+  }));
 
   // Remove call from active map
   if (call) {
@@ -1162,7 +1468,7 @@ function relayPrivateCallAudio(senderClientId: string, data: any): void {
   const partner = clients.get(sender.privateCallPartner);
   if (!partner || partner.ws.readyState !== WebSocket.OPEN) return;
 
-  partner.ws.send(JSON.stringify({
+  safeSend(partner.ws, JSON.stringify({
     type: 'private_call_audio',
     data: {
       ...data,
@@ -1192,7 +1498,7 @@ function handlePrivateCallDisconnect(clientId: string): void {
       const otherId = call.callerClientId === clientId ? call.receiverClientId : call.callerClientId;
       const other = clients.get(otherId);
       if (other && other.ws.readyState === WebSocket.OPEN) {
-        other.ws.send(JSON.stringify({
+        safeSend(other.ws, JSON.stringify({
           type: 'private_call_ended',
           data: { callId, endedBy: client.userId, duration: 0, reason: 'Partner disconnected' },
         }));

@@ -42,7 +42,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           <strong style={{ color: '#ef4444' }}>Location disabled</strong>
           {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
         </span>
-        <button type="button"
+        <button
           onClick={onRetry}
           style={{
             padding: '3px 10px',
@@ -59,12 +59,12 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
         >
           Retry
         </button>
-        <button type="button"
+        <button
           onClick={() => setDismissed(true)}
           style={{
             background: 'none',
             border: 'none',
-            color: '#666666',
+            color: '#5a6e80',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',
@@ -83,23 +83,23 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
     return (
       <div style={{
         background: 'rgba(59, 130, 246, 0.08)',
-        borderBottom: '1px solid #222222',
+        borderBottom: '1px solid #1e3a5f',
         padding: '4px 16px',
         display: 'flex',
         alignItems: 'center',
         gap: 8,
         fontSize: 10,
       }}>
-        <Wifi size={12} color="#888888" style={{ flexShrink: 0 }} />
-        <span style={{ color: '#888888', flex: 1 }}>
-          Tracking via <strong style={{ color: '#888888' }}>WiFi positioning</strong> — accuracy may be reduced
+        <Wifi size={12} color="#3b82f6" style={{ flexShrink: 0 }} />
+        <span style={{ color: '#8a9aaa', flex: 1 }}>
+          Tracking via <strong style={{ color: '#3b82f6' }}>WiFi positioning</strong> — accuracy may be reduced
         </span>
-        <button type="button"
+        <button
           onClick={() => setWifiDismissed(true)}
           style={{
             background: 'none',
             border: 'none',
-            color: '#666666',
+            color: '#5a6e80',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',

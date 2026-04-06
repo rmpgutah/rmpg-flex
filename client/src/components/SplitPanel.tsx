@@ -120,28 +120,28 @@ export default function SplitPanel({
           <div
             className="flex flex-shrink-0"
             style={{
-              background: 'linear-gradient(180deg, #222222 0%, #141414 100%)',
-              borderBottom: '1px solid #0a0a0a',
+              background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
+              borderBottom: '1px solid #141e2b',
             }}
           >
-            <button type="button"
+            <button
               onClick={() => setMobileTab('left')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
-                background: mobileTab === 'left' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'left' ? '#fff' : '#777777',
-                borderBottom: mobileTab === 'left' ? '2px solid #888888' : '2px solid transparent',
+                background: mobileTab === 'left' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
+                color: mobileTab === 'left' ? '#fff' : '#7a8a9a',
+                borderBottom: mobileTab === 'left' ? '2px solid #1a5a9e' : '2px solid transparent',
               }}
             >
               {leftLabel}
             </button>
-            <button type="button"
+            <button
               onClick={() => setMobileTab('right')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
-                background: mobileTab === 'right' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'right' ? '#fff' : '#777777',
-                borderBottom: mobileTab === 'right' ? '2px solid #888888' : '2px solid transparent',
+                background: mobileTab === 'right' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
+                color: mobileTab === 'right' ? '#fff' : '#7a8a9a',
+                borderBottom: mobileTab === 'right' ? '2px solid #1a5a9e' : '2px solid transparent',
               }}
             >
               {rightLabel}
@@ -185,24 +185,21 @@ export default function SplitPanel({
       {/* Draggable Divider */}
       {rightVisible && (
         <div
-          role="separator"
-          aria-orientation={isHorizontal ? 'vertical' : 'horizontal'}
           className={`flex-shrink-0 ${dividerClassName}`}
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
-            background: isDragging ? '#888888' : 'linear-gradient(90deg, #181818, #2e2e2e, #181818)',
-            borderTop: '1px solid #383838',
-            borderBottom: '1px solid #0a0a0a',
+            background: isDragging ? '#1a5a9e' : 'linear-gradient(90deg, #162236, #2a3e58, #162236)',
+            borderTop: '1px solid #3a5070',
+            borderBottom: '1px solid #141e2b',
             transition: isDragging ? 'none' : 'background 0.15s ease',
           }}
           onMouseDown={handleMouseDown}
-          onTouchStart={(e) => { e.preventDefault(); handleMouseDown(e.touches[0] as any); }}
           onMouseEnter={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2e2e2e, #383838, #2e2e2e)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a3e58, #3a5070, #2a3e58)';
           }}
           onMouseLeave={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #181818, #2e2e2e, #181818)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #162236, #2a3e58, #162236)';
           }}
         />
       )}

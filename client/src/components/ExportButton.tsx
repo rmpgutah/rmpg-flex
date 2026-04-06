@@ -4,8 +4,7 @@
 // ============================================================
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Printer, ChevronDown, Loader2, Check } from 'lucide-react';
-import ProgressBar from './ui/ProgressBar';
+import { Download, Printer, ChevronDown } from 'lucide-react';
 
 interface ExportButtonProps {
   exportUrl: string;        // e.g. '/dispatch/calls/export?format=csv'
@@ -20,7 +19,6 @@ export default function ExportButton({
 }: ExportButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [exportPhase, setExportPhase] = useState<'idle' | 'fetching' | 'ready'>('idle');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -55,7 +53,6 @@ export default function ExportButton({
 
   async function handleExportCSV() {
     setIsExporting(true);
-    setExportPhase('fetching');
     setIsOpen(false);
 
     try {
@@ -73,8 +70,6 @@ export default function ExportButton({
       }
 
       const blob = await res.blob();
-      setExportPhase('ready');
-
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
@@ -83,14 +78,10 @@ export default function ExportButton({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
-
-      // Show "Download ready" briefly before resetting
-      await new Promise(r => setTimeout(r, 1200));
     } catch (err) {
       console.error('[ExportButton] CSV export failed:', err);
     } finally {
       setIsExporting(false);
-      setExportPhase('idle');
     }
   }
 
@@ -113,78 +104,83 @@ export default function ExportButton({
         onClick={() => setIsOpen((prev) => !prev)}
         disabled={isExporting}
         title="Export options"
-        aria-label="Export options"
-        aria-expanded={isOpen}
-        aria-haspopup="true"
       >
-        {/* 45: Loading spinner / phase indicator during export */}
-        {isExporting
-          ? exportPhase === 'ready'
-            ? <Check className="w-3.5 h-3.5 text-[#d4a017]" />
-            : <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          : <Download className="w-3.5 h-3.5" />
-        }
-        <span>
-          {isExporting
-            ? exportPhase === 'ready'
-              ? 'Download ready'
-              : 'Preparing export...'
-            : 'Export'}
-        </span>
+        <Download className="w-3.5 h-3.5" />
+        <span>{isExporting ? 'Exporting...' : 'Export'}</span>
         <ChevronDown
           className="w-3 h-3 ml-0.5 transition-transform"
           style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
         />
       </button>
 
-      {/* Export progress bar (indeterminate while fetching) */}
-      {isExporting && exportPhase === 'fetching' && (
-        <div className="absolute left-0 right-0" style={{ top: '100%', zIndex: 51 }}>
-          <ProgressBar color="#888888" height={2} showPercent={false} />
-        </div>
-      )}
-
       {/* Dropdown menu */}
       {isOpen && (
         <div
           ref={dropdownRef}
-          role="menu"
-          className="absolute z-50 mt-1 animate-fade-in"
+          className="absolute z-50 mt-1"
           style={{
             top: '100%',
             right: 0,
             minWidth: '160px',
-            background: '#141414',
-            border: '1px solid #383838',
+            background: '#1a2636',
+            border: '1px solid #3a5070',
             borderRadius: 0,
-            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.6)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
           }}
         >
-          {/* 48: Export CSV — replaced inline hover handlers with Tailwind classes */}
+          {/* Export CSV */}
           <button
             type="button"
             onClick={handleExportCSV}
-            role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
+            style={{
+              fontSize: '11px',
+              color: '#d4d4d4',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 0,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = '#2a3e58';
+              (e.currentTarget as HTMLElement).style.color = '#ffffff';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.color = '#d4d4d4';
+            }}
           >
-            <Download className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
-            <span className="font-bold uppercase tracking-wider text-[10px]">
+            <Download className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="font-bold uppercase tracking-wider" style={{ fontSize: '10px' }}>
               Export CSV
             </span>
           </button>
 
-          {/* 49: Divider with semantic hr */}
-          <hr className="border-0 mx-2" style={{ height: '1px', background: '#383838' }} />
+          {/* Divider */}
+          <div style={{ height: '1px', background: '#3a5070', margin: '0 8px' }} />
 
-          {/* 50: Print View — replaced inline hover handlers with Tailwind classes */}
+          {/* Print View */}
           <button
             type="button"
             onClick={handlePrint}
-            role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
+            style={{
+              fontSize: '11px',
+              color: '#d4d4d4',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 0,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = '#2a3e58';
+              (e.currentTarget as HTMLElement).style.color = '#ffffff';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.color = '#d4d4d4';
+            }}
           >
-            <Printer className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
-            <span className="font-bold uppercase tracking-wider text-[10px]">
+            <Printer className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="font-bold uppercase tracking-wider" style={{ fontSize: '10px' }}>
               Print View
             </span>
           </button>

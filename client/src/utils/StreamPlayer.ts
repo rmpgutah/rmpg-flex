@@ -60,9 +60,9 @@ export class StreamPlayer {
       src.start();
       // Close after a moment — we just needed to unlock audio
       setTimeout(() => ctx.close().catch(() => {}), 100);
-      // Audio pre-warmed successfully
+      console.log('[StreamPlayer] Audio pre-warmed successfully');
     } catch {
-      // Pre-warm failed — no user gesture context yet
+      console.warn('[StreamPlayer] Pre-warm failed (no user gesture?)');
     }
   }
 
@@ -78,6 +78,7 @@ export class StreamPlayer {
       if (this.audioContext.state === 'suspended') {
         this.audioContext.resume().catch(() => {});
       }
+      console.log('[StreamPlayer] AudioContext created, state:', this.audioContext.state);
     } catch (err) {
       console.error('[StreamPlayer] Failed to create AudioContext:', err);
     }
@@ -85,10 +86,8 @@ export class StreamPlayer {
 
   /** Append a base64-encoded audio chunk to the stream */
   appendChunk(base64: string) {
-    if (!base64) return;
     // Decode base64 → binary
-    let binary: string;
-    try { binary = atob(base64); } catch { return; }
+    const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
@@ -120,6 +119,13 @@ export class StreamPlayer {
       this.audioContext.resume().catch(() => {});
     }
 
+    // Log first few chunks for diagnostics
+    if (this.chunkCount <= 3) {
+      console.log('[StreamPlayer] Chunk #' + this.chunkCount +
+        ' received, size:', bytes.length, 'bytes, total:', this.totalBytes,
+        'bytes, ctx state:', this.audioContext?.state);
+    }
+
     // Decode and play every 2 chunks (~400ms of audio)
     // Also decode on first chunk for minimum latency
     if (this.chunkCount === 1 || this.chunkCount % 2 === 0) {
@@ -148,6 +154,11 @@ export class StreamPlayer {
       const newDuration = totalDuration - this.playedUpTo;
 
       if (newDuration <= 0.01) return; // Nothing new to play
+
+      if (this.chunkCount <= 3) {
+        console.log('[StreamPlayer] Decoded:', totalDuration.toFixed(2) + 's total,',
+          newDuration.toFixed(2) + 's new, playing from', this.playedUpTo.toFixed(2) + 's');
+      }
 
       // Create a source node for the new portion
       const source = this.audioContext.createBufferSource();
@@ -190,8 +201,11 @@ export class StreamPlayer {
       // decodeAudioData can fail if the buffer is too short or malformed
       // This is expected on the very first chunk sometimes — just wait
       // for more data
-      // decodeAudioData failures on early chunks are expected — need more data.
-      // Later failures may indicate malformed audio data.
+      if (this.chunkCount <= 2) {
+        console.log('[StreamPlayer] Decode deferred (need more data), chunks:', this.chunkCount);
+      } else {
+        console.warn('[StreamPlayer] decodeAudioData failed:', err);
+      }
     }
   }
 

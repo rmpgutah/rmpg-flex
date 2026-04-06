@@ -100,7 +100,7 @@ export const KeyboardShortcuts: React.FC = () => {
       onClick={() => setIsOpen(false)}
     >
       <div
-        className="bg-surface-base border border-rmpg-600 shadow-md w-full max-w-2xl max-h-[65vh] flex flex-col"
+        className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[65vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -109,7 +109,7 @@ export const KeyboardShortcuts: React.FC = () => {
             <Keyboard className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">Keyboard Shortcuts</h2>
           </div>
-          <button type="button"
+          <button
             onClick={() => setIsOpen(false)}
             className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors"
           >

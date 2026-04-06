@@ -107,7 +107,7 @@ export default function TimeEntryEditModal({
             required
             value={clockIn}
             onChange={e => setClockIn(e.target.value)}
-            className="input-dark min-h-[36px]"
+            className="input-dark"
           />
         </div>
         <div>
@@ -116,7 +116,7 @@ export default function TimeEntryEditModal({
             type="datetime-local"
             value={clockOut}
             onChange={e => setClockOut(e.target.value)}
-            className="input-dark min-h-[36px]"
+            className="input-dark"
           />
           {!clockOut && <p className="text-[9px] text-amber-400 mt-1">Leave blank if still active</p>}
         </div>

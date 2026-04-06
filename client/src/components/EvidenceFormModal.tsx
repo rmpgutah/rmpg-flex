@@ -309,8 +309,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
 
           <div>
             <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes</label>
-            <textarea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} maxLength={3000} />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
+            <textarea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} />
           </div>
         </div>
       )}

@@ -4,7 +4,7 @@
 
 import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment, BodyCamera, BodyCamVideo } from '../../../types';
 
-export interface OfficerWithStatus extends Omit<UserType, 'status'> {
+export interface OfficerWithStatus extends UserType {
   status: string;
 }
 

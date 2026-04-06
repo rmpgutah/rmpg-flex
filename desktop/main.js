@@ -30,7 +30,7 @@ const REMOTE_SERVER_URL = DEV_MODE
   ? 'http://localhost:3001'
   : (process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us');
 const UPDATE_SERVER_URL = DEV_MODE
-  ? 'http://localhost:3001'
+  ? `http://localhost:${SERVER_PORT}`
   : 'github';
 
 let mainWindow = null;
@@ -72,7 +72,6 @@ function getIconPath() {
 
 // ─── Splash Screen ──────────────────────────────────────────
 function createSplashWindow() {
-  if (!app.isReady()) { console.warn('[APP] createSplashWindow called before ready — skipping'); return; }
   splashWindow = new BrowserWindow({
     width: 420,
     height: 320,
@@ -296,11 +295,6 @@ function getOfflineHTML() {
 
 // ─── Window Creation ────────────────────────────────────────
 async function createMainWindow() {
-  // Guard: BrowserWindow cannot be created before app is ready
-  if (!app.isReady()) {
-    console.warn('[APP] createMainWindow called before app.isReady — deferring');
-    await app.whenReady();
-  }
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -407,22 +401,6 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
-
-// Force clear all caches and reload — called by web app update banner
-ipcMain.handle('app:force-refresh', async () => {
-  if (mainWindow) {
-    await mainWindow.webContents.session.clearCache();
-    await mainWindow.webContents.session.clearStorageData({
-      storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
-    });
-    await mainWindow.webContents.executeJavaScript(`
-      if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
-      if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
-    `).catch(() => {});
-    mainWindow.webContents.reload();
-  }
-  return { success: true };
-});
 
 // ─── IP Geolocation Fallback ─────────────────────────────────
 // Desktop machines often lack GPS hardware. When Chromium's
@@ -622,26 +600,7 @@ function createMenu() {
           click: async () => {
             if (mainWindow) {
               await mainWindow.webContents.session.clearCache();
-              await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
-              mainWindow.webContents.reload();
-            }
-          },
-        },
-        {
-          label: 'Full Reset & Reload',
-          accelerator: 'CmdOrCtrl+Shift+F5',
-          click: async () => {
-            if (mainWindow) {
-              // Nuclear option: clear everything except cookies (preserves login)
-              await mainWindow.webContents.session.clearCache();
-              await mainWindow.webContents.session.clearStorageData({
-                storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
-              });
-              // Also clear via JS in the page
-              await mainWindow.webContents.executeJavaScript(`
-                if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
-                if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
-              `).catch(() => {});
+              await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
               mainWindow.webContents.reload();
             }
           },

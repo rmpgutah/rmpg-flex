@@ -96,8 +96,6 @@ let startupTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // ── HTTP helpers ────────────────────────────────────────────
 
-const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB — reject oversized responses to prevent memory exhaustion
-
 async function fetchPage(url: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -107,10 +105,6 @@ async function fetchPage(url: string): Promise<string> {
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
-    const contentLength = res.headers.get('content-length');
-    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
-      throw new Error(`Response too large (${contentLength} bytes) from ${url}`);
-    }
     return await res.text();
   } finally {
     clearTimeout(timeout);
@@ -720,7 +714,6 @@ async function fetchSaltLakeRoster(): Promise<string> {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body: body.toString(),
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
         if (!res.ok) break;
@@ -1045,7 +1038,7 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
   try {
     const infoRes = await fetch(
       `https://omsweb.public-safety-cloud.com/publicroster-api/api/${facilityName}/get-agency-info`,
-      { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
+      { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } }
     );
 
     if (infoRes.ok) {
@@ -1070,7 +1063,6 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
               Accept: 'application/json',
             },
             body: JSON.stringify({}),
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           }
         );
 
@@ -1096,7 +1088,6 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
       const pageRes = await fetch(pageUrl, {
         headers: { 'User-Agent': USER_AGENT },
         redirect: 'follow',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       const pageHtml = await pageRes.text();
@@ -1121,7 +1112,6 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
             Accept: 'application/json',
             Referer: pageRes.url,
           },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
         if (apiRes.ok) {
@@ -1298,7 +1288,6 @@ async function fetchUtahCountyRoster(): Promise<string> {
       const url = `https://sheriff.utahcounty.gov/api/search/name/${encodeURIComponent(letter)}`;
       const res = await fetch(url, {
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) continue;
@@ -1418,7 +1407,6 @@ async function fetchTooeleRoster(): Promise<string> {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body.toString(),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!res.ok) throw new Error(`Tooele roster HTTP ${res.status}`);
@@ -2232,7 +2220,6 @@ async function fetchMaricopaAzRoster(): Promise<string> {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body: body.toString(),
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
         if (!searchRes.ok) continue;

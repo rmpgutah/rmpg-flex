@@ -64,14 +64,11 @@ export function liveBroadcast(req: Request, res: Response, next: NextFunction): 
 
   // Override res.json to intercept the response
   const originalJson = res.json.bind(res);
-  // [FIX 92] Track whether we've already broadcast for this response to prevent double-broadcasts
-  let broadcasted = false;
 
   res.json = function (body: any) {
     // Only broadcast on success (2xx status codes)
     const statusCode = res.statusCode;
-    if (statusCode >= 200 && statusCode < 300 && !broadcasted) {
-      broadcasted = true;
+    if (statusCode >= 200 && statusCode < 300) {
       // Find matching channel for this API path
       for (const [prefix, channel] of Object.entries(PATH_TO_CHANNEL)) {
         if (req.path.startsWith(prefix)) {

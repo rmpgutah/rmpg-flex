@@ -58,6 +58,4 @@ firebase-debug.log
 # ─── TypeScript Cache ─────────────────────────────
 *.tsbuildinfo
 .claude/
-.github/*
-!.github/dependabot.yml
-.firecrawl/
+.github/

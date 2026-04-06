@@ -34,19 +34,23 @@ function escapeCsvValue(value: any): string {
  * @param columns  Array of { key, header } objects defining columns
  * @param rows     Array of data objects whose properties correspond to column keys
  */
+const CSV_MAX_ROWS = 10_000;
+
 export function sendCsv(
   res: Response,
   filename: string,
   columns: CsvColumn[],
   rows: any[],
 ): void {
-  // [FIX 99] Sanitize filename to prevent header injection (strip newlines and quotes)
-  const safeFilename = filename.replace(/[\r\n"]/g, '_');
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+  if (rows.length > CSV_MAX_ROWS) {
+    res.status(413).json({
+      error: `Export too large (${rows.length.toLocaleString()} rows). Maximum is ${CSV_MAX_ROWS.toLocaleString()}. Narrow your date range or add filters.`,
+    });
+    return;
+  }
 
-  // [FIX 100] Add BOM for proper UTF-8 handling in Excel
-  const bom = '\uFEFF';
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
   const headerRow = columns.map((col) => escapeCsvValue(col.header)).join(',');
 
@@ -54,7 +58,7 @@ export function sendCsv(
     columns.map((col) => escapeCsvValue(row[col.key])).join(','),
   );
 
-  const csv = bom + [headerRow, ...dataRows].join('\r\n');
+  const csv = [headerRow, ...dataRows].join('\r\n');
 
   res.send(csv);
 }
