@@ -387,6 +387,21 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    // Prevent duplicate active incidents for the same call
+    if (call_id) {
+      const existingIncident = db.prepare(
+        "SELECT id, incident_number FROM incidents WHERE call_id = ? AND status NOT IN ('closed', 'archived') AND archived_at IS NULL"
+      ).get(call_id) as any;
+      if (existingIncident) {
+        res.status(409).json({
+          error: `An active incident (${existingIncident.incident_number}) is already linked to this call`,
+          code: 'CALL_ALREADY_HAS_INCIDENT',
+          existing_incident_id: existingIncident.id,
+        });
+        return;
+      }
+    }
+
     // Auto-resolve client_id from property if not provided
     let resolvedClientId = requestClientId || null;
     if (!resolvedClientId && property_id) {

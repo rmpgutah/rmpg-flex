@@ -419,7 +419,7 @@ router.post('/persons', (req: Request, res: Response) => {
       photo_url, flags, notes,
     } = req.body;
 
-    if (!first_name || !last_name) {
+    if (!String(first_name || '').trim() || !String(last_name || '').trim()) {
       res.status(400).json({ error: 'first_name and last_name are required', code: 'FIRSTNAME_AND_LASTNAME_ARE' });
       return;
     }
@@ -511,8 +511,8 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       first_name: v => v || null, last_name: v => v || null, middle_name: v => v ?? null,
       alias_nickname: v => v ?? null, dob: v => v ?? null, gender: v => v ?? null,
       race: v => v ?? null, height: v => v ?? null,
-      height_feet: v => v != null && v !== '' ? parseInt(v, 10) : null,
-      height_inches: v => v != null && v !== '' ? parseInt(v, 10) : null,
+      height_feet: v => { if (v == null || v === '') return null; const f = parseInt(v, 10); return f >= 0 && f <= 9 ? f : null; },
+      height_inches: v => { if (v == null || v === '') return null; const i = parseInt(v, 10); return i >= 0 && i <= 11 ? i : null; },
       weight: v => v ?? null,
       build: v => v ?? null, complexion: v => v ?? null, hair_color: v => v ?? null,
       eye_color: v => v ?? null, scars_marks_tattoos: v => v ?? null,
@@ -527,7 +527,8 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       employer: v => v ?? null, occupation: v => v ?? null,
       emergency_contact_name: v => v ?? null, emergency_contact_phone: v => v ?? null,
       gang_affiliation: v => v ?? null,
-      is_sex_offender: v => v ? 1 : 0, is_veteran: v => v ? 1 : 0,
+      is_sex_offender: v => (v === true || v === 1 || v === '1') ? 1 : 0,
+      is_veteran: v => (v === true || v === 1 || v === '1') ? 1 : 0,
       language: v => v ?? null, place_of_birth: v => v ?? null,
       citizenship: v => v ?? null, marital_status: v => v ?? null,
       hair_length: v => v ?? null, hair_style: v => v ?? null,
@@ -827,6 +828,12 @@ router.post('/vehicles', (req: Request, res: Response) => {
       stolen_status, stolen_date, recovery_date,
       flags, notes,
     } = req.body;
+
+    // Require at least one identifying field
+    if (!plate_number?.trim() && !vin?.trim() && !(make?.trim() && model?.trim())) {
+      res.status(400).json({ error: 'Vehicle must have plate_number, VIN, or make+model', code: 'VEHICLE_NEEDS_IDENTIFIER' });
+      return;
+    }
 
     const result = db.prepare(`
       INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
@@ -1262,6 +1269,22 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
     if (!evidence) {
       res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
       return;
+    }
+
+    // Lock disposed evidence from modification
+    if (evidence.status === 'disposed') {
+      res.status(403).json({ error: 'Cannot modify disposed evidence', code: 'EVIDENCE_DISPOSED_LOCKED' });
+      return;
+    }
+
+    // Lock court-submitted evidence critical fields
+    const lockedFields = ['storage_location', 'lab_name', 'lab_case_number', 'description', 'evidence_type'];
+    if (evidence.lab_submitted) {
+      const attemptedLocked = Object.keys(req.body).filter(k => lockedFields.includes(k));
+      if (attemptedLocked.length > 0) {
+        res.status(403).json({ error: `Cannot modify ${attemptedLocked.join(', ')} on court-submitted evidence`, code: 'EVIDENCE_COURT_LOCKED' });
+        return;
+      }
     }
 
     // Build dynamic SET clause — only update fields explicitly provided
