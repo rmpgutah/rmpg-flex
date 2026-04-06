@@ -1326,4 +1326,50 @@ router.get('/court-records/stats', requireRole('admin', 'manager', 'supervisor')
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// National Warrant Search
+// ════════════════════════════════════════════════════════════
+router.post('/national-search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { firstName, lastName, dob, state, offenseLevel, warrantType, chargeKeyword, limit: reqLimit } = req.body;
+    const startTime = Date.now();
+    let where = "WHERE status = 'active'";
+    const params: any[] = [];
+    if (firstName?.trim()) { where += ' AND LOWER(first_name) LIKE LOWER(?)'; params.push(`%${firstName.trim()}%`); }
+    if (lastName?.trim()) { where += ' AND LOWER(last_name) LIKE LOWER(?)'; params.push(`%${lastName.trim()}%`); }
+    if (dob?.trim()) { where += ' AND date_of_birth = ?'; params.push(dob.trim()); }
+    if (state?.trim()) { where += ' AND state = ?'; params.push(state.trim().toUpperCase()); }
+    if (offenseLevel) { where += ' AND offense_level = ?'; params.push(offenseLevel); }
+    if (warrantType) { where += ' AND warrant_type = ?'; params.push(warrantType); }
+    if (chargeKeyword?.trim()) { where += ' AND LOWER(charge_description) LIKE LOWER(?)'; params.push(`%${chargeKeyword.trim()}%`); }
+    const maxRows = Math.min(500, parseInt(String(reqLimit), 10) || 200);
+    const results = db.prepare(`SELECT * FROM scraped_warrants ${where} ORDER BY last_seen_at DESC LIMIT ?`).all(...params, maxRows) as any[];
+    const byState: Record<string, any[]> = {};
+    for (const r of results) { const st = r.state || 'Unknown'; if (!byState[st]) byState[st] = []; byState[st].push(r); }
+    let localResults: any[] = [];
+    if (firstName?.trim() || lastName?.trim()) {
+      let lw = 'WHERE 1=1';
+      const lp: any[] = [];
+      if (firstName?.trim()) { lw += ' AND LOWER(p.first_name) LIKE LOWER(?)'; lp.push(`%${firstName.trim()}%`); }
+      if (lastName?.trim()) { lw += ' AND LOWER(p.last_name) LIKE LOWER(?)'; lp.push(`%${lastName.trim()}%`); }
+      localResults = db.prepare(`SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id ${lw} ORDER BY w.created_at DESC LIMIT 50`).all(...lp);
+    }
+    auditLog(req, 'SEARCH' as any, 'warrant' as any, 0, `National search: ${[firstName, lastName, state].filter(Boolean).join(' ')}`);
+    res.json({ scraped: byState, local: localResults, meta: { duration: Date.now() - startTime, totalScraped: results.length, totalLocal: localResults.length, totalHits: results.length + localResults.length, statesHit: Object.keys(byState).length } });
+  } catch (error: any) { console.error('National search error:', error); res.status(500).json({ error: 'National search failed', code: 'NATIONAL_SEARCH_ERROR' }); }
+});
+
+router.get('/national-coverage', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sources = db.prepare("SELECT state, COUNT(*) as source_count, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as enabled_count, MAX(last_scrape_at) as last_scrape_at FROM warrant_scraper_config WHERE state IS NOT NULL AND state != '' GROUP BY state").all() as any[];
+    const warrants = db.prepare("SELECT state, COUNT(*) as active_count FROM scraped_warrants WHERE status = 'active' AND state IS NOT NULL AND state != '' GROUP BY state").all() as any[];
+    const wm: Record<string, number> = {};
+    for (const w of warrants) wm[w.state] = w.active_count;
+    const coverage = sources.map((s: any) => ({ state: s.state, sourceCount: s.source_count, enabledCount: s.enabled_count, activeWarrants: wm[s.state] || 0, lastScraped: s.last_scrape_at, status: s.enabled_count > 0 && s.last_scrape_at ? 'active' : s.enabled_count > 0 ? 'pending' : 'disabled' }));
+    res.json({ states: coverage, totals: { sources: sources.reduce((s: number, x: any) => s + x.source_count, 0), enabled: sources.reduce((s: number, x: any) => s + x.enabled_count, 0), activeWarrants: Object.values(wm).reduce((s, c) => s + c, 0), statesCovered: sources.length } });
+  } catch (error: any) { console.error('National coverage error:', error); res.status(500).json({ error: 'Failed to get coverage', code: 'NATIONAL_COVERAGE_ERROR' }); }
+});
+
 export default router;
