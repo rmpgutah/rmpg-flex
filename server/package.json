@@ -47,7 +47,7 @@
   },
   "overrides": {
     "dompurify": "file:./stubs/dompurify",
-    "path-to-regexp": ">=0.1.13",
+    "path-to-regexp": "0.1.12",
     "picomatch": ">=4.0.4",
     "lodash": ">=4.18.0"
   },
