@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Database,
   UserCircle,
@@ -63,9 +64,22 @@ const timeAgo = (date: string): string => {
 export default function RecordsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const [urlParams] = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+
+  // Handle cross-module navigation params (?tab=persons&personId=X)
+  useEffect(() => {
+    const tab = urlParams.get('tab');
+    const personId = urlParams.get('personId');
+    if (tab && ['persons', 'vehicles', 'properties', 'evidence'].includes(tab)) {
+      setActiveTab(tab as TabId);
+    }
+    if (personId && tab === 'persons') {
+      setSearchQuery(personId);
+    }
+  }, []); // Only on mount
 
   // Data state
   const [persons, setPersons] = useState<Person[]>([]);
