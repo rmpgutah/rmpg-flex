@@ -24,7 +24,7 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 | **Mobile** | Capacitor (Android APK) |
 | **PDF** | jsPDF for reports, citations, patrol logs |
 | **Voice** | Edge TTS neural voice with radio audio processing |
-| **Styling** | Spillman Flex / Motorola Solutions dark theme — `#141e2b` base, `#d4a017` gold accent |
+| **Styling** | Spillman Flex / Motorola Solutions dark theme — `#0a0a0a` pure black base, `#d4a017` gold accent |
 
 ## Architecture
 
@@ -117,22 +117,24 @@ export default function SomePage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SECTION TITLE" icon={SomeIcon} />
       {/* Surface colors: bg-surface-base, bg-surface-raised, bg-surface-sunken */}
-      {/* Borders: border-[#1e3048], Gold accent: text-[#d4a017] */}
+      {/* Borders: border-[#222222], Gold accent: text-[#d4a017] */}
     </div>
   );
 }
 ```
 
-### Design System (Spillman Flex / Motorola Solutions)
+### Design System (Spillman Flex / Motorola Solutions — Pure Black)
 ```
-Surface colors: #141e2b (base), #1a2636 (raised), #0d1520 (sunken)
-Brand blue:    #1a5a9e    Brand gold: #d4a017
-Border:        #1e3048 (default), #2a3e58 (strong)
+Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken)
+Brand gray:    #888888    Brand gold: #d4a017
+Border:        #222222 (default), #2e2e2e (strong)
 All radius:    2px (sharp CAD console corners — never rounded-lg)
 Shadows:       Subtle only — depth via 3D beveled borders, not drop shadows
-Panel headers: Gold text + chrome gradient background
+Panel headers: Gold text + dark gradient background
 LED indicators: Green/red/amber dots with box-shadow glow
 Fonts:         System sans-serif for UI, JetBrains Mono for data/readouts
+CSS variables: --surface-base, --surface-raised, --brand-blue (now gray), --border-default
+Tailwind blue palette: Overridden to grayscale (text-blue-500 renders gray)
 ```
 
 ### WebSocket Broadcasts
@@ -145,7 +147,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 - Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
 - GeoJSON layers: beat.geojson (719 features), county.geojson, municipality.geojson, highway.geojson
-- Service Worker (sw.js v80) pre-caches tiles for Utah operational area
+- Service Worker (sw.js v145) pre-caches tiles for Utah operational area
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
 ## Development
@@ -195,19 +197,54 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - Call type protocols: 70+ incident types with auto-priority/flags/backup rules
 - Edge TTS voice with radio squelch beeps, bandpass EQ, pink noise static
 
+### CRM (OVERWATCH)
+- `crm_leads`, `crm_proposals`, `crm_tasks`, `crm_payments`, `crm_proposal_versions`
+- Pipeline funnel, revenue trends, invoice aging, recurring billing
+- API: `/api/crm/*`, `/api/crm-leads/*`, `/api/crm-proposals/*`
+- Page: `CrmPage.tsx` with ProposalsTab, LeadsTab, dashboard
+
+### HR & Personnel
+- `hr_disciplinary`, `hr_performance_reviews`, `hr_pay_periods`, `leave_requests`, `overtime_requests`
+- Time & attendance with date range, batch clock-in, edit history
+- API: `/api/hr/*`, `/api/personnel/*`
+- Page: `pages/hr/HrPage.tsx` (directory-based with tabs)
+
+### Forensics Lab (IPED)
+- Digital forensics case management, exhibits, chain of custody
+- IPED integration for hash set analysis
+- API: `/api/forensics/*`, `/api/iped/*`
+- Page: `ForensicLabPage.tsx`
+
+### Court Tracker
+- Court events, subpoenas, continuances, outcome recording
+- API: `/api/court/*`
+- Page: `CourtTrackerPage.tsx`
+
+### Warrant Intelligence
+- Utah warrant scraper with IP-block detection, adaptive rate limiting
+- Universal warrant scanner (auto-checks persons linked to calls)
+- Dashboard with severity badges, scan feed, link-to-call
+- API: `/api/warrants/*` (dashboard/stats, dashboard/feed, unified)
+- Page: `WarrantsPage.tsx` with dashboard, warrants, watch_hits, person intel tabs
+
+### Integration Hub
+- Integration health monitoring with WebSocket alerts
+- ClearPathGPS v3 API, weather auto-fill, body/dash cameras
+- API: `/api/clearpathgps/*`, `/api/dashcam-videos/*`
+
 ## Common Gotchas
 
 1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption
 2. **rsync --delete** in deploy — production-only dirs are excluded, don't remove those excludes
 3. **Electron desktop app** is in `desktop/` with its own `package.json` and `node_modules`
-4. **Large files** — DispatchPage.tsx (6,386 lines), MapPage.tsx (5,488 lines), dispatch calls.ts (2,185 lines)
+4. **Large files** — DispatchPage.tsx (~6,400 lines), MapPage.tsx (~5,500 lines), dispatch calls.ts (~2,200 lines)
 5. **Service Worker versioning** — bump `CACHE_NAME` in `sw.js` when changing client assets
 6. **Electron cache** — users must quit + clear `~/Library/Application Support/rmpg-flex-desktop/Cache` or press Cmd+Shift+R
 7. **Auth middleware name** — it's `authenticateToken` not `authenticate`
 8. **API fetch** — use `apiFetch()` from `hooks/useApi.ts`, not `useApi()` hook
 9. **Database migrations** — all in `database.ts` using `addCol()` helper, lazy CREATE TABLE patterns
 10. **Deploy from worktree** — `deploy.sh` auto-detects project root, works from any worktree
-11. **CSS overrides** — global Spillman enforcement rules at end of `index.css` force 2px radius, navy backgrounds, subtle shadows
+11. **CSS overrides** — global Spillman enforcement rules at end of `index.css` force 2px radius, black backgrounds, subtle shadows
 12. **nginx /downloads/** — proxied to Node.js (port 3001), not served as static files
 13. **Dispatch layout** — DispatchPage uses `flex h-full` row layout. Never wrap in flex-col or add block children — use `position: fixed` for overlays
 14. **Electron full cache clear** — `pkill -f "RMPG Flex"; sleep 1; rm -rf ~/Library/Application\ Support/rmpg-flex-desktop/{Cache,Service\ Worker,GPUCache,Code\ Cache}`
