@@ -3,9 +3,9 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
-// v45: Offline tile layer caching (CartoDB dark_matter Z7-15).
-//      Pre-downloads 1,738 tiles (~11 MB) for Utah operational
-//      area so maps work on vehicle WiFi dead zones.
+// v146: Offline tile layer caching (CartoDB dark_matter Z7-15).
+//       Pre-downloads 1,738 tiles (~11 MB) for Utah operational
+//       area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
 const CACHE_NAME = 'rmpg-flex-v146';
