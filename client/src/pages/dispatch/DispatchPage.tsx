@@ -2774,15 +2774,20 @@ export default function DispatchPage() {
                   <div className="field-label mb-2">Notes</div>
                   {Array.isArray(selectedCall.notes) && selectedCall.notes.length > 0 && (
                     <div className="space-y-2 mb-3">
-                      {selectedCall.notes.map((note) => (
-                        <div key={note.id} className="text-xs">
+                      {selectedCall.notes.map((note, ni) => {
+                        // Guard: if note is a string (not parsed object), render directly
+                        if (typeof note === 'string') return <div key={ni} className="text-xs text-rmpg-200">{note}</div>;
+                        const noteText = typeof note?.text === 'string' ? note.text : (typeof note?.text === 'object' ? JSON.stringify(note.text) : String(note?.text ?? ''));
+                        return (
+                        <div key={note?.id || ni} className="text-xs">
                           <div className="flex items-center gap-2 text-rmpg-400">
-                            <span className="font-bold">{note.author || 'System'}</span>
-                            <span className="font-mono">{formatTime(note.timestamp)}</span>
+                            <span className="font-bold">{String(note?.author || 'System')}</span>
+                            <span className="font-mono">{formatTime(note?.timestamp)}</span>
                           </div>
-                          <div className="text-rmpg-200 mt-0.5">{note.text}</div>
+                          <div className="text-rmpg-200 mt-0.5">{noteText}</div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   {/* Add note input — mobile */}
@@ -5425,10 +5430,12 @@ export default function DispatchPage() {
                         <p className="text-[9px] text-[#374151]">Add a note below to get started</p>
                       </div>
                     ) : (
-                      (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#14141420]" style={{ borderLeft: '2px solid #88888840' }}>
-                        <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
-                        <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
+                      (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note, ni) => {
+                      if (typeof note === 'string') return <div key={ni} className="text-xs text-[#e5e7eb] px-2 py-1">{note}</div>;
+                      return (
+                      <div key={note?.id || ni} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#14141420]" style={{ borderLeft: '2px solid #88888840' }}>
+                        <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note?.timestamp)}</span>
+                        <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{String(note?.author || 'System')}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
                             <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
@@ -5439,7 +5446,7 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(typeof note?.text === 'string' ? note.text : String(note?.text ?? ''))}{note?.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
                                 <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#999999] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
@@ -5449,7 +5456,8 @@ export default function DispatchPage() {
                           </>
                         )}
                       </div>
-                      ))
+                      );
+                      })
                     )}
                   </div>
                   <div className="flex-shrink-0">
