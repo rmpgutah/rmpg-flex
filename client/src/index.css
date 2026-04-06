@@ -48,8 +48,6 @@
     overflow-x: hidden;
     /* iOS Safari: respect notch/home indicator safe areas */
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    /* Spillman Flex: subtle noise texture on body */
-    background-image:
   }
 }
 
@@ -59,11 +57,6 @@
    ────────────────────────────────────────────────────────────── */
 
 /* Subtle vignette on the app shell — darker edges like a CRT monitor */
-@media (min-width: 768px) {
-  #root {
-    background-image:
-  }
-}
 
 /* ALL page containers get a subtle top-line accent */
 [role="main"],
