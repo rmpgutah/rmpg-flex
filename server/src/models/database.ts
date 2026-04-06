@@ -4185,8 +4185,38 @@ function migrateSchema(): void {
 
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
+  addCol('warrant_scraper_config', 'display_name', 'TEXT');
+  addCol('warrant_scraper_config', 'source_type', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
+
+  // ── Seed warrant scraper sources (Federal + Mountain West) ──
+  {
+    const seedSrc = db.prepare(`INSERT OR IGNORE INTO warrant_scraper_config (source_key, state, county, source_url, source_name, source_type, scrape_interval_minutes, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    // Federal
+    seedSrc.run('federal_fbi_wanted', 'US', '', 'https://api.fbi.gov/wanted/v1/list', 'FBI Most Wanted', 'api', 360, 1);
+    seedSrc.run('federal_usmarshals_mostwanted', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/15-most-wanted-fugitive', 'US Marshals 15 Most Wanted', 'html', 1440, 0);
+    // Colorado
+    seedSrc.run('co_denver_warrants', 'CO', 'Denver', 'https://www.metrodenvercrimestoppers.com/', 'Metro Denver Crime Stoppers', 'html', 720, 1);
+    seedSrc.run('co_jefferson_warrants', 'CO', 'Jefferson', 'https://crimewatch.net/us/co/jefferson/warrants', 'Jefferson County CRIMEWATCH', 'html', 720, 0);
+    seedSrc.run('co_adams_warrants', 'CO', 'Adams', 'https://adamscosheriff.net/portal/MostWanted', 'Adams County Most Wanted', 'html', 720, 0);
+    seedSrc.run('co_arapahoe_warrants', 'CO', 'Arapahoe', 'https://court.auroragov.org/warrant', 'Arapahoe/Aurora Warrant Search', 'search_form', 720, 0);
+    // Wyoming
+    seedSrc.run('wy_laramie_warrants', 'WY', 'Laramie', 'https://www.laramiecountywy.gov/County-Government/Elected-Officials/Laramie-County-Sheriffs-Office/Most-Wanted', 'Laramie County Most Wanted', 'html', 720, 0);
+    seedSrc.run('wy_natrona_warrants', 'WY', 'Natrona', 'https://warrants.natronacounty-wy.gov/', 'Natrona County Warrant Search', 'search_form', 720, 0);
+    // Idaho
+    seedSrc.run('id_ada_warrants', 'ID', 'Ada', 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx', 'Ada County Warrant Search', 'search_form', 720, 0);
+    seedSrc.run('id_bannock_warrants', 'ID', 'Bannock', 'https://www.pocatello.us/DocumentCenter/View/565/Most-Wanted-List-PDF', 'Bannock County Most Wanted (PDF)', 'pdf', 1440, 0);
+    // Montana
+    seedSrc.run('mt_flathead_warrants', 'MT', 'Flathead', 'https://apps.flathead.mt.gov/warrants/warrants_list.php', 'Flathead County Warrants', 'html', 720, 1);
+    seedSrc.run('mt_yellowstone_warrants', 'MT', 'Yellowstone', 'https://www.yellowstonecountymt.gov/justicecourt/JCWarrants.asp', 'Yellowstone County Warrants', 'html', 720, 0);
+    // Nevada
+    seedSrc.run('nv_washoe_warrants', 'NV', 'Washoe', 'https://secretwitness.com/current-cases/current-fugitive-cases/', 'Washoe County / Secret Witness', 'html', 720, 1);
+    // Arizona
+    seedSrc.run('az_pima_warrants', 'AZ', 'Pima', 'https://88crime.org/category/wanted-fugitives/', 'Pima County / 88-CRIME', 'html', 720, 1);
+    // New Mexico
+    seedSrc.run('nm_bernalillo_warrants', 'NM', 'Bernalillo', 'https://bcapp.bernco.gov/BCSO_WarrantInterWITS/', 'Bernalillo County WITS', 'search_form', 720, 0);
+  }
 
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
