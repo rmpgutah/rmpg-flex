@@ -591,6 +591,28 @@ router.delete('/persons/:id', (req: Request, res: Response) => {
       return;
     }
 
+    // Check for linked active calls
+    try {
+      const linkedCalls = db.prepare(
+        "SELECT COUNT(*) as cnt FROM call_persons WHERE person_id = ?"
+      ).get(person.id) as any;
+      if (linkedCalls?.cnt > 0) {
+        res.status(409).json({ error: `Cannot delete: person is linked to ${linkedCalls.cnt} call(s)`, code: 'PERSON_HAS_LINKED_CALLS' });
+        return;
+      }
+    } catch { /* call_persons table may not exist — skip check */ }
+
+    // Check for active warrants
+    try {
+      const activeWarrants = db.prepare(
+        "SELECT COUNT(*) as cnt FROM warrants WHERE subject_person_id = ? AND status = 'active'"
+      ).get(person.id) as any;
+      if (activeWarrants?.cnt > 0) {
+        res.status(409).json({ error: `Cannot delete: person has ${activeWarrants.cnt} active warrant(s)`, code: 'PERSON_HAS_WARRANTS' });
+        return;
+      }
+    } catch { /* warrants table may not exist — skip check */ }
+
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_persons WHERE person_id = ?').run(person.id);
       db.prepare('UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?').run(person.id);

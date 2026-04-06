@@ -327,6 +327,16 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
+    // Max length validation
+    if (location_address && String(location_address).length > 500) {
+      res.status(400).json({ error: 'Location address too long (max 500 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+    if (description && String(description).length > 10000) {
+      res.status(400).json({ error: 'Description too long (max 10000 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+
     // Fix 51: Normalize incident_type for consistent heatmap grouping (trim, lowercase)
     const normalizedIncidentType = String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_');
 
@@ -1061,6 +1071,16 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
     // Upgrade 16: Validate location_address if being updated
     if (location_address !== undefined && String(location_address).trim().length < 3) {
       res.status(400).json({ error: 'location_address must be at least 3 characters', code: 'ADDRESS_TOO_SHORT' });
+      return;
+    }
+
+    // Max length validation
+    if (location_address && String(location_address).length > 500) {
+      res.status(400).json({ error: 'Location address too long (max 500 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+    if (description && String(description).length > 10000) {
+      res.status(400).json({ error: 'Description too long (max 10000 chars)', code: 'FIELD_TOO_LONG' });
       return;
     }
 

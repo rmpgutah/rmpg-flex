@@ -387,6 +387,12 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    // Max length validation
+    if (narrative && String(narrative).length > 50000) {
+      res.status(400).json({ error: 'Narrative too long (max 50000 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+
     // Prevent duplicate active incidents for the same call
     if (call_id) {
       const existingIncident = db.prepare(

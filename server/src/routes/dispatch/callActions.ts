@@ -224,6 +224,15 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
       return;
     }
 
+    // Reject off-duty or out-of-service units
+    if (['off_duty', 'out_of_service'].includes(unit.status)) {
+      res.status(409).json({
+        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`,
+        code: 'UNIT_UNAVAILABLE',
+      });
+      return;
+    }
+
     // Allow multi-dispatch: units can be assigned to multiple calls at the same location
     // Only block if the other call is at a DIFFERENT location (safety check)
     if (unit.current_call_id && unit.current_call_id !== call.id) {
@@ -556,6 +565,13 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     // Transaction: update call + free units + activity log atomically
     let freedUnitIds: number[] = [];
     const statusTx = db.transaction(() => {
+      // Re-read status inside transaction to prevent concurrent update race
+      const freshCall = db.prepare('SELECT status FROM calls_for_service WHERE id = ?').get(call.id) as any;
+      if (freshCall.status !== call.status) {
+        // Status changed between read and write — abort
+        throw new Error('STALE_STATUS');
+      }
+
       db.prepare(updateQuery).run(...updateParams);
 
       // ── PSO 72-hour deadline: set precise deadline when PSO call is cleared/closed ──
@@ -608,7 +624,15 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         VALUES (?, 'status_change', 'call', ?, ?, ?)
       `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
     });
-    statusTx();
+    try {
+      statusTx();
+    } catch (err: any) {
+      if (err.message === 'STALE_STATUS') {
+        res.status(409).json({ error: 'Call status changed by another user. Please refresh.', code: 'STALE_STATUS' });
+        return;
+      }
+      throw err;
+    }
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     if (!updated) {
