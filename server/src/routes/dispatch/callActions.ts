@@ -641,6 +641,23 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     }
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
 
+    // Notify assigned officers of status changes
+    try {
+      let unitIds: number[] = [];
+      try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+      for (const uid of unitIds) {
+        const unitRow = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(uid) as any;
+        if (unitRow?.officer_id && unitRow.officer_id !== req.user!.userId) {
+          createNotification(
+            unitRow.officer_id, 'dispatch',
+            `Call ${call.call_number}: ${status.replace(/_/g, ' ')}`,
+            `${call.incident_type} — status changed to ${status}`,
+            'call', call.id, status === 'cancelled' ? 'high' : 'normal',
+          );
+        }
+      }
+    } catch { /* non-critical */ }
+
     // Start welfare monitoring for high-priority calls when going onscene
     if (status === 'onscene') {
       try {

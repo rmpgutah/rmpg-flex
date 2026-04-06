@@ -309,8 +309,6 @@ export default function IncidentsPage() {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      // Use apiFetch for proper token refresh handling; keepalive ensures
-      // the request completes even during page navigation
       apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -319,6 +317,25 @@ export default function IncidentsPage() {
       }).catch(() => { /* best-effort save */ });
     };
   }, []);
+
+  // Debounced narrative auto-save (every 10s while editing)
+  const [narrativeLastSaved, setNarrativeLastSaved] = useState<string | null>(null);
+  const narrativeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isEditing || !selectedIncident) return;
+    if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current);
+    narrativeAutoSaveTimer.current = setTimeout(() => {
+      const narrative = narrativeRef.current?.value;
+      if (narrative == null || !selectedIncidentRef.current) return;
+      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ narrative }),
+      }).then(() => {
+        setNarrativeLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }).catch(() => { /* silent fail — unmount save is the fallback */ });
+    }, 10000);
+    return () => { if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current); };
+  }, [isEditing, selectedIncident]);
 
   // ============================================================
   // Fetch incidents
@@ -1517,6 +1534,11 @@ export default function IncidentsPage() {
                   if (narrativeRef.current) narrativeRef.current.value = narrative;
                 }}
               />
+              {narrativeLastSaved && (
+                <div className="text-[9px] text-rmpg-500 mt-1 flex items-center gap-1">
+                  <CheckCircle className="w-2.5 h-2.5 text-green-500" /> Auto-saved at {narrativeLastSaved}
+                </div>
+              )}
             </>
           ) : (
             <>

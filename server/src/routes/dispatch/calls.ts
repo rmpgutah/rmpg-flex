@@ -1818,10 +1818,9 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
     }
 
     // Upgrade 21: Disposition required for clearing/closing in bulk
-    if (['cleared', 'closed'].includes(status) && !disposition) {
-      res.status(400).json({ error: 'Disposition is required when clearing or closing calls', code: 'DISPOSITION_REQUIRED' });
-      return;
-    }
+    // (Falls back to each call's existing disposition if not provided in bulk request)
+    const requiresDisposition = ['cleared', 'closed'].includes(status);
+    // No longer rejecting — will inherit from existing call.disposition per call
 
     const now = localNow();
     const timestampField: Record<string, string> = {
@@ -1836,8 +1835,12 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
         const id = parseInt(String(callId), 10);
         if (isNaN(id) || id < 1) continue;
 
-        const call = db.prepare('SELECT id, call_number, status FROM calls_for_service WHERE id = ?').get(id) as any;
+        const call = db.prepare('SELECT id, call_number, status, disposition FROM calls_for_service WHERE id = ?').get(id) as any;
         if (!call || call.status === 'archived') continue;
+
+        // For clear/close, require a disposition (from request or existing on call)
+        const resolvedDisposition = disposition || call.disposition;
+        if (requiresDisposition && !resolvedDisposition) continue; // skip calls without disposition
 
         let updateSql = `UPDATE calls_for_service SET status = ?, status_changed_at = ?, updated_at = ?`;
         const updateParams: any[] = [status, now, now];
@@ -1846,9 +1849,9 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
           updateSql += `, ${tsField} = COALESCE(${tsField}, ?)`;
           updateParams.push(now);
         }
-        if (disposition) {
+        if (resolvedDisposition) {
           updateSql += `, disposition = ?`;
-          updateParams.push(disposition);
+          updateParams.push(resolvedDisposition);
         }
         updateSql += ` WHERE id = ?`;
         updateParams.push(id);
