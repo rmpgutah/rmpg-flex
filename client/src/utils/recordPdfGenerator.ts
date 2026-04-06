@@ -1461,7 +1461,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   const cw = getContentWidth(doc);
 
   // Determine priority — escalate if active warrants or BOLO
-  const hasActiveWarrants = data.warrants && data.warrants.some(w => w.status === 'active');
+  const hasActiveWarrants = (data.warrants || []).some(w => w.status === 'active');
   const prio = hasActiveWarrants ? 'critical' : data.bolo_active ? 'high' : 'routine';
 
   const personName = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
@@ -1675,7 +1675,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       rows: [],
       y,
     });
-    const warrantRows = data.warrants.map(w => [
+    const warrantRows = (data.warrants || []).map(w => [
       w.warrant_number || 'N/A',
       titleCase(w.type || ''),
       titleCase(w.status || ''),
@@ -1709,7 +1709,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       rows: [],
       y,
     });
-    const incidentRows = data.incidents.map(inc => [
+    const incidentRows = (data.incidents || []).map(inc => [
       inc.incident_number || 'N/A',
       titleCase((inc.incident_type || '').replace(/_/g, ' ')),
       titleCase(inc.role || ''),
@@ -1741,7 +1741,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       rows: [],
       y,
     });
-    const citationRows = data.citations.map(c => [
+    const citationRows = (data.citations || []).map(c => [
       c.citation_number || 'N/A',
       titleCase(c.type || ''),
       titleCase(c.status || ''),
@@ -1773,7 +1773,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       rows: [],
       y,
     });
-    const callRows = data.calls.map(c => [
+    const callRows = (data.calls || []).map(c => [
       c.call_number || 'N/A',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
       (c.status || '').toUpperCase(),
@@ -1810,7 +1810,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
     // Summary table — quick reference overview
     const crCw = getContentWidth(doc);
-    const crRows = data.criminal_records.map(r => [
+    const crRows = (data.criminal_records || []).map(r => [
       (r.record_type || '').replace(/_/g, ' ').toUpperCase(),
       r.offense || 'N/A',
       (r.offense_level || '').toUpperCase() || 'N/A',
@@ -1884,7 +1884,8 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       return cy;
     };
 
-    for (let ri = 0; ri < data.criminal_records.length; ri++) {
+    const crimRecords = data.criminal_records || [];
+    for (let ri = 0; ri < crimRecords.length; ri++) {
       const slotIndex = ri % recordsPerPage; // 0, 1, or 2 within current page
 
       // New page for every batch of 3 (including the first batch — summary table stays on its own page)
@@ -1895,10 +1896,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
       // Position this record in its evenly-distributed slot
       const slotY = pageTopY + slotIndex * slotH;
-      const cardEndY = renderRecordCard(data.criminal_records[ri], ri, slotY);
+      const cardEndY = renderRecordCard(crimRecords[ri], ri, slotY);
 
       // Draw subtle divider between records on same page
-      if (slotIndex < recordsPerPage - 1 && ri < data.criminal_records.length - 1) {
+      if (slotIndex < recordsPerPage - 1 && ri < crimRecords.length - 1) {
         const dividerY = pageTopY + (slotIndex + 1) * slotH - 2;
         doc.setDrawColor(...COLOR.BORDER_TABLE);
         doc.setLineWidth(BORDER.TABLE_ROW);
@@ -1906,7 +1907,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       }
 
       // Track y for last record position
-      if (ri === data.criminal_records.length - 1) {
+      if (ri === crimRecords.length - 1) {
         y = cardEndY;
       }
     }
@@ -2208,7 +2209,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
 
   // Service Attempts (conditional)
   if (data.service_attempts && data.service_attempts.length > 0) {
-    const attemptRows: FormRow[] = data.service_attempts.map((a, i) => ({
+    const attemptRows: FormRow[] = (data.service_attempts || []).map((a, i) => ({
       cells: [
         { label: `${i + 1}. DATE`, value: fmtTimestamp(a.attempted_at), ratio: 1 },
         { label: 'METHOD', value: a.method || '', ratio: 1, align: 'center' as const },
@@ -2219,7 +2220,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     }));
     // Add notes sub-rows for attempts that have them
     const fullRows: FormRow[] = [];
-    data.service_attempts.forEach((a, i) => {
+    (data.service_attempts || []).forEach((a, i) => {
       fullRows.push(attemptRows[i]);
       if (a.notes) {
         fullRows.push({ cells: [{ label: 'NOTES', value: a.notes, ratio: 1 }] });
@@ -2313,7 +2314,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   if (data.chain_of_custody && data.chain_of_custody.length > 0) {
     y = checkPageBreak(doc, y, 25);
     const sec = openAutoSection(doc, 'Chain of Custody', y); y = sec.contentY;
-    const custodyRows = data.chain_of_custody.map(c => [
+    const custodyRows = (data.chain_of_custody || []).map(c => [
       fmtTimestamp(c.timestamp),
       (c.action || '').toUpperCase(),
       c.from_person || '',
@@ -2495,7 +2496,7 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     { let cx = lx; for (const w of adjFuelColW) { fuelColPos.push(cx); cx += w; } }
     const fuelHeaders = ['Date', 'Station', 'Gal', '$/Gal', 'Cost', 'Odometer', 'Dist', 'MPG', '$/Mi']
       .map((label, i) => ({ label, x: fuelColPos[i] }));
-    const fuelRows = data.fuel_logs.map(f => {
+    const fuelRows = (data.fuel_logs || []).map(f => {
       const dist = f.calc_distance ?? f.distance ?? null;
       const mpg = f.mpg ?? f.efficiency ?? null;
       const cpm = f.cost_per_mile ?? null;
@@ -2539,7 +2540,7 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     { let cx = lx; for (const w of maintColW) { maintColPos.push(cx); cx += w; } }
     const maintHeaders = ['Date', 'Description', 'Cost', 'Odometer', 'Vendor']
       .map((label, i) => ({ label, x: maintColPos[i] }));
-    const maintRows = data.maintenance_logs.map(m => [
+    const maintRows = (data.maintenance_logs || []).map(m => [
       fmtDate(m.service_date),
       (m.description || '').substring(0, 45),
       m.cost ? `$${m.cost.toFixed(2)}` : '',
@@ -2553,7 +2554,7 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   if (reportType === 'mileage_summary' && data.fuel_logs && data.fuel_logs.length > 0) {
     // Group fuel logs by date and calculate distance per day
     const byDate: Record<string, { distance: number; gallons: number; cost: number }> = {};
-    for (const f of data.fuel_logs) {
+    for (const f of (data.fuel_logs || [])) {
       const dateKey = f.fuel_date?.split('T')[0] || 'Unknown';
       if (!byDate[dateKey]) byDate[dateKey] = { distance: 0, gallons: 0, cost: 0 };
       byDate[dateKey].distance += f.distance || 0;
@@ -2794,7 +2795,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of credColW) { credColPos.push(cx); cx += w; } }
     const credHeaders = ['Type', 'Number', 'Issuing Authority', 'Issued', 'Expiry', 'Status']
       .map((label, i) => ({ label, x: credColPos[i] }));
-    const credRows = data.credentials.map(c => [
+    const credRows = (data.credentials || []).map(c => [
       (c.type || '').substring(0, 28),
       (c.credential_number || '').substring(0, 22),
       (c.issuing_authority || '').substring(0, 28),
@@ -2808,8 +2809,8 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   // ── TRAINING RECORDS TABLE ──
   if ((reportType === 'full' || reportType === 'training') && data.training_records && data.training_records.length > 0) {
     // Summary stats
-    const totalHours = data.training_records.reduce((s, t) => s + (t.hours || 0), 0);
-    const completedCount = data.training_records.filter(t => t.status === 'completed').length;
+    const totalHours = (data.training_records || []).reduce((s, t) => s + (t.hours || 0), 0);
+    const completedCount = (data.training_records || []).filter(t => t.status === 'completed').length;
     y = drawFormSection(doc, {
       sideTab: { label: 'TRAIN' },
       topBanner: true,
@@ -2830,7 +2831,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of trainColW) { trainColPos.push(cx); cx += w; } }
     const trainHeaders = ['Course', 'Category', 'Provider', 'Completed', 'Expiry', 'Hours', 'Status']
       .map((label, i) => ({ label, x: trainColPos[i] }));
-    const trainRows = data.training_records.map(t => [
+    const trainRows = (data.training_records || []).map(t => [
       (t.course_name || '').substring(0, 35),
       (t.category || '').substring(0, 16),
       (t.provider || '').substring(0, 24),
@@ -2862,7 +2863,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of equipColW) { equipColPos.push(cx); cx += w; } }
     const equipHeaders = ['Type', 'Serial #', 'Make / Model', 'Condition', 'Status', 'Issued']
       .map((label, i) => ({ label, x: equipColPos[i] }));
-    const equipRows = data.equipment_list.map(eq => [
+    const equipRows = (data.equipment_list || []).map(eq => [
       (eq.equipment_type || '').substring(0, 24),
       (eq.serial_number || '').substring(0, 22),
       [eq.make, eq.model].filter(Boolean).join(' ').substring(0, 22),
@@ -2893,7 +2894,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of camColW) { camColPos.push(cx); cx += w; } }
     const camHeaders = ['Camera ID', 'Make', 'Model', 'Status', 'Condition', 'Assigned']
       .map((label, i) => ({ label, x: camColPos[i] }));
-    const camRows = data.body_cameras.map(cam => [
+    const camRows = (data.body_cameras || []).map(cam => [
       (cam.camera_id || '').substring(0, 22),
       (cam.make || '').substring(0, 24),
       (cam.model || '').substring(0, 24),
@@ -2924,7 +2925,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of depColW) { depColPos.push(cx); cx += w; } }
     const depHeaders = ['Property', 'Position', 'Start', 'End', 'Hrs/Wk', 'Status']
       .map((label, i) => ({ label, x: depColPos[i] }));
-    const depRows = data.deployments.map(d => [
+    const depRows = (data.deployments || []).map(d => [
       (d.property_name || '').substring(0, 35),
       (d.position || '').substring(0, 16),
       fmtDate(d.start_date),
@@ -2937,7 +2938,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
   // ── TIME & ATTENDANCE TABLE ──
   if ((reportType === 'full' || reportType === 'time') && data.time_entries && data.time_entries.length > 0) {
-    const totalHours = data.time_entries.reduce((s, t) => s + (t.total_hours || 0), 0);
+    const totalHours = (data.time_entries || []).reduce((s, t) => s + (t.total_hours || 0), 0);
     y = drawFormSection(doc, {
       sideTab: { label: 'TIME' },
       topBanner: true,
@@ -2957,7 +2958,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of timeColW) { timeColPos.push(cx); cx += w; } }
     const timeHeaders = ['Clock In', 'Clock Out', 'Hours', 'Status']
       .map((label, i) => ({ label, x: timeColPos[i] }));
-    const timeRows = data.time_entries.map(t => [
+    const timeRows = (data.time_entries || []).map(t => [
       fmtDateTime(t.clock_in),
       t.clock_out ? fmtDateTime(t.clock_out) : 'Active',
       t.total_hours != null ? t.total_hours.toFixed(2) : '-',
@@ -3391,8 +3392,8 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
   // Sort by severity: felony first
   const severityOrder: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
   const sorted = [...subjects].sort((a, b) => {
-    const aSev = Math.min(...a.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
-    const bSev = Math.min(...b.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
+    const aSev = Math.min(...(a.warrants || []).map(w => severityOrder[w.offense_level || ''] ?? 4));
+    const bSev = Math.min(...(b.warrants || []).map(w => severityOrder[w.offense_level || ''] ?? 4));
     return aSev - bSev;
   });
 
@@ -3441,7 +3442,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
     doc.text(`${subj.last_name || '?'}, ${subj.first_name || '?'}`.toUpperCase(), margin + 2, y + 5);
 
     // Severity badge on right
-    const topSev = subj.warrants.reduce((best, w) => {
+    const topSev = (subj.warrants || []).reduce((best, w) => {
       const o = severityOrder[w.offense_level || ''] ?? 4;
       return o < best.o ? { o, label: w.offense_level || '' } : best;
     }, { o: 4, label: '' });
@@ -3496,7 +3497,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
     }
 
     // Warrants table
-    if (subj.warrants.length > 0) {
+    if ((subj.warrants || []).length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_LABEL);
@@ -3514,7 +3515,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_VALUE);
 
-      for (const w of subj.warrants) {
+      for (const w of (subj.warrants || [])) {
         if (y > 260) {
           doc.addPage();
           addConfidentialWatermark(doc);
@@ -3609,7 +3610,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
   y += 7;
 
   // Summary stats
-  const statusEntries = Object.entries(data.byStatus);
+  const statusEntries = Object.entries(data.byStatus || {});
   const totalWarrants = statusEntries.reduce((s, [, n]) => s + n, 0);
 
   y = drawFormSection(doc, {
@@ -3677,9 +3678,9 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
   const leftX = margin;
   const rightX = margin + halfW + 4;
 
-  const typeEntries = Object.entries(data.byType);
-  const sevEntries = Object.entries(data.bySeverity);
-  const sourceEntries = Object.entries(data.bySource);
+  const typeEntries = Object.entries(data.byType || {});
+  const sevEntries = Object.entries(data.bySeverity || {});
+  const sourceEntries = Object.entries(data.bySource || {});
 
   const y1 = drawBreakdownTable('BY TYPE', typeEntries, y, leftX, halfW);
   const y2 = drawBreakdownTable('BY SEVERITY', sevEntries, y, rightX, halfW);
@@ -3693,7 +3694,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
   }
 
   // Top Courts table
-  if (data.topCourts.length > 0) {
+  if ((data.topCourts || []).length > 0) {
     y += 2;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
@@ -3712,7 +3713,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
-    for (const court of data.topCourts) {
+    for (const court of (data.topCourts || [])) {
       doc.setTextColor(...COLOR.TEXT_VALUE);
       doc.text(court.issuing_court || 'Unknown', margin + 2, y + 3);
       doc.setTextColor(...COLOR.TEXT_LABEL);

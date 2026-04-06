@@ -99,10 +99,10 @@ function formatTime(isoStr: string): string {
   } catch { return isoStr; }
 }
 
-function formatDate(isoStr: string | null): string {
+function formatDate(isoStr: string | null | undefined): string {
   if (!isoStr) return '-';
   try {
-    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   } catch { return isoStr; }
 }
 
@@ -338,7 +338,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // ── Per-Unit Summary Cards ─────────────────────────
   drawSectionHeader('Unit Summary');
 
-  for (const trail of data.trails) {
+  for (const trail of (data.trails || [])) {
     ensureSpace(25);
 
     // Unit header line — light bg with accent left edge
@@ -373,7 +373,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       `MOVING: ${stats.moving_points} (${movingPct}%)`,
       `MAX SPEED: ${stats.max_speed_mph} MPH`,
       `AVG SPEED: ${stats.avg_speed_mph} MPH`,
-      `CALLS: ${trail.response_segments.length}`,
+      `CALLS: ${(trail.response_segments || []).length}`,
       `ZONES: ${zonesCount}`,
       ...(sourceStr ? [`SOURCES: ${sourceStr}`] : []),
     ];
@@ -393,7 +393,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // Detail Pages — per-unit breadcrumb table
   // ════════════════════════════════════════════════════════
 
-  for (const trail of data.trails) {
+  for (const trail of (data.trails || [])) {
     newPage();
 
     // Section header — light bg
@@ -434,10 +434,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     // Sample points for readability — if > 300 points, sample every Nth
     const maxRows = 300;
-    const sampleRate = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
+    const trailPoints = trail.points || [];
+    const sampleRate = trailPoints.length > maxRows ? Math.ceil(trailPoints.length / maxRows) : 1;
 
-    for (let i = 0; i < trail.points.length; i += sampleRate) {
-      const pt = trail.points[i];
+    for (let i = 0; i < trailPoints.length; i += sampleRate) {
+      const pt = trailPoints[i];
 
       ensureSpace(5);
       if (yPos === margin + 18) {
@@ -490,12 +491,13 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       yPos += 2;
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.setFontSize(5.5);
-      doc.text(`* Showing every ${sampleRate}${sampleRate === 2 ? 'nd' : sampleRate === 3 ? 'rd' : 'th'} point (${trail.points.length} total breadcrumbs)`, margin, yPos);
+      doc.text(`* Showing every ${sampleRate}${sampleRate === 2 ? 'nd' : sampleRate === 3 ? 'rd' : 'th'} point (${trailPoints.length} total breadcrumbs)`, margin, yPos);
       yPos += 5;
     }
 
     // ── Response Time Segments ──────────────────────────
-    if (trail.response_segments.length > 0) {
+    const responseSegs = trail.response_segments || [];
+    if (responseSegs.length > 0) {
       ensureSpace(30); // header (10) + col headers (6) + at least 2 rows (10)
       drawSectionHeader('Response Time Segments');
 
@@ -519,8 +521,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-      for (let si = 0; si < trail.response_segments.length; si++) {
-        const seg = trail.response_segments[si];
+      for (let si = 0; si < responseSegs.length; si++) {
+        const seg = responseSegs[si];
         ensureSpace(5);
 
         if (si % 2 === 0) {
@@ -617,7 +619,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
   // ── Save the PDF ─────────────────────────────────────
   const dateStr = localToday().replace(/-/g, '');
-  const firstCallSign = data.trails[0]?.call_sign || 'ALL';
+  const firstCallSign = (data.trails || [])[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
   } catch (err) {

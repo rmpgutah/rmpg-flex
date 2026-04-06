@@ -1332,7 +1332,14 @@ export function addImageToPage(
   maxWidth: number,
   maxHeight: number,
 ): { w: number; h: number } {
-  const aspect = (image.height > 0) ? image.width / image.height : 1;
+  // Safety: guard against zero/missing dimensions
+  if (!image.width || !image.height || image.width === 0 || image.height === 0) {
+    try {
+      doc.addImage(image.dataUrl, image.format, x, y, maxWidth, maxHeight);
+    } catch { /* image failed — skip silently */ }
+    return { w: maxWidth, h: maxHeight };
+  }
+  const aspect = image.width / image.height;
   let renderW = maxWidth;
   let renderH = aspect > 0 ? renderW / aspect : maxHeight;
   if (renderH > maxHeight) {
@@ -1373,6 +1380,7 @@ export function addImageGrid(
   const captionH = 4;
 
   let y = startY;
+  if (!images || !Array.isArray(images) || images.length === 0) return y;
 
   for (let i = 0; i < images.length; i += 2) {
     const rowImages = images.slice(i, i + 2);
