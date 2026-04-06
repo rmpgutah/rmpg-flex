@@ -2365,6 +2365,16 @@ export interface IntegrationHealthAlert {
 
 // --- CRM Types ---
 
+export interface CrmDashboardStats {
+  total_leads: number;
+  active_leads: number;
+  total_proposals: number;
+  total_tasks: number;
+  pipeline_value: number;
+  conversion_rate: number;
+  [key: string]: any;
+}
+
 export interface CrmLead {
   id: number;
   company_name: string;
@@ -2593,11 +2603,13 @@ export interface ServeSkipTrace {
   id: number;
   serve_job_id: number;
   source: string;
-  results?: string;
+  search_type?: string;
+  results?: any;
   addresses_found?: number;
   phones_found?: number;
   created_by?: number;
   created_at: string;
+  [key: string]: any;
 }
 
 // --- Email ---
@@ -2697,7 +2709,9 @@ export interface TrustedDevice {
   os?: string;
   ip_address?: string;
   last_used_at: string;
+  trusted_until?: string;
   created_at: string;
+  [key: string]: any;
 }
 
 // --- Sex Offender Registry ---

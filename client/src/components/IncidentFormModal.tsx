@@ -24,6 +24,7 @@ interface IncidentFormModalProps {
   dispositionCodes?: {code: string; description: string; color?: string}[];
   clients?: { id: string; name: string }[];
   defaultType?: string;
+  prefillData?: any;
 }
 
 export interface IncidentFormData {

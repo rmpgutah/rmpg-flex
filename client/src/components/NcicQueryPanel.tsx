@@ -326,7 +326,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
           // Collect results, track errors
           const xref: CrossReferenceResults = {
-            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], errors: [],
+            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [],
           };
 
           if (personResult.status === 'fulfilled') {

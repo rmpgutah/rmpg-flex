@@ -88,3 +88,7 @@ export function sanitizeInput(req: Request, _res: Response, next: NextFunction):
 
   next();
 }
+
+export function escapeLike(str: string): string {
+  return String(str).replace(/[%_\\]/g, "\\$&");
+}

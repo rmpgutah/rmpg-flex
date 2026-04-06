@@ -10,13 +10,14 @@ import BoloAlertBanner from './BoloAlertBanner';
 import { useDistrictIdentify } from '../hooks/useDistrictLookup';
 import { fetchWeather, wmoToFormValue } from '../utils/weather';
 
-interface NewCallModalProps {
+export interface NewCallModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (call: Partial<CallForService>) => void | Promise<void>;
+  onSubmit: (call: Partial<CallForService> & Record<string, any>) => void | Promise<void>;
   properties?: { id: string; name: string }[];
   clients?: { id: string; name: string }[];
   initialData?: Partial<Record<string, any>>;
+  defaultMode?: string;
 }
 
 const DRAFT_KEY = 'rmpg_new_call_draft';

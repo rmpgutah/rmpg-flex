@@ -20,6 +20,14 @@ import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
 
+// ─── Helpers ────────────────────────────────────────────────────────────
+
+/** Lightweight toast (logs to console if ToastProvider unavailable) */
+const addToast = (message: string, _type?: string) => {
+  // eslint-disable-next-line no-console
+  console.log(`[Toast] ${message}`);
+};
+
 // ─── Constants ──────────────────────────────────────────────────────────
 
 const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';

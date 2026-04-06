@@ -60,7 +60,7 @@ function AddressTypeBadge({ type }: { type: string }) {
 
 // ─── Address Match Check ────────────────────────────────────────────────
 
-function normalizeAddr(s: string | null): string {
+function normalizeAddr(s: string | null | undefined): string {
   if (!s) return '';
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }

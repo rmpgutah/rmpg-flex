@@ -6,6 +6,7 @@ import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord,
 
 export interface OfficerWithStatus extends UserType {
   status: string;
+  archived_at?: string | null;
 }
 
 export function mapUser(row: any): OfficerWithStatus {

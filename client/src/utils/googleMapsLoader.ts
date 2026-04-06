@@ -337,15 +337,15 @@ export const OFFLINE_TILE_MIN_ZOOM = 7;
 export const OFFLINE_TILE_MAX_ZOOM = 15;
 
 /** Monitor tile loading status (returns cleanup function) */
-export function monitorTileLoading(map: google.maps.Map, onStatusChange: (loading: boolean) => void): () => void {
-  let pendingTiles = 0;
+export function monitorTileLoading(map: google.maps.Map, callbacks: any): () => void {
+  const onStatusChange = typeof callbacks === 'function' ? callbacks : () => {};
   const listener1 = map.addListener('tilesloading', () => {
-    pendingTiles++;
-    onStatusChange(true);
+    if (typeof callbacks === 'object' && callbacks.onStalled) callbacks.onStalled();
+    else onStatusChange(true);
   });
   const listener2 = map.addListener('idle', () => {
-    pendingTiles = 0;
-    onStatusChange(false);
+    if (typeof callbacks === 'object' && callbacks.onLoaded) callbacks.onLoaded();
+    else onStatusChange(false);
   });
   return () => {
     google.maps.event.removeListener(listener1);
@@ -353,8 +353,8 @@ export function monitorTileLoading(map: google.maps.Map, onStatusChange: (loadin
   };
 }
 
-/** Add an offline tile overlay layer to the map */
-export function addOfflineTileLayer(map: google.maps.Map): google.maps.ImageMapType {
+/** Add an offline tile overlay layer to the map (returns cleanup function) */
+export function addOfflineTileLayer(map: google.maps.Map): () => void {
   const offlineTiles = new google.maps.ImageMapType({
     getTileUrl: (coord: google.maps.Point, zoom: number) => {
       if (zoom < OFFLINE_TILE_MIN_ZOOM || zoom > OFFLINE_TILE_MAX_ZOOM) return '';
@@ -366,5 +366,8 @@ export function addOfflineTileLayer(map: google.maps.Map): google.maps.ImageMapT
     minZoom: OFFLINE_TILE_MIN_ZOOM,
   });
   map.overlayMapTypes.push(offlineTiles);
-  return offlineTiles;
+  return () => {
+    const idx = map.overlayMapTypes.indexOf(offlineTiles as any);
+    if (idx >= 0) map.overlayMapTypes.removeAt(idx);
+  };
 }

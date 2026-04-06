@@ -50,6 +50,8 @@ interface AddressAutocompleteProps {
   country?: string;
   /** Restrict to address results only (default: true) */
   addressOnly?: boolean;
+  /** Auto-focus the input on mount */
+  autoFocus?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────

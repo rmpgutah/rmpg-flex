@@ -22,6 +22,8 @@ interface AuthContextType {
   dismiss2FASetup: () => void;
   error: string | null;
   clearError: () => void;
+  verifyWebAuthn?: () => Promise<void>;
+  twoFactorMethods?: { totp?: boolean; webauthn?: boolean; [key: string]: any };
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
