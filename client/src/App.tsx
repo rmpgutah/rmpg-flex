@@ -24,6 +24,7 @@ import AuditLogPage from './pages/AuditLogPage';
 import PatrolPage from './pages/PatrolPage';
 import FleetPage from './pages/fleet';
 import WarrantsPage from './pages/WarrantsPage';
+import NationalWarrantSearchPage from './pages/NationalWarrantSearchPage';
 import CitationsPage from './pages/CitationsPage';
 import FieldInterviewsPage from './pages/FieldInterviewsPage';
 import TrespassOrdersPage from './pages/TrespassOrdersPage';
@@ -176,6 +177,7 @@ function AppRoutes() {
           <Route path="/body-cameras" element={<BodyCamerasPage />} />
           <Route path="/dash-cameras" element={<DashCamerasPage />} />
           <Route path="/warrants" element={<WarrantsPage />} />
+          <Route path="/national-warrants" element={<NationalWarrantSearchPage />} />
           <Route path="/citations" element={<CitationsPage />} />
           <Route path="/field-interviews" element={<FieldInterviewsPage />} />
           <Route path="/trespass-orders" element={<TrespassOrdersPage />} />

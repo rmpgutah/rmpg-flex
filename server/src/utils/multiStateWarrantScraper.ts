@@ -2,7 +2,7 @@
 // Multi-State Warrant Scraper
 // ============================================================
 // Scrapes active warrant / most-wanted lists from county sheriff
-// websites across UT, CO, WY, ID, NV, AZ, NM. Also extracts
+// websites across UT, CO, WY, ID, NV, AZ, NM, MT + federal (FBI). Also extracts
 // warrant-related bookings from existing arrest_records.
 //
 // Complements the existing Utah-only warrants.utah.gov live-search
@@ -526,6 +526,297 @@ const mcsoWarrantParser: WarrantParser = {
 };
 
 
+// ── FBI Wanted API (Federal) ───────────────────────────────
+// Fully public JSON API — best structured source available
+
+const fbiWantedParser: WarrantParser = {
+  sourceKey: 'federal_fbi_wanted',
+  parseWarrants(content: string): WarrantEntry[] {
+    try {
+      const data = JSON.parse(content);
+      const items = data.items || [];
+      return items.map((item: any) => {
+        const fullName = (item.title || '').trim();
+        const { first, middle, last } = splitName(fullName);
+        return {
+          warrant_id: item.uid || `fbi-${(item['@id'] || '').split('/').pop() || ''}`,
+          full_name: fullName,
+          first_name: first,
+          last_name: last,
+          middle_name: middle,
+          date_of_birth: item.dates_of_birth_used?.[0] || '',
+          age: item.age_range ? parseInt(item.age_range) : null,
+          gender: item.sex || '',
+          race: item.race || '',
+          city: '',
+          state: 'US',
+          warrant_type: item.person_classification === 'Main' ? 'fugitive' : 'arrest',
+          case_number: item.ncic || '',
+          court_name: 'Federal -- FBI',
+          issue_date: item.publication || '',
+          charge_description: item.description
+            ? stripHtml(item.description).substring(0, 500)
+            : (item.caution ? stripHtml(item.caution).substring(0, 500) : ''),
+          bail_amount: item.reward_text || '',
+          offense_level: 'felony',
+          photo_url: item.images?.[0]?.large || item.images?.[0]?.thumb || '',
+          detail_url: item.url || '',
+        };
+      });
+    } catch {
+      return [];
+    }
+  },
+};
+
+// ── Washoe County / Secret Witness (Reno NV) ──────────────
+// WordPress blog with card layout
+
+const washoeWarrantParser: WarrantParser = {
+  sourceKey: 'nv_washoe_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const postPattern = /<article[^>]*>[\s\S]*?<\/article>/gi;
+    const posts = html.match(postPattern) || [];
+
+    for (const post of posts) {
+      const titleMatch = post.match(/<h2[^>]*class="[^"]*entry-title[^"]*"[^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i);
+      const contentMatch = post.match(/<div[^>]*class="[^"]*entry-content[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+      const imgMatch = post.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+
+      if (!titleMatch) continue;
+
+      const fullName = stripHtml(titleMatch[2]);
+      if (fullName.length < 3 || fullName.length > 80) continue;
+      const detailUrl = titleMatch[1] || '';
+      const content = contentMatch ? stripHtml(contentMatch[1]).substring(0, 500) : '';
+      const photoUrl = imgMatch?.[1] || '';
+
+      const { first, middle, last } = splitName(fullName);
+      entries.push({
+        warrant_id: `sw-${fullName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`.substring(0, 80),
+        full_name: fullName,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        date_of_birth: '',
+        age: null,
+        gender: '',
+        race: '',
+        city: 'Reno',
+        state: 'NV',
+        warrant_type: 'fugitive',
+        case_number: '',
+        court_name: 'Washoe County',
+        issue_date: '',
+        charge_description: content,
+        bail_amount: '',
+        offense_level: content.toLowerCase().includes('felon') ? 'felony' : 'misdemeanor',
+        photo_url: photoUrl,
+        detail_url: detailUrl,
+      });
+    }
+    return entries;
+  },
+};
+
+// ── Pima County / 88-CRIME (Tucson AZ) ────────────────────
+// WordPress card/grid layout for wanted fugitives
+
+const pimaWarrantParser: WarrantParser = {
+  sourceKey: 'az_pima_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const postPattern = /<article[^>]*>[\s\S]*?<\/article>/gi;
+    const posts = html.match(postPattern) || [];
+
+    for (const post of posts) {
+      const titleMatch = post.match(/<h[23][^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i);
+      const imgMatch = post.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const contentMatch = post.match(/<div[^>]*class="[^"]*(?:entry-content|excerpt)[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+
+      if (!titleMatch) continue;
+
+      const fullName = stripHtml(titleMatch[2]);
+      if (/^(armed|robbery|homicide|shooting|burglary|theft|assault)/i.test(fullName)) continue;
+      if (fullName.length < 3 || fullName.length > 80) continue;
+
+      const detailUrl = titleMatch[1] || '';
+      const content = contentMatch ? stripHtml(contentMatch[1]).substring(0, 500) : '';
+      const photoUrl = imgMatch?.[1] || '';
+
+      const { first, middle, last } = splitName(fullName);
+      entries.push({
+        warrant_id: `88c-${fullName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`.substring(0, 80),
+        full_name: fullName,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        date_of_birth: '',
+        age: null,
+        gender: '',
+        race: '',
+        city: 'Tucson',
+        state: 'AZ',
+        warrant_type: 'fugitive',
+        case_number: '',
+        court_name: 'Pima County',
+        issue_date: '',
+        charge_description: content,
+        bail_amount: '',
+        offense_level: content.toLowerCase().includes('felon') ? 'felony' : 'misdemeanor',
+        photo_url: photoUrl,
+        detail_url: detailUrl,
+      });
+    }
+    return entries;
+  },
+};
+
+// ── Metro Denver Crime Stoppers (CO) ───────────────────────
+// CMS-based layout with wanted person cards
+
+const denverCrimeStoppersParser: WarrantParser = {
+  sourceKey: 'co_denver_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+
+    const postPattern = /<article[^>]*>[\s\S]*?<\/article>/gi;
+    const posts = html.match(postPattern) || [];
+
+    for (const post of posts) {
+      const titleMatch = post.match(/<h[2-4][^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i);
+      const imgMatch = post.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const contentMatch = post.match(/<div[^>]*class="[^"]*(?:entry-content|excerpt|summary)[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+
+      if (!titleMatch) continue;
+
+      const fullName = stripHtml(titleMatch[2]);
+      if (/^(armed|robbery|homicide|shooting|burglary|theft|assault|case|incident)/i.test(fullName)) continue;
+      if (fullName.length < 3 || fullName.length > 80) continue;
+
+      const detailUrl = titleMatch[1] || '';
+      const content = contentMatch ? stripHtml(contentMatch[1]).substring(0, 500) : '';
+      const photoUrl = imgMatch?.[1] || '';
+
+      const { first, middle, last } = splitName(fullName);
+      entries.push({
+        warrant_id: `mdcs-${fullName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`.substring(0, 80),
+        full_name: fullName,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        date_of_birth: '',
+        age: null,
+        gender: '',
+        race: '',
+        city: 'Denver',
+        state: 'CO',
+        warrant_type: 'fugitive',
+        case_number: '',
+        court_name: 'Metro Denver Crime Stoppers',
+        issue_date: '',
+        charge_description: content,
+        bail_amount: '',
+        offense_level: content.toLowerCase().includes('felon') ? 'felony' : 'misdemeanor',
+        photo_url: photoUrl,
+        detail_url: detailUrl,
+      });
+    }
+
+    if (entries.length === 0) {
+      return createGenericWarrantParser('co_denver_warrants').parseWarrants(html);
+    }
+    return entries;
+  },
+};
+
+// ── Flathead County MT ─────────────────────────────────────
+// Clean HTML table layout at apps.flathead.mt.gov
+
+const flatheadWarrantParser: WarrantParser = {
+  sourceKey: 'mt_flathead_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const cells: string[] = [];
+      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch: RegExpExecArray | null;
+      while ((tdMatch = tdRe.exec(match[1])) !== null) {
+        cells.push(stripHtml(tdMatch[1]));
+      }
+      if (cells.length < 2) continue;
+
+      if (cells[0].match(/^(Name|Defendant|Last|First|Warrant|#|ID)$/i)) continue;
+
+      let nameCell = '';
+      let charges = '';
+      let caseNum = '';
+      let warrantType = '';
+      let issueDate = '';
+      let bail = '';
+      let dob = '';
+      let age: number | null = null;
+      let city = '';
+
+      for (const cell of cells) {
+        if (!nameCell && cell.match(/[A-Z]{2,}/i) && (cell.includes(',') || cell.includes(' '))) {
+          if (!cell.match(/^\d/) && cell.length > 3 && cell.length < 60) {
+            nameCell = cell;
+          }
+        } else if (cell.match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/) && !dob) {
+          if (cell.match(/\b(19|20)\d{2}/)) dob = cell;
+          else if (!issueDate) issueDate = cell;
+        } else if (cell.match(/^\d{1,3}$/) && !age) {
+          age = parseInt(cell);
+        } else if (cell.match(/\$[\d,.]+/)) {
+          bail = cell;
+        } else if (cell.match(/(warrant|bench|arrest|FTA|fugitive)/i)) {
+          warrantType = cell;
+        } else if (cell.match(/(case|CR|CF|MC|CV|DR)-?\d/i) || cell.match(/^\d{2,4}-[A-Z]{1,3}-\d+$/i)) {
+          caseNum = cell;
+        } else if (cell.match(/^[A-Z][a-z]+(\s[A-Z][a-z]+)?$/)) {
+          if (!city) city = cell;
+        } else if (cell.length > 10 && !charges) {
+          charges = cell;
+        }
+      }
+      if (!nameCell) continue;
+
+      const { first, middle, last } = splitName(nameCell);
+      const wId = `fhc-${last}-${first}-${caseNum || entries.length}`.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 80);
+
+      entries.push({
+        warrant_id: wId,
+        full_name: nameCell,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        date_of_birth: dob,
+        age,
+        gender: '',
+        race: '',
+        city: city || 'Flathead County',
+        state: 'MT',
+        warrant_type: warrantType || 'arrest',
+        case_number: caseNum,
+        court_name: 'Flathead County',
+        issue_date: issueDate,
+        charge_description: charges,
+        bail_amount: bail,
+        offense_level: charges.toLowerCase().includes('felon') ? 'felony' : '',
+        photo_url: '',
+        detail_url: '',
+      });
+    }
+    return entries;
+  },
+};
+
+
 // ════════════════════════════════════════════════════════════
 //  PARSER REGISTRY
 // ════════════════════════════════════════════════════════════
@@ -534,6 +825,12 @@ const WARRANT_PARSERS: Record<string, WarrantParser> = {
   co_el_paso_warrants: elPasoCoWarrantParser,
   nv_clark_warrants: lvmpdWarrantParser,
   az_maricopa_warrants: mcsoWarrantParser,
+  // ── New parsers ──
+  federal_fbi_wanted: fbiWantedParser,
+  nv_washoe_warrants: washoeWarrantParser,
+  az_pima_warrants: pimaWarrantParser,
+  co_denver_warrants: denverCrimeStoppersParser,
+  mt_flathead_warrants: flatheadWarrantParser,
   // All other sources use createGenericWarrantParser() as fallback
 };
 
@@ -764,8 +1061,10 @@ async function scrapeSource(sourceKey: string): Promise<{
     return { records_found: 0, inserted: 0, updated: 0, cleared: 0 };
   }
 
-  // API sources (like Utah warrants.utah.gov) are handled by utahWarrantScraper
-  if (config.source_type === 'api') {
+  // API sources without a dedicated parser (like Utah warrants.utah.gov)
+  // are handled by utahWarrantScraper -- skip them here.
+  // API sources WITH a registered parser (e.g. FBI API) get fetched + parsed normally.
+  if (config.source_type === 'api' && !WARRANT_PARSERS[sourceKey]) {
     return { records_found: 0, inserted: 0, updated: 0, cleared: 0 };
   }
 

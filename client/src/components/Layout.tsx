@@ -48,6 +48,7 @@ import {
   Mail,
   GraduationCap,
   Microscope,
+  Globe,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -90,6 +91,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
+  '/national-warrants': 'National Warrant Search',
   '/citations': 'Citations',
   '/field-interviews': 'Field Interviews',
   '/trespass-orders': 'Trespass Orders',
@@ -151,6 +153,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants', newWindow: true },
+    { path: '/national-warrants', icon: Globe, label: 'National Warrant Search', newWindow: true },
     { path: '/citations', icon: FileWarning, label: 'Citations', newWindow: true },
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders', newWindow: true },
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },

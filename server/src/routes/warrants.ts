@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan } from '../utils/utahWarrantScraper';
@@ -954,6 +955,120 @@ router.get('/court-records/stats', requireRole('admin', 'manager', 'supervisor')
   } catch (error: any) {
     console.error('Court records stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// POST /api/warrants/national-search — State-filtered national warrant search
+// ============================================================
+router.post('/national-search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { firstName, lastName, dob, state, offenseLevel, warrantType, chargeKeyword, limit: reqLimit } = req.body;
+    const startTime = Date.now();
+
+    let where = "WHERE status = 'active'";
+    const params: any[] = [];
+
+    if (firstName?.trim()) { where += ' AND LOWER(first_name) LIKE LOWER(?)'; params.push(`%${firstName.trim()}%`); }
+    if (lastName?.trim()) { where += ' AND LOWER(last_name) LIKE LOWER(?)'; params.push(`%${lastName.trim()}%`); }
+    if (dob?.trim()) { where += ' AND date_of_birth = ?'; params.push(dob.trim()); }
+    if (state?.trim()) { where += ' AND state = ?'; params.push(state.trim().toUpperCase()); }
+    if (offenseLevel) { where += ' AND offense_level = ?'; params.push(offenseLevel); }
+    if (warrantType) { where += ' AND warrant_type = ?'; params.push(warrantType); }
+    if (chargeKeyword?.trim()) { where += ' AND LOWER(charge_description) LIKE LOWER(?)'; params.push(`%${chargeKeyword.trim()}%`); }
+
+    const maxRows = Math.min(500, parseInt(reqLimit, 10) || 200);
+    const results = db.prepare(`SELECT * FROM scraped_warrants ${where} ORDER BY last_seen_at DESC, first_name ASC LIMIT ?`).all(...params, maxRows) as any[];
+
+    // Group by state
+    const byState: Record<string, any[]> = {};
+    for (const r of results) {
+      const st = r.state || 'Unknown';
+      if (!byState[st]) byState[st] = [];
+      byState[st].push(r);
+    }
+
+    // Also query local warrants if name provided
+    let localResults: any[] = [];
+    if (firstName?.trim() || lastName?.trim()) {
+      let localWhere = 'WHERE 1=1';
+      const localParams: any[] = [];
+      if (firstName?.trim()) { localWhere += ' AND LOWER(p.first_name) LIKE LOWER(?)'; localParams.push(`%${firstName.trim()}%`); }
+      if (lastName?.trim()) { localWhere += ' AND LOWER(p.last_name) LIKE LOWER(?)'; localParams.push(`%${lastName.trim()}%`); }
+      if (offenseLevel) { localWhere += ' AND w.offense_level = ?'; localParams.push(offenseLevel); }
+      localResults = db.prepare(`SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name, (p.first_name || ' ' || p.last_name) as subject_name, u.full_name as entered_by_name FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id LEFT JOIN users u ON w.entered_by = u.id ${localWhere} ORDER BY w.created_at DESC LIMIT 50`).all(...localParams);
+    }
+
+    auditLog(req, 'SEARCH' as any, 'warrant' as any, 0, `National search: ${[firstName, lastName, state].filter(Boolean).join(' ')} — ${results.length + localResults.length} results`);
+
+    res.json({
+      scraped: byState,
+      local: localResults,
+      meta: {
+        duration: Date.now() - startTime,
+        totalScraped: results.length,
+        totalLocal: localResults.length,
+        totalHits: results.length + localResults.length,
+        statesHit: Object.keys(byState).length,
+      },
+    });
+  } catch (error: any) {
+    console.error('National warrant search error:', error);
+    res.status(500).json({ error: 'National search failed', code: 'NATIONAL_SEARCH_ERROR' });
+  }
+});
+
+// ============================================================
+// GET /api/warrants/national-coverage — Coverage stats per state
+// ============================================================
+router.get('/national-coverage', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Sources per state
+    const sources = db.prepare(`
+      SELECT state, COUNT(*) as source_count,
+        SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
+        MAX(last_scrape_at) as last_scrape_at
+      FROM warrant_scraper_config
+      WHERE state IS NOT NULL AND state != ''
+      GROUP BY state
+    `).all() as any[];
+
+    // Active warrants per state
+    const warrants = db.prepare(`
+      SELECT state, COUNT(*) as active_count
+      FROM scraped_warrants
+      WHERE status = 'active' AND state IS NOT NULL AND state != ''
+      GROUP BY state
+    `).all() as any[];
+
+    const warrantMap: Record<string, number> = {};
+    for (const w of warrants) warrantMap[w.state] = w.active_count;
+
+    const coverage = sources.map((s: any) => ({
+      state: s.state,
+      sourceCount: s.source_count,
+      enabledCount: s.enabled_count,
+      activeWarrants: warrantMap[s.state] || 0,
+      lastScraped: s.last_scrape_at,
+      status: s.enabled_count > 0 && s.last_scrape_at ? 'active' : s.enabled_count > 0 ? 'pending' : 'disabled',
+    }));
+
+    // Total stats
+    const totalSources = sources.reduce((sum: number, s: any) => sum + s.source_count, 0);
+    const totalEnabled = sources.reduce((sum: number, s: any) => sum + s.enabled_count, 0);
+    const totalActive = Object.values(warrantMap).reduce((sum, c) => sum + c, 0);
+    const statesCovered = sources.length;
+
+    res.json({
+      states: coverage,
+      totals: { sources: totalSources, enabled: totalEnabled, activeWarrants: totalActive, statesCovered },
+    });
+  } catch (error: any) {
+    console.error('National coverage error:', error);
+    res.status(500).json({ error: 'Failed to get national coverage', code: 'NATIONAL_COVERAGE_ERROR' });
   }
 });
 
