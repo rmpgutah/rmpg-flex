@@ -5,13 +5,15 @@
 
 import React from 'react';
 
-interface PanelTitleBarProps {
+export interface PanelTitleBarProps {
   title: string;
   icon?: React.ElementType;
   children?: React.ReactNode;
   className?: string;
   titleClassName?: string;
   id?: string;
+  statusLed?: string;
+  ledPulse?: boolean;
 }
 
 export default function PanelTitleBar({

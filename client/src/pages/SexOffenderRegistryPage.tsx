@@ -624,7 +624,7 @@ export default function SexOffenderRegistryPage() {
               {(STATUS_CONFIG[selected.registration_status] || STATUS_CONFIG.compliant).label}
             </span>
           } />
-          <Field label="Tier" value={`${selected.tier} (${selected.tier === 3 ? '90-day' : selected.tier === 2 ? '180-day' : '365-day'} check)`} />
+          <Field label="Tier" value={`${selected.tier} (${Number(selected.tier) === 3 ? '90-day' : Number(selected.tier) === 2 ? '180-day' : '365-day'} check)`} />
           <Field label="Last Verified" value={formatDate(selected.last_verification)} />
           <Field label="Next Due" value={
             selected.next_verification_due ? (
@@ -659,7 +659,7 @@ export default function SexOffenderRegistryPage() {
 
       {/* Vehicles Section */}
       {(() => {
-        const vehs = parseJson<SORVehicle>(selected.vehicles, []);
+        const vehs: SORVehicle[] = Array.isArray(selected.vehicles) ? selected.vehicles : (typeof selected.vehicles === 'string' ? (parseJson<SORVehicle>(selected.vehicles, [])) : []);
         return vehs.length > 0 ? (
           <DetailSection title="Vehicles" icon={<Car size={12} />}>
             <div className="space-y-1">

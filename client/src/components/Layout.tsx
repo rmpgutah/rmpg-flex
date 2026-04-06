@@ -855,8 +855,8 @@ export default function Layout() {
         permissionPending={gps.permissionPending}
         error={gps.error}
         onRetry={gps.startTracking}
-        connectionType={gps.connectionType}
-        positionSource={gps.positionSource}
+        connectionType={(gps as any).connectionType}
+        positionSource={(gps as any).positionSource}
       />
 
       {/* Page Content (recessed panel — charcoal bg matching borders) */}

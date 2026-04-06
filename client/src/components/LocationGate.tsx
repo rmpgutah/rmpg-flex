@@ -7,11 +7,13 @@
 import React, { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
-interface LocationGateProps {
+export interface LocationGateProps {
   permissionDenied: boolean;
   permissionPending: boolean;
   error: string | null;
   onRetry: () => void;
+  connectionType?: any;
+  positionSource?: any;
 }
 
 export default function LocationGate({ permissionDenied, onRetry }: LocationGateProps) {
