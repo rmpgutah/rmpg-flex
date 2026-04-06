@@ -1229,7 +1229,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y += 2;
     doc.setFont('courier', 'normal');
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
-    const descPageBreak = (newY: number): number => {
+    const descPageBreak = (_doc: any, newY: number): number => {
       const cw = getContentWidth(doc);
       doc.setFillColor(...COLOR.BG_SECTION_HDR);
       doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');

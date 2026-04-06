@@ -2603,8 +2603,8 @@ export interface ServeSkipTrace {
 // --- Email ---
 
 export interface EmailMessage {
-  id: number | string;
-  folder_id?: number | string;
+  id: any;
+  folder_id?: any;
   from_address: string;
   from_name?: string;
   fromAddress?: string;
@@ -2641,7 +2641,7 @@ export interface EmailMessage {
 }
 
 export interface EmailFolder {
-  id: number | string;
+  id: any;
   name: string;
   displayName?: string;
   type: string;

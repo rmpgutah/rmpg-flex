@@ -667,7 +667,7 @@ export default function SexOffenderRegistryPage() {
                 <div key={i} className="flex items-center gap-2 text-[11px] text-rmpg-300">
                   <Car size={11} className="text-rmpg-500" />
                   <span>{[v.year, v.color, v.make, v.model].filter(Boolean).join(' ')}</span>
-                  {v.plate && <span className="font-mono text-amber-400">{v.state || ''} {v.plate}</span>}
+                  {v.plate && <span className="font-mono text-amber-400">{v.plate_state || ''} {v.plate}</span>}
                 </div>
               ))}
             </div>
