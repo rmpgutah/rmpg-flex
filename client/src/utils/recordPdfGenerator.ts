@@ -2137,8 +2137,8 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
       const photoY = y - photoH - 4; // position back into the subject section area
       doc.addImage(data.subject_photo_url, 'JPEG', photoX, Math.max(photoY, LAYOUT.PAGE_MARGIN), photoW, photoH);
       // Thin border around photo
-      doc.setDrawColor(...COLOR.BORDER_CELL);
-      doc.setLineWidth(BORDER.CELL);
+      doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+      doc.setLineWidth(BORDER.FORM_CELL);
       doc.rect(photoX, Math.max(photoY, LAYOUT.PAGE_MARGIN), photoW, photoH, 'S');
     } catch {
       // Photo URL invalid or unreachable — skip silently
@@ -3415,7 +3415,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
   // Subtitle with count
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.setTextColor(...COLOR.TEXT_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(`${sorted.length} SUBJECT${sorted.length !== 1 ? 'S' : ''} WITH ACTIVE WARRANTS`, margin, y);
   y += 5;
 
@@ -3468,14 +3468,14 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
-    doc.setTextColor(...COLOR.TEXT_VALUE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(descParts.join('  |  '), margin + 2, y + 3);
     y += 5;
 
     if (subj.address) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
-      doc.setTextColor(...COLOR.TEXT_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
       y += 5;
     }
@@ -3488,8 +3488,8 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
         const photoX = margin + contentW - photoW - 2;
         const photoY = sectionStartY + 9;
         doc.addImage(subj.photo_url, 'JPEG', photoX, photoY, photoW, photoH);
-        doc.setDrawColor(...COLOR.BORDER_CELL);
-        doc.setLineWidth(BORDER.CELL);
+        doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+        doc.setLineWidth(BORDER.FORM_CELL);
         doc.rect(photoX, photoY, photoW, photoH, 'S');
       } catch {
         // Photo URL invalid — skip
@@ -3500,7 +3500,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
     if ((subj.warrants || []).length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.setTextColor(...COLOR.TEXT_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
       // Table header
       doc.setFillColor(30, 40, 55);
       doc.rect(margin + 2, y, contentW - 4, 5, 'F');
@@ -3513,7 +3513,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
-      doc.setTextColor(...COLOR.TEXT_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       for (const w of (subj.warrants || [])) {
         if (y > 260) {
@@ -3538,7 +3538,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
 
     // Separator line between subjects
     if (i < sorted.length - 1) {
-      doc.setDrawColor(...COLOR.BORDER_CELL);
+      doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
       doc.setLineWidth(0.2);
       doc.line(margin, y, margin + contentW, y);
       y += 3;
@@ -3605,7 +3605,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
   const periodTo = data.period.to ? fmtDate(data.period.to) : 'Present';
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.setTextColor(...COLOR.TEXT_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(`REPORTING PERIOD: ${periodFrom} — ${periodTo}`, margin, y + 3);
   y += 7;
 
@@ -3641,7 +3641,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     // Title
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.setTextColor(...COLOR.TEXT_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(title, x, ty + 3);
     ty += 5;
 
@@ -3664,9 +3664,9 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
         doc.setFillColor(20, 30, 43);
         doc.rect(x, ty - 0.5, w, 5, 'F');
       }
-      doc.setTextColor(...COLOR.TEXT_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(titleCase(label.replace(/_/g, ' ')), x + 2, ty + 3);
-      doc.setTextColor(...COLOR.TEXT_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(String(count), x + w - 2, ty + 3, { align: 'right' });
       ty += 5;
     }
@@ -3698,7 +3698,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     y += 2;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.setTextColor(...COLOR.TEXT_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('TOP ISSUING COURTS', margin, y + 3);
     y += 5;
 
@@ -3714,9 +3714,9 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     for (const court of (data.topCourts || [])) {
-      doc.setTextColor(...COLOR.TEXT_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(court.issuing_court || 'Unknown', margin + 2, y + 3);
-      doc.setTextColor(...COLOR.TEXT_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(String(court.count), margin + contentW - 2, y + 3, { align: 'right' });
       y += 5;
     }
