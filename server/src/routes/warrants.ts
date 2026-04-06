@@ -21,6 +21,14 @@ router.get('/', (req: Request, res: Response) => {
       type,
       subject_name,
       archived,
+      court,
+      charge,
+      date_from,
+      date_to,
+      severity,
+      source,
+      expiring_days,
+      person_id,
       page = '1',
       per_page = '50',
     } = req.query;
@@ -39,6 +47,41 @@ router.get('/', (req: Request, res: Response) => {
     if (subject_name) {
       whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ?";
       params.push(`%${subject_name}%`);
+    }
+    if (court) {
+      whereClause += ' AND w.issuing_court LIKE ?';
+      params.push(`%${court}%`);
+    }
+    if (charge) {
+      whereClause += ' AND w.charge_description LIKE ?';
+      params.push(`%${charge}%`);
+    }
+    if (date_from) {
+      whereClause += ' AND w.created_at >= ?';
+      params.push(date_from);
+    }
+    if (date_to) {
+      whereClause += ' AND w.created_at <= ?';
+      params.push(date_to);
+    }
+    if (severity) {
+      whereClause += ' AND w.offense_level = ?';
+      params.push(severity);
+    }
+    if (source) {
+      whereClause += ' AND w.source = ?';
+      params.push(source);
+    }
+    if (expiring_days) {
+      const eDays = parseInt(expiring_days as string, 10);
+      if (!isNaN(eDays) && eDays > 0) {
+        whereClause += " AND w.expires_at IS NOT NULL AND w.expires_at <= date('now', '+' || ? || ' days') AND w.expires_at >= date('now')";
+        params.push(eDays);
+      }
+    }
+    if (person_id) {
+      whereClause += ' AND w.subject_person_id = ?';
+      params.push(person_id);
     }
 
     // Archive filter
@@ -64,7 +107,8 @@ router.get('/', (req: Request, res: Response) => {
         p.first_name as subject_first_name,
         p.last_name as subject_last_name,
         (p.first_name || ' ' || p.last_name) as subject_name,
-        u.full_name as entered_by_name
+        u.full_name as entered_by_name,
+        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id
@@ -1737,6 +1781,98 @@ router.get('/summary-report', requireRole(['dispatcher', 'supervisor', 'admin', 
   } catch (error: any) {
     console.error('Summary report error:', error);
     res.status(500).json({ error: 'Failed to generate summary report', code: 'SUMMARY_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// Expiration Tracking & Trends & Batch Archive
+// ════════════════════════════════════════════════════════════
+
+// GET /api/warrants/expiring — Active warrants expiring within N days
+router.get('/expiring', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days as string, 10) || 30;
+    const warrants = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+        (p.first_name || ' ' || p.last_name) as subject_name
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active' AND w.expires_at IS NOT NULL
+        AND w.expires_at <= date('now', '+' || ? || ' days')
+        AND w.expires_at >= date('now')
+      ORDER BY w.expires_at ASC
+    `).all(days);
+    res.json({ data: warrants, count: warrants.length });
+  } catch (error: any) {
+    console.error('Expiring warrants error:', error);
+    res.status(500).json({ error: 'Failed to get expiring warrants', code: 'EXPIRING_ERROR' });
+  }
+});
+
+// GET /api/warrants/expired — Active warrants that have already expired
+router.get('/expired', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const warrants = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name
+      FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active' AND w.expires_at IS NOT NULL AND w.expires_at < date('now')
+      ORDER BY w.expires_at DESC
+    `).all();
+    res.json({ data: warrants, count: warrants.length });
+  } catch (error: any) {
+    console.error('Expired warrants error:', error);
+    res.status(500).json({ error: 'Failed to get expired warrants', code: 'EXPIRED_ERROR' });
+  }
+});
+
+// GET /api/warrants/trends — Weekly/monthly warrant creation and service stats
+router.get('/trends', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const range = req.query.range as string || '30d';
+    const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+
+    const created = db.prepare(`
+      SELECT date(created_at) as day, COUNT(*) as count
+      FROM warrants WHERE created_at >= date('now', '-' || ? || ' days')
+      GROUP BY date(created_at) ORDER BY day
+    `).all(days);
+
+    const served = db.prepare(`
+      SELECT date(served_at) as day, COUNT(*) as count
+      FROM warrants WHERE served_at IS NOT NULL AND served_at >= date('now', '-' || ? || ' days')
+      GROUP BY date(served_at) ORDER BY day
+    `).all(days);
+
+    res.json({ created, served, range });
+  } catch (error: any) {
+    console.error('Warrant trends error:', error);
+    res.status(500).json({ error: 'Failed to get warrant trends', code: 'TRENDS_ERROR' });
+  }
+});
+
+// PUT /api/warrants/batch-archive — Archive multiple warrants at once
+router.put('/batch-archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids array is required', code: 'IDS_REQUIRED' });
+      return;
+    }
+    const now = localNow();
+    const stmt = db.prepare('UPDATE warrants SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL');
+    let count = 0;
+    for (const id of ids) {
+      const r = stmt.run(now, now, id);
+      if (r.changes > 0) count++;
+    }
+    res.json({ archived: count });
+  } catch (error: any) {
+    console.error('Batch archive warrants error:', error);
+    res.status(500).json({ error: 'Failed to batch archive warrants', code: 'BATCH_ARCHIVE_ERROR' });
   }
 });
 
