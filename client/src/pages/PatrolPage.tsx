@@ -1213,7 +1213,7 @@ const PatrolPage: React.FC = () => {
 
       {/* Checkpoint Modal */}
       {showCheckpointModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4">
             <h2 id={checkpointModalTitleId} className="text-xl font-bold text-white mb-4">
               {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
@@ -1353,7 +1353,7 @@ const PatrolPage: React.FC = () => {
 
       {/* QR Code Modal */}
       {showQrModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={qrModalTitleId}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" role="dialog" aria-modal="true" aria-labelledby={qrModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-lg w-full mx-4">
             <div className="flex justify-between items-center mb-4">
               <h2 id={qrModalTitleId} className="text-xl font-bold text-white">QR Code</h2>

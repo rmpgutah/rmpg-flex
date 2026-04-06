@@ -63,7 +63,7 @@ const EMPTY_VIOLATION = {
 const EMPTY_TOW = {
   vehicle_year: '', vehicle_make: '', vehicle_model: '', vehicle_color: '',
   vehicle_plate: '', vehicle_vin: '', tow_from: '', tow_to: '',
-  tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee: '', notes: '',
+  tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee_daily: '', notes: '',
 };
 
 export default function CodeEnforcementPage() {
@@ -445,7 +445,7 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Violation Modal ── */}
       {vFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
               <button onClick={() => setVFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -525,7 +525,7 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Tow Modal ── */}
       {tFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
               <button onClick={() => setTFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>

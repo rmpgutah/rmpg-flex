@@ -249,7 +249,7 @@ export default function TrespassOrdersPage() {
       <PanelTitleBar icon={ShieldBan} title="TRESPASS ORDERS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
+        <ExportButton exportUrl="/trespass-orders?per_page=200" exportFilename="trespass_orders_export.csv" />
         <button onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New Order
         </button>
@@ -421,7 +421,7 @@ export default function TrespassOrdersPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>

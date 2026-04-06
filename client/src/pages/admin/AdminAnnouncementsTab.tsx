@@ -56,7 +56,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   critical: 'text-red-300 bg-red-900/50',
 };
 
-const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
 
 const emptyForm: {
   title: string; body: string; type: Announcement['type']; priority: Announcement['priority'];
@@ -257,7 +257,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" onClick={() => setShowForm(false)}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">

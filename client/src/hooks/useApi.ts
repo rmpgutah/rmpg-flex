@@ -296,7 +296,10 @@ export async function apiFetch<T>(
         }
 
         // Route through local SQLite via IPC
-        const body = options?.body ? JSON.parse(options.body as string) : undefined;
+        let body: any;
+        if (options?.body) {
+          try { body = JSON.parse(options.body as string); } catch { throw new Error('Cannot queue non-JSON body for offline'); }
+        }
         const result = await electron.localApi(method, url, body);
 
         if (result.status >= 400) {
@@ -321,7 +324,10 @@ export async function apiFetch<T>(
         throw new OfflineUnauthorizedError();
       }
 
-      const body = options?.body ? JSON.parse(options.body as string) : undefined;
+      let body: any;
+      if (options?.body) {
+        try { body = JSON.parse(options.body as string); } catch { throw new Error('Cannot queue non-JSON body for offline'); }
+      }
       const result = await browserOfflineHandle(method, url, body);
 
       if (result.status >= 400) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Plus,
@@ -55,6 +55,7 @@ import { useToast } from '../components/ToastProvider';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
+import WarrantBadge from '../components/WarrantBadge';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -62,6 +63,10 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 function mapDbIncident(row: any): Incident & Record<string, any> {
   return {
+    // Spread all DB columns first so flags, PSO fields, contract_id,
+    // section/zone/beat, etc. flow through without explicit listing
+    ...row,
+    // Override fields that need type coercion or renaming
     id: String(row.id),
     incident_number: row.incident_number ?? '',
     call_id: row.call_id ?? undefined,
@@ -86,7 +91,7 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
     approved_at: row.approved_at ?? undefined,
     created_at: row.created_at ?? new Date().toISOString(),
     updated_at: row.updated_at ?? new Date().toISOString(),
-    // New extended fields
+    // Extended fields with defaults
     occurred_date: row.occurred_date ?? '',
     occurred_time: row.occurred_time ?? '',
     end_date: row.end_date ?? '',
@@ -98,9 +103,28 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
     damage_estimate: row.damage_estimate ?? '',
     damage_description: row.damage_description ?? '',
     weapons_involved: row.weapons_involved ?? '',
+    // Boolean coercion for flag fields (SQLite stores as 0/1)
     alcohol_involved: row.alcohol_involved === 1 || row.alcohol_involved === true,
     drugs_involved: row.drugs_involved === 1 || row.drugs_involved === true,
     domestic_violence: row.domestic_violence === 1 || row.domestic_violence === true,
+    injuries_reported: row.injuries_reported === 1 || row.injuries_reported === true,
+    mental_health_crisis: row.mental_health_crisis === 1 || row.mental_health_crisis === true,
+    juvenile_involved: row.juvenile_involved === 1 || row.juvenile_involved === true,
+    felony_in_progress: row.felony_in_progress === 1 || row.felony_in_progress === true,
+    officer_safety_caution: row.officer_safety_caution === 1 || row.officer_safety_caution === true,
+    k9_requested: row.k9_requested === 1 || row.k9_requested === true,
+    ems_requested: row.ems_requested === 1 || row.ems_requested === true,
+    fire_requested: row.fire_requested === 1 || row.fire_requested === true,
+    hazmat: row.hazmat === 1 || row.hazmat === true,
+    gang_related: row.gang_related === 1 || row.gang_related === true,
+    evidence_collected: row.evidence_collected === 1 || row.evidence_collected === true,
+    body_camera_active: row.body_camera_active === 1 || row.body_camera_active === true,
+    photos_taken: row.photos_taken === 1 || row.photos_taken === true,
+    trespass_issued: row.trespass_issued === 1 || row.trespass_issued === true,
+    vehicle_pursuit: row.vehicle_pursuit === 1 || row.vehicle_pursuit === true,
+    foot_pursuit: row.foot_pursuit === 1 || row.foot_pursuit === true,
+    le_notified: row.le_notified === 1 || row.le_notified === true,
+    supervisor_notified: row.supervisor_notified === 1 || row.supervisor_notified === true,
     disposition: row.disposition ?? '',
     zone_beat: row.zone_beat ?? '',
     responding_le_agency: row.responding_le_agency ?? '',
@@ -183,7 +207,7 @@ export default function IncidentsPage() {
     if (!custodyTransfer) return;
     setCustodySubmitting(true);
     try {
-      await apiFetch(`/api/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
+      await apiFetch(`/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -200,7 +224,7 @@ export default function IncidentsPage() {
       setCustodyNotes('');
       // Refresh evidence for the selected incident
       if (selectedIncident) {
-        const evData = await apiFetch<any>(`/api/records/evidence?incident_id=${selectedIncident.id}`);
+        const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
     } catch {
@@ -216,6 +240,10 @@ export default function IncidentsPage() {
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
   // Clients list for client selector
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
+
+  // ---------- URL search params (prefill from call) ----------
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [formPrefillData, setFormPrefillData] = useState<(Partial<IncidentFormData> & { call_id?: string | number }) | undefined>(undefined);
 
   // ---------- modal / dialog state ----------
   const [showFormModal, setShowFormModal] = useState(false);
@@ -289,6 +317,45 @@ export default function IncidentsPage() {
       .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name }))))
       .catch((err) => { console.warn('[IncidentsPage] fetch clients list failed:', err); });
   }, [fetchIncidents]);
+
+  // ---------- Prefill from dispatch call (URL param) ----------
+  useEffect(() => {
+    const callId = searchParams.get('prefill_call_id');
+    if (!callId) return;
+    // Clear the param immediately so it doesn't re-trigger
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('prefill_call_id'); return next; }, { replace: true });
+    (async () => {
+      try {
+        const call = await apiFetch<any>(`/dispatch/calls/${callId}`);
+        if (!call) return;
+        let notesText = '';
+        if (call.notes) {
+          try {
+            const parsed = JSON.parse(call.notes);
+            if (Array.isArray(parsed)) {
+              notesText = parsed.map((n: any) => n.text || n.content || '').filter(Boolean).join('\n');
+            } else {
+              notesText = call.notes;
+            }
+          } catch { notesText = call.notes || ''; }
+        }
+        const descParts = [call.description, notesText].filter(Boolean);
+        setFormPrefillData({
+          call_id: call.id,
+          incident_type: call.call_type || '',
+          priority: call.priority || 'P3',
+          location_address: call.location_address || '',
+          narrative: descParts.join('\n\n') || '',
+          client_id: call.client_id ? String(call.client_id) : '',
+        });
+        setEditingIncident(undefined);
+        setShowFormModal(true);
+      } catch (err) {
+        console.warn('[IncidentsPage] Failed to fetch call for prefill:', err);
+        addToast('Could not load call data for prefill', 'error');
+      }
+    })();
+  }, [searchParams]);
 
   // Live sync — auto-refresh when any device modifies incidents (silent to avoid unmounting UI)
   const silentRefreshIncidents = useCallback(() => fetchIncidents({ silent: true }), [fetchIncidents]);
@@ -904,6 +971,8 @@ export default function IncidentsPage() {
       beat_id: inc?.beat_id,
       disposition: inc?.disposition,
       zone_beat: inc?.zone_beat,
+      dispatch_code: inc?.dispatch_code,
+      source: inc?.source,
       // Dates / times
       occurred_date: inc?.occurred_date,
       occurred_time: inc?.occurred_time,
@@ -945,8 +1014,15 @@ export default function IncidentsPage() {
       // LE coordination
       responding_le_agency: inc?.responding_le_agency,
       le_case_number: inc?.le_case_number,
-      // Process Service fields (from linked call)
+      // PSO / Process Service fields
       pso_service_type: inc?.pso_service_type,
+      pso_attempt_number: inc?.pso_attempt_number,
+      pso_requestor_name: inc?.pso_requestor_name,
+      pso_requestor_phone: inc?.pso_requestor_phone,
+      pso_requestor_email: inc?.pso_requestor_email,
+      pso_billing_code: inc?.pso_billing_code,
+      pso_authorization: inc?.pso_authorization,
+      contract_id: inc?.contract_id,
       process_service_type: inc?.process_service_type,
       process_served_to: inc?.process_served_to,
       process_served_address: inc?.process_served_address,
@@ -995,6 +1071,24 @@ export default function IncidentsPage() {
         storage_location: e.storage_location,
       })),
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
+      // Geo coordinates
+      latitude: inc?.latitude,
+      longitude: inc?.longitude,
+      // Linked call details
+      call_created_at: inc?.call_created_at,
+      call_type: inc?.call_type,
+      caller_name: inc?.caller_name,
+      caller_phone: inc?.caller_phone,
+      // Supplement reports (attached to this incident)
+      supplements: detailSupplements.map((sup: any) => ({
+        report_number: sup.report_number || '',
+        report_type: sup.report_type || sup.type || '',
+        subject: sup.subject || '',
+        narrative: sup.narrative || '',
+        author_name: sup.author_name || '',
+        status: sup.status || '',
+        created_at: sup.created_at || '',
+      })),
     } as any;
 
     // Fetch officer's digital signature for PDF embedding
@@ -1003,9 +1097,29 @@ export default function IncidentsPage() {
       if (sigRes?.signature) pdfData._officerSignature = sigRes.signature;
     } catch { /* proceed without signature */ }
 
-    // Fetch GPS breadcrumb trail (via linked call_id)
+    // Fetch call notes from dispatch (for pre-narrative details)
     const callId = (selectedIncident as any)?.call_id;
     if (callId) {
+      try {
+        const callDetail = await apiFetch<any>(`/dispatch/calls/${callId}`);
+        if (callDetail) {
+          if (callDetail.caller_name) pdfData.caller_name = callDetail.caller_name;
+          if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
+          // Build call notes from dispatch notes
+          if (callDetail.notes?.length > 0) {
+            pdfData.call_notes = callDetail.notes.map((n: any) =>
+              `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+            ).join('\n');
+          }
+          // Inherit lat/lng from call if incident doesn't have them
+          if (pdfData.latitude == null && callDetail.latitude != null) {
+            pdfData.latitude = callDetail.latitude;
+            pdfData.longitude = callDetail.longitude;
+          }
+        }
+      } catch { /* call detail optional */ }
+
+      // Fetch GPS breadcrumb trail (via linked call_id)
       try {
         const trail = await apiFetch<{
           points: any[];
@@ -1071,7 +1185,7 @@ export default function IncidentsPage() {
       </PanelTitleBar>
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 card-glass">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">
@@ -1083,17 +1197,33 @@ export default function IncidentsPage() {
         )}
 
         {/* Flags (always visible, no collapse) */}
-        {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence) && (
-          <div className="flex items-center gap-2 mb-3">
-            {inc.alcohol_involved && (
-              <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Alcohol</span>
-            )}
-            {inc.drugs_involved && (
-              <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-700/40">Drugs</span>
-            )}
-            {inc.domestic_violence && (
-              <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Domestic Violence</span>
-            )}
+        {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence || inc.felony_in_progress ||
+          inc.officer_safety_caution || inc.mental_health_crisis || inc.injuries_reported || inc.juvenile_involved ||
+          inc.gang_related || inc.hazmat || inc.body_camera_active || inc.evidence_collected || inc.photos_taken ||
+          inc.vehicle_pursuit || inc.foot_pursuit || inc.le_notified || inc.supervisor_notified ||
+          inc.k9_requested || inc.ems_requested || inc.fire_requested || inc.trespass_issued) && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            {inc.alcohol_involved && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Alcohol</span>}
+            {inc.drugs_involved && <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-700/40">Drugs</span>}
+            {inc.domestic_violence && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">DV</span>}
+            {inc.felony_in_progress && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Felony IP</span>}
+            {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
+            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Mental Health</span>}
+            {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
+            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
+            {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
+            {inc.hazmat && <span className="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 text-[10px] uppercase font-bold border border-yellow-700/40">HAZMAT</span>}
+            {inc.body_camera_active && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">BWC</span>}
+            {inc.evidence_collected && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">Evidence</span>}
+            {inc.photos_taken && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">Photos</span>}
+            {inc.trespass_issued && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Trespass</span>}
+            {inc.vehicle_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Veh Pursuit</span>}
+            {inc.foot_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Foot Pursuit</span>}
+            {inc.k9_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">K9</span>}
+            {inc.ems_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">EMS</span>}
+            {inc.fire_requested && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Fire</span>}
+            {inc.le_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">LE Notified</span>}
+            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Supvr</span>}
           </div>
         )}
 
@@ -1178,7 +1308,7 @@ export default function IncidentsPage() {
                 <label className="field-label">District:</label>
                 <div className="flex items-center gap-2 mt-0.5">
                   {inc.dispatch_code && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 tracking-wide">
+                    <span className="badge-pill font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40">
                       {inc.dispatch_code}
                     </span>
                   )}
@@ -1192,7 +1322,7 @@ export default function IncidentsPage() {
               <div>
                 <label className="field-label">Disposition:</label>
                 <p className="text-sm text-rmpg-200">
-                  <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
+                  <span className="badge-pill bg-brand-900/40 text-brand-300 border border-brand-600/40 mr-1">
                     {inc.disposition}
                   </span>
                   {(() => {
@@ -1353,13 +1483,14 @@ export default function IncidentsPage() {
                 return (
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
-                      <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
+                      <span className="badge-pill bg-brand-900/40 text-brand-300 border border-brand-600/40">
                         {lp.role.replace(/_/g, ' ')}
                       </span>
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
+                      <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => (
-                        <span key={i} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                        <span key={i} className="badge-pill bg-red-900/40 text-red-400">
                           {f}
                         </span>
                       ))}
@@ -1401,7 +1532,7 @@ export default function IncidentsPage() {
               {detailVehicles.map((lv) => (
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
-                    <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
+                    <span className="badge-pill bg-amber-900/40 text-amber-300 border border-amber-600/40">
                       {lv.role.replace(/_/g, ' ')}
                     </span>
                     <span className="text-sm text-white font-medium">
@@ -1439,9 +1570,17 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
-                <Plus className="w-3 h-3" /> Add
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+                <button
+                  onClick={() => navigate(`/evidence?new=true&incident_id=${selectedIncident.id}&location=${encodeURIComponent(selectedIncident.location || '')}`)}
+                  className="toolbar-btn"
+                >
+                  <ExternalLink className="w-3 h-3" /> Log Evidence
+                </button>
+              </div>
             ) : undefined
           }
         >
@@ -1457,7 +1596,7 @@ export default function IncidentsPage() {
                 return (
                   <div key={ev.id} className="px-3 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <div className="flex items-center gap-3">
-                      <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-600/40">
+                      <span className="badge-pill bg-purple-900/40 text-purple-300 border border-purple-600/40">
                         {ev.evidence_type || 'physical'}
                       </span>
                       <span className="text-xs text-white font-mono font-bold">{ev.evidence_number}</span>
@@ -1755,7 +1894,7 @@ export default function IncidentsPage() {
   ) : null;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col app-grid-bg">
       <SplitPanel
         left={tablePanel}
         right={detailPanel}
@@ -1772,6 +1911,7 @@ export default function IncidentsPage() {
           setShowFormModal(false);
           setEditingIncident(undefined);
           setFormDefaultType('');
+          setFormPrefillData(undefined);
         }}
         onSubmit={editingIncident ? handleUpdate : handleCreate}
         isSubmitting={isSubmitting}
@@ -1779,6 +1919,7 @@ export default function IncidentsPage() {
         dispositionCodes={dispositionCodes}
         clients={clientsList}
         defaultType={formDefaultType}
+        prefillData={formPrefillData}
       />
 
       {/* Delete Confirmation Dialog */}
@@ -1872,7 +2013,7 @@ export default function IncidentsPage() {
 
       {/* Custody Transfer Modal */}
       {custodyTransfer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCustodyTransfer(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setCustodyTransfer(null)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}

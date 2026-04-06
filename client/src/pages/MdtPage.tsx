@@ -581,7 +581,7 @@ export default function MdtPage() {
               key={status}
               onClick={() => handleUnitStatus(status)}
               disabled={!myUnit}
-              className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
+              className="px-2 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors"
               style={{
                 background: myUnit?.status === status ? color : 'transparent',
                 color: myUnit?.status === status ? '#000' : color,
@@ -604,7 +604,7 @@ export default function MdtPage() {
         <button
           onClick={() => handleUnitStatus('available')}
           disabled={!myUnit}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
+          className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
           style={{
             background: myUnit?.status === 'available' ? '#22c55e' : 'transparent',
             color: myUnit?.status === 'available' ? '#000' : '#22c55e',
@@ -617,7 +617,7 @@ export default function MdtPage() {
         <button
           onClick={() => handleUnitStatus('off_duty')}
           disabled={!myUnit}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
+          className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
           style={{
             background: myUnit?.status === 'off_duty' ? '#f59e0b' : 'transparent',
             color: myUnit?.status === 'off_duty' ? '#000' : '#f59e0b',
@@ -630,7 +630,7 @@ export default function MdtPage() {
         <button
           onClick={() => handleUnitStatus('busy')}
           disabled={!myUnit}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
+          className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
           style={{
             background: myUnit?.status === 'busy' ? '#ef4444' : 'transparent',
             color: myUnit?.status === 'busy' ? '#000' : '#ef4444',
@@ -647,19 +647,19 @@ export default function MdtPage() {
         {/* Navigation shortcuts */}
         <button
           onClick={() => navigate('/field-interviews?new=true')}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
+          className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
         >
           New FI
         </button>
         <button
           onClick={() => navigate('/citations?new=true')}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
+          className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
         >
           New Citation
         </button>
         <button
           onClick={() => navigate('/evidence?new=true')}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
+          className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
         >
           Log Evidence
         </button>
@@ -724,7 +724,7 @@ export default function MdtPage() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
+                className="flex-1 px-3 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
                   background: activeTab === tab ? '#141e2b' : 'transparent',
                   color: activeTab === tab ? (tab === 'ncic' ? '#22d3ee' : '#fff') : '#5a6e80',

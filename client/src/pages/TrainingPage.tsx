@@ -288,7 +288,7 @@ function DashboardTab({ records, requirements, officers }: {
     const officerCompliance = officers
       .filter(o => ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'].includes(o.role))
       .map(officer => {
-        const officerRecs = records.filter(r => r.officer_id === officer.id);
+        const officerRecs = records.filter(r => String(r.officer_id) === String(officer.id));
         const completedCourses = new Set(
           officerRecs.filter(r => r.status === 'completed').map(r => r.course_name)
         );
@@ -925,7 +925,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
@@ -1136,7 +1136,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">

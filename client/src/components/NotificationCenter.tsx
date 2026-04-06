@@ -345,7 +345,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       {isOpen && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed z-50 panel-beveled"
+          className="fixed z-[9990] panel-beveled"
           style={{
             top: dropdownPos.top,
             left: dropdownPos.left,

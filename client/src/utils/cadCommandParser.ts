@@ -230,11 +230,17 @@ export async function executeCommand(
       if (!unit) {
         return { success: false, message: `Unit "${unitQuery}" not found`, action: { type: 'none' } };
       }
+      if (!unit.current_call_id) {
+        return { success: false, message: `Unit "${unit.call_sign}" is not assigned to a call`, action: { type: 'none' } };
+      }
 
       try {
-        await apiFetch(`/dispatch/units/${unit.id}/mileage`, {
-          method: 'POST',
-          body: JSON.stringify({ type: mileageType, mileage: mileageVal }),
+        const mileageBody = mileageType === 'start'
+          ? { starting_mileage: mileageVal }
+          : { ending_mileage: mileageVal };
+        await apiFetch(`/dispatch/calls/${unit.current_call_id}/mileage`, {
+          method: 'PUT',
+          body: JSON.stringify(mileageBody),
         });
         return {
           success: true,
@@ -471,7 +477,7 @@ export async function executeCommand(
       }
 
       try {
-        await apiFetch(`/dispatch/calls/${call.id}/notes`, {
+        await apiFetch(`/dispatch/calls/${call.id}/timeline`, {
           method: 'POST',
           body: JSON.stringify({ content: noteText }),
         });

@@ -16,6 +16,7 @@ const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import {
   getIpedConfig,
   setIpedConfigValues,
@@ -424,6 +425,80 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
   }
 });
 
+// ── POST /hash-sets/upload — Upload a hash set file directly ────────
+router.post('/hash-sets/upload', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { content, setName, category, hashType, fileName } = req.body;
+    if (!content || !setName || !category) {
+      return res.status(400).json({ error: 'content, setName, and category required' });
+    }
+
+    // fs and path already imported at top of file
+    const hashSetsDir = path.join(__dirname, '..', '..', 'hash-sets');
+    if (!fs.existsSync(hashSetsDir)) fs.mkdirSync(hashSetsDir, { recursive: true });
+
+    // Save the file to disk
+    const safeName = (fileName || `${setName.replace(/[^a-zA-Z0-9_-]/g, '_')}.${hashType || 'md5'}`)
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = path.join(hashSetsDir, safeName);
+    const header = `# Source: User Upload\n# Category: ${category}\n# Hash Type: ${hashType || 'md5'}\n# Description: Uploaded hash set: ${setName}\n# Last Updated: ${new Date().toISOString().split('T')[0]}\n#\n`;
+    fs.writeFileSync(filePath, header + content, 'utf-8');
+
+    // Import into database
+    const count = importHashSet(filePath, setName, category, hashType || 'md5');
+    auditLog(req, 'iped_hashset_uploaded', 'iped_hashset', setName, `Uploaded and imported ${count} hashes into set "${setName}" (${category})`);
+    res.json({ success: true, imported: count, setName, category, filePath });
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Internal server error' });
+  }
+});
+
+// ── GET /hash-sets/available — List hash set files on disk ──────────
+router.get('/hash-sets/available', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    // fs and path already imported at top of file
+    const hashSetsDir = path.join(__dirname, '..', '..', 'hash-sets');
+    if (!fs.existsSync(hashSetsDir)) {
+      return res.json({ data: [] });
+    }
+    const files = fs.readdirSync(hashSetsDir).filter((f: string) =>
+      f.endsWith('.md5') || f.endsWith('.sha256') || f.endsWith('.sha1') || f.endsWith('.csv') || f.endsWith('.txt')
+    );
+    const sets = files.map((f: string) => {
+      const content = fs.readFileSync(path.join(hashSetsDir, f), 'utf-8');
+      const lines = content.split('\n');
+      // Parse metadata from comment headers
+      let source = '', category = 'custom', hashType = 'md5', description = '', name = f;
+      const hashLines = lines.filter(l => l.trim() && !l.startsWith('#'));
+      for (const line of lines) {
+        if (line.startsWith('# Source:')) source = line.replace('# Source:', '').trim();
+        if (line.startsWith('# Category:')) category = line.replace('# Category:', '').trim();
+        if (line.startsWith('# Hash Type:')) hashType = line.replace('# Hash Type:', '').trim().toLowerCase();
+        if (line.startsWith('# Description:')) description = line.replace('# Description:', '').trim();
+      }
+      // Derive display name from filename
+      const displayName = f.replace(/\.(md5|sha256|sha1|csv|txt)$/, '')
+        .replace(/-/g, ' ').replace(/_/g, ' ')
+        .split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      return {
+        fileName: f,
+        filePath: path.join(hashSetsDir, f),
+        displayName,
+        source,
+        category,
+        hashType,
+        description,
+        hashCount: hashLines.length,
+      };
+    });
+    res.json({ data: sets });
+  } catch (err: any) {
+    console.error('Error listing hash sets:', err?.message || err);
+    res.status(500).json({ error: 'Failed to list available hash sets' });
+  }
+});
+
 // ── POST /hash-sets/import-iped — Import into IPED native hash DB ──
 router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request, res: Response) => {
   try {
@@ -500,6 +575,387 @@ router.get('/usage', (_req: Request, res: Response) => {
     res.json(getIpedUsageStats());
   } catch (err: any) {
     console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// Phase 3: Hash Review Workflow
+// ============================================================
+
+// ── GET /hash/flagged — Flagged hashes pending review ────────
+router.get('/hash/flagged', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const page = Math.min(10000, Math.max(1, parseInt(req.query.page as string, 10) || 1));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.per_page as string, 10) || 20));
+    const offset = (page - 1) * limit;
+
+    const total = (db.prepare(`
+      SELECT COUNT(*) as c FROM digital_evidence_hashes h
+      WHERE h.flagged = 1 AND h.review_status IN ('pending', 'needs_analysis')
+    `).get() as any)?.c || 0;
+
+    const data = db.prepare(`
+      SELECT h.*, e.evidence_number
+      FROM digital_evidence_hashes h
+      LEFT JOIN evidence e ON h.evidence_id = e.id
+      WHERE h.flagged = 1 AND h.review_status IN ('pending', 'needs_analysis')
+      ORDER BY h.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as any[];
+
+    res.json({ data, total, page, limit });
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PUT /hash/results/:id/review — Review a flagged hash ─────
+router.put('/hash/results/:id/review', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+    const { review_status, review_notes } = req.body;
+    const validStatuses = ['confirmed_threat', 'false_positive', 'needs_analysis', 'pending'];
+    if (!review_status || !validStatuses.includes(review_status)) {
+      return res.status(400).json({ error: `review_status must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const existing = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'Hash record not found' });
+
+    const reviewedAt = new Date().toISOString();
+    const reviewedBy = req.user?.userId;
+
+    db.prepare(`
+      UPDATE digital_evidence_hashes
+      SET review_status = ?, review_notes = ?, reviewed_by = ?, reviewed_at = ?
+      WHERE id = ?
+    `).run(review_status, review_notes || null, reviewedBy, reviewedAt, id);
+
+    const updated = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(id) as any;
+
+    auditLog(req, 'REVIEW_HASH', 'digital_evidence_hashes', id,
+      `Hash review: ${existing.review_status || 'none'} → ${review_status}` +
+      (review_notes ? ` | Notes: ${review_notes}` : ''));
+
+    broadcast('iped', 'hash:reviewed', { id, review_status, reviewed_by: reviewedBy, reviewed_at: reviewedAt });
+
+    res.json(updated);
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /hash/review-stats — Review status counts ────────────
+router.get('/hash/review-stats', requireRole('admin', 'manager', 'supervisor', 'officer'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT review_status, COUNT(*) as count
+      FROM digital_evidence_hashes
+      WHERE flagged = 1
+      GROUP BY review_status
+    `).all() as any[];
+
+    const stats: Record<string, number> = {
+      pending: 0,
+      confirmed_threat: 0,
+      false_positive: 0,
+      needs_analysis: 0,
+    };
+    for (const row of rows) {
+      if (row.review_status && row.review_status in stats) {
+        stats[row.review_status] = row.count;
+      }
+    }
+
+    res.json(stats);
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// Phase 5: Hash Verification
+// ============================================================
+
+// ── POST /hash/verify/:id — Re-verify a single hash record ──
+router.post('/hash/verify/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+    const row = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(id) as any;
+    if (!row) return res.status(404).json({ error: 'Hash record not found' });
+
+    // Resolve file path — try file_path on the row first, then look up attachment
+    let filePath = row.file_path;
+    if (!filePath && row.attachment_id) {
+      const att = db.prepare('SELECT file_path FROM attachments WHERE id = ?').get(row.attachment_id) as any;
+      if (att) {
+        const uploadsDir = process.env.RMPG_UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
+        filePath = path.join(uploadsDir, att.file_path);
+      }
+    }
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Source file not found — cannot verify' });
+    }
+
+    const current = await computeFileHashes(filePath);
+    const original = { md5: row.md5, sha1: row.sha1, sha256: row.sha256, sha512: row.sha512 };
+    const mismatches: string[] = [];
+
+    for (const algo of ['md5', 'sha1', 'sha256', 'sha512'] as const) {
+      if (original[algo] && current[algo] && original[algo] !== current[algo]) {
+        mismatches.push(algo);
+      }
+    }
+
+    const verifiedAt = new Date().toISOString();
+    const verifiedBy = req.user?.userId;
+    const match = mismatches.length === 0;
+
+    if (!match) {
+      db.prepare(`
+        UPDATE digital_evidence_hashes SET flagged = 1, flag_reason = 'INTEGRITY MISMATCH' WHERE id = ?
+      `).run(id);
+    }
+
+    auditLog(req, 'VERIFY_HASH', 'digital_evidence_hashes', id,
+      match ? 'Integrity verification passed' : `Integrity MISMATCH on: ${mismatches.join(', ')}`);
+
+    res.json({ match, original, current, mismatches, verifiedAt, verifiedBy });
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /hash/verify-evidence/:evidenceId — Verify all hashes for evidence ──
+router.post('/hash/verify-evidence/:evidenceId', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidenceId = parseInt(req.params.evidenceId as string, 10);
+    if (isNaN(evidenceId)) return res.status(400).json({ error: 'Invalid evidence ID' });
+
+    const rows = db.prepare('SELECT * FROM digital_evidence_hashes WHERE evidence_id = ?').all(evidenceId) as any[];
+    if (rows.length === 0) return res.status(404).json({ error: 'No hash records found for this evidence' });
+
+    const uploadsDir = process.env.RMPG_UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
+    let passed = 0;
+    let failed = 0;
+    const results: any[] = [];
+
+    for (const row of rows) {
+      let filePath = row.file_path;
+      if (!filePath && row.attachment_id) {
+        const att = db.prepare('SELECT file_path FROM attachments WHERE id = ?').get(row.attachment_id) as any;
+        if (att) filePath = path.join(uploadsDir, att.file_path);
+      }
+
+      if (!filePath || !fs.existsSync(filePath)) {
+        failed++;
+        results.push({ id: row.id, file_name: row.file_name, match: false, error: 'File not found' });
+        continue;
+      }
+
+      const current = await computeFileHashes(filePath);
+      const original = { md5: row.md5, sha1: row.sha1, sha256: row.sha256, sha512: row.sha512 };
+      const mismatches: string[] = [];
+
+      for (const algo of ['md5', 'sha1', 'sha256', 'sha512'] as const) {
+        if (original[algo] && current[algo] && original[algo] !== current[algo]) {
+          mismatches.push(algo);
+        }
+      }
+
+      const match = mismatches.length === 0;
+      if (match) { passed++; } else {
+        failed++;
+        db.prepare(`
+          UPDATE digital_evidence_hashes SET flagged = 1, flag_reason = 'INTEGRITY MISMATCH' WHERE id = ?
+        `).run(row.id);
+      }
+
+      auditLog(req, 'VERIFY_HASH', 'digital_evidence_hashes', row.id,
+        match ? 'Integrity verification passed' : `Integrity MISMATCH on: ${mismatches.join(', ')}`);
+
+      results.push({ id: row.id, file_name: row.file_name, match, original, current, mismatches });
+    }
+
+    res.json({ evidenceId, totalFiles: rows.length, passed, failed, results });
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// Phase 6: Search + Export
+// ============================================================
+
+// ── GET /hash/search — Advanced hash search ──────────────────
+router.get('/hash/search', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const page = Math.min(10000, Math.max(1, parseInt(req.query.page as string, 10) || 1));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.per_page as string, 10) || 20));
+    const offset = (page - 1) * limit;
+
+    const hash = (req.query.hash as string || '').trim();
+    const hashSet = (req.query.hashSet as string || '').trim();
+    const evidenceId = req.query.evidenceId ? parseInt(req.query.evidenceId as string, 10) : null;
+    const flagged = req.query.flagged as string | undefined;
+    const reviewStatus = (req.query.reviewStatus as string || '').trim();
+    const from = (req.query.from as string || '').trim();
+    const to = (req.query.to as string || '').trim();
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (hash) {
+      where += ' AND (h.md5 LIKE ? OR h.sha256 LIKE ?)';
+      params.push(`%${hash}%`, `%${hash}%`);
+    }
+    if (hashSet) {
+      where += ' AND h.hash_set_name = ?';
+      params.push(hashSet);
+    }
+    if (evidenceId) {
+      where += ' AND h.evidence_id = ?';
+      params.push(evidenceId);
+    }
+    if (flagged === 'true') {
+      where += ' AND h.flagged = 1';
+    } else if (flagged === 'false') {
+      where += ' AND h.flagged = 0';
+    }
+    if (reviewStatus) {
+      where += ' AND h.review_status = ?';
+      params.push(reviewStatus);
+    }
+    if (from) {
+      where += ' AND h.created_at >= ?';
+      params.push(from);
+    }
+    if (to) {
+      where += ' AND h.created_at <= ?';
+      params.push(to);
+    }
+
+    const total = (db.prepare(
+      `SELECT COUNT(*) as c FROM digital_evidence_hashes h ${where}`
+    ).get(...params) as any)?.c || 0;
+
+    const dataParams = [...params, limit, offset];
+    const data = db.prepare(`
+      SELECT h.*, e.evidence_number
+      FROM digital_evidence_hashes h
+      LEFT JOIN evidence e ON h.evidence_id = e.id
+      ${where}
+      ORDER BY h.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...dataParams) as any[];
+
+    res.json({ data, total, page, limit });
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /hash/export — Export hash results as CSV ────────────
+router.get('/hash/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const hash = (req.query.hash as string || '').trim();
+    const hashSet = (req.query.hashSet as string || '').trim();
+    const evidenceId = req.query.evidenceId ? parseInt(req.query.evidenceId as string, 10) : null;
+    const flagged = req.query.flagged as string | undefined;
+    const reviewStatus = (req.query.reviewStatus as string || '').trim();
+    const from = (req.query.from as string || '').trim();
+    const to = (req.query.to as string || '').trim();
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (hash) {
+      where += ' AND (h.md5 LIKE ? OR h.sha256 LIKE ?)';
+      params.push(`%${hash}%`, `%${hash}%`);
+    }
+    if (hashSet) {
+      where += ' AND h.hash_set_name = ?';
+      params.push(hashSet);
+    }
+    if (evidenceId) {
+      where += ' AND h.evidence_id = ?';
+      params.push(evidenceId);
+    }
+    if (flagged === 'true') {
+      where += ' AND h.flagged = 1';
+    } else if (flagged === 'false') {
+      where += ' AND h.flagged = 0';
+    }
+    if (reviewStatus) {
+      where += ' AND h.review_status = ?';
+      params.push(reviewStatus);
+    }
+    if (from) {
+      where += ' AND h.created_at >= ?';
+      params.push(from);
+    }
+    if (to) {
+      where += ' AND h.created_at <= ?';
+      params.push(to);
+    }
+
+    const rows = db.prepare(`
+      SELECT h.*, e.evidence_number, u.full_name as reviewer_name
+      FROM digital_evidence_hashes h
+      LEFT JOIN evidence e ON h.evidence_id = e.id
+      LEFT JOIN users u ON h.reviewed_by = u.id
+      ${where}
+      ORDER BY h.created_at DESC
+    `).all(...params) as any[];
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="hash-report-${dateStr}.csv"`);
+
+    // UTF-8 BOM for Excel compatibility
+    const BOM = '\uFEFF';
+    const header = 'evidence_number,file_name,md5,sha1,sha256,sha512,flagged,review_status,reviewed_by,hash_set_name,created_at';
+
+    const csvRows = rows.map((r: any) => {
+      const fields = [
+        r.evidence_number || '',
+        r.file_name || '',
+        r.md5 || '',
+        r.sha1 || '',
+        r.sha256 || '',
+        r.sha512 || '',
+        r.flagged ? '1' : '0',
+        r.review_status || '',
+        r.reviewer_name || '',
+        r.hash_set_name || '',
+        r.created_at || '',
+      ];
+      return fields.map(f => `"${String(f).replace(/"/g, '""')}"`).join(',');
+    });
+
+    res.send(BOM + header + '\n' + csvRows.join('\n'));
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

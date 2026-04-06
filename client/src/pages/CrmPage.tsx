@@ -747,7 +747,7 @@ export default function CrmPage() {
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowTaskModal(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowTaskModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
@@ -789,7 +789,7 @@ export default function CrmPage() {
                 <label className="field-label">Client</label>
                 <select className="input-dark w-full" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
                   <option value="">No client</option>
-                  {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {clients.filter(c => c.status !== 'inactive').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
@@ -817,7 +817,7 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowActivityModal(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowActivityModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">Log Activity</span>
@@ -828,7 +828,7 @@ export default function CrmPage() {
                 <label className="field-label">Client</label>
                 <select className="input-dark w-full" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
                   <option value="">Select client...</option>
-                  {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {clients.filter(c => c.status !== 'inactive').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
@@ -1175,7 +1175,7 @@ export default function CrmPage() {
                 <div className="text-xs font-medium text-rmpg-200">{c.name}</div>
                 <div className="text-[10px] text-rmpg-400 flex items-center gap-2 mt-0.5">
                   {c.contact_name && <span>{c.contact_name}</span>}
-                  {c.is_active === false && <span className="text-red-400">INACTIVE</span>}
+                  {c.status === 'inactive' && <span className="text-red-400">INACTIVE</span>}
                   {(c as any).priority_client && <span className="text-amber-400">PRIORITY</span>}
                 </div>
               </button>

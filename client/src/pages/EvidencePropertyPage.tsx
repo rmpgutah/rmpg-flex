@@ -6,14 +6,16 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Package, Search, Plus, ChevronDown, MapPin, Clock, User,
   ArrowRightLeft, CheckCircle, AlertTriangle, X, Save, Loader2,
   Box, Warehouse, Tag, FileText, Archive, Video,
   PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2,
-  Play, Shield, Camera,
+  Play, Shield, Camera, Download,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { exportToCsv } from '../utils/csvExport';
 import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
 import { apiFetch } from '../hooks/useApi';
@@ -59,7 +61,7 @@ const STATUS_OPTIONS = [
   { value: 'disposed', label: 'Disposed' },
 ];
 
-type DetailTab = 'info' | 'chain' | 'bwc';
+type DetailTab = 'info' | 'chain' | 'bwc' | 'forensics';
 
 // ─── Component ─────────────────────────────────────────
 export default function EvidencePropertyPage() {
@@ -97,13 +99,27 @@ export default function EvidencePropertyPage() {
   });
   const [newEvidenceSubmitting, setNewEvidenceSubmitting] = useState(false);
 
+  // URL search params (auto-open new evidence from incidents page)
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Detail tab
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
+
+  // Digital Forensics
+  const [hashResults, setHashResults] = useState<any[]>([]);
+  const [hashLoading, setHashLoading] = useState(false);
+  const [verifyResults, setVerifyResults] = useState<any>(null);
+  const [hashingBatch, setHashingBatch] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   // BWC footage
   const [bwcVideos, setBwcVideos] = useState<BodyCamVideo[]>([]);
   const [bwcLoading, setBwcLoading] = useState(false);
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+
+  // Cases for linking
+  const [caseOptions, setCaseOptions] = useState<any[]>([]);
+  const [linkingCase, setLinkingCase] = useState(false);
 
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
@@ -116,10 +132,13 @@ export default function EvidencePropertyPage() {
         ...(filterType ? { type: filterType } : {}),
       });
       const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?${params}`);
-      setItems(res.data || []);
+      const newItems = res.data || [];
+      setItems(newItems);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+      // Keep selected item in sync with refreshed data
+      setSelected((prev: any) => prev ? newItems.find((i: any) => i.id === prev.id) || null : null);
+    } catch { addToast('Failed to load evidence items', 'error'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType]);
 
   const fetchStats = useCallback(async () => {
@@ -147,7 +166,33 @@ export default function EvidencePropertyPage() {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
   useEffect(() => { fetchStats(); fetchLocations(); }, [fetchStats, fetchLocations]);
+  useEffect(() => {
+    apiFetch<{ data: any[] }>('/cases?limit=500').then(r => setCaseOptions(r.data || [])).catch(() => {});
+  }, []);
   useLiveSync('records', () => { fetchItems({ silent: true }); fetchStats(); });
+
+  // ---------- Auto-open new evidence from URL params (incidents page link) ----------
+  useEffect(() => {
+    const isNew = searchParams.get('new');
+    if (isNew !== 'true') return;
+    // Grab params before clearing
+    const incidentId = searchParams.get('incident_id') || '';
+    const location = searchParams.get('location') || '';
+    // Clear params immediately so it doesn't re-trigger
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('new');
+      next.delete('incident_id');
+      next.delete('location');
+      return next;
+    }, { replace: true });
+    setNewEvidence({
+      description: '', evidence_type: 'other', category: '', storage_location: '',
+      serial_number: '', brand: '', model: '', estimated_value: '',
+      collected_date: '', notes: location ? `Collection location: ${location}` : '', incident_id: incidentId,
+    });
+    setNewEvidenceOpen(true);
+  }, [searchParams]);
 
   // When detail tab switches to BWC, fetch videos
   useEffect(() => {
@@ -156,6 +201,18 @@ export default function EvidencePropertyPage() {
       fetchBwcVideos(caseNum);
     }
   }, [detailTab, selected, fetchBwcVideos]);
+
+  // When detail tab switches to forensics, fetch hash results
+  useEffect(() => {
+    if (detailTab === 'forensics' && selected?.id) {
+      setHashLoading(true);
+      setVerifyResults(null);
+      apiFetch(`/iped/hash/results?evidenceId=${selected.id}`)
+        .then((res: any) => setHashResults(Array.isArray(res) ? res : res?.data || []))
+        .catch(() => setHashResults([]))
+        .finally(() => setHashLoading(false));
+    }
+  }, [detailTab, selected?.id]);
 
   // ─── Handlers ──────────────────────────────────────
   const handleChainAction = async () => {
@@ -177,7 +234,7 @@ export default function EvidencePropertyPage() {
       const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
       setSelected(updated.data);
     } catch (err: any) {
-      addToast(err.message || 'Failed to record action', 'error');
+      addToast(err?.message || 'Failed to record action', 'error');
     } finally { setChainSubmitting(false); }
   };
 
@@ -206,8 +263,24 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true });
       fetchStats();
     } catch (err: any) {
-      addToast(err.message || 'Failed to create evidence', 'error');
+      addToast(err?.message || 'Failed to create evidence', 'error');
     } finally { setNewEvidenceSubmitting(false); }
+  };
+
+  const handleLinkCase = async (caseId: string) => {
+    if (!selected) return;
+    setLinkingCase(true);
+    try {
+      const res = await apiFetch<any>(`/records/evidence/${selected.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ case_id: caseId ? parseInt(caseId, 10) : null }),
+      });
+      setSelected(res);
+      addToast(caseId ? 'Evidence linked to case' : 'Case link removed', 'success');
+      fetchItems({ silent: true });
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to link case', 'error');
+    } finally { setLinkingCase(false); }
   };
 
   let chainOfCustody: any[] = [];
@@ -254,10 +327,35 @@ export default function EvidencePropertyPage() {
 
   // ─── Render ────────────────────────────────────────
   return (
-    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
+    <div className={`h-full flex app-grid-bg ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left Panel: Evidence List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>
+          <button
+            onClick={() => exportToCsv('evidence_export.csv', items, [
+              { key: 'evidence_number', label: 'Evidence #' },
+              { key: 'status', label: 'Status' },
+              { key: 'description', label: 'Description' },
+              { key: 'evidence_type', label: 'Type' },
+              { key: 'category', label: 'Category' },
+              { key: 'serial_number', label: 'Serial #' },
+              { key: 'brand', label: 'Brand' },
+              { key: 'model', label: 'Model' },
+              { key: 'estimated_value', label: 'Est. Value' },
+              { key: 'storage_location', label: 'Storage Location' },
+              { key: 'collected_by_name', label: 'Collected By' },
+              { key: 'collected_date', label: 'Collected Date' },
+              { key: 'incident_number', label: 'Incident #' },
+              { key: 'linked_case_number', label: 'Linked Case' },
+              { key: 'notes', label: 'Notes' },
+              { key: 'created_at', label: 'Created' },
+            ])}
+            className="toolbar-btn"
+            title="Export CSV"
+            disabled={items.length === 0}
+          >
+            <Download style={{ width: 11, height: 11 }} /> CSV
+          </button>
           <button
             onClick={() => setNewEvidenceOpen(true)}
             className="toolbar-btn toolbar-btn-primary"
@@ -349,8 +447,21 @@ export default function EvidencePropertyPage() {
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono font-bold text-white truncate">
+                  <span className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-white truncate">
                     {item.evidence_number || `EV-${item.id}`}
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                      item.flagged_hash_count > 0
+                        ? 'bg-red-500'
+                        : item.hash_count > 0
+                        ? 'bg-green-500'
+                        : 'bg-rmpg-600'
+                    }`} title={
+                      item.flagged_hash_count > 0
+                        ? `${item.flagged_hash_count} flagged hash(es)`
+                        : item.hash_count > 0
+                        ? 'Hashed — no flags'
+                        : 'Not hashed'
+                    } />
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>
                     {(item.status || 'unknown').replace(/_/g, ' ').toUpperCase()}
@@ -416,6 +527,7 @@ export default function EvidencePropertyPage() {
                 { id: 'info' as DetailTab, label: 'Details', icon: FileText },
                 { id: 'chain' as DetailTab, label: 'Chain of Custody', icon: ArrowRightLeft },
                 { id: 'bwc' as DetailTab, label: 'BWC Footage', icon: Camera },
+                { id: 'forensics' as DetailTab, label: 'Digital Forensics', icon: Shield },
               ]).map(tab => {
                 const Icon = tab.icon;
                 return (
@@ -466,7 +578,7 @@ export default function EvidencePropertyPage() {
                         ['Serial Number', selected.serial_number || '—'],
                         ['Make / Model', [selected.make || selected.brand, selected.model].filter(Boolean).join(' ') || '—'],
                         ['Quantity', selected.quantity || '1'],
-                        ['Estimated Value', selected.estimated_value ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
+                        ['Estimated Value', selected.estimated_value && !isNaN(Number(selected.estimated_value)) ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
                       ].map(([label, value]) => (
                         <div key={label as string}>
                           <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -494,6 +606,30 @@ export default function EvidencePropertyPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Link to Case */}
+                  <div className="panel-inset p-3">
+                    <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 tracking-wider">Linked Case</div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selected.case_id || ''}
+                        onChange={e => handleLinkCase(e.target.value)}
+                        disabled={linkingCase}
+                        className="select-dark flex-1 text-xs"
+                      >
+                        <option value="">— No linked case —</option>
+                        {caseOptions.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.case_number} — {c.title}</option>
+                        ))}
+                      </select>
+                      {linkingCase && <Loader2 className="w-3 h-3 animate-spin text-rmpg-500" />}
+                    </div>
+                    {selected.linked_case_number && (
+                      <div className="mt-1.5 text-[10px] text-brand-400">
+                        Currently linked: {selected.linked_case_number} — {selected.linked_case_title}
+                      </div>
+                    )}
                   </div>
 
                   {/* Notes */}
@@ -623,6 +759,191 @@ export default function EvidencePropertyPage() {
                   )}
                 </div>
               )}
+
+              {/* ── Digital Forensics Tab ── */}
+              {detailTab === 'forensics' && (
+                <div className="space-y-4">
+                  {hashLoading ? (
+                    <div className="flex items-center justify-center h-32">
+                      <Loader2 className="w-5 h-5 animate-spin text-rmpg-500" />
+                    </div>
+                  ) : (
+                    <>
+                      {/* Hash Status Summary */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="panel-beveled p-3 text-center">
+                          <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Total Hashes</div>
+                          <div className="text-lg font-bold text-blue-400 mt-0.5">
+                            {selected.hash_count || hashResults.length}
+                          </div>
+                        </div>
+                        <div className="panel-beveled p-3 text-center">
+                          <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Flagged</div>
+                          <div className={`text-lg font-bold mt-0.5 ${
+                            (selected.flagged_hash_count || hashResults.filter((h: any) => h.flagged).length) > 0
+                              ? 'text-red-400' : 'text-green-400'
+                          }`}>
+                            {selected.flagged_hash_count || hashResults.filter((h: any) => h.flagged).length}
+                          </div>
+                        </div>
+                        <div className="panel-beveled p-3 text-center">
+                          <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Verified</div>
+                          <div className="text-[10px] font-mono text-rmpg-300 mt-1">
+                            {verifyResults?.timestamp
+                              ? new Date(verifyResults.timestamp).toLocaleString()
+                              : '—'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="toolbar-btn toolbar-btn-primary px-3 py-1.5 flex items-center gap-1.5 text-[10px]"
+                          disabled={hashingBatch}
+                          onClick={async () => {
+                            setHashingBatch(true);
+                            try {
+                              await apiFetch('/iped/hash/batch', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ evidenceId: selected.id }),
+                              });
+                              addToast('Hash job started', 'success');
+                              // Refresh hash results
+                              const res: any = await apiFetch(`/iped/hash/results?evidenceId=${selected.id}`);
+                              setHashResults(Array.isArray(res) ? res : res?.data || []);
+                            } catch {
+                              addToast('Failed to start hash job', 'error');
+                            } finally {
+                              setHashingBatch(false);
+                            }
+                          }}
+                        >
+                          {hashingBatch ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <FlaskConical style={{ width: 11, height: 11 }} />}
+                          Hash All Attachments
+                        </button>
+                        <button
+                          className="toolbar-btn px-3 py-1.5 flex items-center gap-1.5 text-[10px]"
+                          disabled={verifying}
+                          onClick={async () => {
+                            setVerifying(true);
+                            try {
+                              const res = await apiFetch(`/iped/hash/verify-evidence/${selected.id}`, { method: 'POST' });
+                              setVerifyResults(res);
+                              addToast('Integrity verification complete', 'success');
+                            } catch {
+                              addToast('Verification failed', 'error');
+                            } finally {
+                              setVerifying(false);
+                            }
+                          }}
+                        >
+                          {verifying ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Shield style={{ width: 11, height: 11 }} />}
+                          Verify Integrity
+                        </button>
+                      </div>
+
+                      {/* Verification Results Banner */}
+                      {verifyResults && (
+                        <div className={`p-3 border text-[11px] font-bold ${
+                          verifyResults.allPassed
+                            ? 'bg-green-900/30 border-green-700/50 text-green-400'
+                            : 'bg-red-900/30 border-red-700/50 text-red-400'
+                        }`}>
+                          {verifyResults.allPassed ? (
+                            <div className="flex items-center gap-2">
+                              <CheckCircle style={{ width: 14, height: 14 }} />
+                              All files verified — integrity intact
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <AlertTriangle style={{ width: 14, height: 14 }} />
+                                INTEGRITY ALERT: {verifyResults.failures?.length || 0} file(s) failed verification
+                              </div>
+                              {verifyResults.failures?.map((f: any, i: number) => (
+                                <div key={i} className="ml-5 mt-1 text-[10px] text-rmpg-300">
+                                  <span className="text-white font-mono">{f.fileName}</span>
+                                  {f.originalHash && (
+                                    <span className="ml-2">Original: <span className="text-rmpg-400 font-mono">{f.originalHash.substring(0, 16)}...</span></span>
+                                  )}
+                                  {f.currentHash && (
+                                    <span className="ml-2">Current: <span className="text-red-400 font-mono">{f.currentHash.substring(0, 16)}...</span></span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Hash Results Table */}
+                      {hashResults.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
+                          <Shield className="w-8 h-8 mb-2 text-rmpg-600" />
+                          <p className="text-xs">No hash results yet</p>
+                          <p className="text-[10px] text-rmpg-600 mt-1">
+                            Click "Hash All Attachments" to generate file hashes
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-[10px]">
+                            <thead>
+                              <tr className="text-left text-rmpg-500 uppercase tracking-wider border-b border-rmpg-700">
+                                <th className="px-2 py-1.5">File Name</th>
+                                <th className="px-2 py-1.5">MD5</th>
+                                <th className="px-2 py-1.5">SHA-256</th>
+                                <th className="px-2 py-1.5">Status</th>
+                                <th className="px-2 py-1.5">Review</th>
+                                <th className="px-2 py-1.5">Matched Set</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {hashResults.map((h: any, i: number) => (
+                                <tr key={h.id || i} className="border-b border-rmpg-800/40 hover:bg-rmpg-800/20">
+                                  <td className="px-2 py-1.5 font-mono text-white truncate max-w-[140px]" title={h.file_name}>
+                                    {h.file_name || '—'}
+                                  </td>
+                                  <td className="px-2 py-1.5 font-mono text-rmpg-400" title={h.md5}>
+                                    {h.md5 ? h.md5.substring(0, 12) + '...' : '—'}
+                                  </td>
+                                  <td className="px-2 py-1.5 font-mono text-rmpg-400" title={h.sha256}>
+                                    {h.sha256 ? h.sha256.substring(0, 12) + '...' : '—'}
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <span className={`px-1.5 py-0.5 text-[8px] font-bold border ${
+                                      h.flagged
+                                        ? 'bg-red-900/40 text-red-400 border-red-700/50'
+                                        : 'bg-green-900/40 text-green-400 border-green-700/50'
+                                    }`}>
+                                      {h.flagged ? 'FLAGGED' : 'CLEAN'}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <span className={`px-1.5 py-0.5 text-[8px] font-bold border ${
+                                      h.review_status === 'confirmed_threat' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
+                                      h.review_status === 'false_positive' ? 'bg-green-900/40 text-green-400 border-green-700/50' :
+                                      h.review_status === 'needs_analysis' ? 'bg-amber-900/40 text-amber-400 border-amber-700/50' :
+                                      'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50'
+                                    }`}>
+                                      {(h.review_status || 'pending').replace(/_/g, ' ').toUpperCase()}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-rmpg-400 font-mono">
+                                    {h.hash_set_name || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -637,7 +958,7 @@ export default function EvidencePropertyPage() {
 
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setChainModalOpen(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => setChainModalOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
@@ -699,7 +1020,7 @@ export default function EvidencePropertyPage() {
 
       {/* ── New Evidence Modal ── */}
       {newEvidenceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setNewEvidenceOpen(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => setNewEvidenceOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">

@@ -63,7 +63,7 @@ interface StatsSummary {
   in_progress: number;
   served: number;
   failed: number;
-  total_attempts: number;
+  attempts_today: number;
   mileage?: number;
   planned_mileage?: number;
 }
@@ -228,13 +228,18 @@ export default function ServePage() {
       dueDiligenceComplete?: boolean;
       attemptNumber?: number;
       jobStatus?: string;
+      newCallId?: number;
+      newCallNumber?: string;
     }>(`/api/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
     refreshJobs();
+    if (result.newCallId && result.newCallNumber) {
+      addToast(`Auto-dispatch created: Call #${result.newCallNumber}`, 'success');
+    }
     return result;
-  }, [attemptJob, refreshJobs]);
+  }, [attemptJob, refreshJobs, addToast]);
 
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
@@ -243,9 +248,10 @@ export default function ServePage() {
     setRouteData({ orderedIds: orderedJobIds, ...data });
     // Persist sort order to server
     try {
+      const order = orderedJobIds.map((id, idx) => ({ id, sort_order: idx }));
       await apiFetch('/api/process-server/reorder', {
         method: 'PUT',
-        body: JSON.stringify({ orderedIds: orderedJobIds }),
+        body: JSON.stringify({ order }),
       });
       refreshJobs();
     } catch {
@@ -676,7 +682,7 @@ export default function ServePage() {
               />
               <StatCard
                 label="Total Attempts"
-                value={stats?.total_attempts ?? 0}
+                value={stats?.attempts_today ?? 0}
                 color="text-amber-400"
                 bg="bg-amber-900/20"
                 border="border-amber-700/40"

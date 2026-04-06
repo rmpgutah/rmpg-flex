@@ -468,7 +468,7 @@ router.post('/:id/attempt', requireRole(...WRITE_ROLES), (req: Request, res: Res
     const updatedJob = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id);
     const attempt = db.prepare('SELECT * FROM serve_attempts WHERE id = ?').get(attemptId);
 
-    const dueDiligenceComplete = attemptNumber >= 2 && newStatus !== 'served';
+    const dueDiligenceComplete = attemptNumber >= 3 && newStatus !== 'served';
 
     auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Attempt #${attemptNumber}: ${result}`);
     broadcast('serve', 'serve_attempt', { job: updatedJob, attempt });

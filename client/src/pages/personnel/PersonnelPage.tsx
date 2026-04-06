@@ -16,7 +16,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment, mapBodyCamera, mapBodyCamVideo } from './utils/personnelMappers';
+import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapEquipment, mapDeployment, mapBodyCamera, mapBodyCamVideo } from './utils/personnelMappers';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { MAIN_TABS, type MainTab, type DetailTab, type ModalMode } from './utils/personnelConstants';
 import { getWeekMonday } from './utils/personnelFormatters';
@@ -234,7 +234,7 @@ export default function PersonnelPage() {
     if (activeTab === 'equipment' && equipment.length === 0 && !equipmentLoading) {
       setEquipmentLoading(true);
       apiFetch<any[]>('/personnel/equipment')
-        .then(raw => setEquipment(Array.isArray(raw) ? raw : []))
+        .then(raw => setEquipment((Array.isArray(raw) ? raw : []).map(mapEquipment)))
         .catch(() => addToast('Failed to load equipment data', 'error'))
         .finally(() => setEquipmentLoading(false));
     }
@@ -278,7 +278,7 @@ export default function PersonnelPage() {
     if (detailTab === 'equipment' && equipment.length === 0 && !equipmentLoading) {
       setEquipmentLoading(true);
       apiFetch<any[]>('/personnel/equipment')
-        .then(raw => setEquipment(Array.isArray(raw) ? raw : []))
+        .then(raw => setEquipment((Array.isArray(raw) ? raw : []).map(mapEquipment)))
         .catch(() => addToast('Failed to load equipment', 'error'))
         .finally(() => setEquipmentLoading(false));
     }

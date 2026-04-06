@@ -7,6 +7,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   FileWarning,
   Plus,
@@ -27,8 +28,10 @@ import {
   FileText,
   Ban,
   RefreshCw,
+  Download,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { exportToCsv } from '../utils/csvExport';
 import { toDisplayLabel } from '../utils/formatters';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
@@ -198,7 +201,7 @@ const EMPTY_FORM: CitationForm = {
 // formatDate imported from ../utils/dateUtils
 
 function formatCurrency(n: number | null | undefined): string {
-  if (n == null) return '--';
+  if (n == null || !Number.isFinite(Number(n))) return '--';
   return `$${Number(n).toFixed(2)}`;
 }
 
@@ -207,7 +210,7 @@ function formatCurrency(n: number | null | undefined): string {
 export default function CitationsPage() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
 
   // List state
@@ -233,6 +236,9 @@ export default function CitationsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
 
+  // URL search params (prefill from dispatch call)
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Person search state
   const [personSearch, setPersonSearch] = useState('');
   const [personResults, setPersonResults] = useState<any[]>([]);
@@ -240,6 +246,8 @@ export default function CitationsPage() {
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const personSearchGenRef = useRef(0);
+  const saveSuccessTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -254,8 +262,11 @@ export default function CitationsPage() {
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
       const res = await apiFetch<{ data: Citation[]; pagination: any }>(`/citations?${params}`);
-      setCitations(res.data || []);
+      const newCitations = res.data || [];
+      setCitations(newCitations);
       setTotalPages(res.pagination?.totalPages || 1);
+      // Keep selected citation in sync if viewing in list mode
+      setSelectedCitation(prev => prev ? newCitations.find((c: Citation) => c.id === prev.id) || null : null);
     } catch (err: any) {
       if (!options?.silent) setError(err.message || 'Failed to load citations');
     } finally {
@@ -284,6 +295,49 @@ export default function CitationsPage() {
   const silentRefreshCitations = useCallback(() => fetchCitations({ silent: true }), [fetchCitations]);
   useLiveSync('citations', silentRefreshCitations);
 
+  // ---------- Prefill from dispatch call / open create from MDT (URL params) ----------
+  useEffect(() => {
+    const newFlag = searchParams.get('new');
+    if (newFlag === 'true') {
+      setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('new'); return next; }, { replace: true });
+      setForm({ ...EMPTY_FORM, violation_date: localToday(), violation_time: new Date().toTimeString().slice(0, 5), issuing_officer_name: (user as any)?.full_name || (user as any)?.username || '', badge_number: (user as any)?.badge_number || '' });
+      setPersonSearch('');
+      setSaveError('');
+      setSaveSuccess(false);
+      clearFormErrors();
+      setMode('create');
+      setSelectedCitation(null);
+      return;
+    }
+    const callId = searchParams.get('prefill_call_id');
+    if (!callId) return;
+    // Clear the param immediately so it doesn't re-trigger
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('prefill_call_id'); return next; }, { replace: true });
+    (async () => {
+      try {
+        const call = await apiFetch<any>(`/dispatch/calls/${callId}`);
+        if (!call) return;
+        setForm({
+          ...EMPTY_FORM,
+          violation_date: localToday(),
+          violation_time: new Date().toTimeString().slice(0, 5),
+          location: call.location_address || '',
+          issuing_officer_name: (user as any)?.full_name || (user as any)?.username || '',
+          badge_number: (user as any)?.badge_number || '',
+          notes: call.description ? `Call #${call.id}: ${call.description}` : '',
+        });
+        setPersonSearch('');
+        setSaveError('');
+        setSaveSuccess(false);
+        clearFormErrors();
+        setMode('create');
+        setSelectedCitation(null);
+      } catch (err) {
+        console.warn('[CitationsPage] Failed to fetch call for prefill:', err);
+      }
+    })();
+  }, [searchParams]);
+
   // Close person dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -307,14 +361,16 @@ export default function CitationsPage() {
     }
     setPersonSearching(true);
     personSearchTimer.current = setTimeout(async () => {
+      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons/search?q=${encodeURIComponent(val)}&limit=10`);
+        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
         setShowPersonDropdown(true);
       } catch {
-        setPersonResults([]);
+        if (gen === personSearchGenRef.current) setPersonResults([]);
       } finally {
-        setPersonSearching(false);
+        if (gen === personSearchGenRef.current) setPersonSearching(false);
       }
     }, 300);
   };
@@ -382,6 +438,7 @@ export default function CitationsPage() {
     setPersonSearch('');
     setSaveError('');
     setSaveSuccess(false);
+    if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
     clearFormErrors();
     setMode('create');
     setSelectedCitation(null);
@@ -455,10 +512,14 @@ export default function CitationsPage() {
       };
 
       if (mode === 'create') {
-        const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
+        const res = await apiFetch<{ data: Citation & { activeWarrants?: any[] } }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
+        if ((res.data as any).activeWarrants?.length > 0) {
+          alert(`WARNING: This person has ${(res.data as any).activeWarrants.length} active warrant(s)!`);
+        }
         setSaveSuccess(true);
-        setTimeout(() => {
+        if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
+        saveSuccessTimer.current = setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
           fetchCitations({ silent: true });
@@ -468,7 +529,8 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>(`/citations/${selectedCitation.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
-        setTimeout(() => {
+        if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
+        saveSuccessTimer.current = setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
           fetchCitations({ silent: true });
@@ -571,6 +633,34 @@ export default function CitationsPage() {
           <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
             <button onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
               <Plus size={isMobile ? 16 : 12} /> New
+            </button>
+            <button
+              onClick={() => exportToCsv('citations_export.csv', citations, [
+                { key: 'citation_number', label: 'Citation #' },
+                { key: 'type', label: 'Type' },
+                { key: 'status', label: 'Status' },
+                { key: 'person_name', label: 'Person' },
+                { key: 'violation_description', label: 'Violation' },
+                { key: 'statute_citation', label: 'Statute' },
+                { key: 'offense_level', label: 'Offense Level' },
+                { key: 'fine_amount', label: 'Fine Amount' },
+                { key: 'violation_date', label: 'Violation Date' },
+                { key: 'violation_time', label: 'Violation Time' },
+                { key: 'location', label: 'Location' },
+                { key: 'vehicle_plate', label: 'Vehicle Plate' },
+                { key: 'vehicle_state', label: 'Plate State' },
+                { key: 'vehicle_description', label: 'Vehicle' },
+                { key: 'issuing_officer_name', label: 'Officer' },
+                { key: 'court_date', label: 'Court Date' },
+                { key: 'court_name', label: 'Court' },
+                { key: 'notes', label: 'Notes' },
+                { key: 'created_at', label: 'Created' },
+              ])}
+              className="toolbar-btn"
+              title="Export CSV"
+              disabled={citations.length === 0}
+            >
+              <Download size={isMobile ? 16 : 12} /> CSV
             </button>
             <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
@@ -1071,22 +1161,22 @@ export default function CitationsPage() {
               <label className="field-label">Location</label>
               <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs" />
             </div>
-            {/* Section / Zone / Beat */}
+            {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Section</label>
                 <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                  value={form.section_id || ''} onChange={(e) => updateField('section_id', e.target.value)}>
+                  value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
-                  {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Zone</label>
                 <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                  value={form.zone_id || ''} onChange={(e) => updateField('zone_id', e.target.value)}>
+                  value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
-                  {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                  {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                 </select>
               </div>
               <div>
@@ -1094,7 +1184,7 @@ export default function CitationsPage() {
                 <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
-                  {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                  {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
                 </select>
               </div>
             </div>
@@ -1213,7 +1303,7 @@ export default function CitationsPage() {
   const showRightOnMobile = !isMobile || mode !== 'list' || !!selectedCitation;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden app-grid-bg">
       {/* Stats bar */}
       <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
         {isMobile ? (
@@ -1229,14 +1319,14 @@ export default function CitationsPage() {
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'px-2 pb-2 flex-col' : 'px-4 pb-4 gap-4'}`}>
         {/* Left panel */}
         {showListOnMobile && (
-          <div className={`${isMobile ? 'flex-1' : 'w-[420px] min-w-[360px] shrink-0'} panel-beveled bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden`}>
+          <div className={`${isMobile ? 'flex-1' : 'w-[420px] min-w-[360px] shrink-0'} panel-beveled card-glass bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden`}>
             {renderListPanel()}
           </div>
         )}
 
         {/* Right panel */}
         {showRightOnMobile && (
-          <div className={`flex-1 panel-beveled bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
+          <div className={`flex-1 panel-beveled card-glass bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
             {isMobile && selectedCitation && mode === 'list' && (
               <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
                 <button onClick={() => setSelectedCitation(null)} className="toolbar-btn text-[10px]">← Back</button>

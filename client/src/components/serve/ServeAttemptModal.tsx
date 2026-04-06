@@ -90,6 +90,8 @@ export default function ServeAttemptModal({
   const [submitResult, setSubmitResult] = useState<{
     dueDiligenceComplete?: boolean;
     attemptNumber?: number;
+    newCallId?: number;
+    newCallNumber?: string;
   } | null>(null);
 
   // ─── GPS Acquisition ────────────────────────────────────────────────
@@ -202,9 +204,9 @@ export default function ServeAttemptModal({
         attempt_type: attemptType,
         result: attemptType === 'failed'
           ? (failedReason || 'other')
-          : 'served',
-        latitude: gps.latitude ?? undefined,
-        longitude: gps.longitude ?? undefined,
+          : attemptType === 'posting' ? 'posted' : 'served',
+        gps_lat: gps.latitude ?? undefined,
+        gps_lng: gps.longitude ?? undefined,
         gps_accuracy: gps.accuracy ?? undefined,
         address_verified: !showDistanceWarning,
         photo_ids: photos.map(p => p.id),
@@ -618,6 +620,19 @@ export default function ServeAttemptModal({
                 <h3 className="text-sm font-bold text-rmpg-100">
                   Attempt #{submitResult.attemptNumber} Recorded
                 </h3>
+                {submitResult.newCallId && submitResult.newCallNumber && (
+                  <div className="bg-blue-900/30 border border-blue-700 rounded p-3 space-y-1">
+                    <p className="text-sm text-blue-300 font-semibold">
+                      Auto-dispatch created: Call #{submitResult.newCallNumber}
+                    </p>
+                    <a
+                      href={`/dispatch?select=${submitResult.newCallId}`}
+                      className="text-xs text-blue-400 hover:text-blue-300 underline"
+                    >
+                      View in Dispatch
+                    </a>
+                  </div>
+                )}
                 {submitResult.dueDiligenceComplete && (
                   <div className="bg-green-900/30 border border-green-700 rounded p-3 space-y-2">
                     <p className="text-sm text-green-300 font-semibold">

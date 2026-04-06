@@ -106,10 +106,10 @@ export default function DailyActivityReportsPage() {
       };
       // Include auto-populated data if available
       if (autoPopulateData) {
-        body.calls_handled = JSON.stringify(autoPopulateData.calls || []);
-        body.incidents_created = JSON.stringify(autoPopulateData.incidents || []);
-        body.citations_issued = JSON.stringify(autoPopulateData.citations || []);
-        body.patrols_completed = JSON.stringify(autoPopulateData.patrols || []);
+        body.calls_handled = JSON.stringify(autoPopulateData.calls_handled || []);
+        body.incidents_created = JSON.stringify(autoPopulateData.incidents_created || []);
+        body.citations_issued = JSON.stringify(autoPopulateData.citations_issued || []);
+        body.patrols_completed = JSON.stringify(autoPopulateData.patrols_completed || []);
       }
       await apiFetch('/dar', { method: 'POST', body: JSON.stringify(body) });
       addToast('DAR created', 'success');
@@ -227,7 +227,7 @@ export default function DailyActivityReportsPage() {
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <Calendar style={{ width: 9, height: 9 }} />
-                  {dar.shift_date ? new Date(dar.shift_date).toLocaleDateString() : '—'}
+                  {dar.shift_date ? new Date(dar.shift_date.includes('T') ? dar.shift_date : `${dar.shift_date}T00:00:00`).toLocaleDateString() : '—'}
                   {dar.officer_name && (
                     <span className="flex items-center gap-1">
                       <User style={{ width: 9, height: 9 }} />
@@ -253,7 +253,7 @@ export default function DailyActivityReportsPage() {
       <div className="flex-1 flex flex-col bg-surface-base">
         {selected ? (
           <>
-            <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
+            <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? new Date(selected.shift_date.includes('T') ? selected.shift_date : `${selected.shift_date}T00:00:00`).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
               {selected.status === 'draft' && (
                 <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary">
                   <Send style={{ width: 11, height: 11 }} /> Submit
@@ -309,7 +309,7 @@ export default function DailyActivityReportsPage() {
 
               {/* Shift Info */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-white">{selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : '—'}</div></div>
+                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-white">{selected.shift_date ? new Date(selected.shift_date.includes('T') ? selected.shift_date : `${selected.shift_date}T00:00:00`).toLocaleDateString() : '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Start</div><div className="text-xs text-white">{selected.shift_start || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">End</div><div className="text-xs text-white">{selected.shift_end || '—'}</div></div>
               </div>
@@ -380,7 +380,7 @@ export default function DailyActivityReportsPage() {
 
       {/* ── New DAR Modal ── */}
       {createFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
               <button onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>

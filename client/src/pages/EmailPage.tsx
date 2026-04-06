@@ -64,6 +64,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   const [signature, setSignature] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [signatureError, setSignatureError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +78,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   const handleSave = async () => {
     setSaving(true);
     try { await apiFetch('/email/signature', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature }) }); onClose(); }
-    catch { /* ignore */ } finally { setSaving(false); }
+    catch { setSignatureError('Failed to save signature'); } finally { setSaving(false); }
   };
 
   if (loading) return <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" />;
@@ -90,9 +91,10 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
       </div>
       <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
+      {signatureError && <p className="text-[10px] text-red-400">{signatureError}</p>}
       <div className="flex justify-end gap-1.5">
         <button onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
-        <button onClick={handleSave} disabled={saving} className="btn-primary text-[10px] px-2 py-0.5">{saving ? 'Saving...' : 'Save Signature'}</button>
+        <button onClick={() => { setSignatureError(null); handleSave(); }} disabled={saving} className="btn-primary text-[10px] px-2 py-0.5">{saving ? 'Saving...' : 'Save Signature'}</button>
       </div>
     </div>
   );
@@ -141,6 +143,7 @@ function ContactAutocompleteInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestGenRef = useRef(0);
 
   // Close on outside click
   useEffect(() => {
@@ -151,16 +154,23 @@ function ContactAutocompleteInput({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Clean up pending fetch timer on unmount
+  useEffect(() => {
+    return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
+  }, []);
+
   const fetchSuggestions = useCallback((query: string) => {
     if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
     if (query.length < 2) { setSuggestions([]); return; }
     fetchTimerRef.current = setTimeout(async () => {
+      const gen = ++suggestGenRef.current;
       try {
-        const data = await apiFetch<ContactSuggestion[]>(`/email/contacts/search?q=${encodeURIComponent(query)}`);
-        setSuggestions(data || []);
+        const res = await apiFetch<{ data: ContactSuggestion[] } | ContactSuggestion[]>(`/email/contacts/search?q=${encodeURIComponent(query)}`);
+        if (gen !== suggestGenRef.current) return;
+        setSuggestions(Array.isArray(res) ? res : (res as any).data || []);
         setShowSuggestions(true);
         setActiveIdx(-1);
-      } catch { setSuggestions([]); }
+      } catch { if (gen === suggestGenRef.current) setSuggestions([]); }
     }, 250);
   }, []);
 
@@ -249,10 +259,12 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    apiFetch<EmailTemplate[]>('/email/templates')
-      .then(data => setTemplates(data || []))
-      .catch((err) => { console.warn('[EmailPage] fetch templates failed:', err); })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    apiFetch<{ data: EmailTemplate[] } | EmailTemplate[]>('/email/templates')
+      .then(res => { if (!cancelled) setTemplates(Array.isArray(res) ? res : (res as any).data || []); })
+      .catch((err) => { if (!cancelled) console.warn('[EmailPage] fetch templates failed:', err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -410,7 +422,7 @@ function loadDraft(): DraftState | null {
   } catch { return null; }
 }
 
-function clearDraft(): void { localStorage.removeItem(DRAFT_STORAGE_KEY); }
+function clearDraft(): void { try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch { /* ignore */ } }
 
 // ============================================================
 // Email-Incident Link Panel
@@ -440,8 +452,8 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
 
   const fetchLinks = useCallback(async () => {
     try {
-      const data = await apiFetch<EmailLink[]>(`/email/links/${emailId}`);
-      setLinks(data || []);
+      const res = await apiFetch<{ data: EmailLink[] } | EmailLink[]>(`/email/links/${emailId}`);
+      setLinks(Array.isArray(res) ? res : (res as any).data || []);
     } catch { /* ignore */ }
   }, [emailId]);
 
@@ -577,8 +589,8 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 
   const fetchScheduled = useCallback(async () => {
     try {
-      const data = await apiFetch<ScheduledEmail[]>('/email/scheduled');
-      setEmails(data || []);
+      const res = await apiFetch<{ data: ScheduledEmail[] } | ScheduledEmail[]>('/email/scheduled');
+      setEmails(Array.isArray(res) ? res : (res as any).data || []);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -689,6 +701,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     // This is the same HTML we already render from the email server in a sandboxed iframe
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
+    iframe.sandbox.value = '';
     iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#1a5a9e;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
@@ -956,7 +969,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (file.size > 25 * 1024 * 1024) { setError(`${file.name} exceeds 25MB limit`); return; }
       const reader = new FileReader();
       reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
+        const parts = (reader.result as string).split(',');
+        const base64 = parts.length > 1 ? parts[1] : parts[0];
         setFileAttachments(prev => [...prev, { name: file.name, contentType: file.type || 'application/octet-stream', contentBytes: base64, size: file.size }]);
       };
       reader.readAsDataURL(file);
@@ -976,7 +990,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (file.size > 25 * 1024 * 1024) { setError('Image exceeds 25MB limit'); return; }
       const reader = new FileReader();
       reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
+        const imgParts = (reader.result as string).split(',');
+        const base64 = imgParts.length > 1 ? imgParts[1] : imgParts[0];
         setFileAttachments(prev => [...prev, { name: file.name, contentType: file.type, contentBytes: base64, size: file.size }]);
         // Insert image placeholder in body
         const ta = textareaRef.current;
@@ -1005,9 +1020,9 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         body,
         attachments: fileAttachments.length > 0 ? fileAttachments : undefined,
       };
-      if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body }; }
-      else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body }; }
-      else if (mode === 'forward' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/forward`; payload = { to: to.split(',').map(s => s.trim()), body }; }
+      if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body, attachments: fileAttachments.length > 0 ? fileAttachments : undefined }; }
+      else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body, attachments: fileAttachments.length > 0 ? fileAttachments : undefined }; }
+      else if (mode === 'forward' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/forward`; payload = { to: to.split(',').map(s => s.trim()), body, attachments: fileAttachments.length > 0 ? fileAttachments : undefined }; }
 
       if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
@@ -1026,7 +1041,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onKeyDown={handleKeyDown}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onKeyDown={handleKeyDown}>
       <div className="bg-surface-base border border-border-subtle rounded w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -1234,7 +1249,7 @@ function ContextMenu({
     position: 'fixed',
     left: Math.min(state.x, window.innerWidth - 200),
     top: Math.min(state.y, window.innerHeight - 350),
-    zIndex: 9999,
+    zIndex: 100,
   };
 
   return (
@@ -1284,15 +1299,17 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
   const [expanded, setExpanded] = useState(false);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = async () => {
     if (!body.trim()) return;
     setSending(true);
+    setReplyError(null);
     try {
       await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
       setBody(''); setExpanded(false); onSent();
-    } catch { /* ignore */ } finally { setSending(false); }
+    } catch { setReplyError('Failed to send reply'); } finally { setSending(false); }
   };
 
   if (!expanded) {
@@ -1311,9 +1328,9 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
         rows={4} className="w-full bg-transparent text-xs text-white p-3 resize-none focus:outline-none placeholder:text-rmpg-500"
         placeholder="Type your reply... (Ctrl+Enter to send, Esc to cancel)" autoFocus />
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border-subtle/50">
-        <span className="text-[9px] text-rmpg-600">Signature auto-appended</span>
+        {replyError ? <span className="text-[9px] text-red-400">{replyError}</span> : <span className="text-[9px] text-rmpg-600">Signature auto-appended</span>}
         <div className="flex items-center gap-1.5">
-          <button onClick={() => { setExpanded(false); setBody(''); }} className="text-[10px] text-rmpg-500 hover:text-white px-2 py-0.5">Cancel</button>
+          <button onClick={() => { setExpanded(false); setBody(''); setReplyError(null); }} className="text-[10px] text-rmpg-500 hover:text-white px-2 py-0.5">Cancel</button>
           <button onClick={handleSend} disabled={sending || !body.trim()} className="btn-primary text-[10px] px-3 py-0.5 flex items-center gap-1 disabled:opacity-40">
             {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Send
           </button>
@@ -1358,7 +1375,7 @@ export default function EmailPage() {
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [childFolders, setChildFolders] = useState<Map<string, EmailFolder[]>>(new Map());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [folderCollapsed, setFolderCollapsed] = useState(() => localStorage.getItem('email_folder_collapsed') === 'true');
+  const [folderCollapsed, setFolderCollapsed] = useState(() => { try { return localStorage.getItem('email_folder_collapsed') === 'true'; } catch { return false; } });
 
   // Folder management
   const [newFolderName, setNewFolderName] = useState('');
@@ -1498,7 +1515,23 @@ export default function EmailPage() {
       if (searchInput !== search) { setSearch(searchInput); setPage(1); fetchMessages(1, selectedFolder, searchInput); }
     }, 500);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
-  }, [searchInput]); // eslint-disable-line
+  }, [searchInput, search, selectedFolder, fetchMessages]);
+
+  // Apply client-side search filters (declared before keyboard shortcuts that reference it)
+  const filteredMessages = hasActiveFilters(searchFilters)
+    ? messages.filter(msg => {
+        if (searchFilters.sender) {
+          const s = searchFilters.sender.toLowerCase();
+          if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
+        }
+        if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
+        if (searchFilters.isFlagged && !msg.isFlagged) return false;
+        if (searchFilters.unreadOnly && msg.isRead) return false;
+        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
+        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
+        return true;
+      })
+    : messages;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1509,8 +1542,8 @@ export default function EmailPage() {
       if (mod && e.key === 'n') { e.preventDefault(); setComposing('new'); return; }
       if (mod && e.shiftKey && e.key === 'R') { e.preventDefault(); if (fullMessage) setComposing('reply-all'); return; }
       if (mod && e.key === 'r') { e.preventDefault(); if (fullMessage) setComposing('reply'); return; }
-      if (mod && e.key === 'f') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedMessage) { e.preventDefault(); handleDelete(selectedMessage); } return; }
+      if (mod && e.shiftKey && e.key === 'F') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedMessage) { e.preventDefault(); if (window.confirm('Delete this email?')) handleDelete(selectedMessage); } return; }
       if (e.key === 'Escape') {
         if (contextMenu) { setContextMenu(null); return; }
         if (composing) { setComposing(null); return; }
@@ -1518,14 +1551,14 @@ export default function EmailPage() {
       }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        const idx = selectedMessage ? messages.findIndex(m => m.id === selectedMessage.id) : -1;
+        const idx = selectedMessage ? filteredMessages.findIndex(m => m.id === selectedMessage.id) : -1;
         const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
-        if (next >= 0 && next < messages.length) handleSelectMessage(messages[next]);
+        if (next >= 0 && next < filteredMessages.length) handleSelectMessage(filteredMessages[next]);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectedMessage, fullMessage, composing, messages, contextMenu]); // eslint-disable-line
+  }, [selectedMessage, fullMessage, composing, filteredMessages, contextMenu]); // eslint-disable-line
 
   // Resize handler
   useEffect(() => {
@@ -1751,22 +1784,6 @@ export default function EmailPage() {
   // Top-level folders only (no parentFolderId, or parentFolderId points to root)
   const topLevelFolders = sortedFolders.filter(f => !f.parentFolderId || WELL_KNOWN_FOLDERS.includes(f.displayName));
 
-  // Apply client-side search filters
-  const filteredMessages = hasActiveFilters(searchFilters)
-    ? messages.filter(msg => {
-        if (searchFilters.sender) {
-          const s = searchFilters.sender.toLowerCase();
-          if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
-        }
-        if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
-        if (searchFilters.isFlagged && !msg.isFlagged) return false;
-        if (searchFilters.unreadOnly && msg.isRead) return false;
-        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
-        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
-        return true;
-      })
-    : messages;
-
   const threads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;
   const isWellKnown = (name: string) => WELL_KNOWN_FOLDERS.includes(name);
@@ -1837,7 +1854,7 @@ export default function EmailPage() {
   // ─── Render ───
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden app-grid-bg">
       {/* ─── Folder Panel ─── */}
       <div className={`flex-shrink-0 border-r border-border-subtle bg-surface-sunken hidden md:flex flex-col transition-all ${folderCollapsed ? 'w-12' : 'w-48'}`}>
         {/* Collapse toggle + compose */}
@@ -1927,7 +1944,7 @@ export default function EmailPage() {
 
       {/* ─── Folder context menu ─── */}
       {folderContextMenu && (
-        <div className="fixed z-[9999]" style={{ left: folderContextMenu.x, top: folderContextMenu.y }}>
+        <div className="fixed z-[100]" style={{ left: folderContextMenu.x, top: folderContextMenu.y }}>
           <div className="min-w-[140px] bg-surface-base border border-border-strong rounded shadow-xl py-1"
             ref={el => {
               if (el) {
@@ -2172,7 +2189,7 @@ export default function EmailPage() {
                     td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #1e3048; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
                     pre { background: #141e2b; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #1e3048; margin: 16px 0; }
                   </style></head><body>${fullMessage.bodyHtml}</body></html>`}
-                  sandbox="allow-same-origin" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
+                  sandbox="" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
               ) : (
                 <div className="p-4 text-xs text-rmpg-400 whitespace-pre-wrap font-mono">{fullMessage.bodyPreview}</div>
               )}

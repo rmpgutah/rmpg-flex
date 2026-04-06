@@ -48,7 +48,8 @@ export default function MobileHeader({
     <div
       className="flex items-center justify-between relative"
       style={{
-        height: 48,
+        minHeight: 48,
+        paddingTop: 'env(safe-area-inset-top)',
         paddingLeft: 8,
         paddingRight: 8,
         background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',

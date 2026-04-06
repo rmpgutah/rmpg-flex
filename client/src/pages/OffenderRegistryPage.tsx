@@ -468,7 +468,7 @@ export default function OffenderRegistryPage() {
 
       {/* ── New Alert Modal ── */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Offender Alert" icon={Plus}>
               <button onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>

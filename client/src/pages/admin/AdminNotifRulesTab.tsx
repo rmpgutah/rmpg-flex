@@ -50,7 +50,7 @@ const TRIGGER_EVENTS = [
   { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance' },
 ];
 
-const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
 
 const NOTIF_TYPE_ICONS: Record<string, React.ElementType> = {
   in_app: Smartphone,
@@ -259,7 +259,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" onClick={() => setShowForm(false)}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">

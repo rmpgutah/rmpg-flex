@@ -10,12 +10,12 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  --surface-base: #141e2b;
-  --surface-raised: #1a2636;
-  --surface-sunken: #0d1520;
+  --surface-base: #0f1722;
+  --surface-raised: #141e2b;
+  --surface-sunken: #0a1019;
   --surface-overlay: #0a1018;
   --surface-deep: #060c14;
-  --border-default: #1e3048;
+  --border-default: #1c2d44;
   --border-subtle: #182840;
   --border-strong: #2a3e58;
   --text-primary: #e5e7eb;
@@ -25,10 +25,18 @@
   --brand-gold: #d4a017;
   --toolbar-gradient-start: #1a5a9e;
   --toolbar-gradient-end: #2570b5;
-  --grid-header-bg: #0f1a28;
-  --grid-row-alt: #121c2a;
+  --grid-header-bg: #0c1420;
+  --grid-row-alt: #0f1722;
   --field-label-color: #d4a017;
-  --border-panel: #1e3048;
+  --border-panel: #1c2d44;
+
+  /* Modern shadow system */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-card-hover: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(26,90,158,0.15);
+  --shadow-dropdown: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(30,48,72,0.5);
+  --shadow-inset: inset 0 1px 2px rgba(0,0,0,0.2);
+  --transition-fast: all 0.1s ease;
+  --transition-default: all 0.15s ease;
 }
 
 /* --- Global Base Overrides --- */
@@ -37,7 +45,7 @@
     height: 100%;
   }
   html {
-    font-size: 13px;
+    font-size: 14px;
   }
   body {
     background: var(--surface-base);
@@ -166,10 +174,489 @@
   pointer-events: none;
 }
 
+/* Login card entrance + glow animations */
+@keyframes login-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes login-glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(26, 90, 158, 0.1); }
+  50% { box-shadow: 0 0 30px rgba(26, 90, 158, 0.25); }
+}
+
+@keyframes login-success-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.login-card-enter {
+  animation: login-fade-in 0.4s ease-out;
+}
+
+.login-glow {
+  animation: login-glow-pulse 4s ease-in-out infinite;
+}
+
+.login-success {
+  animation: login-success-pulse 0.6s ease-out;
+  border-color: #22c55e !important;
+}
+
 /* Login input focus glow */
 .login-input-glow:focus {
+  box-shadow: 0 0 0 2px rgba(26, 90, 158, 0.3), var(--shadow-inset, 0 0 0 0 transparent) !important;
+  border-color: #3b8ad4 !important;
+}
+
+/* Login page — animated logo rings */
+@keyframes login-ring-pulse {
+  0%, 100% { opacity: 0.15; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.05); }
+}
+@keyframes login-ring-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.login-logo-ring-outer {
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  border: 1px solid rgba(26, 90, 158, 0.2);
+  animation: login-ring-pulse 4s ease-in-out infinite;
+}
+.login-logo-ring-inner {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1px solid rgba(26, 90, 158, 0.35);
+  box-shadow: 0 0 30px rgba(26, 90, 158, 0.08), inset 0 0 20px rgba(26, 90, 158, 0.04);
+}
+.login-logo-ring-dashed {
+  position: absolute;
+  inset: -28px;
+  border-radius: 50%;
+  border: 1px dashed rgba(26, 90, 158, 0.1);
+  animation: login-ring-rotate 60s linear infinite;
+}
+
+/* Login card scan-line overlay */
+.login-scan-line {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+.login-scan-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.15), transparent);
+  animation: login-scan 8s linear infinite;
+}
+@keyframes login-scan {
+  0% { top: -1px; }
+  100% { top: 100%; }
+}
+
+/* Login button glow */
+.login-btn-primary {
+  background: linear-gradient(135deg, #1a5a9e 0%, #0e3d6e 100%) !important;
+  box-shadow: 0 2px 8px rgba(26, 90, 158, 0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+  transition: all 0.2s ease;
+}
+.login-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 4px 20px rgba(26, 90, 158, 0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+  transform: translateY(-1px);
+}
+.login-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(26, 90, 158, 0.2);
+}
+
+/* Login card top accent */
+.login-card-accent {
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #1a5a9e, transparent);
+  z-index: 2;
+}
+
+/* Login step transition */
+@keyframes login-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.login-step-enter {
+  animation: login-fade-in 0.3s ease-out;
+}
+
+/* Login input group — icon highlights on focus */
+.login-input-group:focus-within .login-input-icon {
+  color: #1a5a9e !important;
+  transition: color 0.2s ease;
+}
+.login-input-group:focus-within .login-input-glow {
   border-color: #1a5a9e !important;
-  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.15);
+  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 16px rgba(26, 90, 158, 0.12);
+}
+
+/* Login error shake */
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 50%, 90% { transform: translateX(-4px); }
+  30%, 70% { transform: translateX(4px); }
+}
+.login-error-shake {
+  animation: login-shake 0.5s ease-in-out;
+}
+
+/* Login floating particles */
+.login-particles {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.login-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(26, 90, 158, 0.15);
+  animation: login-float linear infinite;
+}
+@keyframes login-float {
+  0% { transform: translateY(100vh) scale(0); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+}
+
+/* Login vignette overlay */
+.login-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.4) 100%);
+}
+
+/* Login card hover glow */
+.login-card:hover {
+  box-shadow: 0 4px 50px rgba(26, 90, 158, 0.12), 0 0 0 1px rgba(26, 90, 158, 0.15) !important;
+}
+.login-card {
+  transition: box-shadow 0.4s ease;
+}
+
+/* Login secure badge */
+@keyframes login-badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.3); }
+  50% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0); }
+}
+.login-secure-dot {
+  animation: login-badge-pulse 2s ease-in-out infinite;
+}
+
+/* Login status LED blink */
+.login-led-active {
+  animation: led-blink 2s ease-in-out infinite;
+}
+
+/* --- 2FA Method Chooser Cards --- */
+.login-method-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 0.75rem;
+  background: rgba(13, 21, 32, 0.6);
+  border: 1.5px solid #1e3048;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.login-method-card:hover {
+  border-color: #1a5a9e;
+  background: rgba(26, 90, 158, 0.06);
+  box-shadow: 0 0 12px rgba(26, 90, 158, 0.12);
+  transform: translateY(-1px);
+}
+.login-method-card:active {
+  transform: translateY(0);
+}
+
+/* --- WebAuthn Key Animations --- */
+@keyframes login-key-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(212, 160, 23, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(212, 160, 23, 0.5); }
+}
+.login-key-pulse {
+  animation: login-key-glow 1.5s ease-in-out infinite;
+}
+@keyframes login-key-ring-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.login-key-ring {
+  border: 2px solid transparent;
+  border-top-color: rgba(212, 160, 23, 0.6);
+  border-right-color: rgba(212, 160, 23, 0.2);
+  animation: login-key-ring-spin 1.2s linear infinite;
+}
+
+/* --- QR Code Frame --- */
+.login-qr-frame {
+  padding: 0.75rem;
+  background: rgba(13, 21, 32, 0.5);
+  border: 1.5px solid #1e3048;
+  border-radius: 2px;
+  text-align: center;
+}
+
+/* --- Keyboard Hint --- */
+.login-kbd {
+  display: inline-block;
+  padding: 0px 4px;
+  font-size: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #5a6e80;
+  background: #0d1520;
+  border: 1px solid #1e3048;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 #1e3048;
+}
+
+/* --- Login Title Bar Gradient --- */
+.login-title-bar {
+  background: linear-gradient(180deg, #162640 0%, #0f1a28 100%) !important;
+  border-bottom: 1px solid rgba(26, 90, 158, 0.2) !important;
+}
+
+/* --- Authenticated Badge --- */
+.login-badge-ok {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 2px;
+}
+
+/* --- Window Control Buttons Hover --- */
+.login-window-btn {
+  transition: background 0.15s ease;
+}
+.login-window-btn:hover {
+  background: #3a5070 !important;
+}
+
+/* --- Trust Device Toggle Switch --- */
+.login-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background: #0d1520;
+  border: 1.5px solid #1e3048;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+.login-toggle[data-checked] {
+  background: rgba(26, 90, 158, 0.3);
+  border-color: #1a5a9e;
+}
+.login-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: #3a5070;
+  border-radius: 50%;
+  transition: all 0.25s ease;
+}
+.login-toggle[data-checked] .login-toggle-thumb {
+  left: 16px;
+  background: #1a5a9e;
+  box-shadow: 0 0 6px rgba(26, 90, 158, 0.4);
+}
+
+/* ============================================================
+   GLOBAL AMBIENT — Login-derived design language
+   Drifting grid, vignette, scan-line, glass panels
+   ============================================================ */
+
+/* App-wide drifting grid background (opt-in per container) */
+.app-grid-bg {
+  position: relative;
+}
+.app-grid-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(26, 90, 158, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 90, 158, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: login-grid-drift 25s linear infinite;
+  mask-image: radial-gradient(ellipse at center, black 50%, transparent 90%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 50%, transparent 90%);
+}
+
+/* Vignette overlay for depth */
+.app-vignette::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.25) 100%);
+}
+
+/* Scan-line — unifies login-scan-line and dash-scan-line */
+.scan-line {
+  position: relative;
+  overflow: hidden;
+}
+.scan-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.12), transparent);
+  animation: login-scan 10s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Glass card — hover glow + transition (login-card pattern) */
+.card-glass {
+  background: var(--surface-base);
+  border: 1px solid var(--border-default);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  position: relative;
+}
+.card-glass:hover {
+  box-shadow: 0 4px 24px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.12);
+  border-color: rgba(26, 90, 158, 0.25);
+}
+
+/* Card top accent line (login-card-accent pattern) */
+.card-accent {
+  position: relative;
+}
+.card-accent::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand-blue), transparent);
+  z-index: 2;
+}
+
+/* Action card — clickable card with hover lift (login-method-card pattern) */
+.action-card {
+  background: rgba(13, 21, 32, 0.6);
+  border: 1.5px solid var(--border-default);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.action-card:hover {
+  border-color: var(--brand-blue);
+  background: rgba(26, 90, 158, 0.06);
+  box-shadow: 0 0 12px rgba(26, 90, 158, 0.12);
+  transform: translateY(-1px);
+}
+
+/* Step entrance animation (login-step-enter generalized) */
+.animate-step-enter {
+  animation: login-fade-in 0.3s ease-out;
+}
+
+/* Error shake (login-error-shake generalized) */
+.alert-shake {
+  animation: login-shake 0.5s ease-in-out;
+}
+
+/* Status badge with LED dot (login-badge-ok generalized) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+}
+.status-badge-ok {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+.status-badge-warn {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+.status-badge-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+.status-badge-info {
+  background: rgba(26, 90, 158, 0.08);
+  border: 1px solid rgba(26, 90, 158, 0.2);
+  color: #4a9aee;
+}
+
+/* Modal overlay — like login page background */
+.modal-overlay {
+  background: rgba(6, 12, 20, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+/* Modal panel — login card pattern */
+.modal-panel {
+  background: var(--surface-base);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 40px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.1);
+  animation: login-fade-in 0.2s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
+/* --- Dashboard Scan-Line Effect --- */
+.dash-scan-line {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+.dash-scan-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.12), transparent);
+  animation: dash-scan 12s linear infinite;
+}
+@keyframes dash-scan {
+  0% { top: -1px; }
+  100% { top: 100%; }
 }
 
 /* --- LED Indicator Animations (Spillman Flex) --- */
@@ -223,6 +710,60 @@
   .animate-slide-in {
     animation: slideIn 0.3s ease-out;
   }
+
+  /* Staggered slide-in for list items */
+  .animate-stagger-in > * {
+    animation: stagger-slide-in 0.25s ease-out both;
+  }
+  .animate-stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+  .animate-stagger-in > *:nth-child(2) { animation-delay: 30ms; }
+  .animate-stagger-in > *:nth-child(3) { animation-delay: 60ms; }
+  .animate-stagger-in > *:nth-child(4) { animation-delay: 90ms; }
+  .animate-stagger-in > *:nth-child(5) { animation-delay: 120ms; }
+  .animate-stagger-in > *:nth-child(6) { animation-delay: 150ms; }
+  .animate-stagger-in > *:nth-child(7) { animation-delay: 180ms; }
+  .animate-stagger-in > *:nth-child(8) { animation-delay: 210ms; }
+
+  /* Shimmer effect for cards on hover */
+  .shimmer-on-hover {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer-on-hover::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.06), transparent);
+    transition: none;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .shimmer-on-hover:hover::before {
+    animation: shimmer-sweep 0.6s ease-out;
+  }
+
+  /* Glow pulse for active/important elements */
+  .glow-pulse-blue {
+    animation: glow-pulse-blue 2s ease-in-out infinite;
+  }
+}
+
+@keyframes stagger-slide-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer-sweep {
+  0% { left: -50%; }
+  100% { left: 150%; }
+}
+
+@keyframes glow-pulse-blue {
+  0%, 100% { box-shadow: 0 0 4px rgba(26, 90, 158, 0.2); }
+  50% { box-shadow: 0 0 12px rgba(26, 90, 158, 0.4); }
 }
 
 @keyframes slideIn {
@@ -253,13 +794,8 @@
   }
 
   .table-dark thead th {
-    @apply px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
+    @apply px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider;
     color: #8a9aaa;
-    border-right: 1px solid rgba(30, 48, 72, 0.5);
-  }
-
-  .table-dark thead th:last-child {
-    border-right: none;
   }
 
   .table-dark tbody tr {
@@ -278,7 +814,7 @@
   .table-dark tbody td {
     @apply px-3 py-1.5;
     color: #b0bcc8;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   /* Priority row highlighting */
@@ -415,18 +951,23 @@
 
   /* --- Card Styles (Blocky) --- */
   .card-dark {
-    background: var(--surface-base);
-    border: 1px solid var(--border-strong);
-    @apply shadow-sm;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-default);
   }
 
   .card-dark-hover {
-    background: var(--surface-base);
-    border: 1px solid var(--border-strong);
-    @apply shadow-sm hover:border-rmpg-400 transition-all duration-150 cursor-pointer;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-card);
+    @apply cursor-pointer;
+    transition: var(--transition-default);
   }
   .card-dark-hover:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
   }
 
   /* --- Section & Field Labels --- */
@@ -446,59 +987,56 @@
     color: var(--field-label-color);
   }
 
-  /* --- Priority Left Border --- */
+  /* --- Priority Left Border (with ambient glow) --- */
   .priority-border-P1 {
     border-left: 4px solid #dc2626;
+    box-shadow: inset 3px 0 8px -3px rgba(220, 38, 38, 0.2);
   }
 
   .priority-border-P2 {
     border-left: 4px solid #d4a017;
+    box-shadow: inset 3px 0 8px -3px rgba(212, 160, 23, 0.15);
   }
 
   .priority-border-P3 {
     border-left: 4px solid #4a90c4;
+    box-shadow: inset 3px 0 8px -3px rgba(74, 144, 196, 0.12);
   }
 
   .priority-border-P4 {
     border-left: 4px solid #707070;
   }
 
-  /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
+  /* --- Input Styles (Modern / Flat) --- Motorola Blue focus accent */
   .input-dark {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    box-shadow: var(--shadow-inset);
     caret-color: #3b8ad4;
-    transition: border-color 0.1s;
+    transition: var(--transition-fast);
   }
   .input-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.12);
   }
 
   .select-dark {
     @apply w-full px-3 py-1.5 text-sm text-white focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    box-shadow: var(--shadow-inset);
     appearance: none;
     -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6e80'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 8px center;
     padding-right: 24px;
-    transition: border-color 0.1s;
+    transition: var(--transition-fast);
   }
   .select-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.12);
   }
   .select-dark option {
     background: var(--surface-base);
@@ -509,54 +1047,68 @@
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    box-shadow: var(--shadow-inset);
     caret-color: #3b8ad4;
-    transition: border-color 0.1s;
+    transition: var(--transition-fast);
   }
   .textarea-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.12);
   }
 
-  /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
+  /* --- Button Styles (Modern / Flat) --- Motorola Blue primary */
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #164d87;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: linear-gradient(135deg, #1a5a9e 0%, #0e3d6e 100%);
     border: 1px solid #1a5a9e;
+    box-shadow: 0 2px 8px rgba(26, 90, 158, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: all 0.2s ease;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #1a5a9e;
+    background: linear-gradient(135deg, #2570b5 0%, #1a5a9e 100%);
+    box-shadow: 0 4px 16px rgba(26, 90, 158, 0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(26, 90, 158, 0.15);
   }
 
   .btn-secondary {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide focus:outline-none;
     background: #1e3048;
-    border: 1px solid #2a3e58;
+    border: 1px solid var(--border-strong);
     color: #d0d8e0;
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-default);
   }
   .btn-secondary:hover {
     background: #2a3e58;
+    transform: translateY(-0.5px);
   }
 
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide focus:outline-none;
     background: #991b1b;
     border: 1px solid #dc2626;
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-default);
   }
   .btn-danger:hover {
     background: #dc2626;
+    transform: translateY(-0.5px);
   }
 
   .btn-success {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide focus:outline-none;
     background: #047857;
     border: 1px solid #059669;
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-default);
   }
   .btn-success:hover {
     background: #059669;
+    transform: translateY(-0.5px);
   }
 
   .btn-sm {
@@ -576,7 +1128,7 @@
   .led-dot {
     width: 8px;
     height: 8px;
-    border-radius: 2px;
+    border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
   }
@@ -611,30 +1163,36 @@
     box-shadow: none;
   }
 
-  /* --- Beveled Panel Borders (3D Raised / Inset) --- */
+  /* --- Modern Panel Borders (replaces beveled) --- */
   .panel-beveled {
     border: 1px solid #2a3e58;
     border-top-color: #3a5070;
     border-left-color: #3a5070;
     border-bottom-color: #0d1520;
     border-right-color: #0d1520;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  /* Interactive panels glow on hover */
+  .panel-beveled[onclick]:hover,
+  .panel-beveled.panel-interactive:hover,
+  [role="button"] > .panel-beveled:hover {
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.15), 0 2px 12px rgba(0, 0, 0, 0.3);
   }
 
   .panel-inset {
-    border: 1px solid #0d1520;
-    border-top-color: #0a1018;
-    border-left-color: #0a1018;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-inset);
   }
 
   /* --- Panel Title Bar (Desktop Window Chrome) --- */
   .panel-title-bar {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 50%, #1a2636 100%);
+    background: linear-gradient(180deg, #162640 0%, #0f1a28 100%);
     border-bottom: 1px solid #0d1520;
     border-top: 1px solid #2a3e58;
     font-size: 10px;
@@ -644,13 +1202,25 @@
     color: #b0bcc8;
     user-select: none;
     flex-wrap: wrap;
-    min-height: 24px;
+    min-height: 26px;
+  }
+  /* Subtle blue accent line at bottom of title bar */
+  .panel-title-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.3), transparent);
+    pointer-events: none;
   }
 
   .panel-title-bar .title-icon {
     width: 12px;
     height: 12px;
     color: #3b8ad4;
+    filter: drop-shadow(0 0 3px rgba(59, 138, 212, 0.3));
   }
 
   /* --- Tab Bar (Spillman Flex Tabs) --- */
@@ -667,7 +1237,7 @@
 
   .tab-bar-item {
     padding: 4px 12px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -675,7 +1245,7 @@
     border: 1px solid transparent;
     border-bottom: none;
     cursor: pointer;
-    transition: color 0.1s, background 0.1s;
+    transition: color 0.15s ease, background 0.15s ease;
     position: relative;
     top: 2px;
     white-space: nowrap;
@@ -690,8 +1260,8 @@
   .tab-bar-item.active {
     color: #ffffff;
     background: var(--surface-raised);
-    border-color: #1e3048;
-    border-bottom: 2px solid var(--surface-raised);
+    border-color: transparent;
+    border-bottom: 2px solid var(--brand-blue);
   }
 
   /* --- Toolbar Buttons (Spillman Flex) --- */
@@ -705,27 +1275,22 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: #b0bcc8;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 100%);
-    border: 1px solid #2a3e58;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    background: rgba(30, 48, 72, 0.6);
+    border: 1px solid rgba(42, 62, 88, 0.5);
     cursor: pointer;
-    transition: background 0.1s;
+    transition: var(--transition-default);
     white-space: nowrap;
     flex-shrink: 0;
   }
 
   .toolbar-btn:hover {
-    background: linear-gradient(180deg, #2a3e58 0%, #1e3048 100%);
+    background: rgba(42, 62, 88, 0.8);
     color: #ffffff;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
   .toolbar-btn:active {
-    background: #0d1520;
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    background: rgba(13, 21, 32, 0.8);
   }
 
   .toolbar-btn:disabled {
@@ -735,15 +1300,14 @@
   }
 
   .toolbar-btn-primary {
-    background: linear-gradient(180deg, var(--toolbar-gradient-start) 0%, #124070 100%);
-    border-color: #3b8ad4;
-    border-bottom-color: #0e3359;
-    border-right-color: #0e3359;
+    background: rgba(26, 90, 158, 0.7);
+    border-color: rgba(59, 138, 212, 0.5);
     color: #ffffff;
   }
 
   .toolbar-btn-primary:hover {
-    background: linear-gradient(180deg, #3b8ad4 0%, #164d87 100%);
+    background: rgba(59, 138, 212, 0.8);
+    box-shadow: 0 0 8px rgba(26, 90, 158, 0.3);
   }
 
   .toolbar-btn-danger {
@@ -822,14 +1386,11 @@
     position: absolute;
     z-index: 9990;
     min-width: 220px;
-    background: var(--surface-base);
-    border: 1px solid #2a3e58;
-    border-top-color: #3a5070;
-    border-left-color: #3a5070;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
-    box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5);
-    padding: 2px 0;
+    background: rgba(15, 23, 34, 0.95);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-dropdown);
+    padding: 4px 0;
   }
   .menu-dropdown-root {
     top: 100%;
@@ -989,13 +1550,15 @@
     align-items: center;
     gap: 0;
     height: 22px;
-    background: linear-gradient(180deg, #162236 0%, var(--surface-base) 100%);
-    border-top: 1px solid #1e3048;
+    background: var(--surface-base);
+    border-top: 1px solid var(--border-default);
     font-size: 10px;
     font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
     color: #8a9aaa;
     padding: 0 8px;
     flex-shrink: 0;
+    position: relative;
+    z-index: 30;
   }
 
   .status-bar-section {
@@ -1010,6 +1573,11 @@
   .status-bar-section:last-child {
     border-right: none;
     margin-left: auto;
+  }
+
+  .status-bar .clock-display {
+    color: #4a9aee;
+    text-shadow: 0 0 8px rgba(26, 90, 158, 0.3);
   }
 
   /* --- Dispatch Edit Mode Indicator --- */
@@ -1050,7 +1618,7 @@
   background-color: var(--surface-base) !important;
   color: #b0bcc8 !important;
   border-color: #1e3048 !important;
-  border-radius: 0 !important;
+  border-radius: 4px !important;
 }
 
 .leaflet-control-zoom a:hover {
@@ -1061,7 +1629,7 @@
   background-color: var(--surface-base) !important;
   color: #d0d8e0 !important;
   border: 1px solid #1e3048;
-  border-radius: 2px !important;
+  border-radius: 4px !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7) !important;
 }
 
@@ -1088,6 +1656,243 @@
   background: linear-gradient(180deg, #1e3048 0%, var(--surface-base) 100%);
   border-bottom: 1px solid #1e3048;
   border-top: 1px solid #1e3048;
+}
+
+/* ============================================================
+   SIDEBAR NAVIGATION
+   Collapsible left sidebar — 220px expanded, 52px collapsed
+   ============================================================ */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-base);
+    border-right: 1px solid var(--border-default);
+    transition: width 200ms ease;
+    overflow: hidden;
+    flex-shrink: 0;
+    z-index: 40;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #1e3048 transparent;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    width: 4px;
+  }
+  .sidebar-nav::-webkit-scrollbar-thumb {
+    background: #1e3048;
+    border-radius: 2px;
+  }
+  .sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    color: #8a9aaa;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    border-left: 3px solid transparent;
+    position: relative;
+    white-space: nowrap;
+    min-height: 34px;
+  }
+
+  .sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: #d0d8e0;
+  }
+
+  .sidebar-item.active {
+    background: rgba(26, 90, 158, 0.15);
+    border-left-color: #3b8ad4;
+    color: #ffffff;
+  }
+
+  .sidebar-item.active .sidebar-icon {
+    color: #3b8ad4;
+  }
+
+  .sidebar-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: #5a6e80;
+    transition: color 0.1s ease;
+  }
+
+  .sidebar-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #5a6e80;
+    padding: 12px 15px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .sidebar-separator {
+    height: 1px;
+    margin: 4px 12px;
+    background: rgba(28, 45, 68, 0.5);
+  }
+
+  .sidebar-child {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 38px;
+    color: #7a8a9a;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    white-space: nowrap;
+    min-height: 30px;
+    font-size: 11px;
+  }
+
+  .sidebar-child:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: #d0d8e0;
+  }
+
+  .sidebar-child.active {
+    background: rgba(26, 90, 158, 0.1);
+    color: #ffffff;
+  }
+
+  .sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    background: var(--surface-raised);
+    border-top: 1px solid var(--border-default);
+    cursor: pointer;
+    color: #5a6e80;
+    transition: var(--transition-default);
+    flex-shrink: 0;
+  }
+
+  .sidebar-toggle:hover {
+    background: var(--surface-sunken);
+    color: #8a9aaa;
+  }
+
+  .sidebar-badge {
+    position: absolute;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    border-radius: 8px;
+    line-height: 1;
+  }
+
+  .sidebar-badge-red {
+    background: #dc2626;
+    color: #fff;
+    border: 1px solid #141e2b;
+  }
+
+  .sidebar-badge-blue {
+    background: rgba(26, 90, 158, 0.6);
+    color: #e0e8f0;
+    border: 1px solid rgba(59, 138, 212, 0.3);
+  }
+
+/* ============================================================
+   SKELETON LOADING & VISUAL POLISH
+   ============================================================ */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-sunken) 0%, #1a2a3a 50%, var(--surface-sunken) 100%);
+  background-size: 200px 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.skeleton-text {
+  height: 12px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.skeleton-text-sm {
+  height: 10px;
+  width: 60%;
+  margin-bottom: 6px;
+}
+
+.skeleton-card {
+  height: 80px;
+  width: 100%;
+}
+
+/* Chart empty state */
+.chart-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: #5a6e80;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.chart-empty-state svg {
+  opacity: 0.3;
+}
+
+/* Smooth table sort indicator */
+.sort-indicator {
+  display: inline-flex;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  opacity: 0.4;
+}
+
+.sort-indicator.active {
+  opacity: 1;
+  color: #3b8ad4;
+}
+
+.sort-indicator.asc {
+  transform: rotate(0deg);
+}
+
+.sort-indicator.desc {
+  transform: rotate(180deg);
+}
+
+/* Scroll shadow for overflowing containers */
+.scroll-shadow-top {
+  box-shadow: inset 0 8px 8px -8px rgba(0, 0, 0, 0.3);
+}
+
+.scroll-shadow-bottom {
+  box-shadow: inset 0 -8px 8px -8px rgba(0, 0, 0, 0.3);
 }
 
 /* ============================================================
@@ -2663,6 +3468,21 @@
   50% { box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.7), 0 0 14px rgba(239, 68, 68, 0.3); }
 }
 
+/* --- Call Card On-Hold Amber Pulse --- */
+.call-on-hold {
+  animation: call-on-hold-pulse 3s ease-in-out infinite;
+}
+@keyframes call-on-hold-pulse {
+  0%, 100% { box-shadow: inset 3px 0 8px -3px rgba(245, 158, 11, 0.2); }
+  50% { box-shadow: inset 3px 0 12px -3px rgba(245, 158, 11, 0.35); }
+}
+
+/* --- Call Card Drag-Over Glow Animation --- */
+@keyframes call-drag-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(34, 197, 94, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(34, 197, 94, 0.6); }
+}
+
 /* ============================================================
    Unit Recommendation Panel
    ============================================================ */
@@ -2845,6 +3665,455 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
+/* ── Record List Item — shared hover/selection effects for record lists ── */
+.record-list-item {
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.record-list-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background: linear-gradient(90deg, rgba(26, 90, 158, 0.06) 0%, transparent 60%);
+}
+
+.record-list-item:hover::before {
+  opacity: 1;
+}
+
+.record-list-item:hover {
+  background: rgba(26, 90, 158, 0.08) !important;
+}
+
+.record-list-item.record-selected {
+  background: rgba(26, 90, 158, 0.12) !important;
+  box-shadow: inset 3px 0 8px -3px rgba(26, 90, 158, 0.3);
+}
+
+/* Avatar ring pulse for selected items */
+.record-list-item.record-selected .record-avatar {
+  border-color: rgba(26, 90, 158, 0.6);
+  box-shadow: 0 0 6px rgba(26, 90, 158, 0.3);
+}
+
+/* Action buttons — visible on hover with fade */
+.record-list-item .record-actions {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.record-list-item:hover .record-actions,
+.record-list-item.record-selected .record-actions {
+  opacity: 1;
+}
+
+/* ── Detail Panel Slide-In ── */
+@keyframes detail-slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.detail-panel-enter {
+  animation: detail-slide-in 0.2s ease-out;
+}
+
+/* ── Empty State Enhancement ── */
+.record-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  opacity: 0;
+  animation: fade-in-up 0.3s ease-out forwards;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Admin User Status LED ── */
+.user-status-led {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.user-status-led.led-active {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+}
+.user-status-led.led-inactive {
+  background: #eab308;
+  box-shadow: 0 0 4px rgba(234, 179, 8, 0.3);
+}
+.user-status-led.led-terminated {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.3);
+}
+
+/* ── Search Input Glow Focus ── */
+.search-glow:focus {
+  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.4), 0 0 8px rgba(26, 90, 158, 0.15);
+  border-color: rgba(26, 90, 158, 0.5) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PERSONNEL MODULE — Enhanced UI Classes
+   Radar-sweep aesthetic, ambient glow stat pods, glass panels
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Personnel Stat Pod — ambient colored glow behind stat values ── */
+.stat-pod {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.stat-pod::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background: radial-gradient(ellipse at 50% 0%, var(--pod-glow, rgba(26, 90, 158, 0.12)) 0%, transparent 70%);
+}
+.stat-pod:hover::before { opacity: 1; }
+.stat-pod:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+.stat-pod .stat-value {
+  font-variant-numeric: tabular-nums;
+  transition: color 0.2s ease;
+}
+.stat-pod .stat-icon {
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.stat-pod:hover .stat-icon {
+  transform: scale(1.15);
+  filter: brightness(1.3);
+}
+
+/* ── Personnel Scan Line — subtle CRT scan across panels ── */
+@keyframes personnel-scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(200%); }
+}
+.personnel-scan::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgba(26, 90, 158, 0.15) 30%, rgba(26, 90, 158, 0.25) 50%, rgba(26, 90, 158, 0.15) 70%, transparent 100%);
+  animation: personnel-scan 4s linear infinite;
+  opacity: 0.5;
+}
+
+/* ── Stagger Cascade — entrance animation for grids/lists ── */
+@keyframes cascade-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.cascade-item {
+  opacity: 0;
+  animation: cascade-in 0.3s ease-out forwards;
+}
+.cascade-item:nth-child(1) { animation-delay: 0.02s; }
+.cascade-item:nth-child(2) { animation-delay: 0.04s; }
+.cascade-item:nth-child(3) { animation-delay: 0.06s; }
+.cascade-item:nth-child(4) { animation-delay: 0.08s; }
+.cascade-item:nth-child(5) { animation-delay: 0.10s; }
+.cascade-item:nth-child(6) { animation-delay: 0.12s; }
+.cascade-item:nth-child(7) { animation-delay: 0.14s; }
+.cascade-item:nth-child(8) { animation-delay: 0.16s; }
+.cascade-item:nth-child(9) { animation-delay: 0.18s; }
+.cascade-item:nth-child(10) { animation-delay: 0.20s; }
+
+/* ── Officer Card — enhanced hover for roster/duty board ── */
+.officer-card {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+.officer-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--card-accent, transparent);
+  transition: width 0.2s ease, opacity 0.2s ease;
+  opacity: 0.7;
+}
+.officer-card:hover::before {
+  width: 4px;
+  opacity: 1;
+}
+.officer-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background: linear-gradient(135deg, rgba(26, 90, 158, 0.06) 0%, transparent 50%);
+}
+.officer-card:hover::after { opacity: 1; }
+.officer-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.officer-card.officer-selected {
+  background: rgba(26, 90, 158, 0.1) !important;
+  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+.officer-card.officer-selected::before {
+  width: 4px;
+  opacity: 1;
+  background: var(--brand-blue);
+}
+
+/* ── Duty Card — on-duty/off-duty glow variants ── */
+.duty-card-active {
+  --card-accent: #22c55e;
+  border-color: rgba(34, 197, 94, 0.2) !important;
+}
+.duty-card-active::after {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.04) 0%, transparent 60%) !important;
+}
+.duty-card-active:hover {
+  border-color: rgba(34, 197, 94, 0.35) !important;
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.08), 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.duty-card-inactive {
+  --card-accent: #4b5563;
+}
+
+/* ── Schedule Cell — enhanced shift blocks ── */
+.schedule-shift {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.schedule-shift:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+.schedule-shift-day {
+  background: linear-gradient(135deg, rgba(26, 90, 158, 0.25) 0%, rgba(26, 90, 158, 0.12) 100%);
+  border-color: rgba(26, 90, 158, 0.3);
+}
+.schedule-shift-night {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.25) 0%, rgba(147, 51, 234, 0.12) 100%);
+  border-color: rgba(147, 51, 234, 0.3);
+}
+
+/* ── Today Column Highlight ── */
+.schedule-today {
+  background: linear-gradient(180deg, rgba(26, 90, 158, 0.15) 0%, rgba(26, 90, 158, 0.05) 100%);
+  box-shadow: inset 0 2px 0 rgba(26, 90, 158, 0.4);
+}
+
+/* ── Table Row Hover Enhancement ── */
+.personnel-table tbody tr {
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.personnel-table tbody tr:hover {
+  background: rgba(26, 90, 158, 0.06) !important;
+  box-shadow: inset 3px 0 0 var(--brand-blue);
+}
+.personnel-table tbody tr.row-alert {
+  background: rgba(239, 68, 68, 0.04);
+}
+.personnel-table tbody tr.row-alert:hover {
+  background: rgba(239, 68, 68, 0.08) !important;
+  box-shadow: inset 3px 0 0 #ef4444;
+}
+
+/* ── Glass Section Header ── */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: linear-gradient(90deg, rgba(26, 90, 158, 0.08) 0%, transparent 100%);
+  border-left: 2px solid var(--brand-blue);
+  border-bottom: 1px solid rgba(30, 48, 72, 0.6);
+}
+.section-header h2,
+.section-header h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+.section-header .section-icon {
+  color: var(--brand-blue);
+}
+
+/* ── Alert Banner Enhanced ── */
+.alert-banner {
+  position: relative;
+  overflow: hidden;
+}
+.alert-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--alert-color, #f59e0b);
+}
+@keyframes alert-pulse-border {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.alert-banner-critical::before {
+  animation: alert-pulse-border 2s ease-in-out infinite;
+  background: #ef4444;
+}
+
+/* ── Sub-Tab Underline Indicator ── */
+.sub-tab {
+  position: relative;
+  transition: color 0.15s ease;
+}
+.sub-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--tab-color, var(--brand-blue));
+  transition: width 0.2s ease, left 0.2s ease;
+}
+.sub-tab.sub-tab-active::after {
+  width: 100%;
+  left: 0;
+}
+.sub-tab:hover:not(.sub-tab-active)::after {
+  width: 60%;
+  left: 20%;
+  opacity: 0.4;
+}
+
+/* ── Summary Card Grid Shimmer ── */
+@keyframes card-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.summary-card-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.summary-card-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.02) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: card-shimmer 3s ease-in-out infinite;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.summary-card-shimmer:hover::after { opacity: 1; }
+
+/* ── Coverage Gap Pulse ── */
+@keyframes gap-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+}
+.gap-indicator {
+  animation: gap-pulse 2s ease-in-out infinite;
+}
+
+/* ── Profile Section Card ── */
+.profile-section {
+  position: relative;
+  overflow: hidden;
+}
+.profile-section::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--brand-blue) 0%, transparent 100%);
+  opacity: 0.3;
+}
+
+/* ── Personnel Toolbar Separator ── */
+.personnel-divider {
+  width: 1px;
+  height: 20px;
+  background: linear-gradient(180deg, transparent, var(--border-default), transparent);
+  flex-shrink: 0;
+}
+
+/* ── Badge Pill Enhanced ── */
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: 1px;
+  white-space: nowrap;
+}
+
+/* ── Active Clock Pulse Ring ── */
+@keyframes clock-ring-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+.clock-active-ring {
+  animation: clock-ring-pulse 2s ease-in-out infinite;
+}
+
+/* ── Empty State Enhanced ── */
+@keyframes empty-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.empty-state-icon {
+  animation: empty-float 3s ease-in-out infinite;
+}
+
+/* ── Credential Gauge Arc Animation ── */
+@keyframes gauge-fill {
+  from { stroke-dasharray: 0 314.16; }
+}
+.gauge-arc {
+  animation: gauge-fill 1s ease-out;
+}
+
+/* ── Tab Count Badge ── */
+.tab-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 3px;
+  font-size: 8px;
+  font-weight: 700;
+  font-family: 'Consolas', 'JetBrains Mono', monospace;
+  border-radius: 1px;
+  line-height: 1;
+}
+
 /* ── Compact Mode — reduces padding/gaps throughout ── */
 html.compact-mode .panel-beveled,
 html.compact-mode .panel-inset {
@@ -2861,3 +4130,207 @@ html.compact-mode .mb-4 { margin-bottom: 8px; }
 html.compact-mode .py-2 { padding-top: 4px; padding-bottom: 4px; }
 html.compact-mode .text-sm { font-size: 0.8125rem; }
 html.compact-mode .text-xs { font-size: 0.6875rem; }
+
+/* ============================================================
+   DASHCAM HUD OVERLAY
+   ============================================================ */
+
+/* REC indicator pulse */
+@keyframes hud-rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.hud-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  animation: hud-rec-pulse 1s ease-in-out infinite;
+}
+
+.hud-rec-dot.paused {
+  animation: none;
+  background: #6b7280;
+  box-shadow: none;
+}
+
+/* Overlay bars */
+.hud-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  z-index: 10;
+  transition: opacity 150ms ease;
+}
+
+.hud-bar-top {
+  top: 0;
+  height: 36px;
+  font-size: 11px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-bar-bottom {
+  bottom: 0;
+  height: 32px;
+  font-size: 10px;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Speed color classes */
+.hud-speed-green { color: #22c55e; }
+.hud-speed-amber { color: #f59e0b; }
+.hud-speed-red { color: #ef4444; }
+
+/* Channel badges */
+.hud-channel-front {
+  background: rgba(59, 130, 246, 0.25);
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  color: #60a5fa;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.hud-channel-rear {
+  background: rgba(168, 85, 247, 0.25);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  color: #c084fc;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* Classification badges */
+.hud-class-routine { color: #6b7280; }
+.hud-class-evidence { color: #d4a017; }
+.hud-class-flagged { color: #ef4444; }
+.hud-class-restricted { color: #a855f7; }
+
+/* Side panel */
+.hud-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  background: var(--surface-base);
+  border-left: 1px solid var(--border-default);
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 200ms ease;
+  z-index: 20;
+}
+
+.hud-panel.open {
+  transform: translateX(0);
+}
+
+/* Panel section headers */
+.hud-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-default);
+  cursor: pointer;
+  user-select: none;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.hud-section-header:hover {
+  background: var(--surface-hover, rgba(255,255,255,0.04));
+}
+
+.hud-section-content {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+}
+
+/* Speed gauge */
+.hud-speed-gauge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.hud-speed-unit {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+/* Playback controls */
+.hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.8);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-controls button {
+  background: none;
+  border: none;
+  color: #d0d8e0;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: inherit;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.hud-controls button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.hud-controls button.active {
+  background: rgba(59, 138, 212, 0.3);
+  color: #3b8ad4;
+}
+
+/* Speed timeline */
+.hud-timeline {
+  position: relative;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+}
+
+.hud-timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #3b8ad4;
+  z-index: 2;
+  pointer-events: none;
+}
+
