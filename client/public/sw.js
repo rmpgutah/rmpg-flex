@@ -298,7 +298,11 @@ self.addEventListener('message', (event) => {
   }
   // Clean unregister — clear all caches and unregister SW (troubleshooting)
   if (event.data && event.data.type === 'UNREGISTER') {
-    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
-    self.registration.unregister();
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+        .then(() => self.registration.unregister())
+    );
   }
 });
