@@ -20,6 +20,7 @@ router.get('/', (req: Request, res: Response) => {
       status,
       type,
       subject_name,
+      person_id,
       archived,
       page = '1',
       per_page = '50',
@@ -35,6 +36,10 @@ router.get('/', (req: Request, res: Response) => {
     if (type) {
       whereClause += ' AND w.type = ?';
       params.push(type);
+    }
+    if (person_id) {
+      whereClause += ' AND w.subject_person_id = ?';
+      params.push(person_id);
     }
     if (subject_name) {
       whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ?";

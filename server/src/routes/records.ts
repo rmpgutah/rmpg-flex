@@ -131,12 +131,14 @@ router.get('/persons/search', (req: Request, res: Response) => {
       return;
     }
 
-    const searchTerm = `%${q}%`;
+    const escaped = String(q).replace(/%/g, '\\%').replace(/_/g, '\\_');
+    const searchTerm = `%${escaped}%`;
 
     const persons = db.prepare(`
       SELECT * FROM persons
-      WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ?
-        OR address LIKE ? OR (first_name || ' ' || last_name) LIKE ?
+      WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\'
+        OR phone LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\'
+        OR address LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
       ORDER BY last_name, first_name
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
@@ -733,14 +735,16 @@ router.get('/vehicles/search', (req: Request, res: Response) => {
       return;
     }
 
-    const searchTerm = `%${q}%`;
+    const escaped = String(q).replace(/%/g, '\\%').replace(/_/g, '\\_');
+    const searchTerm = `%${escaped}%`;
 
     const vehicles = db.prepare(`
       SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
       FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
-      WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
-        OR v.color LIKE ? OR v.notes LIKE ?
+      WHERE v.plate_number LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\'
+        OR v.make LIKE ? ESCAPE '\\' OR v.model LIKE ? ESCAPE '\\'
+        OR v.color LIKE ? ESCAPE '\\' OR v.notes LIKE ? ESCAPE '\\'
       ORDER BY v.created_at DESC
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);

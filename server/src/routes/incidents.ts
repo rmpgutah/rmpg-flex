@@ -505,6 +505,8 @@ router.post('/', async (req: Request, res: Response) => {
       VALUES (?, 'incident_created', 'incident', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
 
+    broadcastIncidentUpdate({ id: result.lastInsertRowid, incident_number: incidentNumber, action: 'created' });
+
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error);
@@ -646,6 +648,9 @@ router.put('/:id', async (req: Request, res: Response) => {
     `).run(req.user!.userId, req.params.id, `Updated incident ${incident.incident_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
+
+    broadcastIncidentUpdate({ id: Number(req.params.id), incident_number: incident.incident_number, action: 'updated' });
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update incident error:', error);
@@ -673,8 +678,9 @@ router.delete('/:id', (req: Request, res: Response) => {
       auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin God Mode: bypassed draft-only delete restriction (status: ${incident.status})`);
     }
 
-    if (incident.officer_id !== req.user!.userId && !['admin', 'manager'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'Insufficient permissions', code: 'INSUFFICIENT_PERMISSIONS' });
+    // Only allow deleting own incidents (unless admin/manager)
+    if (req.user?.role !== 'admin' && req.user?.role !== 'manager' && incident.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'Can only delete your own incident reports', code: 'FORBIDDEN' });
       return;
     }
 
@@ -759,8 +765,16 @@ router.put('/:id/submit', (req: Request, res: Response) => {
       auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin God Mode: bypassed draft/returned-only submit restriction (status: ${incident.status})`);
     }
 
-    if (!incident.narrative || incident.narrative.trim().length === 0) {
-      res.status(400).json({ error: 'Narrative is required before submitting', code: 'NARRATIVE_IS_REQUIRED_BEFORE' });
+    const missingFields: string[] = [];
+    if (!incident.narrative?.trim()) missingFields.push('narrative');
+    if (!incident.location_address?.trim()) missingFields.push('location_address');
+    if (!incident.incident_type?.trim()) missingFields.push('incident_type');
+
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        error: `Missing required fields for submission: ${missingFields.join(', ')}`,
+        code: 'MISSING_REQUIRED_FIELDS',
+      });
       return;
     }
 
@@ -772,6 +786,8 @@ router.put('/:id/submit', (req: Request, res: Response) => {
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_submitted', 'incident', ?, ?, ?)
     `).run(req.user!.userId, incident.id, `Submitted ${incident.incident_number} for review`, req.ip || 'unknown');
+
+    broadcastIncidentUpdate({ id: incident.id, incident_number: incident.incident_number, action: 'submitted' });
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
@@ -810,6 +826,8 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_approved', 'incident', ?, ?, ?)
     `).run(req.user!.userId, incident.id, `Approved ${incident.incident_number}`, req.ip || 'unknown');
+
+    broadcastIncidentUpdate({ id: incident.id, incident_number: incident.incident_number, action: 'approved' });
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
