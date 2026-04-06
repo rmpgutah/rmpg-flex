@@ -205,4 +205,14 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
   return positions;
 }
 
+/** Get the line height for a given font size (approx 1.3x font size in PDF units) */
+export function getLineHeight(fontSize: number): number {
+  return fontSize * 0.3528 * 1.3; // pt -> mm * line-height factor
+}
+
+/** Get the cap height for a given font size (approx 0.7x font size in PDF units) */
+export function getCapHeight(fontSize: number): number {
+  return fontSize * 0.3528 * 0.7; // pt -> mm * cap-height factor
+}
+
 // ── NIBRS Grid Layout Helpers ─────────────────────────────────

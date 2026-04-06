@@ -295,7 +295,7 @@ export function addReportHeader(
  * Auto-sizing section with clean header bar (no numbering, no accent stripes).
  * Call `closeAutoSection(doc, sectionStartY, contentEndY)` when done.
  */
-export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number } {
+export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number; sectionPage: number } {
   const cw = getContentWidth(doc);
 
   // Ensure full opacity (safety reset after watermark GState)
@@ -318,13 +318,13 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setFont('helvetica', 'normal');
 
   // Content starts after header bar + content padding (not tight against bar)
-  return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y };
+  return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y, sectionPage: doc.getCurrentPageInfo().pageNumber };
 }
 
 /**
  * Close an auto-sizing section — draws thin border from sectionY to contentEndY.
  */
-export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: number, padding = SPACING.SECTION_BOTTOM_PAD): number {
+export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: number, padding = SPACING.SECTION_BOTTOM_PAD, _sectionPage?: number): number {
   const cw = getContentWidth(doc);
   const totalHeight = (contentEndY - sectionY) + padding;
 
@@ -2087,4 +2087,76 @@ export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: 
   setActiveOfficerSig(undefined);
   const blob = doc.output('blob');
   return URL.createObjectURL(blob);
+}
+
+// --- Additional exports needed by other modules ---
+
+/** Strip non-printable / problematic chars for PDF rendering */
+export function sanitizePdfText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/\t/g, '    ');
+}
+
+/** Add stacked signature blocks for multiple officers */
+export function addStackedSignatures(doc: jsPDF, label1: any, label2?: any, y?: any, sig1?: any, sig2?: any, priority?: any, ...rest: any[]): number {
+  const currentY = typeof y === 'number' ? y : 0;
+  const cw = getContentWidth(doc);
+  const hw = cw / 2;
+  const lx = LAYOUT.PAGE_MARGIN;
+  let yOut = currentY;
+
+  // First signature
+  if (typeof label1 === 'string' && label1) {
+    yOut = addSignatureBlock(doc, label1, lx, yOut, hw - 2, sig1 || undefined);
+  }
+  // Second signature
+  if (typeof label2 === 'string' && label2) {
+    yOut = addSignatureBlock(doc, label2, lx, yOut, hw - 2, sig2 || undefined);
+  }
+  return yOut;
+}
+
+/** Add colored flag badges inline */
+export function addFlagBadges(doc: jsPDF, flags: string[], x: number, y: number, maxWidth?: number, priority?: string): number {
+  if (!flags || flags.length === 0) return y;
+  const badgeH = 4;
+  let cx = x;
+  for (const flag of flags) {
+    const tw = doc.getTextWidth(flag) + 3;
+    doc.setFillColor(180, 30, 30);
+    doc.roundedRect(cx, y - badgeH + 1, tw, badgeH, 1, 1, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(6);
+    doc.text(flag, cx + 1.5, y - 0.5);
+    cx += tw + 1.5;
+  }
+  doc.setTextColor(0, 0, 0);
+  return y + badgeH + 1;
+}
+
+/** Add a caution block with warning styling */
+export function addCautionBlock(doc: jsPDF, text: string, x: number, y: number, maxWidth?: number): number {
+  if (!text) return y;
+  const mw = maxWidth || getContentWidth(doc);
+  doc.setFillColor(255, 240, 220);
+  const textLines = doc.splitTextToSize(text, mw - 10);
+  const blockH = textLines.length * 4 + 6;
+  doc.roundedRect(x, y, mw, blockH, 1, 1, 'F');
+  doc.setFontSize(7);
+  doc.setTextColor(150, 60, 0);
+  doc.text(textLines, x + 5, y + 5);
+  doc.setTextColor(0, 0, 0);
+  return y + blockH + 2;
+}
+
+/** Add formatted text with basic markdown-style bold */
+export function addFormattedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize?: number, pageBreakFn?: (doc: jsPDF, y: number) => number): number {
+  return addWrappedText(doc, text, x, y, maxWidth, fontSize);
+}
+
+/** Add a form section page break if needed */
+export function formSectionPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
+  return checkPageBreak(doc, y, needed, priority);
 }

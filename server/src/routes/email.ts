@@ -1221,4 +1221,69 @@ router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: R
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// Image Proxy — loads external email images through the server
+// to bypass CORS/referrer restrictions on CDN-hosted content
+// ════════════════════════════════════════════════════════════
+router.get('/image-proxy', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const url = req.query.url as string;
+    if (!url || typeof url !== 'string') {
+      res.status(400).json({ error: 'url parameter required' });
+      return;
+    }
+
+    // Only allow http/https URLs
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      res.status(400).json({ error: 'Only http/https URLs allowed' });
+      return;
+    }
+
+    // Block localhost/internal IPs (SSRF protection)
+    const parsed = new URL(url);
+    if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(parsed.hostname) ||
+        parsed.hostname.startsWith('10.') || parsed.hostname.startsWith('192.168.') || parsed.hostname.startsWith('172.')) {
+      res.status(403).json({ error: 'Internal URLs not allowed' });
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RMPG-Flex/1.0)',
+        'Accept': 'image/*,*/*;q=0.8',
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      res.status(response.status).end();
+      return;
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    // Only allow image content types
+    if (!contentType.startsWith('image/')) {
+      res.status(415).json({ error: 'Not an image' });
+      return;
+    }
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache 24h
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.send(buffer);
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      res.status(504).json({ error: 'Image fetch timeout' });
+    } else {
+      res.status(502).json({ error: 'Failed to fetch image' });
+    }
+  }
+});
+
 export default router;

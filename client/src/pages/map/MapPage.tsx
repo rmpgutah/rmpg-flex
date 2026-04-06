@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps } from '../utils/googleMapsLoader';
-import { devLog, devWarn } from '../utils/devLog';
+import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps } from '../../utils/googleMapsLoader';
+import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
   AlertTriangle,
@@ -43,23 +43,23 @@ import {
 } from 'lucide-react';
 // Direct script-tag loader — more reliable than @googlemaps/js-api-loader
 // which has known issues with React StrictMode and intermittent failures.
-import type { UnitStatus } from '../types';
-import RmpgLogo from '../components/RmpgLogo';
-import PanelTitleBar from '../components/PanelTitleBar';
-import { apiFetch } from '../hooks/useApi';
-import { useLiveSync } from '../hooks/useLiveSync';
-import { usePersistedTab } from '../hooks/usePersistedState';
-import { useWebSocket } from '../context/WebSocketContext';
-import { useGpsTracking } from '../hooks/useGpsTracking';
-import { formatIncidentType } from '../utils/caseNumbers';
-import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
-import { escapeHtml } from '../utils/sanitize';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
-import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../hooks/useGeoJsonLayers';
-import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../hooks/useEventPlanning';
-import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../hooks/useShiftPlanning';
-import { useIsMobile } from '../hooks/useIsMobile';
-import MobileBottomSheet from '../components/mobile/MobileBottomSheet';
+import type { UnitStatus } from '../../types';
+import RmpgLogo from '../../components/RmpgLogo';
+import PanelTitleBar from '../../components/PanelTitleBar';
+import { apiFetch } from '../../hooks/useApi';
+import { useLiveSync } from '../../hooks/useLiveSync';
+import { usePersistedTab } from '../../hooks/usePersistedState';
+import { useWebSocket } from '../../context/WebSocketContext';
+import { useGpsTracking } from '../../hooks/useGpsTracking';
+import { formatIncidentType } from '../../utils/caseNumbers';
+import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
+import { escapeHtml } from '../../utils/sanitize';
+import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
+import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
+import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
+import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 
 // ============================================================
 // Types

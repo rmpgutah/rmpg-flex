@@ -93,6 +93,7 @@ export interface Client {
   account_manager?: string;
   priority_client?: boolean;
   client_since?: string;
+  status?: string;
   is_active: boolean;
   notes?: string;
   created_at: string;
@@ -117,6 +118,7 @@ export interface Property {
   post_orders?: string;
   hazard_notes?: string;
   access_instructions?: string;
+  risk_level?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -271,6 +273,14 @@ export interface CallForService {
   archived_at?: string;
   previous_status?: CallStatus;
   risk_score?: number | null;
+  // PSO visit tracking
+  pso_attempt_number?: number;
+  visit_history?: any[];
+  pso_service_windows?: any[];
+  // Incident linkage
+  incident_number?: string;
+  // Responding vehicle
+  responding_vehicle_id?: string;
   created_by: string;
   updated_at: string;
 }
@@ -290,6 +300,7 @@ export interface Unit {
   call_sign: string;
   officer_id: string;
   officer_name: string;
+  badge_number?: string;
   status: UnitStatus;
   current_call_id?: string;
   current_call_number?: string;
@@ -402,6 +413,8 @@ export interface Person {
   known_associates?: string;
   emergency_contact_relationship?: string;
   caution_flags?: string;
+  watchlist_match?: string | null;
+  watchlist_checked_at?: string | null;
   flags: string[];
   notes?: string;
   incident_ids: string[];
@@ -589,8 +602,25 @@ export interface TimeEntry {
   total_hours?: number;
   status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   notes?: string;
+  edit_reason?: string;
+  edited_by?: number;
+  edited_by_name?: string;
+  edited_at?: string;
+  edit_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface TimeEntryEdit {
+  id: number;
+  time_entry_id: number;
+  edited_by: number;
+  edited_by_name: string;
+  edit_type: 'clock_in_changed' | 'clock_out_changed' | 'deleted' | 'notes_changed' | 'break_adjusted';
+  old_value: string | null;
+  new_value: string | null;
+  reason: string | null;
+  created_at: string;
 }
 
 export interface Credential {
@@ -769,6 +799,152 @@ export interface DashcamVideo {
   officer_name?: string;
   call_sign?: string;
   device_name?: string;
+}
+
+// --- Dash Camera (new naming convention) ---
+
+export type DashCameraStatus = 'available' | 'installed' | 'maintenance' | 'damaged' | 'lost';
+
+export interface DashCamera {
+  id: number;
+  vehicle_id: number;
+  camera_id: string;
+  make: string;
+  model: string;
+  firmware_version: string;
+  storage_capacity_gb: number;
+  channel_count: number;
+  status: DashCameraStatus;
+  condition: string;
+  installed_at: string;
+  removed_at: string;
+  notes: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  vehicle_number?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_year?: number;
+}
+
+export interface DashCamVideo {
+  id: number;
+  camera_id: number;
+  vehicle_id: number;
+  title: string;
+  file_path: string;
+  file_size: number;
+  duration_seconds: number;
+  mime_type: string;
+  recorded_at: string;
+  case_number: string;
+  classification: VideoClassification;
+  retention_status: string;
+  gps_lat: number | null;
+  gps_lon: number | null;
+  notes: string;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+  camera_serial?: string;
+  vehicle_number?: string;
+}
+
+export interface DashCamVideoEditData {
+  title?: string;
+  case_number?: string;
+  classification?: string;
+  notes?: string;
+}
+
+// --- ClearPathGPS ---
+
+export interface CpgpsVehicle {
+  id: number;
+  cpgps_id: string;
+  vehicle_id: number | null;
+  name: string;
+  vin: string;
+  make: string;
+  model: string;
+  year: number;
+  license_plate: string;
+  device_serial: string;
+  last_lat: number | null;
+  last_lon: number | null;
+  last_speed: number | null;
+  last_heading: number | null;
+  last_reported_at: string;
+  odometer: number | null;
+  engine_hours: number | null;
+  synced_at: string;
+  created_at: string;
+  fleet_vehicle_number?: string;
+  fleet_make?: string;
+  fleet_model?: string;
+  fleet_year?: number;
+}
+
+export interface CpgpsTrip {
+  id: number;
+  cpgps_vehicle_id: string;
+  vehicle_id: number | null;
+  trip_start: string;
+  trip_end: string;
+  start_lat: number | null;
+  start_lon: number | null;
+  end_lat: number | null;
+  end_lon: number | null;
+  start_address: string;
+  end_address: string;
+  distance_miles: number | null;
+  max_speed: number | null;
+  avg_speed: number | null;
+  idle_duration_seconds: number | null;
+  drive_duration_seconds: number | null;
+  synced_at: string;
+  created_at: string;
+}
+
+export interface CpgpsLocation {
+  id: number;
+  cpgps_vehicle_id: string;
+  vehicle_id: number | null;
+  lat: number | null;
+  lon: number | null;
+  speed: number | null;
+  heading: number | null;
+  reported_at: string;
+  address: string;
+  ignition_on: number | null;
+}
+
+export interface CpgpsAlert {
+  id: number;
+  cpgps_vehicle_id: string;
+  vehicle_id: number | null;
+  alert_type: string;
+  severity: string;
+  message: string;
+  triggered_at: string;
+  lat: number | null;
+  lon: number | null;
+  synced_at: string;
+  created_at: string;
+}
+
+export interface CpgpsSyncLog {
+  id: number;
+  sync_type: string;
+  status: string;
+  records_fetched: number;
+  records_stored: number;
+  oldest_record: string;
+  newest_record: string;
+  error_message: string;
+  started_at: string;
+  completed_at: string;
 }
 
 // --- Equipment ---
@@ -1336,7 +1512,16 @@ export type WSMessageType =
   | 'private_call_audio'
   | 'private_call_error'
   // Presence
-  | 'presence_update';
+  | 'presence_update'
+  // Radio advanced
+  | 'selcall_page'
+  | 'emergency_override'
+  | 'scan_subscribe'
+  | 'scan_unsubscribe'
+  // Call alerts
+  | 'call:warrant_alert'
+  // Email
+  | 'email:new_messages';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -1933,4 +2118,661 @@ export interface CompanyDocument {
   file_name?: string;
   file_size?: number;
   mime_type?: string;
+}
+
+// --- Forensics Lab ---
+
+export type ForensicCaseStatus = 'received' | 'in_progress' | 'analysis_complete' | 'report_drafted' | 'reviewed' | 'released' | 'cancelled';
+export type ForensicCaseType = 'general' | 'homicide' | 'sexual_assault' | 'narcotics' | 'arson' | 'fraud' | 'burglary' | 'robbery' | 'digital' | 'traffic' | 'cold_case' | 'other';
+export type ForensicPriority = 'routine' | 'normal' | 'rush' | 'urgent';
+export type ExhibitType = 'biological' | 'chemical' | 'digital' | 'document' | 'drug' | 'explosive' | 'fingerprint' | 'firearm' | 'trace' | 'clothing' | 'dna_sample' | 'tool_mark' | 'glass' | 'paint' | 'fiber' | 'soil' | 'impression' | 'other';
+export type ExhibitDisposition = 'in_lab' | 'returned' | 'destroyed' | 'transferred' | 'in_storage';
+export type AnalysisType = 'dna' | 'fingerprint' | 'drug_analysis' | 'toxicology' | 'ballistics' | 'digital_forensics' | 'document_exam' | 'trace_evidence' | 'serology' | 'arson_analysis' | 'tool_mark' | 'glass_analysis' | 'paint_analysis' | 'fiber_analysis' | 'blood_spatter' | 'gunshot_residue' | 'other';
+export type AnalysisStatus = 'pending' | 'in_progress' | 'completed' | 'inconclusive' | 'cancelled';
+
+export interface ForensicCase {
+  id: number;
+  lab_number: string;
+  case_type: ForensicCaseType;
+  status: ForensicCaseStatus;
+  priority: ForensicPriority;
+  title: string;
+  description?: string;
+  requesting_agency: string;
+  requesting_officer?: string;
+  lead_examiner_id?: number;
+  lead_examiner_name?: string;
+  linked_incident_id?: number;
+  linked_case_id?: number;
+  linked_incident_number?: string;
+  linked_case_number?: string;
+  received_date: string;
+  due_date?: string;
+  completed_date?: string;
+  released_date?: string;
+  notes?: string;
+  created_by?: number;
+  created_by_name?: string;
+  exhibit_count?: number;
+  analysis_count?: number;
+  completed_analysis_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForensicExhibit {
+  id: number;
+  forensic_case_id: number;
+  exhibit_number: string;
+  exhibit_type: ExhibitType;
+  description: string;
+  quantity: number;
+  condition_received?: string;
+  storage_location?: string;
+  storage_temp?: string;
+  collected_by?: string;
+  collected_date?: string;
+  collection_method?: string;
+  hash_md5?: string;
+  hash_sha256?: string;
+  chain_of_custody: string;
+  disposition: ExhibitDisposition;
+  disposition_date?: string;
+  disposition_notes?: string;
+  photos: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForensicAnalysis {
+  id: number;
+  forensic_case_id: number;
+  exhibit_id?: number;
+  exhibit_number?: string;
+  analysis_type: AnalysisType;
+  methodology?: string;
+  equipment_used?: string;
+  examiner_id?: number;
+  examiner_name?: string;
+  status: AnalysisStatus;
+  started_at?: string;
+  completed_at?: string;
+  results?: string;
+  conclusion?: string;
+  limitations?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForensicActivityLog {
+  id: number;
+  forensic_case_id: number;
+  exhibit_id?: number;
+  action: string;
+  details: string;
+  performed_by?: number;
+  performed_by_name?: string;
+  performed_at: string;
+}
+
+// --- IPED Digital Forensics Integration ---
+
+export type IpedImportType = 'case_link' | 'findings' | 'timeline' | 'report' | 'bookmarks' | 'items';
+
+export interface IpedCase {
+  id: string;
+  name: string;
+  path?: string;
+  totalItems?: number;
+  processedItems?: number;
+  categories?: Record<string, number>;
+}
+
+export interface IpedItem {
+  id: string;
+  name: string;
+  path?: string;
+  category?: string;
+  type?: string;
+  size?: number;
+  hash?: string;
+  md5?: string;
+  sha256?: string;
+  content_preview?: string;
+  metadata?: Record<string, any>;
+  bookmarked?: boolean;
+  created?: string;
+  modified?: string;
+  accessed?: string;
+}
+
+export interface IpedBookmark {
+  id: string;
+  name: string;
+  comment?: string;
+  itemIds?: string[];
+  itemCount?: number;
+}
+
+export interface IpedFinding {
+  id: string;
+  name: string;
+  path?: string;
+  category: string;
+  type?: string;
+  size?: number;
+  hash?: string;
+  content_preview?: string;
+  metadata?: Record<string, any>;
+  bookmarked?: boolean;
+}
+
+export interface IpedTimelineEvent {
+  timestamp: string;
+  type?: string;
+  description?: string;
+  name?: string;
+  path?: string;
+  source?: string;
+}
+
+export interface IpedImport {
+  id: number;
+  forensic_case_id: number;
+  import_type: IpedImportType;
+  iped_case_id: string;
+  iped_case_name?: string;
+  source_query?: string;
+  item_count: number;
+  imported_data: string;
+  summary?: string;
+  imported_by?: number;
+  imported_by_name?: string;
+  created_at: string;
+  lab_number?: string;
+  case_title?: string;
+}
+
+export interface IpedConnectionStatus {
+  configured: boolean;
+  enabled: boolean;
+  baseUrl: string | null;
+  hasApiKey: boolean;
+}
+
+// --- Forensic Hash Sets ---
+
+export type HashSetType = 'nsrl' | 'projectvic' | 'custom' | 'known_good' | 'known_bad';
+
+export interface ForensicHashSet {
+  id: number;
+  name: string;
+  set_type: HashSetType;
+  description?: string;
+  hash_count: number;
+  source_file?: string;
+  version?: string;
+  imported_by?: number;
+  imported_by_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HashCheckResult {
+  hash_value: string;
+  matches: {
+    set_id: number;
+    set_name: string;
+    set_type: HashSetType;
+    hash_type: string;
+    file_name?: string;
+    category?: string;
+  }[];
+}
+
+// --- Integration Hub ---
+
+export type IntegrationId = 'clearpathgps' | 'servemanager' | 'microbilt' | 'iped';
+export type IntegrationHealth = 'healthy' | 'degraded' | 'error' | 'unconfigured';
+
+export interface IntegrationStatus {
+  id: IntegrationId;
+  name: string;
+  description: string;
+  configured: boolean;
+  connected: boolean;
+  lastSync: string | null;
+  lastError: string | null;
+  lastHealthCheck: string | null;
+  health: IntegrationHealth;
+  syncing: boolean;
+  syncProgress: number | null;
+  uptimePercent: number | null;
+  stats: Record<string, number>;
+}
+
+export interface IntegrationHealthAlert {
+  integrationId: IntegrationId;
+  integrationName: string;
+  previousHealth: IntegrationHealth;
+  currentHealth: IntegrationHealth;
+  error: string | null;
+  timestamp: string;
+  consecutiveFailures: number;
+}
+
+// --- CRM Types ---
+
+export interface CrmLead {
+  id: number;
+  company_name: string;
+  business_name?: string;
+  contact_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  industry?: string;
+  source?: string;
+  source_id?: string;
+  source_url?: string;
+  pipeline_stage?: string;
+  lead_score?: number;
+  estimated_value?: number;
+  probability?: number;
+  license_number?: string;
+  permit_number?: string;
+  notes?: string;
+  assigned_to?: number;
+  assigned_to_name?: string;
+  next_follow_up?: string;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
+  [key: string]: any;
+}
+
+export interface CrmLeadActivity {
+  id: number;
+  lead_id: number;
+  activity_type: string;
+  description: string;
+  subject?: string;
+  details?: string;
+  performed_by?: number;
+  performed_by_name?: string;
+  created_by_name?: string;
+  created_at: string;
+  [key: string]: any;
+}
+
+export interface CrmTask {
+  id: number;
+  title: string;
+  description?: string;
+  status: string;
+  priority?: string;
+  due_date?: string;
+  assigned_to?: number;
+  assigned_to_name?: string;
+  lead_id?: number;
+  client_name?: string;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
+  [key: string]: any;
+}
+
+export interface CrmActivity {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  activity_type: string;
+  description: string;
+  performed_by?: number;
+  performed_by_name?: string;
+  created_at: string;
+}
+
+export interface CrmProposal {
+  id: number;
+  lead_id?: number;
+  client_id?: string;
+  title: string;
+  status: string;
+  stage?: string;
+  template_id?: number;
+  content?: string;
+  total_value?: number;
+  valid_until?: string;
+  sent_at?: string;
+  viewed_at?: string;
+  accepted_at?: string;
+  rejected_at?: string;
+  created_by?: number;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+  [key: string]: any;
+}
+
+export interface CrmProposalTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  content: string;
+  category?: string;
+  template_type?: string;
+  is_active: boolean;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
+  [key: string]: any;
+}
+
+export interface CrmProposalVersion {
+  id: number;
+  proposal_id: number;
+  version_number: number;
+  content: string;
+  snapshot?: any;
+  created_by?: number;
+  created_by_name?: string;
+  created_at: string;
+  [key: string]: any;
+}
+
+export type PipelineStage = 'new' | 'contacted' | 'prospect' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost' | 'closed_won' | 'closed_lost' | string;
+export type ProposalStage = 'draft' | 'sent' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+export type LeadSource = 'referral' | 'website' | 'cold_call' | 'event' | 'social_media' | 'utah_biz' | 'construction_permit' | 'scraper' | 'other' | string;
+
+export interface PipelineSummary {
+  stage: PipelineStage;
+  count: number;
+  total_value: number;
+}
+
+export interface LeadScrapeSource {
+  id: number;
+  name: string;
+  source_key?: string;
+  url?: string;
+  source_type: string;
+  is_active: boolean;
+  is_enabled?: boolean;
+  last_scraped_at?: string;
+  leads_found?: number;
+  created_at: string;
+  [key: string]: any;
+}
+
+// --- Process Serve ---
+
+export interface ServeJob {
+  id: number;
+  case_number?: string;
+  serve_type?: string;
+  document_type?: string;
+  status: string;
+  priority?: string;
+  recipient_name: string;
+  recipient_address?: string;
+  recipient_city?: string;
+  recipient_state?: string;
+  recipient_zip?: string;
+  recipient_lat?: number;
+  recipient_lng?: number;
+  recipient_phone?: string;
+  recipient_description?: string;
+  client_name?: string;
+  attorney_name?: string;
+  jurisdiction?: string;
+  service_instructions?: string;
+  time_window?: string;
+  documents?: string;
+  court_name?: string;
+  court_case_number?: string;
+  deadline?: string;
+  assigned_to?: number;
+  assigned_to_name?: string;
+  attempt_count?: number;
+  attempts?: any[];
+  max_attempts?: number;
+  last_attempt_at?: string;
+  completed_at?: string;
+  notes?: string;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
+  [key: string]: any;
+}
+
+export interface ServeAttemptData {
+  serve_job_id: number;
+  attempt_number: number;
+  attempt_type?: string;
+  status: string;
+  attempt_date: string;
+  attempt_time?: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  result?: string;
+  person_served?: string;
+  person_served_name?: string;
+  relationship?: string;
+  description?: string;
+  officer_id?: number;
+  officer_name?: string;
+  photos?: string;
+  created_at: string;
+  [key: string]: any;
+}
+
+export interface ServeSkipAddress {
+  id: number;
+  serve_job_id: number;
+  address: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  source?: string;
+  confidence?: number;
+  verified?: boolean;
+  last_seen?: string;
+  notes?: string;
+  created_at: string;
+  [key: string]: any;
+}
+
+export interface ServeSkipTrace {
+  id: number;
+  serve_job_id: number;
+  source: string;
+  results?: string;
+  addresses_found?: number;
+  phones_found?: number;
+  created_by?: number;
+  created_at: string;
+}
+
+// --- Email ---
+
+export interface EmailMessage {
+  id: number | string;
+  folder_id?: number | string;
+  from_address: string;
+  from_name?: string;
+  fromAddress?: string;
+  fromName?: string;
+  to_addresses: string;
+  toAddresses?: any[];
+  cc_addresses?: string;
+  ccAddresses?: any[];
+  bcc_addresses?: string;
+  bccAddresses?: any[];
+  subject: string;
+  body_text?: string;
+  bodyText?: string;
+  body_html?: string;
+  bodyHtml?: string;
+  snippet?: string;
+  date: string;
+  receivedAt?: string;
+  message_id?: string;
+  messageId?: string;
+  in_reply_to?: string;
+  inReplyTo?: string;
+  is_read: boolean;
+  isRead?: boolean;
+  is_starred: boolean;
+  isStarred?: boolean;
+  isFlagged?: boolean;
+  has_attachments: boolean;
+  hasAttachments?: boolean;
+  labels?: string;
+  attachments?: EmailAttachment[];
+  created_at: string;
+  [key: string]: any;
+}
+
+export interface EmailFolder {
+  id: number | string;
+  name: string;
+  displayName?: string;
+  type: string;
+  message_count: number;
+  unread_count: number;
+  [key: string]: any;
+}
+
+export interface EmailAttachment {
+  id: number;
+  message_id: number;
+  filename: string;
+  name?: string;
+  mime_type: string;
+  size: number;
+  content_id?: string;
+  isInline?: boolean;
+  [key: string]: any;
+}
+
+// --- Security ---
+
+export interface LoginHistoryEntry {
+  id: number;
+  user_id: number;
+  username?: string;
+  ip_address: string;
+  user_agent?: string;
+  success: boolean;
+  failure_reason?: string;
+  method?: string;
+  created_at: string;
+}
+
+export interface SecurityStatus {
+  password_age_days: number;
+  totp_enabled: boolean;
+  webauthn_enabled: boolean;
+  active_sessions: number;
+  trusted_devices: number;
+  backupCodesRemaining?: number;
+  last_password_change?: string;
+  login_count?: number;
+  [key: string]: any;
+}
+
+export interface TrustedDevice {
+  id: number;
+  user_id: number;
+  device_name: string;
+  device_fingerprint: string;
+  browser?: string;
+  os?: string;
+  ip_address?: string;
+  last_used_at: string;
+  created_at: string;
+}
+
+// --- Sex Offender Registry ---
+
+export type SORTier = 'tier_1' | 'tier_2' | 'tier_3';
+export type SORStatus = 'compliant' | 'non_compliant' | 'absconded' | 'incarcerated' | 'deceased';
+
+export interface SexOffenderRecord {
+  id: number;
+  person_id?: number;
+  first_name: string;
+  last_name: string;
+  middle_name?: string;
+  dob?: string;
+  date_of_birth?: string;
+  gender?: string;
+  race?: string;
+  height?: string;
+  weight?: string;
+  hair_color?: string;
+  eye_color?: string;
+  photo_url?: string;
+  tier: SORTier;
+  status: SORStatus;
+  risk_level?: string;
+  registry_id?: string;
+  registration_date?: string;
+  registration_number?: string;
+  registration_status?: string;
+  offenses?: SOROffense[];
+  addresses?: SORAddress[];
+  vehicles?: SORVehicle[];
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  [key: string]: any;
+}
+
+export interface SOROffense {
+  id: number;
+  offender_id: number;
+  offense_description: string;
+  date?: string;
+  offense_date?: string;
+  conviction_date?: string;
+  statute?: string;
+  court?: string;
+  victim_age?: string;
+  [key: string]: any;
+}
+
+export interface SORAddress {
+  id: number;
+  offender_id: number;
+  type?: string;
+  address_type: string;
+  address: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  latitude?: number;
+  longitude?: number;
+  verified?: boolean;
+  verified_at?: string;
+  verified_date?: string;
+  [key: string]: any;
+}
+
+export interface SORVehicle {
+  id: number;
+  offender_id: number;
+  make?: string;
+  model?: string;
+  year?: number;
+  color?: string;
+  plate?: string;
+  plate_state?: string;
 }

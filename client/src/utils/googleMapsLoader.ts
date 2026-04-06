@@ -330,3 +330,41 @@ export function printWithLightMaps(): void {
     });
   }
 }
+
+// --- Offline Tile Layer Constants & Helpers ---
+
+export const OFFLINE_TILE_MIN_ZOOM = 7;
+export const OFFLINE_TILE_MAX_ZOOM = 15;
+
+/** Monitor tile loading status (returns cleanup function) */
+export function monitorTileLoading(map: google.maps.Map, onStatusChange: (loading: boolean) => void): () => void {
+  let pendingTiles = 0;
+  const listener1 = map.addListener('tilesloading', () => {
+    pendingTiles++;
+    onStatusChange(true);
+  });
+  const listener2 = map.addListener('idle', () => {
+    pendingTiles = 0;
+    onStatusChange(false);
+  });
+  return () => {
+    google.maps.event.removeListener(listener1);
+    google.maps.event.removeListener(listener2);
+  };
+}
+
+/** Add an offline tile overlay layer to the map */
+export function addOfflineTileLayer(map: google.maps.Map): google.maps.ImageMapType {
+  const offlineTiles = new google.maps.ImageMapType({
+    getTileUrl: (coord: google.maps.Point, zoom: number) => {
+      if (zoom < OFFLINE_TILE_MIN_ZOOM || zoom > OFFLINE_TILE_MAX_ZOOM) return '';
+      return `/tiles/${zoom}/${coord.x}/${coord.y}.png`;
+    },
+    tileSize: new google.maps.Size(256, 256),
+    name: 'Offline',
+    maxZoom: OFFLINE_TILE_MAX_ZOOM,
+    minZoom: OFFLINE_TILE_MIN_ZOOM,
+  });
+  map.overlayMapTypes.push(offlineTiles);
+  return offlineTiles;
+}

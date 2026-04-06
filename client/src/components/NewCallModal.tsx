@@ -19,6 +19,8 @@ interface NewCallModalProps {
   initialData?: Partial<Record<string, any>>;
 }
 
+const DRAFT_KEY = 'rmpg_new_call_draft';
+
 const CALL_SOURCES: { value: CallSource; label: string }[] = [
   { value: 'phone', label: 'Phone' },
   { value: 'radio', label: 'Radio' },

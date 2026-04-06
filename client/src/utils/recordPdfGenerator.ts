@@ -46,6 +46,21 @@ import {
   type CheckboxItem, type FormRow,
 } from './pdfFormHelpers';
 
+// ── Helpers ──────────────────────────────────────────────────────
+
+/** Format a status string for display (e.g., 'on_scene' -> 'ON SCENE') */
+function displayStatus(status: string): string {
+  if (!status) return '';
+  return status.replace(/_/g, ' ').toUpperCase();
+}
+
+/** Convert an image data URL to grayscale (returns the original if not a data URL) */
+function convertToGrayscale(dataUrl: string): string {
+  // In PDF context, just return the image as-is; grayscale conversion
+  // would require canvas which isn't available in all contexts
+  return dataUrl;
+}
+
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
 let _activeOfficerSig: PdfSignatureData | undefined;
