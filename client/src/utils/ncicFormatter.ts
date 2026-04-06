@@ -232,7 +232,7 @@ export function formatPersonResponse(
     for (const w of warrants) {
       lines.push(`  OCA/${pad(w.warrant_number, 15)}  DOW/${ncicDate(w.issue_date)}`);
       lines.push(`  CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
-      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount && Number.isFinite(Number(w.bail_amount)) ? `$${Number(w.bail_amount).toLocaleString()}` : w.bail_amount || 'N/A'}`);
+      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
       if (w.issuing_court) lines.push(`  CRT/${w.issuing_court.toUpperCase()}`);
       lines.push('');
     }
@@ -342,7 +342,7 @@ export function formatWarrantResponse(
       }
       if (w.subject_dob) lines.push(`  DOB/${ncicDate(w.subject_dob)}`);
       lines.push(`  CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
-      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount && Number.isFinite(Number(w.bail_amount)) ? `$${Number(w.bail_amount).toLocaleString()}` : w.bail_amount || 'N/A'}`);
+      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
       if (w.issue_date) lines.push(`  DOW/${ncicDate(w.issue_date)}`);
       if (w.issuing_court) lines.push(`  CRT/${w.issuing_court.toUpperCase()}`);
       lines.push('');
@@ -771,7 +771,7 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
       if (r.agency) lines.push(`  AGY/${r.agency.toUpperCase()}`);
       if (r.bail_amount) lines.push(`  BAL/$${Number(r.bail_amount).toLocaleString()}`);
       if (r.charges && r.charges.length > 0) {
-        lines.push(`  CHG/${(r.charges[0] || '').toUpperCase()}`);
+        lines.push(`  CHG/${r.charges[0].toUpperCase()}`);
         if (r.charges.length > 1) lines.push(`    ... +${r.charges.length - 1} MORE CHARGE(S)`);
       }
       if (r.cross_links?.warrants && r.cross_links.warrants.length > 0) {

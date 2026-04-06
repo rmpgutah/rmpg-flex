@@ -100,13 +100,10 @@ export default function CourtTrackerPage() {
         ...(filterType ? { event_type: filterType } : {}),
       });
       const res = await apiFetch<{ data: CourtEvent[]; pagination: any }>(`/court/events?${params}`);
-      const newEvents = res.data || [];
-      setEvents(newEvents);
+      setEvents(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-      // Keep selected item in sync with refreshed data
-      setSelected(prev => prev ? newEvents.find(e => e.id === prev.id) || null : null);
-    } catch { addToast('Failed to load court events', 'error'); } finally { setLoading(false); }
+    } catch { /* silent */ } finally { setLoading(false); }
   }, [page, searchQuery, filterType]);
 
   const fetchUpcoming = useCallback(async () => {
@@ -133,7 +130,7 @@ export default function CourtTrackerPage() {
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err: any) { addToast(err.message, 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -150,7 +147,7 @@ export default function CourtTrackerPage() {
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
       setSelected(updated.data);
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err: any) { addToast(err.message, 'error'); }
     finally { setOutcomeSubmitting(false); }
   };
 
@@ -158,7 +155,6 @@ export default function CourtTrackerPage() {
 
   const daysUntil = (dateStr: string) => {
     const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (isNaN(d)) return '-';
     if (d < 0) return 'PAST';
     if (d === 0) return 'TODAY';
     if (d === 1) return 'TOMORROW';
@@ -307,7 +303,7 @@ export default function CourtTrackerPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-white font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-white">{selected.sentence}</span></div>}
-                    {selected.fine_amount && !isNaN(Number(selected.fine_amount)) && <div><span className="text-[9px] text-rmpg-500">Fine:</span> <span className="text-xs text-amber-400">${Number(selected.fine_amount).toFixed(2)}</span></div>}
+                    {selected.fine_amount && <div><span className="text-[9px] text-rmpg-500">Fine:</span> <span className="text-xs text-amber-400">${Number(selected.fine_amount).toFixed(2)}</span></div>}
                   </div>
                 </div>
               )}
@@ -373,7 +369,7 @@ export default function CourtTrackerPage() {
                 </div>
                 <div>
                   <label className="field-label">Judge</label>
-                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">

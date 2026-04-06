@@ -10,8 +10,6 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
-import { auditLog } from '../utils/auditLogger';
-import { validateParamId } from '../middleware/sanitize';
 
 const execFileAsync = promisify(execFile);
 const __filename_f = fileURLToPath(import.meta.url);
@@ -45,12 +43,11 @@ const dashcamStorage = multer.diskStorage({
 
 const dashcamUpload = multer({
   storage: dashcamStorage,
-  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10 GB max per file
   fileFilter: (_req, file, cb) => {
     if (DASHCAM_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('File type is not allowed. Accepted: MP4, MOV, AVI, WebM'));
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
     }
   },
 });
@@ -98,12 +95,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 
-    const VALID_FLEET_STATUSES = ['in_service', 'maintenance', 'out_of_service', 'retired'];
     if (status) {
-      if (!VALID_FLEET_STATUSES.includes(status as string)) {
-        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_FLEET_STATUSES.join(', ')}` });
-        return;
-      }
       whereClause += ' AND fv.status = ?';
       params.push(status);
     }
@@ -121,7 +113,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND fv.archived_at IS NULL';
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -174,7 +166,7 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
       case '30d': dateCutoff = new Date(now.getTime() - 30 * 86400000).toISOString(); break;
       case '90d': dateCutoff = new Date(now.getTime() - 90 * 86400000).toISOString(); break;
       case '1y': dateCutoff = new Date(now.getTime() - 365 * 86400000).toISOString(); break;
-      case 'all': dateCutoff = '2000-01-01T00:00:00.000Z'; break;
+      case 'all': dateCutoff = '2000-01-01'; break;
       default: dateCutoff = new Date(now.getTime() - 90 * 86400000).toISOString();
     }
 
@@ -253,7 +245,7 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
       month: f.month,
       total_gallons: f.total_gallons || 0,
       total_cost: f.total_cost || 0,
-      avg_mpg: mpgByMonth[f.month] && mpgByMonth[f.month].total_gallons > 0
+      avg_mpg: mpgByMonth[f.month]
         ? Math.round((mpgByMonth[f.month].total_miles / mpgByMonth[f.month].total_gallons) * 10) / 10
         : null,
     }));
@@ -291,7 +283,7 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
 });
 
 // ─── GET /api/fleet/:id ─ Get single fleet vehicle ────────────────
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next: NextFunction) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
     if (['maintenance', 'analytics', 'dashcam-videos'].includes(req.params.id as string)) {
@@ -411,7 +403,16 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     `).get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created fleet vehicle' }); return; }
 
-    auditLog(req, 'vehicle_fleet_created', 'fleet_vehicle', result.lastInsertRowid as number, `Created fleet vehicle ${vehicle_number}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, ?, 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      'fleet_vehicle_created',
+      result.lastInsertRowid,
+      `Created fleet vehicle: ${vehicle_number}`,
+      req.ip || 'unknown'
+    );
 
     res.status(201).json({
       ...created,
@@ -424,7 +425,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 });
 
 // ─── PUT /api/fleet/:id ─ Update fleet vehicle ───────────────────
-router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -501,7 +502,16 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       WHERE fv.id = ?
     `).get(id) as any;
 
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', String(id), `Updated fleet vehicle #${id}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, ?, 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      'fleet_vehicle_updated',
+      id,
+      `Updated fleet vehicle: ${updated.vehicle_number}`,
+      req.ip || 'unknown'
+    );
 
     res.json({
       ...updated,
@@ -514,7 +524,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
 });
 
 // ─── PUT /api/fleet/:id/assign ─ Assign vehicle to unit ──────────
-router.put('/:id/assign', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -586,7 +596,16 @@ router.put('/:id/assign', validateParamId, requireRole('admin', 'manager', 'supe
       ? `Assigned vehicle ${vehicle.vehicle_number} to unit ${updated.assigned_unit_call_sign}`
       : `Unassigned vehicle ${vehicle.vehicle_number} from unit`;
 
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', String(id), actionDetail);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, ?, 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      unit_id ? 'fleet_vehicle_assigned' : 'fleet_vehicle_unassigned',
+      id,
+      actionDetail,
+      req.ip || 'unknown'
+    );
 
     res.json({
       ...updated,
@@ -599,7 +618,7 @@ router.put('/:id/assign', validateParamId, requireRole('admin', 'manager', 'supe
 });
 
 // DELETE /api/fleet/:id - Delete fleet vehicle (retired + unassigned only)
-router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
@@ -618,9 +637,11 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
       db.prepare('DELETE FROM fleet_assignments WHERE vehicle_id = ?').run(vehicle.id);
       db.prepare('DELETE FROM fleet_personnel_notes WHERE vehicle_id = ?').run(vehicle.id);
       db.prepare('DELETE FROM fleet_vehicles WHERE id = ?').run(vehicle.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'fleet_vehicle_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
+        req.user!.userId, vehicle.id, `Deleted fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
     });
     delTx();
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', vehicle.id, `Deleted fleet vehicle #${vehicle.id}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fleet vehicle error:', error?.message || 'Unknown error');
@@ -629,7 +650,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 });
 
 // POST /api/fleet/:id/archive
-router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
@@ -639,7 +660,9 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (r
     const now = localNow();
     db.prepare('UPDATE fleet_vehicles SET archived_at = ? WHERE id = ?').run(now, vehicle.id);
 
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', vehicle.id, `Archived fleet vehicle #${vehicle.id}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_vehicle_archived', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, vehicle.id, `Archived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
     if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
@@ -651,7 +674,7 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // POST /api/fleet/:id/unarchive
-router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
@@ -660,7 +683,9 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), 
 
     db.prepare('UPDATE fleet_vehicles SET archived_at = NULL WHERE id = ?').run(vehicle.id);
 
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', vehicle.id, `Unarchived fleet vehicle #${vehicle.id}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_vehicle_unarchived', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, vehicle.id, `Unarchived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
     if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
@@ -672,7 +697,7 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), 
 });
 
 // ─── GET /api/fleet/:id/maintenance ─ Maintenance history ────────
-router.get('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/maintenance', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -685,8 +710,8 @@ router.get('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 
       return;
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
+    const pageNum = parseInt(page as string, 10) || 1;
+    const perPage = parseInt(per_page as string, 10) || 25;
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -716,7 +741,7 @@ router.get('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 
 });
 
 // ─── POST /api/fleet/:id/maintenance ─ Log maintenance record ────
-router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -742,29 +767,6 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
     if (!description) {
       res.status(400).json({ error: 'description is required' });
       return;
-    }
-
-    // Validate numeric fields to prevent type confusion and storage of invalid data
-    if (mileage_at_service !== undefined && mileage_at_service !== null) {
-      const m = Number(mileage_at_service);
-      if (isNaN(m) || m < 0 || m > 9999999) {
-        res.status(400).json({ error: 'mileage_at_service must be a number between 0 and 9,999,999' });
-        return;
-      }
-    }
-    if (cost !== undefined && cost !== null) {
-      const c = Number(cost);
-      if (isNaN(c) || c < 0 || c > 9999999) {
-        res.status(400).json({ error: 'cost must be a number between 0 and 9,999,999' });
-        return;
-      }
-    }
-    if (next_due_mileage !== undefined && next_due_mileage !== null) {
-      const ndm = Number(next_due_mileage);
-      if (isNaN(ndm) || ndm < 0 || ndm > 9999999) {
-        res.status(400).json({ error: 'next_due_mileage must be a number between 0 and 9,999,999' });
-        return;
-      }
     }
 
     const result = db.prepare(`
@@ -808,7 +810,16 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(result.lastInsertRowid);
     if (!record) { res.status(500).json({ error: 'Failed to retrieve maintenance record' }); return; }
 
-    auditLog(req, 'maintenance_logged', 'maintenance', result.lastInsertRowid as number, `Logged maintenance for vehicle ${vehicle.vehicle_number}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, ?, 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      'fleet_maintenance_logged',
+      id,
+      `Logged ${type || 'maintenance'} for vehicle ${vehicle.vehicle_number}: ${description}`,
+      req.ip || 'unknown'
+    );
 
     res.status(201).json(record);
   } catch (error: any) {
@@ -818,23 +829,11 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
 });
 
 // PUT /api/fleet/maintenance/:id - Update maintenance record
-router.put('/maintenance/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
-
-    // Validate numeric fields if provided
-    const numericFields = ['mileage_at_service', 'cost', 'next_due_mileage'];
-    for (const field of numericFields) {
-      if (req.body[field] !== undefined && req.body[field] !== null) {
-        const val = Number(req.body[field]);
-        if (isNaN(val) || val < 0) {
-          res.status(400).json({ error: `${field} must be a non-negative number` }); return;
-        }
-        req.body[field] = val;
-      }
-    }
 
     const mFields: string[] = [];
     const mValues: any[] = [];
@@ -853,7 +852,6 @@ router.put('/maintenance/:id', validateParamId, requireRole('admin', 'manager', 
     }
 
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id);
-    auditLog(req, 'maintenance_logged', 'maintenance', String(req.params.id), `Updated maintenance record #${req.params.id}`);
     res.json(updated);
   } catch (error: any) {
     console.error('Update maintenance error:', error?.message || 'Unknown error');
@@ -862,13 +860,15 @@ router.put('/maintenance/:id', validateParamId, requireRole('admin', 'manager', 
 });
 
 // DELETE /api/fleet/maintenance/:id
-router.delete('/maintenance/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
     db.prepare('DELETE FROM fleet_maintenance WHERE id = ?').run(req.params.id);
-    auditLog(req, 'maintenance_logged', 'maintenance', String(req.params.id), `Deleted maintenance record #${req.params.id}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_maintenance_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, record.vehicle_id, `Deleted maintenance record: ${record.description}`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete maintenance error:', error?.message || 'Unknown error');
@@ -877,7 +877,7 @@ router.delete('/maintenance/:id', validateParamId, requireRole('admin', 'manager
 });
 
 // POST /api/fleet/maintenance/:id/archive
-router.post('/maintenance/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
@@ -885,7 +885,6 @@ router.post('/maintenance/:id/archive', validateParamId, requireRole('admin', 'm
     if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_maintenance SET archived_at = ? WHERE id = ?').run(now, record.id);
-    auditLog(req, 'maintenance_logged', 'maintenance', record.id, `Archived maintenance record #${record.id}`);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
@@ -895,14 +894,13 @@ router.post('/maintenance/:id/archive', validateParamId, requireRole('admin', 'm
 });
 
 // POST /api/fleet/maintenance/:id/unarchive
-router.post('/maintenance/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_maintenance SET archived_at = NULL WHERE id = ?').run(record.id);
-    auditLog(req, 'maintenance_logged', 'maintenance', record.id, `Unarchived maintenance record #${record.id}`);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
@@ -912,7 +910,7 @@ router.post('/maintenance/:id/unarchive', validateParamId, requireRole('admin', 
 });
 
 // ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary ─────────────
-router.get('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -924,7 +922,7 @@ router.get('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'superv
       return;
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -987,7 +985,7 @@ router.get('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'superv
 });
 
 // ─── POST /api/fleet/:id/fuel ─ Log a fuel entry ─────────────────
-router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1036,7 +1034,16 @@ router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'super
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(result.lastInsertRowid);
     if (!record) { res.status(500).json({ error: 'Failed to retrieve fuel log' }); return; }
 
-    auditLog(req, 'fuel_logged', 'fuel_log', result.lastInsertRowid as number, `Logged fuel for vehicle ${vehicle.vehicle_number}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, ?, 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      'fleet_fuel_logged',
+      id,
+      `Logged ${gallons} gal fuel for vehicle ${vehicle.vehicle_number}`,
+      req.ip || 'unknown'
+    );
 
     res.status(201).json(record);
   } catch (error: any) {
@@ -1046,23 +1053,11 @@ router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'super
 });
 
 // PUT /api/fleet/fuel/:id - Update fuel log
-router.put('/fuel/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
-
-    // Validate numeric fields if provided
-    const fuelNumericFields = ['gallons', 'cost_per_gallon', 'total_cost', 'odometer_reading'];
-    for (const field of fuelNumericFields) {
-      if (req.body[field] !== undefined && req.body[field] !== null) {
-        const val = Number(req.body[field]);
-        if (isNaN(val) || val < 0) {
-          res.status(400).json({ error: `${field} must be a non-negative number` }); return;
-        }
-        req.body[field] = val;
-      }
-    }
 
     const fFields: string[] = [];
     const fValues: any[] = [];
@@ -1081,7 +1076,6 @@ router.put('/fuel/:id', validateParamId, requireRole('admin', 'manager', 'superv
     }
 
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id);
-    auditLog(req, 'fuel_logged', 'fuel_log', String(req.params.id), `Updated fuel log #${req.params.id}`);
     res.json(updated);
   } catch (error: any) {
     console.error('Update fuel log error:', error?.message || 'Unknown error');
@@ -1090,13 +1084,15 @@ router.put('/fuel/:id', validateParamId, requireRole('admin', 'manager', 'superv
 });
 
 // DELETE /api/fleet/fuel/:id
-router.delete('/fuel/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
     db.prepare('DELETE FROM fleet_fuel_logs WHERE id = ?').run(req.params.id);
-    auditLog(req, 'fuel_logged', 'fuel_log', String(req.params.id), `Deleted fuel log #${req.params.id}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_fuel_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, record.vehicle_id, `Deleted fuel log: ${record.gallons} gal on ${record.fuel_date}`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fuel log error:', error?.message || 'Unknown error');
@@ -1105,7 +1101,7 @@ router.delete('/fuel/:id', validateParamId, requireRole('admin', 'manager'), (re
 });
 
 // POST /api/fleet/fuel/:id/archive
-router.post('/fuel/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
@@ -1113,7 +1109,6 @@ router.post('/fuel/:id/archive', validateParamId, requireRole('admin', 'manager'
     if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = ? WHERE id = ?').run(now, record.id);
-    auditLog(req, 'fuel_logged', 'fuel_log', record.id, `Archived fuel log #${record.id}`);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
@@ -1123,14 +1118,13 @@ router.post('/fuel/:id/archive', validateParamId, requireRole('admin', 'manager'
 });
 
 // POST /api/fleet/fuel/:id/unarchive
-router.post('/fuel/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = NULL WHERE id = ?').run(record.id);
-    auditLog(req, 'fuel_logged', 'fuel_log', record.id, `Unarchived fuel log #${record.id}`);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
@@ -1140,7 +1134,7 @@ router.post('/fuel/:id/unarchive', validateParamId, requireRole('admin', 'manage
 });
 
 // ─── GET /api/fleet/:id/inspections ─ Inspection history ──────────
-router.get('/:id/inspections', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1159,8 +1153,8 @@ router.get('/:id/inspections', validateParamId, requireRole('admin', 'manager', 
       params.push(type);
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
+    const pageNum = parseInt(page as string, 10) || 1;
+    const perPage = parseInt(per_page as string, 10) || 25;
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM fleet_inspections ${whereClause}`).get(...params) as any;
@@ -1194,7 +1188,7 @@ router.get('/:id/inspections', validateParamId, requireRole('admin', 'manager', 
 });
 
 // ─── POST /api/fleet/:id/inspections ─ Create inspection ─────────
-router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1247,7 +1241,16 @@ router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager',
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!record) { res.status(500).json({ error: 'Failed to retrieve inspection record' }); return; }
 
-    auditLog(req, 'inspection_completed', 'inspection', result.lastInsertRowid as number, `Completed inspection for vehicle ${vehicle.vehicle_number}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, ?, 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      'fleet_inspection_logged',
+      id,
+      `Logged ${inspection_type} inspection (${overall_result}) for vehicle ${vehicle.vehicle_number}`,
+      req.ip || 'unknown'
+    );
 
     res.status(201).json({
       ...record,
@@ -1260,7 +1263,7 @@ router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager',
 });
 
 // PUT /api/fleet/inspections/:id - Update inspection
-router.put('/inspections/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1287,7 +1290,6 @@ router.put('/inspections/:id', validateParamId, requireRole('admin', 'manager', 
 
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
     if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
-    auditLog(req, 'inspection_completed', 'inspection', String(req.params.id), `Updated inspection #${req.params.id}`);
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Update inspection error:', error?.message || 'Unknown error');
@@ -1296,13 +1298,15 @@ router.put('/inspections/:id', validateParamId, requireRole('admin', 'manager', 
 });
 
 // DELETE /api/fleet/inspections/:id
-router.delete('/inspections/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
     db.prepare('DELETE FROM fleet_inspections WHERE id = ?').run(req.params.id);
-    auditLog(req, 'inspection_completed', 'inspection', String(req.params.id), `Deleted inspection #${req.params.id}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_inspection_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, record.vehicle_id, `Deleted ${record.inspection_type} inspection`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete inspection error:', error?.message || 'Unknown error');
@@ -1311,7 +1315,7 @@ router.delete('/inspections/:id', validateParamId, requireRole('admin', 'manager
 });
 
 // POST /api/fleet/inspections/:id/archive
-router.post('/inspections/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1319,7 +1323,6 @@ router.post('/inspections/:id/archive', validateParamId, requireRole('admin', 'm
     if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_inspections SET archived_at = ? WHERE id = ?').run(now, record.id);
-    auditLog(req, 'inspection_completed', 'inspection', record.id, `Archived inspection #${record.id}`);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
     if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
@@ -1330,14 +1333,13 @@ router.post('/inspections/:id/archive', validateParamId, requireRole('admin', 'm
 });
 
 // POST /api/fleet/inspections/:id/unarchive
-router.post('/inspections/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_inspections SET archived_at = NULL WHERE id = ?').run(record.id);
-    auditLog(req, 'inspection_completed', 'inspection', record.id, `Unarchived inspection #${record.id}`);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
     if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
@@ -1348,7 +1350,7 @@ router.post('/inspections/:id/unarchive', validateParamId, requireRole('admin', 
 });
 
 // ─── GET /api/fleet/:id/assignments ─ Assignment history ──────────
-router.get('/:id/assignments', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/assignments', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1360,7 +1362,7 @@ router.get('/:id/assignments', validateParamId, requireRole('admin', 'manager', 
       return;
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -1389,7 +1391,7 @@ router.get('/:id/assignments', validateParamId, requireRole('admin', 'manager', 
 });
 
 // ─── GET /api/fleet/:id/personnel ─ Aggregated officer data ───────
-router.get('/:id/personnel', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1474,7 +1476,7 @@ router.get('/:id/personnel', validateParamId, requireRole('admin', 'manager', 's
 });
 
 // ─── POST /api/fleet/:id/personnel-notes ─ Add note ──────────────
-router.post('/:id/personnel-notes', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1502,8 +1504,6 @@ router.post('/:id/personnel-notes', validateParamId, requireRole('admin', 'manag
     const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created note' }); return; }
 
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', String(id), `Added personnel note for vehicle #${id}`);
-
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Error creating personnel note:', error?.message || 'Unknown error');
@@ -1512,7 +1512,7 @@ router.post('/:id/personnel-notes', validateParamId, requireRole('admin', 'manag
 });
 
 // ─── DELETE /api/fleet/:id/personnel-notes/:noteId ─ Delete note ──
-router.delete('/:id/personnel-notes/:noteId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id, noteId } = req.params;
@@ -1524,7 +1524,6 @@ router.delete('/:id/personnel-notes/:noteId', validateParamId, requireRole('admi
     }
 
     db.prepare('DELETE FROM fleet_personnel_notes WHERE id = ?').run(noteId);
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', String(id), `Deleted personnel note #${noteId} from vehicle #${id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting personnel note:', error?.message || 'Unknown error');
@@ -1546,7 +1545,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
     // Find vehicle by vehicle_number
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Vehicle not found. Create it first.' });
+      res.status(404).json({ error: `Vehicle ${vehicle_number} not found. Create it first.` });
       return;
     }
 
@@ -1653,7 +1652,15 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
 
     txn();
 
-    auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', vehicle.id, `Simply Fleet import: ${fuelInserted} fuel, ${serviceInserted} service records for ${vehicle_number}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_import', 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId, vehicle.id,
+      `Simply Fleet import for ${vehicle_number}: ${fuelInserted} fuel logs, ${serviceInserted} service records (${fuelSkipped + serviceSkipped} duplicates skipped)`,
+      req.ip || 'unknown',
+    );
 
     res.json({
       success: true,
@@ -1732,16 +1739,14 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
     if (!fs.existsSync(DASHCAM_DIR)) fs.mkdirSync(DASHCAM_DIR, { recursive: true });
     fs.accessSync(DASHCAM_DIR, fs.constants.W_OK);
   } catch (dirErr: any) {
-    console.error('[Fleet] Upload storage error:', dirErr.message);
-    res.status(503).json({ error: 'Upload storage unavailable' });
+    res.status(503).json({ error: `Upload storage unavailable: ${dirErr.message}` });
     return;
   }
 
   try {
     dashcamUpload.single('video')(req, res, (multerErr: any) => {
       if (multerErr) {
-        console.error('[Fleet] Multer upload error:', multerErr.message);
-        res.status(400).json({ error: 'Upload failed' });
+        res.status(400).json({ error: multerErr.message || 'Upload failed' });
         return;
       }
 
@@ -1843,24 +1848,22 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
         };
         queueOverlayProcessing(videoId, 'dashcam', fullFilePath, overlayConfig);
 
-        auditLog(req, 'dashcam_uploaded', 'fleet_vehicle', videoId as number, `Uploaded dashcam video: ${title}`);
-
         res.status(201).json(video);
       } catch (error: any) {
         console.error('Dashcam upload DB error:', error?.message, error?.stack);
-        res.status(500).json({ error: 'Upload processing failed' });
+        res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
       }
     });
   } catch (outerErr: any) {
     console.error('Dashcam upload error:', outerErr?.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Upload failed' });
+      res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
     }
   }
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/stream — Stream with overlay ──
-router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1876,7 +1879,7 @@ router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', '
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
 
-    if (path.relative(DASHCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
+    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -1905,14 +1908,10 @@ router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', '
         'Content-Length': chunkSize,
         'Content-Type': mimeType,
       });
-      const rangeStream = fs.createReadStream(filePath, { start, end });
-      rangeStream.on('error', (err) => { console.error('Stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
-      rangeStream.pipe(res);
+      fs.createReadStream(filePath, { start, end }).pipe(res);
     } else {
       res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType });
-      const fullStream = fs.createReadStream(filePath);
-      fullStream.on('error', (err) => { console.error('Stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
-      fullStream.pipe(res);
+      fs.createReadStream(filePath).pipe(res);
     }
   } catch (error: any) {
     console.error('Stream dashcam video error:', error?.message || 'Unknown error');
@@ -1921,7 +1920,7 @@ router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', '
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/download — Force-download with overlay ──
-router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1936,7 +1935,7 @@ router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin',
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
 
-    if (path.relative(DASHCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
+    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -1948,9 +1947,7 @@ router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin',
       'Content-Length': stat.size,
       'Content-Disposition': `attachment; filename="MVR_${safeTitle}.mp4"`,
     });
-    const dlStream = fs.createReadStream(filePath);
-    dlStream.on('error', (err) => { console.error('Download stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
-    dlStream.pipe(res);
+    fs.createReadStream(filePath).pipe(res);
   } catch (error: any) {
     console.error('Download dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -1958,7 +1955,7 @@ router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin',
 });
 
 // ── PUT /api/fleet/dashcam-videos/:id — Update metadata ──
-router.put('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1999,8 +1996,6 @@ router.put('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: R
       WHERE v.id = ?
     `).get(req.params.id);
 
-    auditLog(req, 'dashcam_updated', 'fleet_vehicle', String(req.params.id), `Updated dashcam video #${req.params.id}`);
-
     res.json(updated);
   } catch (error: any) {
     console.error('Update dashcam video error:', error?.message || 'Unknown error');
@@ -2009,7 +2004,7 @@ router.put('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: R
 });
 
 // ── DELETE /api/fleet/dashcam-videos/:id — Delete video + files ──
-router.delete('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -2020,19 +2015,18 @@ router.delete('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req
 
     // Delete original file
     const filePath = path.resolve(DASHCAM_DIR, existing.file_path);
-    if (!path.relative(DASHCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
+    if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
     // Delete processed overlay file
     if (existing.processed_file_path) {
       const processedPath = path.resolve(DASHCAM_DIR, existing.processed_file_path);
-      if (!path.relative(DASHCAM_DIR, processedPath).startsWith('..') && fs.existsSync(processedPath)) {
+      if (processedPath.startsWith(DASHCAM_DIR) && fs.existsSync(processedPath)) {
         fs.unlinkSync(processedPath);
       }
     }
 
     db.prepare('DELETE FROM dashcam_videos WHERE id = ?').run(req.params.id);
-    auditLog(req, 'dashcam_deleted', 'fleet_vehicle', String(req.params.id), `Deleted dashcam video #${req.params.id}`);
     res.json({ message: 'Dash cam video deleted' });
   } catch (error: any) {
     console.error('Delete dashcam video error:', error?.message || 'Unknown error');
@@ -2041,7 +2035,7 @@ router.delete('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req
 });
 
 // ── POST /api/fleet/dashcam-videos/:id/reprocess — Re-queue overlay ──
-router.post('/dashcam-videos/:id/reprocess', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.post('/dashcam-videos/:id/reprocess', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`
@@ -2078,7 +2072,6 @@ router.post('/dashcam-videos/:id/reprocess', validateParamId, requireRole('admin
     };
 
     queueOverlayProcessing(video.id, 'dashcam', inputPath, config);
-    auditLog(req, 'dashcam_updated', 'fleet_vehicle', video.id, `Reprocessed overlay for dashcam video #${video.id}`);
     res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
   } catch (error: any) {
     console.error('Reprocess dashcam overlay error:', error?.message || 'Unknown error');

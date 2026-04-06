@@ -69,7 +69,7 @@ const EMPTY_TOW = {
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
-  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
   const { errors: vFormErrors, validate: validateVForm, clearAllErrors: clearVErrors } = useFormValidation();
   const { errors: tFormErrors, validate: validateTForm, clearAllErrors: clearTErrors } = useFormValidation();
 
@@ -118,7 +118,7 @@ export default function CodeEnforcementPage() {
       setViolations(res.data || []);
       setVTotalPages(res.pagination?.totalPages || 1);
       setVTotalCount(res.pagination?.total || 0);
-    } catch { addToast('Failed to load violations', 'error'); } finally { setVLoading(false); }
+    } catch { /* silent */ } finally { setVLoading(false); }
   }, [vPage, vSearch, vFilterStatus]);
 
   // Fetch tows
@@ -134,7 +134,7 @@ export default function CodeEnforcementPage() {
       setTows(res.data || []);
       setTTotalPages(res.pagination?.totalPages || 1);
       setTTotalCount(res.pagination?.total || 0);
-    } catch { addToast('Failed to load tow records', 'error'); } finally { setTLoading(false); }
+    } catch { /* silent */ } finally { setTLoading(false); }
   }, [tPage, tSearch, tFilterStatus]);
 
   const fetchStats = useCallback(async () => {
@@ -160,7 +160,7 @@ export default function CodeEnforcementPage() {
       setVFormOpen(false);
       setVFormData({ ...EMPTY_VIOLATION });
       fetchViolations({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err: any) { addToast(err.message, 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -179,7 +179,7 @@ export default function CodeEnforcementPage() {
       setTFormOpen(false);
       setTFormData({ ...EMPTY_TOW });
       fetchTows({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err: any) { addToast(err.message, 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -192,7 +192,7 @@ export default function CodeEnforcementPage() {
         const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${id}`);
         setSelectedViolation(updated.data);
       }
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err: any) { addToast(err.message, 'error'); }
   };
 
   const handleTowStatus = async (id: number, status: string) => {
@@ -204,7 +204,7 @@ export default function CodeEnforcementPage() {
         const updated = await apiFetch<{ data: VehicleTow }>(`/code-enforcement/tows/${id}`);
         setSelectedTow(updated.data);
       }
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err: any) { addToast(err.message, 'error'); }
   };
 
   return (
@@ -308,7 +308,7 @@ export default function CodeEnforcementPage() {
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <MapPin style={{ width: 9, height: 9 }} />
                   <span className="truncate">{v.location}</span>
-                  {v.fine_amount && !isNaN(Number(v.fine_amount)) && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
+                  {v.fine_amount && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
                   {((v as any).section_id || (v as any).zone_id || (v as any).beat_id) && (
                     <span className="font-mono text-rmpg-400">{[(v as any).section_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
                   )}
@@ -378,7 +378,7 @@ export default function CodeEnforcementPage() {
                   ['Description', selectedViolation.description],
                   ['Code Section', selectedViolation.code_section || '—'],
                   ['Severity', selectedViolation.severity],
-                  ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
+                  ['Fine Amount', selectedViolation.fine_amount ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
                   ['S/Z/B', [(selectedViolation as any).section_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
@@ -422,8 +422,8 @@ export default function CodeEnforcementPage() {
                   ['Tow From', selectedTow.tow_from],
                   ['Tow To', selectedTow.tow_to || '—'],
                   ['Tow Company', selectedTow.tow_company || '—'],
-                  ['Tow Fee', selectedTow.tow_fee && !isNaN(Number(selectedTow.tow_fee)) ? `$${Number(selectedTow.tow_fee).toFixed(2)}` : '—'],
-                  ['Storage Fee', selectedTow.storage_fee_daily && !isNaN(Number(selectedTow.storage_fee_daily)) ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
+                  ['Tow Fee', selectedTow.tow_fee ? `$${Number(selectedTow.tow_fee).toFixed(2)}` : '—'],
+                  ['Storage Fee', selectedTow.storage_fee_daily ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -489,17 +489,17 @@ export default function CodeEnforcementPage() {
                 <div>
                   <label className="field-label">Section</label>
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
-                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value, zone_id: '', beat_id: ''}))}>
+                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value}))}>
                     <option value="">—</option>
-                    {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
+                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Zone</label>
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
-                    value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
+                    value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value}))}>
                     <option value="">—</option>
-                    {zonesForSection(vFormData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
                   </select>
                 </div>
                 <div>
@@ -507,7 +507,7 @@ export default function CodeEnforcementPage() {
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
                     value={vFormData.beat_id || ''} onChange={e => setVFormData(p => ({...p, beat_id: e.target.value}))}>
                     <option value="">—</option>
-                    {beatsForZone(vFormData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(vFormData.zone_id, b)}</option>)}
+                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </div>
               </div>

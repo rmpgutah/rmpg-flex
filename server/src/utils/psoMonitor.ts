@@ -15,7 +15,6 @@ import { broadcastDispatchUpdate } from './websocket';
 import { localNow } from './timeUtils';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
-let startupTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const HOURS_48_MS = 48 * 60 * 60 * 1000;
 const HOURS_72_MS = 72 * 60 * 60 * 1000;
@@ -30,7 +29,7 @@ function checkPsoCalls(): void {
     // A re-dispatched call gets set back to 'pending', so these are only
     // calls still sitting in a terminal status.
     const psoCalls = db.prepare(`
-      SELECT id, call_number, pso_attempt_number, status, location_address,
+      SELECT id, call_number, pso_attempt_number, status, location,
              cleared_at, closed_at, pso_72hr_notified, pso_requestor_name
       FROM calls_for_service
       WHERE incident_type = 'pso_client_request'
@@ -52,21 +51,19 @@ function checkPsoCalls(): void {
       // 72-hour overdue — critical notification
       if (elapsed >= HOURS_72_MS && notified !== '72h') {
         const attempt = call.pso_attempt_number || 1;
-        // Atomic update — prevents duplicate notifications from concurrent checks
-        const updated72 = db.prepare('UPDATE calls_for_service SET pso_72hr_notified = ? WHERE id = ? AND (pso_72hr_notified IS NULL OR pso_72hr_notified != ?)')
-          .run('72h', call.id, '72h');
-        if (updated72.changes > 0) {
-          createNotificationForRoles(
-            ['admin', 'manager', 'supervisor', 'dispatcher'],
-            'dispatch',
-            `PSO OVERDUE: ${call.call_number} — 72hr deadline passed`,
-            `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location_address || 'unknown location'} has been ${call.status} for over 72 hours without re-dispatch. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
-            'call',
-            call.id,
-            'critical',
-            'pso_72hr_overdue',
-          );
-        }
+        createNotificationForRoles(
+          ['admin', 'manager', 'supervisor', 'dispatcher'],
+          'dispatch',
+          `PSO OVERDUE: ${call.call_number} — 72hr deadline passed`,
+          `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location || 'unknown location'} has been ${call.status} for over 72 hours without re-dispatch. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
+          'call',
+          call.id,
+          'critical',
+          'pso_72hr_overdue',
+        );
+
+        db.prepare('UPDATE calls_for_service SET pso_72hr_notified = ? WHERE id = ?')
+          .run('72h', call.id);
 
         // Broadcast so dispatch board updates the overdue indicator in real-time
         broadcastDispatchUpdate({
@@ -85,7 +82,7 @@ function checkPsoCalls(): void {
           ['admin', 'manager', 'supervisor', 'dispatcher'],
           'dispatch',
           `PSO Warning: ${call.call_number} — 24hrs until deadline`,
-          `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location_address || 'unknown location'} has been ${call.status} for 48+ hours. Re-dispatch within 24 hours to meet the 72-hour requirement. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
+          `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location || 'unknown location'} has been ${call.status} for 48+ hours. Re-dispatch within 24 hours to meet the 72-hour requirement. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
           'call',
           call.id,
           'high',
@@ -108,17 +105,13 @@ export function startPsoMonitor(intervalMs: number = 30 * 60 * 1000): void {
   if (intervalHandle) return;
   console.log(`[PSO Monitor] Starting 72-hour re-dispatch monitor — every ${intervalMs / 60_000}min`);
   // Run an initial check after 2 minutes (let DB init finish)
-  startupTimeout = setTimeout(checkPsoCalls, 2 * 60 * 1000);
+  setTimeout(checkPsoCalls, 2 * 60 * 1000);
   intervalHandle = setInterval(checkPsoCalls, intervalMs);
   intervalHandle.unref();
 }
 
 /** Stop the PSO monitor */
 export function stopPsoMonitor(): void {
-  if (startupTimeout) {
-    clearTimeout(startupTimeout);
-    startupTimeout = null;
-  }
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;

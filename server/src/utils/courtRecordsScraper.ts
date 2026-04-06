@@ -19,7 +19,6 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
-import { escapeLike } from '../middleware/sanitize';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -84,11 +83,7 @@ function sleep(ms: number): Promise<void> {
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .trim();
+    .replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, '').trim();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -419,10 +414,10 @@ export function getCachedCourtRecords(
     return db.prepare(`
       SELECT * FROM court_records
       WHERE UPPER(defendant_name) = UPPER(?)
-        OR (defendant_name LIKE ? ESCAPE '\\' AND defendant_name LIKE ? ESCAPE '\\')
+        OR (defendant_name LIKE ? AND defendant_name LIKE ?)
       ORDER BY filing_date DESC
       LIMIT ?
-    `).all(name, `%${escapeLike(firstName)}%`, `%${escapeLike(lastName)}%`, limit) as (CourtRecord & { fetched_at?: string })[];
+    `).all(name, `%${firstName}%`, `%${lastName}%`, limit) as (CourtRecord & { fetched_at?: string })[];
   } catch {
     return [];
   }
@@ -503,7 +498,7 @@ async function runCourtRecordsScan(): Promise<{
         AND p.last_name IS NOT NULL AND p.last_name != ''
         AND p.archived_at IS NULL
         AND (
-          EXISTS (SELECT 1 FROM criminal_history ch WHERE ch.person_id = p.id)
+          p.has_criminal_history = 1
           OR EXISTS (SELECT 1 FROM scraped_warrants sw WHERE sw.person_id = p.id AND sw.status = 'active')
           OR EXISTS (SELECT 1 FROM warrant_watch_log wl WHERE wl.person_id = p.id AND wl.event = 'warrant_found')
         )
@@ -553,9 +548,9 @@ export function scheduleCourtRecordsScan(): void {
     console.log('[Court Records] Running initial court records scan...');
     await runCourtRecordsScan();
 
-    scanInterval = setInterval(() => {
+    scanInterval = setInterval(async () => {
       console.log('[Court Records] Starting scheduled court records scan...');
-      runCourtRecordsScan().catch(err => console.error('[Court Records] Scan error:', err.message || err));
+      await runCourtRecordsScan();
     }, SCAN_INTERVAL_MS);
 
     if (scanInterval.unref) scanInterval.unref();

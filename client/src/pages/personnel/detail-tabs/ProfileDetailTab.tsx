@@ -66,13 +66,10 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           OPR IDENTIFIER BANNER
           ═══════════════════════════════════════════════════════════ */}
       <div
-        className="profile-section alert-banner alert-banner-info panel-beveled px-3 py-2.5 border-l-2 flex items-center gap-4 cascade-item"
-        style={{
-          borderLeftColor: '#d4a017',
-          background: 'linear-gradient(135deg, rgba(212,160,23,0.06) 0%, var(--surface-sunken) 60%)',
-        }}
+        className="panel-beveled px-3 py-2 border-l-2 bg-surface-sunken flex items-center gap-4"
+        style={{ borderLeftColor: '#d4a017' }}
       >
-        <Shield className="w-4 h-4 text-amber-500 flex-shrink-0" />
+        <Shield className="w-4 h-4 text-brand-400 flex-shrink-0" />
         <div>
           <p className="field-label text-[8px]">OPR IDENTIFICATION</p>
           {oprLabel ? (
@@ -87,20 +84,17 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           DENSE 3-COLUMN LAYOUT (Spillman Personnel style)
           Left: Photo + Identity | Center: Employment | Right: Contact
           ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
 
-        {/* ── LEFT COLUMN: Photo + Core Identity + Medical ── */}
-        <div className="profile-section panel-beveled p-3 bg-surface-base cascade-item space-y-3">
+        {/* ── LEFT COLUMN: Photo + Core Identity ── */}
+        <div className="panel-beveled p-3 bg-surface-base space-y-3">
           {/* Photo area */}
-          <div className="flex justify-center py-1">
+          <div className="flex justify-center">
             <OfficerAvatar officer={officer} size="lg" />
           </div>
 
-          {/* Identity section header */}
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
-          >
+          {/* Section header */}
+          <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1">
             <User className="w-3 h-3" />
             Identity
           </h3>
@@ -113,11 +107,8 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
             <Field label="Username" value={officer.username} mono />
           </div>
 
-          {/* Medical section */}
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
-          >
+          {/* Medical section nested in left column */}
+          <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1 pt-1">
             <Heart className="w-3 h-3" />
             Medical
           </h3>
@@ -128,12 +119,9 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           </div>
         </div>
 
-        {/* ── CENTER COLUMN: Employment + DL + Credentials ── */}
-        <div className="profile-section panel-beveled p-3 bg-surface-base cascade-item space-y-3">
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
-          >
+        {/* ── CENTER COLUMN: Employment Details ── */}
+        <div className="panel-beveled p-3 bg-surface-base space-y-3">
+          <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1">
             <Briefcase className="w-3 h-3" />
             Employment
           </h3>
@@ -148,10 +136,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           </div>
 
           {/* Driver's License */}
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
-          >
+          <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1 pt-1">
             <Car className="w-3 h-3" />
             Driver&apos;s License
           </h3>
@@ -162,22 +147,19 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           </div>
 
           {/* Credential Summary */}
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
-          >
+          <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1 pt-1">
             <Award className="w-3 h-3" />
             Credentials ({credentials.length})
           </h3>
           {credentials.length > 0 ? (
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {credentials.map((cred) => {
                 const days = calcDaysUntilExpiry(cred.expiry_date);
                 return (
-                  <div key={cred.id} className="flex items-center gap-2 text-[10px] py-0.5">
+                  <div key={cred.id} className="flex items-center gap-1.5 text-[10px]">
                     <span className={credDotColor(cred.status)} />
                     <span className="text-rmpg-100 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
-                    <span className="text-rmpg-400 font-mono text-[9px]">
+                    <span className="text-rmpg-400 font-mono">
                       {days > 0
                         ? new Date(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
                         : 'EXP'}
@@ -187,16 +169,13 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
               })}
             </div>
           ) : (
-            <p className="empty-state-container text-[10px] text-rmpg-400 italic">None on file</p>
+            <p className="text-[10px] text-rmpg-400 italic">None on file</p>
           )}
         </div>
 
-        {/* ── RIGHT COLUMN: Contact + Emergency + Files ── */}
-        <div className="profile-section panel-beveled p-3 bg-surface-base cascade-item space-y-3">
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
-          >
+        {/* ── RIGHT COLUMN: Contact + Emergency ── */}
+        <div className="panel-beveled p-3 bg-surface-base space-y-3">
+          <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1">
             <Phone className="w-3 h-3" />
             Contact
           </h3>
@@ -210,10 +189,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           </div>
 
           {/* Emergency Contact */}
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-          >
+          <h3 className="field-label text-red-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1 pt-1">
             <AlertTriangle className="w-3 h-3" />
             Emergency Contact
           </h3>
@@ -224,14 +200,11 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
               <Field label="Relationship" value={officer.emergency_contact_relationship} />
             </div>
           ) : (
-            <p className="empty-state-container text-[10px] text-rmpg-500 italic">Not on file</p>
+            <p className="text-[10px] text-rmpg-500 italic">Not on file</p>
           )}
 
           {/* Personnel Files */}
-          <h3
-            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
-            style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
-          >
+          <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-1 pt-1">
             <Paperclip className="w-3 h-3" />
             Personnel Files
           </h3>

@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, Package, Tag,
+  ArrowRight, CheckCircle, Pause, Hash, FolderOpen,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -87,13 +87,9 @@ export default function CaseManagementPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Detail tab
-  const [detailTab, setDetailTab] = useState<'detail' | 'notes' | 'solvability' | 'evidence'>('detail');
+  const [detailTab, setDetailTab] = useState<'detail' | 'notes' | 'solvability'>('detail');
   const [newNote, setNewNote] = useState('');
   const [noteSubmitting, setNoteSubmitting] = useState(false);
-
-  // Linked evidence
-  const [linkedEvidence, setLinkedEvidence] = useState<any[]>([]);
-  const [evidenceLoading, setEvidenceLoading] = useState(false);
 
   // Solvability
   const [solvFactors, setSolvFactors] = useState<Record<string, boolean>>({});
@@ -113,13 +109,10 @@ export default function CaseManagementPage() {
         ...(filterPriority ? { priority: filterPriority } : {}),
       });
       const res = await apiFetch<{ data: Case[]; pagination: any }>(`/cases?${params}`);
-      const newCases = res.data || [];
-      setCases(newCases);
+      setCases(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-      // Keep selected item in sync with refreshed data
-      setSelected(prev => prev ? newCases.find((c: Case) => c.id === prev.id) || null : null);
-    } catch { addToast('Failed to load cases', 'error'); } finally { setLoading(false); }
+    } catch { /* silent */ } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType, filterPriority]);
 
   const fetchStats = useCallback(async () => {
@@ -134,19 +127,10 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any>('/personnel').then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); }).catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); });
+    apiFetch<{ data: any[] }>('/personnel?per_page=200').then(r => { if (!cancelled) setUsers(r.data || []); }).catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); });
     return () => { cancelled = true; };
   }, []);
   useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });
-
-  const fetchLinkedEvidence = useCallback(async (caseId: number) => {
-    setEvidenceLoading(true);
-    try {
-      const res = await apiFetch<{ data: any[] }>(`/records/evidence?case_id=${caseId}&limit=200`);
-      setLinkedEvidence(res.data || []);
-    } catch { setLinkedEvidence([]); }
-    finally { setEvidenceLoading(false); }
-  }, []);
 
   useEffect(() => {
     if (selected) {
@@ -160,12 +144,6 @@ export default function CaseManagementPage() {
       setSolvFactors(factors);
     }
   }, [selected, fetchNotes]);
-
-  useEffect(() => {
-    if (detailTab === 'evidence' && selected) {
-      fetchLinkedEvidence(selected.id);
-    }
-  }, [detailTab, selected, fetchLinkedEvidence]);
 
   const handleCreate = async () => {
     if (!formData.title.trim()) { addToast('Title is required', 'error'); return; }
@@ -225,7 +203,7 @@ export default function CaseManagementPage() {
   const getPriorityColor = (priority: string) => PRIORITY_OPTIONS.find(p => p.value === priority)?.color || '';
 
   return (
-    <div className={`h-full flex app-grid-bg ${isMobile ? 'flex-col' : ''}`}>
+    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left: Case List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Case Management" icon={Briefcase}>
@@ -334,7 +312,7 @@ export default function CaseManagementPage() {
 
             {/* Tabs */}
             <div className="flex border-b border-rmpg-700">
-              {(['detail', 'notes', 'solvability', 'evidence'] as const).map(tab => (
+              {(['detail', 'notes', 'solvability'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setDetailTab(tab)}
@@ -342,7 +320,7 @@ export default function CaseManagementPage() {
                     detailTab === tab ? 'text-white border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
-                  {tab === 'detail' ? 'Details' : tab === 'notes' ? `Notes (${notes.length})` : tab === 'solvability' ? 'Solvability' : 'Evidence'}
+                  {tab === 'detail' ? 'Details' : tab === 'notes' ? `Notes (${notes.length})` : 'Solvability'}
                 </button>
               ))}
             </div>
@@ -478,61 +456,6 @@ export default function CaseManagementPage() {
                       </button>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {detailTab === 'evidence' && (
-                <div className="space-y-2">
-                  {evidenceLoading ? (
-                    <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
-                  ) : linkedEvidence.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
-                      <Package className="w-8 h-8 mb-2 text-rmpg-600" />
-                      <p className="text-xs">No evidence linked to this case</p>
-                      <p className="text-[10px] text-rmpg-600 mt-1">
-                        Link evidence items from the Evidence / Property Room page
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider mb-2">
-                        {linkedEvidence.length} evidence item{linkedEvidence.length !== 1 ? 's' : ''} linked
-                      </div>
-                      {linkedEvidence.map((ev: any) => (
-                        <div key={ev.id} className="panel-beveled p-3 flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded">
-                            <Package style={{ width: 14, height: 14 }} className="text-brand-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-white font-mono">{ev.evidence_number || `EV-${ev.id}`}</span>
-                              <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${
-                                ev.status === 'in_storage' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50' :
-                                ev.status === 'checked_out' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                                ev.status === 'checked_in' ? 'bg-green-900/50 text-green-400 border-green-700/50' :
-                                'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50'
-                              }`}>
-                                {(ev.status || 'unknown').replace(/_/g, ' ').toUpperCase()}
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{ev.description || 'No description'}</div>
-                            <div className="flex items-center gap-3 mt-1 text-[9px] text-rmpg-500">
-                              <span className="flex items-center gap-1">
-                                <Tag style={{ width: 9, height: 9 }} />
-                                {ev.evidence_type || ev.type || '—'}
-                              </span>
-                              {ev.collected_date && (
-                                <span className="flex items-center gap-1">
-                                  <Clock style={{ width: 9, height: 9 }} />
-                                  {new Date(ev.collected_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  )}
                 </div>
               )}
             </div>

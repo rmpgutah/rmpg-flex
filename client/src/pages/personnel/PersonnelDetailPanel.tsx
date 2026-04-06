@@ -219,18 +219,18 @@ export default function PersonnelDetailPanel({
   const hasCredAlert = officerCreds.some(c => c.status === 'expired' || c.status === 'expiring_soon');
 
   return (
-    <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden detail-panel-enter">
+    <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden">
       {/* Detail Header */}
-      <div className="profile-section panel-beveled mx-2 mt-2 p-4 bg-surface-raised">
+      <div className="panel-beveled mx-2 mt-2 p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <OfficerAvatar officer={officer} size="lg" />
             <div>
-              <h2 className="text-lg font-bold text-white tracking-wide">
+              <h2 className="text-lg font-bold text-white">
                 {officer.last_name}, {officer.first_name}
                 {officer.middle_name && officer.middle_name.length > 0 ? ` ${officer.middle_name[0]}.` : ''}
               </h2>
-              <div className="w-20 h-0.5 mt-1 mb-1.5" style={{ background: 'linear-gradient(90deg, var(--brand-blue) 0%, transparent 100%)' }} />
+              <div className="w-16 h-0.5 bg-brand-500 mt-1 mb-1.5" />
               <div className="flex items-center gap-3">
                 {officer.rank && (
                   <span className="text-xs text-rmpg-200 flex items-center gap-1">
@@ -238,12 +238,12 @@ export default function PersonnelDetailPanel({
                     {officer.rank}
                   </span>
                 )}
-                <span className={`badge-pill ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
+                <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
                   {toDisplayLabel(officer.role)}
                 </span>
                 {officer.badge_number && (
-                  <span className="text-xs text-rmpg-300 font-mono flex items-center gap-1 bg-rmpg-800/50 px-1.5 py-0.5">
-                    <Shield className="w-3 h-3 text-rmpg-400" />
+                  <span className="text-xs text-rmpg-300 font-mono flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
                     {officer.badge_number}
                   </span>
                 )}
@@ -252,7 +252,7 @@ export default function PersonnelDetailPanel({
           </div>
 
           {/* Close button */}
-          <button onClick={onClose} className="toolbar-btn p-1 hover:bg-rmpg-700/50" title="Close">
+          <button onClick={onClose} className="toolbar-btn p-1" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -340,43 +340,46 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Quick Stats Row */}
-      <div className="flex items-stretch gap-2 px-4 py-2 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
-        {[
-          { label: 'Status', value: officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY', color: officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400', borderColor: officer.status === 'on_duty' ? 'border-l-green-500' : 'border-l-rmpg-600' },
-          { label: 'Service', value: calcYearsOfService(officer.hire_date), color: 'text-blue-400', borderColor: 'border-l-blue-500' },
-          { label: 'Hours', value: officerTotalHours.toFixed(1), color: 'text-brand-400', borderColor: 'border-l-brand-500' },
-          { label: 'Credentials', value: `${officerCreds.length}`, color: officerCreds.some(c => c.status === 'expired') ? 'text-red-400' : hasCredAlert ? 'text-amber-400' : 'text-green-400', borderColor: officerCreds.some(c => c.status === 'expired') ? 'border-l-red-500' : hasCredAlert ? 'border-l-amber-500' : 'border-l-green-500' },
-          { label: 'Schedules', value: String(officerSchedules.length), color: 'text-purple-400', borderColor: 'border-l-purple-500' },
-        ].map((stat) => (
-          <div key={stat.label} className={`panel-beveled bg-surface-sunken p-2 border-l-[3px] ${stat.borderColor} flex-1 min-w-0`}>
-            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide mb-0.5">{stat.label}</p>
-            <p className={`text-base font-bold font-mono ${stat.color}`}>{stat.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2 border-b border-rmpg-700">
+        <div className={`panel-beveled p-2 text-center border-t-2 ${officer.status === 'on_duty' ? 'border-t-green-500' : 'border-t-rmpg-600'}`}>
+          <p className="field-label">Status</p>
+          <p className={`text-base font-bold font-mono ${officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400'}`}>
+            {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
+          </p>
+        </div>
+        <div className="panel-beveled p-2 text-center border-t-2 border-t-blue-500">
+          <p className="field-label">Service</p>
+          <p className="text-base font-bold font-mono text-white">{calcYearsOfService(officer.hire_date)}</p>
+        </div>
+        <div className="panel-beveled p-2 text-center border-t-2 border-t-brand-500">
+          <p className="field-label">Hours (Period)</p>
+          <p className="text-base font-bold font-mono text-brand-400">{officerTotalHours.toFixed(1)}</p>
+        </div>
+        <div className={`panel-beveled p-2 text-center border-t-2 ${officerCreds.some(c => c.status === 'expired') ? 'border-t-red-500' : hasCredAlert ? 'border-t-amber-500' : 'border-t-green-500'}`}>
+          <p className="field-label">Credentials</p>
+          <p className={`text-base font-bold font-mono ${officerCreds.some(c => c.status === 'expired') ? 'text-red-400' : hasCredAlert ? 'text-amber-400' : 'text-green-400'}`}>
+            {officerCreds.length} Active
+          </p>
+        </div>
+        <div className="panel-beveled p-2 text-center border-t-2 border-t-purple-500">
+          <p className="field-label">Schedules</p>
+          <p className="text-base font-bold font-mono text-purple-400">{officerSchedules.length}</p>
+        </div>
       </div>
 
       {/* Tab Bar */}
-      <div className="tab-bar" style={{ scrollbarWidth: 'none' }}>
+      <div className="tab-bar">
         {DETAIL_TABS.map(({ id, label, icon: Icon }) => {
           const alertBadge = id === 'credentials' && hasCredAlert;
-          const count = id === 'credentials' ? officerCreds.length
-            : id === 'schedule' ? officerSchedules.length
-            : id === 'time' ? officerTime.length
-            : undefined;
           return (
             <button
               key={id}
               className={`tab-bar-item ${activeTab === id ? 'active' : ''}`}
               onClick={() => onTabChange(id)}
             >
-              <Icon className={`w-3 h-3 ${activeTab === id ? 'text-brand-400' : ''}`} />
+              <Icon className="w-3 h-3" />
               {label}
-              {count !== undefined && count > 0 && (
-                <span className={`tab-count-badge ml-0.5 ${alertBadge ? 'bg-amber-900/40 text-amber-400 border border-amber-700/40' : 'bg-rmpg-800 text-rmpg-500'}`}>
-                  {count}
-                </span>
-              )}
-              {alertBadge && <span className="led-dot led-amber" />}
+              {alertBadge && <span className="led-dot led-amber ml-1" />}
             </button>
           );
         })}

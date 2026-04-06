@@ -4,7 +4,6 @@ import { authenticateToken } from '../middleware/auth';
 import { sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { sendNotificationEmail } from '../utils/emailSender';
-import { validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -32,16 +31,11 @@ const TYPE_TO_PREF_KEY: Record<string, string> = {
  */
 function isInQuietHours(quietStart: string | null, quietEnd: string | null): boolean {
   if (!quietStart || !quietEnd) return false;
-  // Use Mountain Time (America/Denver) — the operational timezone for all RMPG officers
   const now = new Date();
-  const mtNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-  const currentMinutes = mtNow.getHours() * 60 + mtNow.getMinutes();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-  const sp = quietStart.split(':').map(Number);
-  const ep = quietEnd.split(':').map(Number);
-  const sh = sp[0], sm = sp[1];
-  const eh = ep[0], em = ep[1];
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return false;
+  const [sh, sm] = quietStart.split(':').map(Number);
+  const [eh, em] = quietEnd.split(':').map(Number);
   const start = sh * 60 + sm;
   const end = eh * 60 + em;
 
@@ -118,7 +112,7 @@ export function createNotification(
     if (triggerEvent) {
       _sendEmailIfEnabled(db, userId, prefs, prefKey, triggerEvent, title, body);
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating notification:', error?.message || 'Unknown error');
   }
 }
@@ -175,7 +169,7 @@ function _sendEmailIfEnabled(
 
       if (isTarget) {
         sendNotificationEmail(userId, title, body || '').catch(err => {
-          console.error(`[Notifications] Email delivery failed for user ${userId}:`, err?.message || err);
+          console.error(`[Notifications] Email delivery failed for user ${userId}:`, err.message);
         });
       }
     }
@@ -214,7 +208,7 @@ export function createNotificationForRoles(
       createNotification(user.id, type, title, body, entityType, entityId, priority, triggerEvent);
     }
   } catch (err: any) {
-    console.error('[Notifications] createNotificationForRoles failed:', err?.message || err);
+    console.error('[Notifications] createNotificationForRoles failed:', err.message);
   }
 }
 
@@ -231,7 +225,7 @@ router.get('/', (req: Request, res: Response) => {
       is_read,
     } = req.query;
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPageNum = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPageNum;
 
@@ -314,7 +308,7 @@ router.get('/unread-count', (req: Request, res: Response) => {
 });
 
 // PUT /api/notifications/:id/read - Mark notification as read
-router.put('/:id/read', validateParamId, (req: Request, res: Response) => {
+router.put('/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -361,7 +355,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
 });
 
 // DELETE /api/notifications/:id - Delete a notification
-router.delete('/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
 

@@ -31,26 +31,20 @@ import PersonHistoryPanel from '../../components/PersonHistoryPanel';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
-import WarrantBadge from '../../components/WarrantBadge';
 
 // ── DB Mapper ──────────────────────────────────────
 
 function parseFlags(raw: unknown): string[] {
-  let arr: unknown[] = [];
-  if (Array.isArray(raw)) {
-    arr = raw;
-  } else if (typeof raw === 'string') {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) arr = parsed;
-    } catch { /* invalid JSON — skip */ }
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
-  // Normalize: objects like {type, severity, count, updated_at} → string label
-  return arr.map(item => {
-    if (typeof item === 'string') return item;
-    if (item && typeof item === 'object' && 'type' in item) return String((item as any).type);
-    return String(item ?? '');
-  }).filter(Boolean);
+  return [];
 }
 
 function mapDbPerson(row: Record<string, unknown>): Person {
@@ -264,7 +258,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
   useEffect(() => {
     if (!selectedPerson) { setPersonAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedPerson.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
+    const flagsLower = selectedPerson.flags.map(f => f.toLowerCase());
     if (flagsLower.some(f => f.includes('known_offender') || f.includes('known offender') || f.includes('trespass'))) {
       alerts.push({ type: 'flag', priority: 'high', title: 'FLAG ALERT', description: 'Known offender / trespass warning on file' });
     }
@@ -358,7 +352,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     return (
       `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
       p.address?.toLowerCase().includes(q) ||
-      p.flags.some((f) => (typeof f === 'object' ? f.type : f).toLowerCase().includes(q))
+      p.flags.some((f) => f.toLowerCase().includes(q))
     );
   });
 
@@ -393,7 +387,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark search-glow pl-9 w-full text-[11px]"
+            className="input-dark pl-9 w-full text-[11px]"
             placeholder="Search persons by name, address, flags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -409,10 +403,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
       {/* Person List */}
       <div className="flex-1 overflow-auto">
         {filteredPersons.length === 0 && (
-          <div className="record-empty-state">
-            <UserCircle className="w-8 h-8 text-rmpg-500 mb-2 opacity-40" />
+          <div className="text-center py-12">
+            <UserCircle className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
             <p className="text-sm text-rmpg-400">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
-            <p className="text-[9px] text-rmpg-500 mt-1">{searchQuery ? 'Try a different search term' : 'Add a person record to get started'}</p>
           </div>
         )}
         {filteredPersons.map((person) => (
@@ -420,16 +413,16 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             key={person.id}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
             className={`
-              record-list-item px-4 py-3 border-b border-rmpg-700/50 cursor-pointer
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
               ${selectedPerson?.id === person.id
-                ? 'record-selected border-l-2 border-l-brand-500'
-                : 'border-l-2 border-l-transparent'
+                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
               }
             `}
           >
             <div className="flex items-center gap-3">
-              <div className="record-avatar flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300 transition-all duration-150">
-                {(person.first_name || '')[0]}{(person.last_name || '')[0]}
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">
+                {person.first_name[0]}{person.last_name[0]}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -446,7 +439,6 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   {person.watchlist_match && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">OFAC</span>
                   )}
-                  <WarrantBadge flags={person.flags} size="sm" />
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                   {person.date_of_birth && <span>DOB: {person.date_of_birth}</span>}
@@ -468,20 +460,17 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               <div className="flex flex-col items-end gap-1">
                 {person.flags.length > 0 && (
                   <div className="flex gap-1">
-                    {person.flags.slice(0, 2).map((flag, i) => {
-                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-                      return (
-                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                          {label}
-                        </span>
-                      );
-                    })}
+                    {person.flags.slice(0, 2).map((flag) => (
+                      <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                        {flag}
+                      </span>
+                    ))}
                     {person.flags.length > 2 && (
                       <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
                     )}
                   </div>
                 )}
-                <div className="record-actions flex items-center gap-1">
+                <div className="flex items-center gap-1">
                   {!showArchived && (
                     <button
                       onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
@@ -558,21 +547,18 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   if (!selectedPerson) return null;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden detail-panel-enter card-glass">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Alert Banner + Flags (below PanelTitleBar, which RecordsPage provides) */}
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />
         {/* Special Flags */}
         {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {selectedPerson.flags.map((flag, i) => {
-              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-              return (
-                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                  {label}
-                </span>
-              );
-            })}
+            {selectedPerson.flags.map((flag) => (
+              <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                {flag}
+              </span>
+            ))}
             {selectedPerson.watchlist_match && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">⚠ OFAC WATCHLIST MATCH</span>}
             {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
@@ -643,7 +629,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               {selectedPerson.id_image_url ? (
                 <div className="flex-shrink-0">
                   <div className="w-24 h-32 border border-rmpg-500 bg-rmpg-900 overflow-hidden cursor-pointer group relative"
-                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank', 'noopener,noreferrer')}
+                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank')}
                     title="Click to enlarge"
                   >
                     <img src={selectedPerson.id_image_url} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />

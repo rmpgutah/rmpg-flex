@@ -121,7 +121,7 @@ export async function scrapeGooglePlaces(): Promise<ScrapeResult> {
             searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${nextPageToken}&key=${apiKey}`;
           }
 
-          const res = await fetch(searchUrl, { signal: AbortSignal.timeout(15_000) });
+          const res = await fetch(searchUrl);
           if (!res.ok) {
             console.warn(`[GooglePlaces] HTTP ${res.status} for "${q.query}"`);
             break;
@@ -154,7 +154,7 @@ export async function scrapeGooglePlaces(): Promise<ScrapeResult> {
               // Fetch place details for phone number and website
               await sleep(200); // Light delay for detail requests
               const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=formatted_phone_number,website,name,formatted_address&key=${apiKey}`;
-              const detailRes = await fetch(detailUrl, { signal: AbortSignal.timeout(15_000) });
+              const detailRes = await fetch(detailUrl);
               const detailData: PlaceDetailResponse = await detailRes.json();
               const detail = detailData.result || {};
 

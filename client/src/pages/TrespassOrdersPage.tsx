@@ -48,7 +48,7 @@ const EMPTY_FORM = {
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
-  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [orders, setOrders] = useState<TrespassOrder[]>([]);
@@ -73,7 +73,6 @@ export default function TrespassOrdersPage() {
   const [personResults, setPersonResults] = useState<any[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const personSearchGenRef = useRef(0);
 
   // Properties
   const [properties, setProperties] = useState<any[]>([]);
@@ -89,12 +88,9 @@ export default function TrespassOrdersPage() {
         archived: showArchived ? 'true' : 'false',
       });
       const res = await apiFetch<{ data: TrespassOrder[]; pagination: any }>(`/trespass-orders?${params}`);
-      const newOrders = res.data || [];
-      setOrders(newOrders);
+      setOrders(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-      // Keep selected item in sync with refreshed data
-      setSelectedOrder(prev => prev ? newOrders.find((o: TrespassOrder) => o.id === prev.id) || null : null);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, showArchived]);
 
@@ -113,12 +109,10 @@ export default function TrespassOrdersPage() {
     if (personSearch.length < 2) { setPersonResults([]); return; }
     if (personSearchTimer.current) clearTimeout(personSearchTimer.current);
     personSearchTimer.current = setTimeout(async () => {
-      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&per_page=8`);
-        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
-      } catch { if (gen === personSearchGenRef.current) setPersonResults([]); }
+      } catch { setPersonResults([]); }
     }, 300);
     return () => { if (personSearchTimer.current) clearTimeout(personSearchTimer.current); };
   }, [personSearch]);
@@ -307,10 +301,10 @@ export default function TrespassOrdersPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
-                      {(order.order_type || '').replace(/_/g, ' ').toUpperCase()}
+                      {order.order_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[order.status]}`}>
-                      {(order.status || '').toUpperCase()}
+                      {order.status.toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -479,22 +473,22 @@ export default function TrespassOrdersPage() {
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
               </div>
 
-              {/* Section / Zone / Beat — cascading */}
+              {/* Section / Zone / Beat */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Section</label>
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+                    value={formData.section_id || ''} onChange={e => update('section_id', e.target.value)}>
                     <option value="">—</option>
-                    {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
+                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Zone</label>
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
+                    value={formData.zone_id || ''} onChange={e => update('zone_id', e.target.value)}>
                     <option value="">—</option>
-                    {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
                   </select>
                 </div>
                 <div>
@@ -502,7 +496,7 @@ export default function TrespassOrdersPage() {
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
-                    {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
+                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </div>
               </div>

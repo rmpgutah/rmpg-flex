@@ -98,7 +98,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [imageUploading, setImageUploading] = useState(false);
   const [imageDragOver, setImageDragOver] = useState(false);
   const justUploadedImage = useRef(false); // Guards against useEffect resetting profileImage after upload
-  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // User Preferences
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
@@ -159,11 +158,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       }
     }
   }, [isOpen, user, initialTab]);
-
-  // Cleanup logout timer on unmount
-  useEffect(() => {
-    return () => { if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current); };
-  }, []);
 
   // Fetch digital signature + profile image on profile tab open
   useEffect(() => {
@@ -365,7 +359,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       await refreshUser();
       setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
     } catch (err: any) {
-      setProfileMsg({ type: 'error', text: err?.message || 'Failed to update profile' });
+      setProfileMsg({ type: 'error', text: err.message || 'Failed to update profile' });
     } finally {
       setProfileSaving(false);
     }
@@ -384,9 +378,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       setPwMsg({ type: 'success', text: result.message || 'Password changed. You will be logged out.' });
-      logoutTimerRef.current = setTimeout(() => logout(), 2500);
+      setTimeout(() => logout(), 2500);
     } catch (err: any) {
-      setPwMsg({ type: 'error', text: err?.message || 'Failed to change password' });
+      setPwMsg({ type: 'error', text: err.message || 'Failed to change password' });
     } finally {
       setPwSaving(false);
     }
@@ -396,7 +390,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     try {
       await apiFetch(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.session_id !== sessionId));
-    } catch { setSecurityMsg({ type: 'error', text: 'Failed to revoke session' }); }
+    } catch { /* silent */ }
   };
 
   // ── 2FA Handlers ─────────────────────────────────
@@ -409,7 +403,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setBackupCodes(data.backupCodes || []);
       setSetupStep('qr');
     } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to start 2FA setup' });
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to start 2FA setup' });
     } finally {
       setSecurityBusy(false);
     }
@@ -427,7 +421,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setTotpStatus(prev => prev ? { ...prev, enabled: true } : { enabled: true, required: false });
       setSecurityMsg({ type: 'success', text: 'Two-factor authentication enabled successfully.' });
     } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Invalid verification code' });
+      setSecurityMsg({ type: 'error', text: err.message || 'Invalid verification code' });
       setSetupCode('');
     } finally {
       setSecurityBusy(false);
@@ -448,7 +442,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setDisablePassword('');
       setSecurityMsg({ type: 'success', text: 'Two-factor authentication has been disabled.' });
     } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to disable 2FA' });
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to disable 2FA' });
     } finally {
       setSecurityBusy(false);
     }
@@ -476,7 +470,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setRegenCodes(data.backupCodes);
       setRegenPassword('');
     } catch (err: any) {
-      setRegenError(err?.message || 'Failed to regenerate codes');
+      setRegenError(err.message || 'Failed to regenerate codes');
     }
     setRegenLoading(false);
   };
@@ -695,7 +689,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
                       <div className="text-[9px] mt-0.5" style={{ color: '#3a4e60' }}>
-                        JPG, PNG, WebP — max 10MB
+                        JPG, PNG, WebP — max 2MB
                       </div>
                     </div>
                     {profileImage && (
@@ -1273,7 +1267,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           {session.user_agent?.substring(0, 60)}...
                         </div>
                         <div className="text-[9px]" style={{ color: '#505050' }}>
-                          Last used: {(session.last_used_at || session.created_at) ? new Date(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
+                          Last used: {(() => { const d = new Date(session.last_used_at || session.created_at); return isNaN(d.getTime()) ? 'N/A' : d.toLocaleString(); })()}
                         </div>
                       </div>
                       <button

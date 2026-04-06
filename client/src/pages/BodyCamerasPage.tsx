@@ -49,9 +49,6 @@ export default function BodyCamerasPage() {
   // ----------------------------------------------------------
   // Data Fetching
   // ----------------------------------------------------------
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
-
   const fetchData = useCallback(async () => {
     try {
       const [cams, vids, personnelList] = await Promise.all([
@@ -76,6 +73,9 @@ export default function BodyCamerasPage() {
       if (mountedRef.current) setLoading(false);
     }
   }, []);
+
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // Live-sync for real-time updates from other users

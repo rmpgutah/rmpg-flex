@@ -66,7 +66,6 @@ function priorityWeight(p: ServeJob['priority']): number {
 
 function clusterStops(stops: StopItem[]): StopItem[][] {
   if (stops.length <= 25) return [stops];
-  if (stops.length === 0) return [];
 
   const lats = stops.map(s => s.job.recipient_lat!);
   const lngs = stops.map(s => s.job.recipient_lng!);
@@ -231,14 +230,12 @@ export default function ServeRoutePlanner({
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: 11,
-        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
-        backgroundColor: '#0a1220',
       });
 
       mapRef.current = map;

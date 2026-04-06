@@ -106,7 +106,7 @@ async function cpgMediaFetch<T>(
     });
 
     if (resp.status === 429) {
-      const retryAfter = parseInt(resp.headers.get('Retry-After') || '60', 10);
+      const retryAfter = parseInt(resp.headers.get('Retry-After', 10) || '60', 10);
       throw new RateLimitError(retryAfter);
     }
 
@@ -232,7 +232,7 @@ export async function downloadFromAccessUrl(
   }
 
   const contentType = resp.headers.get('content-type') || 'video/mp4';
-  const contentLength = parseInt(resp.headers.get('content-length') || '0', 10);
+  const contentLength = parseInt(resp.headers.get('content-length', 10) || '0', 10);
 
   if (!resp.body) {
     throw new Error('S3 download returned empty body');

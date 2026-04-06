@@ -23,13 +23,17 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
+  sanitizePdfText,
+  addSignatureBlock,
+  wordWrapText,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
-  getLineHeight, getCapHeight,
 } from './pdfTokens';
+import { drawNibrsHeader } from './pdfFormHelpers';
+import { FORM_NUMBERS } from './pdfAssets';
 
 // ── Data interface ────────────────────────────────────────
 
@@ -88,7 +92,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   await loadPdfAssets();
   setActiveFormKey('invoice');
   setActiveCaseNumber(data.invoice_number);
-  setGenerationTimestamp(new Date().toLocaleString());
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -103,27 +110,39 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   // ── Watermark ────────────────────────────────────────
   addConfidentialWatermark(doc);
 
-  // ── Header with seal (same as all reports) ───────────
-  let y = addReportHeader(doc, data.invoice_number, 'Invoice', 'routine', undefined, { useLogo: true });
+  // ── NIBRS-style Header ───────────────────────────────
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'INVOICE',
+    formNumber: FORM_NUMBERS.invoice || 'FORM PS-301',
+    caseNumber: data.invoice_number,
+    reportDate: data.issue_date?.substring(0, 10) || '',
+  });
 
-  // ── Invoice Information Section (auto-sizing) ─────────
+  // ── Invoice Information ─────────────────────────────
+  y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, 'Invoice Information', y); y = sec.contentY;
-    const qw = getQuarterWidth(doc);
-    addFieldPair(doc, 'Invoice Number', data.invoice_number, lx, y, qw);
-    addFieldPair(doc, 'Status', (data.status || 'draft').toUpperCase(), lx + qw + SPACING.MD, y, qw);
-    addFieldPair(doc, 'Issue Date', data.issue_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 2, y, qw);
-    y = addFieldPair(doc, 'Due Date', data.due_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 3, y, qw);
-    addFieldPair(doc, 'Payment Terms', data.payment_terms || 'Net 30', lx, y, hfw);
-    y = addFieldPair(doc, 'Billing Period', `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, rx, y, hfw);
+    const fy1 = addFieldPair(doc, '1. Invoice Number', data.invoice_number, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '2. Status', (data.status || 'draft').toUpperCase(), rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    const fy3 = addFieldPair(doc, '3. Issue Date', data.issue_date?.substring(0, 10) || '', lx, y, hfw);
+    const fy4 = addFieldPair(doc, '4. Due Date', data.due_date?.substring(0, 10) || '', rx, y, hfw);
+    y = Math.max(fy3, fy4);
+    const fy5 = addFieldPair(doc, '5. Payment Terms', data.payment_terms || 'Net 30', lx, y, hfw);
+    const fy6 = addFieldPair(doc, '6. Billing Period', `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, rx, y, hfw);
+    y = Math.max(fy5, fy6);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Client Information Section (auto-sizing) ──────────
+  // ── Client / Bill To ──────────────────────────────
+  y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, 'Client / Bill To', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Client Name', data.client_name || '', lx, y, ffw);
-    y = addFieldPair(doc, 'Billing Address', data.billing_address || data.client_address || '', lx, y, ffw);
-    addFieldPair(doc, 'Contact', data.contact_name || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Email', data.billing_email || data.contact_email || '', rx, y, hfw);
+    y = addFieldPair(doc, '7. Client Name', data.client_name || '', lx, y, ffw);
+    y = addFieldPair(doc, '8. Billing Address', data.billing_address || data.client_address || '', lx, y, ffw);
+    const fy1 = addFieldPair(doc, '9. Contact', data.contact_name || '', lx, y, hfw);
+    const fy2 = addFieldPair(doc, '10. Email', data.billing_email || data.contact_email || '', rx, y, hfw);
+    y = Math.max(fy1, fy2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -139,7 +158,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
       // Table header
       const cols = [
-        { label: 'DESCRIPTION', x: lx, w: cw - SPACING.CONTENT_INSET * 2 - 66 },
+        { label: 'DESCRIPTION', x: lx, w: Math.max(40, cw - SPACING.CONTENT_INSET * 2 - 66) },
         { label: 'QTY', x: pageWidth - LAYOUT.PAGE_MARGIN - 70, w: 15 },
         { label: 'RATE', x: pageWidth - LAYOUT.PAGE_MARGIN - 50, w: 22 },
         { label: 'AMOUNT', x: pageWidth - LAYOUT.PAGE_MARGIN - 25, w: 25 },
@@ -175,17 +194,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-
-        // Dynamic row height for multi-line descriptions — compute BEFORE page break check
-        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
-        const itemLineH = getLineHeight(FONT.SIZE_FIELD_VALUE);
-        const rowHeight = Math.max(descLines.length * itemLineH, itemLineH) + SPACING.SM;
-
-        // Page break check — use actual row height instead of hardcoded 8mm
+        // Page break check — re-draw headers on new page
         const prevPage = doc.getNumberOfPages();
         const prevY = y;
-        y = checkPageBreak(doc, y, rowHeight + 2);
+        y = checkPageBreak(doc, y, 8);
         if (doc.getNumberOfPages() > prevPage) {
           // Close segment on previous page
           tableSegments[tableSegments.length - 1].bottom = prevY;
@@ -196,22 +208,30 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
 
+        const item = items[i];
+
+        // Dynamic row height for multi-line descriptions — use wordWrapText to prevent mid-word breaks
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+        const descLines = wordWrapText(doc, sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
+        const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
+
         // Alternating shading with dynamic height
         if (i % 2 === 0) {
           doc.setFillColor(...COLOR.BG_ZEBRA);
           doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 3, cw - 2, rowHeight, 'F');
         }
 
-        doc.setTextColor(30, 30, 30);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(descLines, cols[0].x, y);
         doc.text(String(item.quantity ?? 0), cols[1].x + cols[1].w, y, { align: 'right' });
         doc.text(fmt(item.unit_price ?? 0), cols[2].x + cols[2].w, y, { align: 'right' });
 
         // Unified credit/debit colors from tokens
-        const amtColor: [number, number, number] = (item.amount ?? 0) < 0 ? [...COLOR.AMOUNT_CREDIT] : [30, 30, 30];
+        const amtColor: [number, number, number] = (item.amount ?? 0) < 0 ? [...COLOR.AMOUNT_CREDIT] : [...COLOR.TEXT_PRIMARY];
         doc.setTextColor(amtColor[0], amtColor[1], amtColor[2]);
         doc.text(fmt(item.amount ?? 0), cols[3].x + cols[3].w, y, { align: 'right' });
-        doc.setTextColor(30, 30, 30);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
         y += rowHeight;
 
@@ -224,19 +244,12 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       // Update final segment bottom
       if (tableSegments.length > 0) tableSegments[tableSegments.length - 1].bottom = y + 1;
 
-      // Outer table border — draw per page segment
-      const currentPage = doc.getNumberOfPages();
-      for (const seg of tableSegments) {
-        doc.setPage(seg.page);
-        doc.setDrawColor(...COLOR.BORDER_OUTER);
-        doc.setLineWidth(BORDER.TABLE_OUTER);
-        doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, seg.bottom - seg.top + 3);
-      }
-      doc.setPage(currentPage);
+      // Table segments tracked for page continuity (no outer border — clean CFS style)
+      void tableSegments;
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('No line items', lx, y);
+      doc.text('NO LINE ITEMS', lx, y);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       y += SPACING.XL;
     }
@@ -256,9 +269,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
-    doc.setTextColor(color ? color[0] : 30, color ? color[1] : 30, color ? color[2] : 30);
+    const valColor = color || COLOR.TEXT_PRIMARY;
+    doc.setTextColor(valColor[0], valColor[1], valColor[2]);
     doc.text(value, totVX, y, { align: 'right' });
-    y += bold ? LAYOUT.INVOICE_TOTAL_ROW_H : getLineHeight(FONT.SIZE_FIELD_VALUE);
+    y += bold ? 6 : LAYOUT.LINE_HEIGHT;
   };
 
   addTotal('Subtotal:', fmt(data.subtotal));
@@ -278,15 +292,14 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   doc.setLineWidth(BORDER.SECTION_OUTER);
   const balBoxX = totX - 8;
   const balBoxW = totVX - balBoxX + 3;
-  const balBoxH = FONT.SIZE_BALANCE_DUE + 3;
+  const balBoxH = 9; // Balance due box height
   doc.rect(balBoxX, y - 2, balBoxW, balBoxH);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  const balTextY = y - 2 + (balBoxH + getCapHeight(FONT.SIZE_BALANCE_DUE)) / 2;
-  doc.text('BALANCE DUE:', totX, balTextY, { align: 'right' });
-  doc.text(fmt(data.balance_due), totVX, balTextY, { align: 'right' });
-  y += balBoxH + SPACING.LG;
+  doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });
+  doc.text(fmt(data.balance_due), totVX, y + 4, { align: 'right' });
+  y += 14;
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
@@ -298,14 +311,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Payment History', y);
     y = sec.contentY;
 
-    // Proportional columns: Date 15%, Amount 15%, Method 30%, Reference 40%
-    const payCW = getContentWidth(doc);
-    const payColPositions = [
-      LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
-      LAYOUT.PAGE_MARGIN + payCW * 0.15,
-      LAYOUT.PAGE_MARGIN + payCW * 0.30,
-      LAYOUT.PAGE_MARGIN + payCW * 0.60,
-    ];
+    const payColPositions = [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 60, LAYOUT.PAGE_MARGIN + 100];
     const payHeaders = [
       { label: 'DATE', x: payColPositions[0] },
       { label: 'AMOUNT', x: payColPositions[1] },
@@ -313,10 +319,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       { label: 'REFERENCE', x: payColPositions[3] },
     ];
     const payRows = payments.map(p => [
-      p.payment_date?.substring(0, 10) || '',
-      fmt(p.amount),
-      p.payment_method || '',
-      p.reference_number || '',
+      sanitizePdfText(p.payment_date?.substring(0, 10) || '').toUpperCase(),
+      fmt(p.amount).toUpperCase(),
+      sanitizePdfText(p.payment_method || '').toUpperCase(),
+      sanitizePdfText(p.reference_number || '').toUpperCase(),
     ]);
     y = addTableWithShading(doc, payHeaders, payRows, y, payColPositions);
 
@@ -328,11 +334,16 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = checkPageBreak(doc, y, 20);
     const sec = openAutoSection(doc, 'Notes', y);
     y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    y = addWrappedText(doc, data.notes, lx, y, ffw, 9);
+    doc.setFont('courier', 'normal');
+    y = addWrappedText(doc, sanitizePdfText(data.notes).toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE);
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // ── Signature Block ──────────────────────────────────
+  y = checkPageBreak(doc, y, 30);
+  y += SPACING.MD;
+  y = addSignatureBlock(doc, 'Authorized By', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
 
   // ── Footer on all pages ──────────────────────────────
   const totalPages = doc.getNumberOfPages();
@@ -385,26 +396,26 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; background: #fff; padding: 30px; max-width: 800px; margin: 0 auto; }
     @media print { body { padding: 0; } }
-    .header { background: #1e3048; color: #fff; padding: 16px 20px; margin-bottom: 0; display: flex; align-items: center; gap: 14px; }
+    .header { background: #222222; color: #fff; padding: 16px 20px; margin-bottom: 0; display: flex; align-items: center; gap: 14px; }
     .header img { width: 42px; height: 42px; border-radius: 50%; }
     .header-text h1 { font-size: 16px; margin-bottom: 1px; letter-spacing: 1px; }
     .header-text p { font-size: 10px; color: #d4a017; letter-spacing: 2px; text-transform: uppercase; }
     .accent-line { height: 3px; background: #d4a017; margin-bottom: 16px; }
-    .section-bar { background: #1e3048; color: #fff; padding: 4px 10px; font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; border: 2px solid #1e3048; }
+    .section-bar { background: #222222; color: #fff; padding: 4px 10px; font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; border: 2px solid #222222; }
     .section-body { border: 1px solid #ccc; border-top: none; padding: 12px; margin-bottom: 0; }
     .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
     .field-box { border: 1px solid #ccc; padding: 4px 6px; min-height: 32px; }
     .field-box .label { font-size: 8px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
     .field-box .value { font-size: 12px; color: #222; margin-top: 2px; }
     .invoice-title { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
-    .invoice-title h2 { font-size: 24px; color: #1a5a9e; font-weight: 900; }
-    .invoice-number { background: #1a5a9e; color: #fff; padding: 6px 16px; font-size: 13px; font-weight: bold; border: 2px solid #fff; outline: 2px solid #1a5a9e; }
+    .invoice-title h2 { font-size: 24px; color: #888888; font-weight: 900; }
+    .invoice-number { background: #888888; color: #fff; padding: 6px 16px; font-size: 13px; font-weight: bold; border: 2px solid #fff; outline: 2px solid #888888; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-    th { background: #1e3048; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+    th { background: #222222; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
     .totals { margin-left: auto; width: 280px; margin-top: 12px; }
     .totals tr td { padding: 3px 8px; font-size: 12px; }
     .totals .total-row { border-top: 2px solid #333; font-size: 14px; font-weight: bold; }
-    .totals .balance-row { border: 2px solid #1a5a9e; font-size: 16px; font-weight: bold; color: #1a5a9e; }
+    .totals .balance-row { border: 2px solid #888888; font-size: 16px; font-weight: bold; color: #888888; }
     .notes { margin-top: 16px; padding: 12px; background: #f9f9f9; border: 1px solid #ccc; }
     .notes h3 { font-size: 9px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
     .notes p { font-size: 11px; }

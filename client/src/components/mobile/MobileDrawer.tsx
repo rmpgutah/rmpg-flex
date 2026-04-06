@@ -101,13 +101,11 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/criminal-history', icon: Search, label: 'Criminal History' },
       { path: '/evidence', icon: Package, label: 'Evidence / Property' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
-      { path: '/forensic-lab', icon: Search, label: 'Forensic Lab' },
     ],
   },
   {
     label: 'Enforcement',
     items: [
-      { path: '/serve', icon: Briefcase, label: 'Process Server' },
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
@@ -120,14 +118,12 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Personnel',
     items: [
       { path: '/personnel', icon: Users, label: 'Personnel' },
-      { path: '/hr', icon: ClipboardCheck, label: 'HR Console' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
     ],
   },
   {
     label: 'Communications',
     items: [
-      { path: '/email', icon: MessageSquare, label: 'Email' },
       { path: '/communications', icon: MessageSquare, label: 'Comms' },
       { path: '/radio', icon: Radio, label: 'Radio' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },

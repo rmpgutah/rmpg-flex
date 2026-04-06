@@ -8,7 +8,6 @@ import React, { useState, useCallback } from 'react';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { localToday } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
 
@@ -82,7 +81,7 @@ export default function CustomReportBuilder() {
 
   const handleSourceSelect = (src: string) => {
     setSource(src);
-    setSelectedCols((SOURCES[src]?.columns || []).slice(0, 6)); // default first 6
+    setSelectedCols(SOURCES[src].columns.slice(0, 6)); // default first 6
     setFilters([]);
     setSortBy('');
     setStep('columns');
@@ -95,7 +94,6 @@ export default function CustomReportBuilder() {
   };
 
   const addFilter = () => {
-    if (availableCols.length === 0) return;
     setFilters(prev => [...prev, { column: availableCols[0], operator: 'contains', value: '' }]);
   };
 
@@ -135,13 +133,13 @@ export default function CustomReportBuilder() {
   const exportCsv = () => {
     if (results.length === 0) return;
     const headers = resultColumns.join(',');
-    const rows = results.map(r => resultColumns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}"`).join(','));
+    const rows = results.map(r => resultColumns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','));
     const csv = [headers, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `custom-report-${source}-${localToday()}.csv`;
+    a.download = `custom-report-${source}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

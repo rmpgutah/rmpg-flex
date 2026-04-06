@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useId } from 'react';
-import { escapeHtml } from '../utils/sanitize';
 import {
   QrCode,
   MapPin,
@@ -18,10 +17,8 @@ import {
   RotateCcw,
   Copy,
   Map as MapIcon,
-  Download,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { exportToCsv } from '../utils/csvExport';
 import { useLiveSync } from '../hooks/useLiveSync';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -103,7 +100,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#0a1220',
+        backgroundColor: '#060c14',
         gestureHandling: 'greedy',
         renderingType: 'RASTER' as any,
       });
@@ -138,20 +135,10 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     };
   }, []);
 
-  // Track map overlays for cleanup
-  const markersRef = React.useRef<google.maps.Marker[]>([]);
-  const polylinesRef = React.useRef<google.maps.Polyline[]>([]);
-
   // Add markers + polylines when map is ready
   React.useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
-
-    // Clean up previous markers and polylines
-    markersRef.current.forEach(m => { google.maps.event.clearInstanceListeners(m); m.setMap(null); });
-    markersRef.current = [];
-    polylinesRef.current.forEach(p => { p.setMap(null); });
-    polylinesRef.current = [];
 
     const bounds = new google.maps.LatLngBounds();
     let hasPoints = false;
@@ -176,11 +163,10 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
           scale: 8,
         },
       });
-      markersRef.current.push(marker);
 
       const info = new google.maps.InfoWindow({
-        content: `<div style="color:#000;font-size:12px;font-weight:bold">${escapeHtml(cp.name)}</div>
-          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${escapeHtml(String(cp.scan_required_interval_minutes || '?'))} min</div>`,
+        content: `<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
+          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`,
       });
       marker.addListener('click', () => info.open(map, marker));
     });
@@ -207,14 +193,13 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       });
 
       if (path.length > 1) {
-        const polyline = new google.maps.Polyline({
+        new google.maps.Polyline({
           map,
           path,
           strokeColor: colors[colorIdx % colors.length],
           strokeOpacity: 0.7,
           strokeWeight: 2,
         });
-        polylinesRef.current.push(polyline);
       }
       colorIdx++;
     });
@@ -222,21 +207,14 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     if (hasPoints) {
       map.fitBounds(bounds, 50);
     }
-
-    return () => {
-      markersRef.current.forEach(m => { google.maps.event.clearInstanceListeners(m); m.setMap(null); });
-      markersRef.current = [];
-      polylinesRef.current.forEach(p => { p.setMap(null); });
-      polylinesRef.current = [];
-    };
   }, [mapReady, checkpoints, scans]);
 
   return (
     <div className="relative w-full flex-1" style={{ minHeight: 400 }}>
       <div ref={mapRef} className="absolute inset-0" />
       <div className="absolute top-2 left-2 text-[9px] font-mono text-rmpg-400 bg-black/60 px-2 py-1 border border-rmpg-700">
-        {checkpoints.filter(c => c.latitude != null && c.longitude != null).length} checkpoints •{' '}
-        {scans.filter(s => s.latitude != null && s.longitude != null).length} scan points
+        {checkpoints.filter(c => c.latitude && c.longitude).length} checkpoints •{' '}
+        {scans.filter(s => s.latitude && s.longitude).length} scan points
       </div>
     </div>
   );
@@ -283,22 +261,19 @@ const PatrolPage: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'compliance') {
-      loadCompliance();
       const interval = setInterval(() => {
         loadCompliance();
       }, 60000);
       return () => clearInterval(interval);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadProperties = async () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
       setProperties(data || []);
-    } catch (err: any) {
-      console.error('Error loading properties:', err);
-      setError(err?.message || 'Failed to load properties');
+    } catch (error) {
+      console.error('Error loading properties:', error);
     }
   };
 
@@ -308,11 +283,9 @@ const PatrolPage: React.FC = () => {
       if (activeTab === 'checkpoints') {
         await loadCheckpoints();
       } else if (activeTab === 'scans') {
-        await Promise.all([loadScans(), loadCheckpoints()]);
+        await loadScans();
       } else if (activeTab === 'compliance') {
         await loadCompliance();
-      } else if (activeTab === 'map') {
-        await Promise.all([loadCheckpoints(), loadScans()]);
       }
     } catch (err: any) {
       if (!options?.silent) {
@@ -414,11 +387,13 @@ const PatrolPage: React.FC = () => {
       if (editingCheckpoint) {
         await apiFetch(`/patrol/checkpoints/${editingCheckpoint.id}`, {
           method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
         await apiFetch('/patrol/checkpoints', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       }
@@ -536,7 +511,7 @@ const PatrolPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
+    <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
@@ -554,74 +529,17 @@ const PatrolPage: React.FC = () => {
       {!isMobile && <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
         <PrintButton />
         {activeTab === 'scans' && (
-          <>
-            <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
-            <button
-              onClick={() => exportToCsv('patrol_scans_filtered.csv', scans, [
-                { key: 'scanned_at', label: 'Timestamp' },
-                { key: 'officer_name', label: 'Officer' },
-                { key: 'checkpoint_name', label: 'Checkpoint' },
-                { key: 'property_name', label: 'Property' },
-                { key: 'status', label: 'Status' },
-                { key: 'latitude', label: 'Latitude' },
-                { key: 'longitude', label: 'Longitude' },
-                { key: 'notes', label: 'Notes' },
-              ])}
-              className="toolbar-btn"
-              title="Export filtered scans to CSV"
-              disabled={scans.length === 0}
-            >
-              <Download className="w-3.5 h-3.5" /> CSV
-            </button>
-          </>
+          <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
         )}
         {activeTab === 'checkpoints' && (
-          <>
-            <button
-              onClick={() => exportToCsv('patrol_checkpoints.csv', checkpoints, [
-                { key: 'name', label: 'Name' },
-                { key: 'property_name', label: 'Property' },
-                { key: 'description', label: 'Description' },
-                { key: 'qr_code', label: 'QR Code' },
-                { key: 'scan_required_interval_minutes', label: 'Interval (min)' },
-                { key: 'is_active', label: 'Active' },
-                { key: 'latitude', label: 'Latitude' },
-                { key: 'longitude', label: 'Longitude' },
-                { key: 'created_at', label: 'Created' },
-              ])}
-              className="toolbar-btn"
-              title="Export checkpoints to CSV"
-              disabled={checkpoints.length === 0}
-            >
-              <Download className="w-3.5 h-3.5" /> CSV
-            </button>
-            <button onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary">
-              <Plus className="w-3.5 h-3.5" /> Add Checkpoint
-            </button>
-          </>
+          <button onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary">
+            <Plus className="w-3.5 h-3.5" /> Add Checkpoint
+          </button>
         )}
         {activeTab === 'compliance' && (
-          <>
-            <button
-              onClick={() => exportToCsv('patrol_compliance.csv', compliance, [
-                { key: 'checkpoint_name', label: 'Checkpoint' },
-                { key: 'property_name', label: 'Property' },
-                { key: 'scans_today', label: 'Scans Today' },
-                { key: 'compliance_rate', label: 'Compliance %' },
-                { key: 'last_scan_time', label: 'Last Scan' },
-                { key: 'next_scan_due', label: 'Next Due' },
-                { key: 'scan_interval_minutes', label: 'Interval (min)' },
-              ])}
-              className="toolbar-btn"
-              title="Export compliance to CSV"
-              disabled={compliance.length === 0}
-            >
-              <Download className="w-3.5 h-3.5" /> CSV
-            </button>
-            <button onClick={loadCompliance} className="toolbar-btn">
-              <RefreshCw className="w-3.5 h-3.5" /> Refresh
-            </button>
-          </>
+          <button onClick={loadCompliance} className="toolbar-btn">
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
         )}
       </PanelTitleBar>}
 
@@ -910,7 +828,7 @@ const PatrolPage: React.FC = () => {
                 return (
                   <div
                     key={item.checkpoint_id}
-                    className={`panel-beveled card-glass p-6 border-2 bg-surface-base ${complianceColor}`}
+                    className={`panel-beveled p-6 border-2 bg-surface-base ${complianceColor}`}
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div>

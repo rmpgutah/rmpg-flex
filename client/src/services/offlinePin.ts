@@ -249,7 +249,7 @@ async function computePin(
     .join('');
 
   // Dynamic truncation (HOTP-style, same as desktop)
-  const offset = parseInt(hash.substring(hash.length - 1), 16);
+  const offset = parseInt(hash.substring(hash.length - 1, 10), 16);
   const truncated = parseInt(hash.substring(offset * 2, offset * 2 + 8), 16) & 0x7FFFFFFF;
   return String(truncated % Math.pow(10, PIN_LENGTH)).padStart(PIN_LENGTH, '0');
 }

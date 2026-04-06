@@ -20,7 +20,6 @@ import {
   Square,
 } from 'lucide-react';
 import { useRadio } from '../hooks/useRadio';
-import { localToday } from '../utils/dateUtils';
 import { usePrivateCall } from '../hooks/usePrivateCall';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -168,6 +167,7 @@ export default function RadioPage() {
     try {
       // Fetch audio with JWT auth header (new Audio(url) can't set headers)
       const token = localStorage.getItem('rmpg_token');
+      console.log('[Radio Playback] Fetching audio for entry', entryId, '| token:', token ? 'present' : 'MISSING');
       const res = await fetch(`/api/comms/radio/audio/${entryId}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -176,6 +176,7 @@ export default function RadioPage() {
         throw new Error(`HTTP ${res.status}`);
       }
       const blob = await res.blob();
+      console.log('[Radio Playback] Got blob:', blob.size, 'bytes, type:', blob.type);
       const blobUrl = URL.createObjectURL(blob);
       blobUrlRef.current = blobUrl;
 
@@ -197,6 +198,7 @@ export default function RadioPage() {
       };
       audioRef.current = audio;
       await audio.play();
+      console.log('[Radio Playback] Playing audio for entry', entryId);
       setPlayingId(entryId);
     } catch (err) {
       console.error('[Radio Playback] Failed:', err);
@@ -241,13 +243,13 @@ export default function RadioPage() {
     if (historyEntries.length === 0) return;
     const header = 'Timestamp,Channel,User,Duration(s),Transcript,Has Audio\n';
     const rows = historyEntries.map(e =>
-      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}","${e.audio_file ? 'Yes' : 'No'}"`
+      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""')}","${e.audio_file ? 'Yes' : 'No'}"`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `radio-transcripts-${localToday()}.csv`;
+    a.download = `radio-transcripts-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -104,19 +104,13 @@ export default function TrainingDocsPage() {
 
   const handleDownload = (doc: any) => {
     if (doc.content_type === 'link' && doc.external_url) {
-      // Validate URL protocol and reject javascript: / data: schemes to prevent open redirect
-      try {
-        const parsed = new URL(doc.external_url);
-        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-          window.open(doc.external_url, '_blank', 'noopener,noreferrer');
-        }
-      } catch { /* invalid URL — ignore */ }
+      window.open(doc.external_url, '_blank', 'noopener');
       return;
     }
     if (doc.file_id) {
       // Use JWT token fallback for download (signatures are not available from this endpoint)
       const token = localStorage.getItem('rmpg_token') || '';
-      window.open(`/api/uploads/${doc.file_id}/download?token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
+      window.open(`/api/uploads/${doc.file_id}/download?token=${encodeURIComponent(token)}`, '_blank');
     }
   };
 

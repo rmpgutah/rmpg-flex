@@ -116,8 +116,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
           {inspections.map((insp) => {
             const badge = TYPE_BADGE[insp.inspection_type];
             const isExpanded = expandedId === insp.id;
-            const itemFailCount = (insp.items || []).filter(i => i.status === 'fail').length;
-            const attentionCount = (insp.items || []).filter(i => i.status === 'needs_attention').length;
+            const itemFailCount = insp.items.filter(i => i.status === 'fail').length;
+            const attentionCount = insp.items.filter(i => i.status === 'needs_attention').length;
 
             return (
               <div key={insp.id} className="panel-beveled bg-surface-base">
@@ -180,12 +180,12 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                 {isExpanded && (
                   <div className="border-t border-rmpg-700">
                     {/* Group by category */}
-                    {Array.from(new Set((insp.items || []).map(i => i.category))).map(category => (
+                    {Array.from(new Set(insp.items.map(i => i.category))).map(category => (
                       <div key={category}>
                         <div className="px-3 py-1 text-[8px] text-rmpg-400 uppercase font-bold tracking-wider" style={{ background: '#0d1520' }}>
                           {category}
                         </div>
-                        {(insp.items || []).filter(i => i.category === category).map((item, idx) => (
+                        {insp.items.filter(i => i.category === category).map((item, idx) => (
                           <div key={idx} className="flex items-center gap-2 px-3 py-1 border-t border-rmpg-700">
                             {ITEM_STATUS_ICON[item.status]}
                             <span className="text-[10px] text-rmpg-300 flex-1">{item.item}</span>

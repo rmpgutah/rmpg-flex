@@ -58,7 +58,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       // Legacy escalation logic — guard against missing/invalid created_at
       const createdTime = call.created_at ? new Date(call.created_at).getTime() : NaN;
-      const diffMin = Number.isFinite(createdTime) ? Math.floor((Date.now() - createdTime) / 60000) : -1;
+      const diffMin = Number.isFinite(createdTime) ? Math.floor((Date.now() - createdTime) / 60000) : 0;
       const isPending = call.status === 'pending';
       setShouldEscalate(isPending && (
         (call.priority === 'P3' && diffMin >= 20) ||
@@ -119,8 +119,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         group relative p-2 cursor-pointer transition-all duration-100
         priority-border-${call.priority}
         ${isSelected
-          ? 'bg-brand-900/30 panel-beveled card-glass'
-          : 'panel-beveled card-glass hover:bg-surface-raised'
+          ? 'bg-brand-900/30 panel-beveled'
+          : 'panel-beveled hover:bg-surface-raised'
         }
         ${isEmergency ? 'animate-emergency-pulse' : ''}
         ${isOverdue ? 'timer-overdue' : ''}
@@ -224,23 +224,13 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             {call.case_number}
           </span>
         )}
-        {call.incident_number && (
-          <span className="text-[9px] font-mono text-green-400 bg-green-900/20 border border-green-700/30 px-1">
-            {call.incident_number}
-          </span>
-        )}
       </div>
 
       {/* Location */}
-      <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
+      <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-2">
         <MapPin className="w-3 h-3 flex-shrink-0" />
         <span className="truncate">{call.location}</span>
       </div>
-      {call.latitude != null && call.longitude != null && (
-        <div className="text-[9px] font-mono text-rmpg-400 ml-[18px] mb-2">
-          {Number(call.latitude).toFixed(5)}, {Number(call.longitude).toFixed(5)}
-        </div>
-      )}
 
       {/* Footer Row — status timer + units */}
       <div className="flex items-center justify-between text-xs text-rmpg-400">
@@ -254,7 +244,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             {initState.label} {initState.formatted}
           </span>
         </div>
-        {call.assigned_units?.length > 0 && (
+        {call.assigned_units.length > 0 && (
           <div className="flex items-center gap-1">
             <Users className="w-3 h-3" />
             <span>{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>

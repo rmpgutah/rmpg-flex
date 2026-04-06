@@ -26,7 +26,6 @@ import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './uti
 import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
 import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
-import { runUniversalWarrantScan } from './utils/universalWarrantScanner';
 import { scheduleWarrantScraper, stopWarrantScraper } from './utils/multiStateWarrantScraper';
 import { scheduleCourtRecordsScan, stopCourtRecordsScan } from './utils/courtRecordsScraper';
 import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
@@ -35,7 +34,6 @@ import { startServeManagerPoller, stopServeManagerPoller } from './utils/serveMa
 import { startPsoMonitor, stopPsoMonitor } from './utils/psoMonitor';
 import { startCallAgingMonitor, stopCallAgingMonitor } from './utils/callAgingMonitor';
 import { getDb } from './models/database';
-import { localNow } from './utils/timeUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,7 +90,6 @@ import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
 import connectionsRoutes from './routes/connections';
-import forensicLabRoutes from './routes/forensics';
 import skiptracerRoutes from './routes/skiptracer';
 import dashcamVideoRoutes from './routes/dashcamVideos';
 import coloradoDocRoutes from './routes/coloradoDoc';
@@ -103,13 +100,9 @@ import crmLeadsRoutes from './routes/crmLeads';
 import crmProposalsRoutes from './routes/crmProposals';
 import userPreferencesRoutes from './routes/userPreferences';
 import serveRoutes from './routes/serve';
-import hrRoutes from './routes/hr';
 import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase';
 
 const app = express();
-
-// Suppress Express version fingerprinting — defense-in-depth (also removed per-request in securityHeaders)
-app.disable('x-powered-by');
 
 // Trust first proxy (nginx) so req.ip reflects the real client IP
 // Critical for rate limiting, session binding, and audit logging
@@ -131,37 +124,15 @@ if (config.isProduction || config.ssl.enabled) {
   });
 }
 
-// ─── DNS Rebinding Protection ────────────────────────
-// Validate Host header to prevent DNS rebinding attacks that could bypass same-origin policy
-if (config.isProduction) {
-  const allowedHosts = new Set([
-    config.primaryDomain,
-    `www.${config.primaryDomain}`,
-    `crm.${config.primaryDomain}`,
-  ]);
-  app.use((req, res, next) => {
-    const host = (req.hostname || req.headers.host?.split(':')[0] || '').toLowerCase();
-    if (!allowedHosts.has(host)) {
-      res.status(421).json({ error: 'Misdirected request' });
-      return;
-    }
-    next();
-  });
-}
-
 // ─── Security Middleware ─────────────────────────────
 app.use(securityHeaders);
 app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'X-Requested-With'],
-  exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
-  maxAge: 600, // 10 minutes — browser caches preflight results
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
-app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '256kb' }), (req, res) => {
+app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
   const WEBHOOK_SECRET_FILE = path.resolve(__dirname, '../../.webhook-secret');
   let secret = '';
   try { secret = fs.readFileSync(WEBHOOK_SECRET_FILE, 'utf8').trim(); } catch { /* no secret file */ }
@@ -187,13 +158,7 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   }
 
   const event = req.headers['x-github-event'] as string;
-  let payload: any;
-  try {
-    payload = JSON.parse(body.toString());
-  } catch {
-    res.status(400).json({ error: 'Invalid JSON payload' });
-    return;
-  }
+  const payload = JSON.parse(body.toString());
 
   // Only deploy on push to main
   if (event !== 'push' || payload.ref !== 'refs/heads/main') {
@@ -202,17 +167,9 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
     return;
   }
 
-  const commitSha = (payload.after || '').slice(0, 8).replace(/[^a-f0-9]/gi, '');
-  const pusher = (payload.pusher?.name || 'unknown').slice(0, 50).replace(/[\x00-\x1f\x7f]/g, '');
+  const commitSha = (payload.after || '').slice(0, 8);
+  const pusher = payload.pusher?.name || 'unknown';
   console.log(`[Webhook] DEPLOY TRIGGERED — commit=${commitSha}, by=${pusher}`);
-
-  // Prevent concurrent deploys — reject if one is already running
-  if ((global as any).__deployInProgress) {
-    console.warn('[Webhook] Deploy rejected — another deploy is already in progress');
-    res.status(429).json({ status: 'busy', reason: 'Deploy already in progress' });
-    return;
-  }
-  (global as any).__deployInProgress = true;
 
   // Respond immediately, deploy runs async
   res.json({ status: 'deploying', commit: commitSha });
@@ -225,7 +182,6 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
     timeout: 300000,
     env: { ...process.env, HOME: '/root' },
   }, (error, stdout, stderr) => {
-    (global as any).__deployInProgress = false;
     if (error) {
       console.error(`[Webhook] DEPLOY FAILED — ${error.message}`);
       if (stderr) console.error(`[Webhook] STDERR: ${stderr.slice(0, 500)}`);
@@ -239,34 +195,6 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(sanitizeInput);
-
-// ─── CSRF Protection ─────────────────────────────────
-// Require a custom header on all state-changing requests to prevent CSRF.
-// Browsers block cross-origin requests from setting custom headers without preflight,
-// so the presence of this header proves the request originated from our SPA.
-if (config.isProduction) {
-  app.use('/api', (req, res, next) => {
-    // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
-    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    // Only exempt login/register/refresh (pre-auth routes) and webhooks — NOT change-password, verify-2fa, etc.
-    const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/password-policy'];
-    if (csrfExemptPaths.some(p => req.path.startsWith(p))
-        || req.path.startsWith('/webhook/')) return next();
-
-    const csrfHeader = req.headers['x-requested-with'];
-    if (csrfHeader !== 'XMLHttpRequest' && csrfHeader !== 'RMPG-Flex') {
-      res.status(403).json({ error: 'Missing CSRF header' });
-      return;
-    }
-    next();
-  });
-}
-
-// ─── Per-route body size limits ──────────────────────
-// Auth endpoints should have tiny payloads — prevent abuse with oversized bodies
-app.use('/api/auth', express.json({ limit: '16kb' }));
-// Offline sync — limit to 256kb to prevent data exfiltration abuse via oversized pushes
-app.use('/api/offline', express.json({ limit: '256kb' }));
 
 // Request timeout — 30s default, skip for upload routes (large files)
 app.use((req, res, next) => {
@@ -296,27 +224,32 @@ app.get('/api/health', (_req, res) => {
   const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
 
-  // Public health check — expose only operational status, no version/env/internals
   res.status(statusCode).json({
     status: overall,
-    timestamp: localNow(),
-    database: { status: dbStatus },
-  });
-});
-
-// ─── Detailed Health (Auth Required) ─────────────────
-app.get('/api/health/detailed', authenticateToken, requireRole('admin', 'manager'), (_req, res) => {
-  let dbStatus: 'ok' | 'error' = 'ok';
-  try { const db = getDb(); db.prepare('SELECT 1').get(); } catch { dbStatus = 'error'; }
-  res.json({
-    status: dbStatus === 'ok' ? 'ok' : 'degraded',
     name: 'RMPG Flex CAD/RMS Server',
     version: SERVER_VERSION,
     environment: config.nodeEnv,
-    timestamp: localNow(),
+    timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
-    database: { status: dbStatus },
+    database: { status: dbStatus, ...(dbError && { error: dbError }) },
     connections: { websocket: getConnectedClientCount() },
+    features: {
+      rateLimiting: true,
+      securityHeaders: true,
+      inputSanitization: true,
+      tokenRefresh: true,
+      sessionManagement: true,
+      accountLockout: true,
+      passwordPolicy: true,
+      fileUpload: true,
+      warrants: true,
+      fleetManagement: true,
+      notifications: true,
+      csvExport: true,
+      sslEncryption: config.ssl.enabled,
+      wsAuthentication: true,
+      liveSync: true,
+    },
   });
 });
 
@@ -348,7 +281,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
       res.status(400).json({ error: 'Call must be completed to re-dispatch' }); return;
     }
-    const now = localNow();
+    const now = new Date().toISOString().replace('T', ' ').split('.')[0];
     const currentAttempt = call.pso_attempt_number || 1;
     const newAttempt = currentAttempt + 1;
     const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + (s[n % 10] || s[0]); };
@@ -429,7 +362,6 @@ app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
 app.use('/api/connections', connectionsRoutes);
-app.use('/api/forensic-lab', forensicLabRoutes);
 app.use('/api/skiptracer', skiptracerRoutes);
 app.use('/api/colorado-doc', coloradoDocRoutes);
 app.use('/api/sex-offender-registry', sexOffenderRegistryRoutes);
@@ -439,7 +371,6 @@ app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
-app.use('/api/hr', hrRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -494,7 +425,7 @@ app.get('*', (req, res) => {
   } else {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-      if (err && !res.headersSent) {
+      if (err) {
         res.status(404).json({ error: 'Not found' });
       }
     });
@@ -503,9 +434,8 @@ app.get('*', (req, res) => {
 
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
-app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const requestId = req.headers['x-request-id'] || '';
-  console.error(`[${requestId}] Unhandled Express error:`, err?.message || err, err?.stack || '');
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -525,20 +455,8 @@ try {
     const sslOptions: https.ServerOptions = {
       cert: config.ssl.cert,
       key: config.ssl.key,
-      // Strong TLS configuration — disable weak protocols and ciphers
+      // Strong TLS configuration
       minVersion: 'TLSv1.2' as any,
-      ciphers: [
-        'TLS_AES_256_GCM_SHA384',
-        'TLS_CHACHA20_POLY1305_SHA256',
-        'TLS_AES_128_GCM_SHA256',
-        'ECDHE-ECDSA-AES256-GCM-SHA384',
-        'ECDHE-RSA-AES256-GCM-SHA384',
-        'ECDHE-ECDSA-CHACHA20-POLY1305',
-        'ECDHE-RSA-CHACHA20-POLY1305',
-        'ECDHE-ECDSA-AES128-GCM-SHA256',
-        'ECDHE-RSA-AES128-GCM-SHA256',
-      ].join(':'),
-      honorCipherOrder: true,
     };
 
     primaryServer = https.createServer(sslOptions, app);
@@ -639,37 +557,12 @@ try {
         const result = db.prepare(`
           DELETE FROM sessions
           WHERE is_active = 0
-             OR expires_at < datetime('now', 'localtime')
              OR last_used_at < datetime('now', 'localtime', '-30 days')
         `).run();
         if (result.changes > 0) {
           console.log(`[Session Cleanup] Removed ${result.changes} expired sessions`);
         }
       } catch (e) { console.error('[Session Cleanup] Failed:', e); }
-
-      // Purge old login attempts — keep only 30 days for security forensics
-      try {
-        const loginDb = getDb();
-        const loginResult = loginDb.prepare(`
-          DELETE FROM login_attempts
-          WHERE created_at < datetime('now', 'localtime', '-30 days')
-        `).run();
-        if (loginResult.changes > 0) {
-          console.log(`[Login Cleanup] Purged ${loginResult.changes} old login attempts`);
-        }
-      } catch (e) { console.error('[Login Cleanup] Failed:', e); }
-
-      // Purge old activity log entries — keep 90 days for compliance audits
-      try {
-        const auditDb = getDb();
-        const auditResult = auditDb.prepare(`
-          DELETE FROM activity_log
-          WHERE created_at < datetime('now', 'localtime', '-90 days')
-        `).run();
-        if (auditResult.changes > 0) {
-          console.log(`[Audit Cleanup] Archived ${auditResult.changes} old activity log entries`);
-        }
-      } catch (e) { console.error('[Audit Cleanup] Failed:', e); }
     }, 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
@@ -703,20 +596,7 @@ try {
     scheduleOfacSync();
 
     // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
-    // scheduleUtahWarrantSync(); // Replaced by universal warrant scanner below
-
-    // Universal warrant scanner — replaces Utah-only warrant watch
-    let universalScanInterval: ReturnType<typeof setInterval> | null = null;
-    setTimeout(async () => {
-      try { await runUniversalWarrantScan(); } catch (err: any) {
-        console.error('[Universal Warrant Scan] Initial scan error:', err.message);
-      }
-      universalScanInterval = setInterval(async () => {
-        try { await runUniversalWarrantScan(); } catch (err: any) {
-          console.error('[Universal Warrant Scan] Scheduled error:', err.message);
-        }
-      }, 4 * 60 * 60 * 1000); // every 4 hours (reduced from 1h to respect Utah API limits)
-    }, 2 * 60 * 1000); // 2-minute startup delay
+    scheduleUtahWarrantSync();
 
     // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)
     scheduleWarrantScraper();
@@ -742,7 +622,7 @@ try {
         if (unchecked.length > 0) {
           console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
           let matches = 0;
-          const now = localNow();
+          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
           for (const p of unchecked) {
             try {
               const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });

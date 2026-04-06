@@ -21,19 +21,11 @@ export function mapDbCall(row: any): CallForService {
     }
   }
 
-  // assigned_units — prefer pre-resolved array from server, fall back to parsing assigned_unit_ids
+  // assigned_unit_ids -> assigned_units (call signs)
   let assignedUnits: string[] = [];
-  if (row.assigned_units && Array.isArray(row.assigned_units)) {
-    // Server returns resolved unit objects from call_units junction table
-    assignedUnits = row.assigned_units.map((u: any) =>
-      typeof u === 'string' ? u : (u.call_sign || String(u.id || u))
-    );
-  } else if (row.assigned_unit_ids) {
+  if (row.assigned_unit_ids) {
     try {
-      const parsed = typeof row.assigned_unit_ids === 'string'
-        ? JSON.parse(row.assigned_unit_ids)
-        : row.assigned_unit_ids;
-      assignedUnits = Array.isArray(parsed) ? parsed.map(String) : [];
+      assignedUnits = JSON.parse(row.assigned_unit_ids).map(String);
     } catch { /* ignore */ }
   }
 

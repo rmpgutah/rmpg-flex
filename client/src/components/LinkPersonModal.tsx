@@ -65,23 +65,23 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
     if (!isOpen) resetForm();
   }, [isOpen, resetForm]);
 
-  const handleSearch = useCallback(async (query: string) => {
-    if (query.length < 2) return;
+  const handleSearch = useCallback(async () => {
+    if (searchQuery.length < 2) return;
     setIsSearching(true);
     setError('');
     try {
-      const results = await apiFetch<PersonResult[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
+      const results = await apiFetch<PersonResult[]>(`/records/persons/search?q=${encodeURIComponent(searchQuery)}`);
       setSearchResults(results);
     } catch {
       setError('Failed to search persons');
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [searchQuery]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (searchQuery.length >= 2) handleSearch(searchQuery);
+      if (searchQuery.length >= 2) handleSearch();
       else setSearchResults([]);
     }, 300);
     return () => clearTimeout(timeout);
@@ -153,15 +153,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
   const parseFlags = (flags?: string): string[] => {
     if (!flags) return [];
-    try {
-      const parsed = JSON.parse(flags);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map((item: unknown) => {
-        if (typeof item === 'string') return item;
-        if (item && typeof item === 'object' && 'type' in item) return String((item as any).type);
-        return String(item ?? '');
-      }).filter(Boolean);
-    } catch { return []; }
+    try { return JSON.parse(flags); } catch { return []; }
   };
 
   return (
@@ -188,7 +180,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark pl-8"
+            className="input-field pl-8"
             placeholder="Search by name, phone, email..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setSelectedPerson(null); }}
@@ -297,7 +289,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       {/* Role */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
-        <select className="select-dark" value={role} onChange={(e) => setRole(e.target.value as PersonRole)}>
+        <select className="input-field" value={role} onChange={(e) => setRole(e.target.value as PersonRole)}>
           {PERSON_ROLES.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
           ))}
@@ -308,7 +300,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
         <textarea
-          className="textarea-dark"
+          className="input-field"
           rows={2}
           placeholder="Additional details about this person's involvement..."
           value={notes}

@@ -1,27 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { createSecurityNotification, parseDeviceName } from '../utils/deviceFingerprint';
 import { sendNotificationEmail } from '../utils/emailSender';
-import { setPasswordExpiry } from '../utils/passwordExpiry';
-import { rateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
 router.use(authenticateToken);
 router.use(requireRole('admin', 'manager'));
-// Validate all :id parameters as positive integers to prevent malformed input
-router.param('id', (req: Request, res: Response, next: Function) => {
-  const raw = String(req.params.id);
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
-    return;
-  }
-  next();
-});
 
 // GET /api/admin/clients - List all clients
 router.get('/clients', (req: Request, res: Response) => {
@@ -830,7 +817,7 @@ router.get('/account-stats', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════
 // POST /api/admin/users/:id/reset-2fa — Admin resets user's 2FA
 // ═══════════════════════════════════════════════════════
-router.post('/users/:id/reset-2fa', rateLimit({ maxRequests: 5, windowMs: 60000 }), requireRole('admin'), (req: Request, res: Response) => {
+router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const targetId = parseInt(req.params.id as string, 10);
@@ -878,13 +865,6 @@ router.post('/users/:id/reset-2fa', rateLimit({ maxRequests: 5, windowMs: 60000 
       parseDeviceName(reqUserAgent)
     );
 
-    // Email alert for 2FA reset
-    sendNotificationEmail(
-      targetId,
-      'Two-Factor Authentication Reset',
-      `Your RMPG Flex two-factor authentication has been reset by an administrator.\n\nYou will be required to set up 2FA again on your next login.\n\nTime: ${localNow()}\n\nIf you did not request this, contact your administrator immediately.`
-    ).catch((err) => { console.error('[Admin] Background operation failed:', err.message || err); });
-
     res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
   } catch (error: any) {
     console.error('Reset 2FA error:', error?.message || 'Unknown error');
@@ -896,11 +876,10 @@ router.post('/users/:id/reset-2fa', rateLimit({ maxRequests: 5, windowMs: 60000 
 // ═══════════════════════════════════════════════════════
 // POST /api/admin/users/:id/force-password-change
 // ═══════════════════════════════════════════════════════
-router.post('/users/:id/force-password-change', rateLimit({ maxRequests: 5, windowMs: 60000 }), requireRole('admin'), (req: Request, res: Response) => {
+router.post('/users/:id/force-password-change', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string, 10);
-    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
 
     const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
@@ -975,74 +954,100 @@ router.get('/security/overview', requireRole('admin'), (_req: Request, res: Resp
   }
 });
 
-// (Duplicate reset-2fa handler removed — consolidated into the handler above)
-
-
-// (Duplicate force-password-change handler removed — consolidated into the handler above)
-
-
 // ═══════════════════════════════════════════════════════
-// POST /api/admin/users/:id/reset-password — Admin sets a new password for a user
+// POST /api/admin/users/:id/reset-2fa — Admin resets user's 2FA (new tables)
 // ═══════════════════════════════════════════════════════
-router.post('/users/:id/reset-password', requireRole('admin'), (req: Request, res: Response) => {
+router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
   try {
-    const bcryptjs = require('bcryptjs');
     const db = getDb();
     const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
-    const { password } = req.body;
-    if (!password || typeof password !== 'string' || password.trim().length < 8) {
-      res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const ip = String(req.ip || 'unknown');
+    const userAgent = String(req.headers['user-agent'] || 'unknown');
+
+    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
       return;
     }
+
+    // Delete TOTP secret and backup codes from new tables
+    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(userId);
+
+    // Also clear old-style columns for full cleanup
+    db.prepare(`
+      UPDATE users SET totp_enabled = 0, totp_setup_required = 1,
+        totp_secret_enc = NULL, totp_backup_codes = NULL, totp_pending_secret = NULL,
+        updated_at = ? WHERE id = ?
+    `).run(localNow(), userId);
+
+    // Log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, '2fa_reset', 'user', ?, ?, ?)
+    `).run(req.user!.userId, userId, `Admin reset 2FA for ${user.username}`, ip);
+
+    createSecurityNotification(
+      userId,
+      '2fa_reset',
+      'Two-factor authentication reset',
+      `Your 2FA was reset by an administrator. You will need to set it up again on next login.`,
+      ip,
+      parseDeviceName(userAgent)
+    );
+
+    // Email alert for 2FA reset
+    sendNotificationEmail(
+      userId,
+      'Two-Factor Authentication Reset',
+      `Your RMPG Flex two-factor authentication has been reset by an administrator.\n\nYou will be required to set up 2FA again on your next login.\n\nTime: ${localNow()}\n\nIf you did not request this, contact your administrator immediately.`
+    ).catch((err) => { console.error('[Admin] Background operation failed:', err.message || err); });
+
+    res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
+  } catch (error: any) {
+    console.error('Reset 2FA error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════
+// POST /api/admin/users/:id/force-password-change
+// ═══════════════════════════════════════════════════════
+router.post('/users/:id/force-password-change', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = parseInt(req.params.id as string, 10);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
 
-    const user = db.prepare('SELECT id, username, full_name, password_expiry_exempt FROM users WHERE id = ?').get(userId) as any;
-    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
 
-    const hash = bcryptjs.hashSync(password.trim(), 12);
-
-    // Exempt users (e.g., admin/chzamo5000) get their password set without
-    // being forced to change it again on next login. Non-exempt users must
-    // change it to maintain security.
-    const forceChange = user.password_expiry_exempt ? 0 : 1;
-    db.prepare(`
-      UPDATE users SET password_hash = ?, must_change_password = ?, force_password_change = ?,
-        last_password_change = ?, password_changed_at = ?, updated_at = ?
-      WHERE id = ?
-    `).run(hash, forceChange, forceChange, localNow(), localNow(), localNow(), userId);
-
-    // Set proper password expiry (respects exemption — exempt users get NULL expiry)
-    try { setPasswordExpiry(userId); } catch { /* column may not exist */ }
-
-    // Invalidate all existing sessions
-    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
-
-    // Clear any login lockout for this user
-    db.prepare('DELETE FROM login_attempts WHERE username = ? AND success = 0').run(user.username);
+    db.prepare('UPDATE users SET force_password_change = 1, updated_at = ? WHERE id = ?')
+      .run(localNow(), userId);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'admin_password_reset', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin reset password for ${user.username}`, ip);
+      VALUES (?, 'force_password_change', 'user', ?, ?, ?)
+    `).run(req.user!.userId, userId, `Admin forced password change for ${user.username}`, ip);
 
-    const changeMsg = forceChange
-      ? `Password reset for ${user.full_name}. They must change it on next login.`
-      : `Password reset for ${user.full_name} (exempt from mandatory change).`;
+    createSecurityNotification(
+      userId,
+      'password_expiring',
+      'Password change required',
+      'An administrator has required you to change your password on next login.',
+      ip
+    );
 
-    if (forceChange) {
-      createSecurityNotification(
-        userId,
-        'password_expiring',
-        'Password reset by administrator',
-        'An administrator has reset your password. You will be required to set a new password on your next login.',
-        ip
-      );
-    }
-
-    res.json({ message: changeMsg });
+    res.json({ message: `${user.full_name} will be required to change password on next login.` });
   } catch (error: any) {
-    console.error('Admin password reset error:', error?.message || 'Unknown error');
+    console.error('Force password change error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1051,7 +1056,7 @@ router.post('/users/:id/reset-password', requireRole('admin'), (req: Request, re
 // ═══════════════════════════════════════════════════════
 // POST /api/admin/users/:id/revoke-sessions — Revoke all sessions for a user
 // ═══════════════════════════════════════════════════════
-router.post('/users/:id/revoke-sessions', rateLimit({ maxRequests: 5, windowMs: 60000 }), requireRole('admin'), (req: Request, res: Response) => {
+router.post('/users/:id/revoke-sessions', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string, 10);
@@ -1089,7 +1094,7 @@ router.post('/users/:id/revoke-sessions', rateLimit({ maxRequests: 5, windowMs: 
 // ═══════════════════════════════════════════════════════
 // PUT /api/admin/users/:id/role — Change a user's role
 // ═══════════════════════════════════════════════════════
-router.put('/users/:id/role', rateLimit({ maxRequests: 5, windowMs: 60000 }), requireRole('admin'), (req: Request, res: Response) => {
+router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string, 10);
@@ -1097,7 +1102,7 @@ router.put('/users/:id/role', rateLimit({ maxRequests: 5, windowMs: 60000 }), re
     const { role } = req.body;
     const ip = String(req.ip || 'unknown');
 
-    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
+    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (!role || !validRoles.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -1118,10 +1123,6 @@ router.put('/users/:id/role', rateLimit({ maxRequests: 5, windowMs: 60000 }), re
     const oldRole = user.role;
     db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?')
       .run(role, localNow(), userId);
-
-    // Invalidate all sessions — forces re-login so the new role takes effect in fresh JWTs
-    // Without this, the user's existing JWTs still carry the old role until they expire
-    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

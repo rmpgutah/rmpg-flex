@@ -398,7 +398,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
             {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
             {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
             {renderInfoRow('Property Type', selectedProperty.property_type)}
-            {selectedProperty.latitude != null && selectedProperty.longitude != null && (
+            {selectedProperty.latitude && selectedProperty.longitude && (
               renderInfoRow('Coordinates', `${selectedProperty.latitude.toFixed(5)}, ${selectedProperty.longitude.toFixed(5)}`, Globe)
             )}
           </div>

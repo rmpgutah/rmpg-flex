@@ -10,8 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { localNow, dateToLocalYMD } from '../utils/timeUtils';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { localNow } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticate);
@@ -39,10 +38,9 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
     ).get() as any)?.c || 0;
 
     // Contracts expiring in next 90 days
-    const today = localNow().slice(0, 10);
-    const futureDate = new Date(today + 'T12:00:00');
+    const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 90);
-    const future90 = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+    const future90 = futureDate.toISOString().slice(0, 10);
     const expiringContracts = (db.prepare(
       "SELECT COUNT(*) as c FROM clients WHERE status = 'active' AND contract_end IS NOT NULL AND contract_end <= ? AND contract_end >= date('now')"
     ).get(future90) as any)?.c || 0;
@@ -112,11 +110,9 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     const params: any[] = [];
 
     if (status) {
-      const statuses = (status as string).split(',').filter(Boolean);
-      if (statuses.length > 0) {
-        sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
-        params.push(...statuses);
-      }
+      const statuses = (status as string).split(',');
+      sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
+      params.push(...statuses);
     }
     if (client_id) { sql += ' AND t.client_id = ?'; params.push(client_id); }
     if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }
@@ -158,7 +154,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
   }
 });
 
-router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -200,7 +196,7 @@ router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contr
   }
 });
 
-router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/tasks/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -217,7 +213,7 @@ router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // ── Client Activity Log ──────────────────────────────────
-router.get('/activity/:clientId', validateNumericParams('clientId'), requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { clientId } = req.params;
@@ -284,8 +280,8 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     const params: any[] = [];
 
     if (search) {
-      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? ESCAPE '\\' OR p.phone LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')";
-      const q = `%${escapeLike(String(search))}%`;
+      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)";
+      const q = `%${search}%`;
       params.push(q, q, q);
     }
     if (relationship) { sql += ' AND cp.relationship = ?'; params.push(relationship); }
@@ -306,7 +302,7 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
-    const future = dateToLocalYMD(futureDate);
+    const future = futureDate.toISOString().slice(0, 10);
 
     const rows = db.prepare(`
       SELECT id, name, contact_name, contact_email, contact_phone,

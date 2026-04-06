@@ -54,36 +54,31 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
   }
 
   const SUMMARY_CARDS = [
-    { label: 'Currently Clocked In', value: stats.clockedInCount, icon: LogIn, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500', glow: 'rgba(34,197,94,0.12)' },
-    { label: 'Total Hours', value: stats.totalHours, icon: Clock, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500', glow: 'rgba(148,163,184,0.10)' },
-    { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-[#1a1400]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500', glow: 'rgba(245,158,11,0.12)' },
-    { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600', glow: 'rgba(148,163,184,0.08)' },
-    { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-[#0a1020]', border: 'border-brand-700/30', topBorder: 'border-t-brand-500', glow: 'rgba(26,90,158,0.15)' },
+    { label: 'Currently Clocked In', value: stats.clockedInCount, icon: LogIn, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Total Hours', value: stats.totalHours, icon: Clock, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
+    { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-[#1a1400]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
+    { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-[#0a1020]', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
   ];
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
-        <div className="flex items-center">
-          <Clock className="w-4 h-4 section-icon" />
-          <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider ml-2">Time & Attendance</h2>
-        </div>
+    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <Clock className="w-4 h-4 text-brand-400" />
+        <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Time & Attendance</h2>
       </div>
 
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {SUMMARY_CARDS.map((card) => (
           <div
             key={card.label}
-            className={`stat-pod summary-card-shimmer cascade-item panel-beveled p-2.5 text-center border ${card.border} border-t-2 ${card.topBorder} ${card.bgClass}`}
-            style={{ '--pod-glow': card.glow } as React.CSSProperties}
+            className={`panel-beveled p-2.5 text-center border ${card.border} border-t-2 ${card.topBorder} ${card.bgClass}`}
           >
-            <card.icon className={`stat-icon w-3.5 h-3.5 mx-auto ${card.color} mb-1.5`} />
-            <div className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
-            <div className="text-[7px] text-rmpg-500 uppercase tracking-wide mt-0.5">{card.label}</div>
+            <card.icon className={`w-3.5 h-3.5 mx-auto ${card.color} mb-1`} />
+            <div className={`text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
+            <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
           </div>
         ))}
       </div>
@@ -92,7 +87,6 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       {activeEntries.length > 0 && (
         <div className="panel-beveled p-3 border border-green-700/30 border-l-2 border-l-green-500 bg-[#0a1a0a]">
           <h3 className="text-[9px] text-green-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
-            <span className="clock-active-ring w-2 h-2 rounded-full bg-green-400" />
             <Users className="w-3 h-3" />
             Currently Active ({activeEntries.length})
           </h3>
@@ -102,7 +96,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                 key={te.id}
                 className="panel-beveled p-2 border border-green-800/30 flex items-center gap-2"
               >
-                <span className="clock-active-ring w-2 h-2 rounded-full bg-green-400 led-breathing shrink-0" />
+                <span className="led-dot led-green" />
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] text-rmpg-200 font-medium truncate">{te.officer_name}</div>
                   <div className="text-[9px] text-green-400 font-mono">
@@ -122,7 +116,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
 
       {/* Time Entries Table */}
       <div className="panel-beveled overflow-x-auto bg-surface-sunken">
-        <table className="personnel-table table-dark w-full">
+        <table className="table-dark w-full">
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="text-left">Officer</th>
@@ -137,23 +131,17 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
           <tbody>
             {timeEntries.length === 0 ? (
               <tr>
-                <td colSpan={(onEditTimeEntry || onDeleteTimeEntry) ? 7 : 6} className="text-center py-10">
-                  <div className="empty-state-container flex flex-col items-center gap-2">
-                    <div className="empty-state-icon w-12 h-12 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
-                      <Clock className="w-5 h-5 text-rmpg-600" />
-                    </div>
-                    <div className="text-[10px] text-rmpg-400">No time entries to display</div>
-                    <div className="text-[9px] text-rmpg-600">Clock-in data will appear here once officers begin their shifts</div>
-                  </div>
+                <td colSpan={(onEditTimeEntry || onDeleteTimeEntry) ? 7 : 6} className="text-center py-8 text-rmpg-500 text-[10px]">
+                  No time entries to display.
                 </td>
               </tr>
             ) : (
               timeEntries.map((te) => (
-                <tr key={te.id} className="group">
+                <tr key={te.id}>
                   <td>
                     <div className="flex items-center gap-1.5">
-                      {te.status === 'clocked_in' && <span className="led-dot led-green led-breathing" />}
-                      {te.status === 'on_break' && <span className="led-dot led-amber led-breathing" />}
+                      {te.status === 'clocked_in' && <span className="led-dot led-green" />}
+                      {te.status === 'on_break' && <span className="led-dot led-amber" />}
                       {te.status === 'clocked_out' && <span className="led-dot led-off" />}
                       {te.status === 'edited' && <span className="led-dot led-blue" />}
                       <span className="text-xs text-rmpg-200">{te.officer_name}</span>
@@ -179,24 +167,24 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                   </td>
                   <td>
                     {te.status === 'clocked_in' && (
-                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-green-900/50 text-green-400 border border-green-700/50">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 led-breathing" />
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-green-900/50 text-green-400 border border-green-700/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                         Active
                       </span>
                     )}
                     {te.status === 'on_break' && (
-                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 led-breathing" />
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                         Break
                       </span>
                     )}
                     {te.status === 'clocked_out' && (
-                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-rmpg-700 text-rmpg-400 border border-rmpg-600">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-rmpg-700 text-rmpg-400 border border-rmpg-600">
                         Clocked Out
                       </span>
                     )}
                     {te.status === 'edited' && (
-                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">
                         Edited
                       </span>
                     )}
@@ -206,14 +194,14 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                   </td>
                   <td className="text-right">
                     <span className="text-xs font-mono font-bold text-rmpg-200">
-                      {te.total_hours != null ? Number(te.total_hours).toFixed(1) : (
+                      {te.total_hours != null ? te.total_hours.toFixed(1) : (
                         (te.status === 'clocked_in' || te.status === 'on_break') ? getElapsedHours(te.clock_in) : '-'
                       )}
                     </span>
                   </td>
                   {(onEditTimeEntry || onDeleteTimeEntry) && (
                     <td>
-                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-0.5">
                         {onEditTimeEntry && (
                           <button
                             onClick={() => onEditTimeEntry(te)}
@@ -254,7 +242,6 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
           confirmVariant="danger"
         />
       )}
-      </div>
     </div>
   );
 }

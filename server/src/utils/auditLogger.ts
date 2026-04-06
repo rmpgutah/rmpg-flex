@@ -11,10 +11,8 @@
 // ============================================================
 
 import { Request } from 'express';
-import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
-import config from '../config';
 
 export type AuditAction =
   // Auth
@@ -22,7 +20,6 @@ export type AuditAction =
   | 'user_logout'
   | 'password_changed'
   | 'login_failed'
-  | 'session_anomaly'
   // Dispatch
   | 'call_created'
   | 'call_updated'
@@ -48,30 +45,6 @@ export type AuditAction =
   | 'evidence_created'
   | 'evidence_updated'
   | 'evidence_deleted'
-  | 'person_archived'
-  | 'person_unarchived'
-  | 'vehicle_archived'
-  | 'vehicle_unarchived'
-  | 'evidence_archived'
-  | 'evidence_unarchived'
-  | 'property_created'
-  | 'property_updated'
-  | 'property_deleted'
-  | 'property_archived'
-  | 'property_unarchived'
-  | 'custody_entry'
-  | 'evidence_check_in'
-  | 'evidence_check_out'
-  | 'evidence_transfer'
-  | 'evidence_lab_submit'
-  | 'evidence_release'
-  | 'evidence_dispose'
-  | 'criminal_history_created'
-  | 'criminal_history_updated'
-  | 'criminal_history_deleted'
-  | 'client_person_linked'
-  | 'client_person_updated'
-  | 'client_person_unlinked'
   | 'record_linked'
   | 'record_unlinked'
   // Warrants & Citations
@@ -113,7 +86,6 @@ export type AuditAction =
   | 'user_created'
   | 'user_updated'
   | 'user_deactivated'
-  | 'user_terminated'
   | 'config_updated'
   | 'client_created'
   | 'client_updated'
@@ -176,8 +148,6 @@ export type AuditAction =
   | 'dashcam_deleted'
   | 'dashcam_linked'
   | 'dashcam_unlinked'
-  | 'dashcam_burn_started'
-  | 'dashcam_thumbnail_uploaded'
   // Email
   | 'SEND_EMAIL'
   | 'REPLY_EMAIL'
@@ -193,31 +163,11 @@ export type AuditAction =
   | 'crm_task_updated'
   | 'crm_task_deleted'
   | 'crm_activity_logged'
-  // Offline Sync
-  | 'offline_sync_pull'
-  | 'offline_sync_push'
-  | 'offline_secret_accessed'
-  | 'offline_secret_generated'
-  | 'offline_secrets_bulk_generated'
-  | 'offline_secrets_bulk_accessed'
-  // User Preferences
-  | 'preferences_updated'
-  | 'preferences_reset'
-  // Microbilt / OFAC
-  | 'microbilt_credentials_updated'
-  | 'microbilt_credentials_cleared'
-  | 'microbilt_products_updated'
-  | 'ofac_search'
   // Generic CRUD (used by newer routes)
   | 'CREATE'
   | 'UPDATE'
   | 'DELETE'
-  | 'SEARCH'
-  | 'BLOCK'
-  | 'EXPORT'
-  | 'ADMIN_PASSWORD_RESET'
-  | 'MOVE_EMAIL'
-  | 'CANCEL_EMAIL';
+  | 'SEARCH';
 
 export type AuditEntityType =
   | 'user'
@@ -273,66 +223,7 @@ export type AuditEntityType =
   | 'crm_proposals'
   | 'crm_proposal_templates'
   | 'lead_scrape_sources'
-  | 'forensic_case'
-  | 'offline_sync'
-  | 'offline_secret'
-  | 'user_preferences'
-  | 'ofac_screening'
-  | 'property'
-  | 'record_link'
-  | 'criminal_history'
-  | 'court_event'
-  | 'field_interview'
-  | 'trespass_order'
-  | 'code_violation'
-  | 'vehicle_tow'
-  | 'attachment'
-  | 'company_documents'
-  | 'users'
-  | 'scheduled_email';
-
-// ─── Audit Log Integrity ─────────────────────────────────
-// Each log entry includes an HMAC hash of its contents, chained to the previous
-// entry's hash. This creates a tamper-evident chain — modifying any entry
-// invalidates all subsequent hashes, making tampering detectable.
-let lastLogHash = '';
-
-function computeLogHash(
-  userId: number | null,
-  action: string,
-  entityType: string,
-  entityId: string,
-  details: string,
-  ip: string,
-  timestamp: string,
-): string {
-  const data = `${lastLogHash}|${userId}|${action}|${entityType}|${entityId}|${details}|${ip}|${timestamp}`;
-  const hash = crypto.createHmac('sha256', config.jwt.secret)
-    .update(data).digest('hex').slice(0, 32);
-  lastLogHash = hash;
-  return hash;
-}
-
-// Sensitive field patterns that must never appear in audit log details
-const SENSITIVE_PATTERNS = [
-  /password[_\s]*(?:hash)?["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /secret["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /token["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /totp[_\s]*(?:secret|key)["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /api[_\s]*key["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /Bearer\s+[A-Za-z0-9._-]+/g,
-  /\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, // JWT tokens (eyJ... pattern)
-];
-
-function maskSensitiveData(text: string): string {
-  if (!text || text.length === 0) return text;
-  let masked = text.length > 2000 ? text.substring(0, 2000) : text;
-  for (const pattern of SENSITIVE_PATTERNS) {
-    pattern.lastIndex = 0; // Reset global regex state
-    masked = masked.replace(pattern, '[REDACTED]');
-  }
-  return masked;
-}
+  | 'forensic_case';
 
 /**
  * Log an action to the activity_log table.
@@ -354,22 +245,11 @@ export function auditLog(
     const db = getDb();
     const userId = req.user?.userId ?? null;
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const requestId = req.headers['x-request-id'] || '';
-
-    // Truncate details, strip control characters, and mask sensitive data
-    const safeDetails = maskSensitiveData(
-      details.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').substring(0, 1000)
-    );
-    // Append request ID for correlation if available
-    const detailsWithId = requestId ? `${safeDetails} [req:${requestId}]` : safeDetails;
-
-    const now = localNow();
-    const logHash = computeLogHash(userId, action, entityType, String(entityId), detailsWithId, ip, now);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at, log_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, action, entityType, String(entityId), detailsWithId, ip, now, logHash);
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, action, entityType, String(entityId), details, ip, localNow());
   } catch (err) {
     // Never let audit logging break the actual operation
     console.error('[AUDIT] Failed to log:', action, entityType, entityId, err);
@@ -387,12 +267,10 @@ export function auditLogSystem(
 ): void {
   try {
     const db = getDb();
-    const now = localNow();
-    const logHash = computeLogHash(null, action, entityType, String(entityId), details, 'system', now);
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at, log_hash)
-      VALUES (NULL, ?, ?, ?, ?, 'system', ?, ?)
-    `).run(action, entityType, String(entityId), details, now, logHash);
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (NULL, ?, ?, ?, ?, 'system', ?)
+    `).run(action, entityType, String(entityId), details, localNow());
   } catch (err) {
     console.error('[AUDIT] Failed to log system action:', action, entityType, entityId, err);
   }
@@ -418,17 +296,13 @@ export function auditLogBatch(
     const now = localNow();
 
     const stmt = db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at, log_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     const batchInsert = db.transaction(() => {
       for (const entry of entries) {
-        const safeDetails = maskSensitiveData(
-          entry.details.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').substring(0, 1000)
-        );
-        const logHash = computeLogHash(userId, entry.action, entry.entityType, String(entry.entityId), safeDetails, ip, now);
-        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId), safeDetails, ip, now, logHash);
+        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId), entry.details, ip, now);
       }
     });
 
@@ -436,29 +310,4 @@ export function auditLogBatch(
   } catch (err) {
     console.error('[AUDIT] Failed to batch-log:', err);
   }
-}
-
-// ─── Security Event Logging (SIEM-ready) ────────────────
-// Structured security events logged to stdout in JSON format.
-// Can be ingested by Splunk, ELK, CloudWatch, or any SIEM that reads structured logs.
-const SECURITY_EVENT_ACTIONS = new Set([
-  'login_failed', 'user_login', 'user_logout', 'password_changed',
-  'session_anomaly', 'BLOCK', 'user_deactivated', 'user_terminated',
-  'config_updated', 'user_created', 'panic_activated',
-]);
-
-export function securityEvent(
-  event: string,
-  severity: 'info' | 'warning' | 'critical',
-  data: Record<string, unknown>,
-): void {
-  const entry = {
-    '@timestamp': new Date().toISOString(),
-    event_type: 'security',
-    event,
-    severity,
-    ...data,
-  };
-  // Structured JSON line — SIEM-compatible
-  console.log(`[SECURITY] ${JSON.stringify(entry)}`);
 }

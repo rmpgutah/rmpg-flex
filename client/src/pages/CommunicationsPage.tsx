@@ -632,9 +632,8 @@ export default function CommunicationsPage() {
   const currentUserId = String(user?.id || '');
 
   const getInitials = (name: string) => {
-    if (!name) return '??';
-    const parts = name.split(' ').filter(Boolean);
-    return parts.length > 1 ? `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase() : name.slice(0, 2).toUpperCase();
+    const parts = name.split(' ');
+    return parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase() : name.slice(0, 2).toUpperCase();
   };
 
   // ============================================================
@@ -642,7 +641,7 @@ export default function CommunicationsPage() {
   // ============================================================
 
   return (
-    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
+    <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
@@ -1077,7 +1076,7 @@ export default function CommunicationsPage() {
                   <p className="text-sm text-rmpg-200 mb-3 leading-relaxed">{bolo.description}</p>
                   {bolo.photo_url && (
                     <div className="mb-3">
-                      <img src={`/api/uploads/${bolo.photo_url}`} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(`/api/uploads/${bolo.photo_url}`, '_blank', 'noopener,noreferrer')} />
+                      <img src={`/api/uploads/${bolo.photo_url}`} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(`/api/uploads/${bolo.photo_url}`, '_blank')} />
                     </div>
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">

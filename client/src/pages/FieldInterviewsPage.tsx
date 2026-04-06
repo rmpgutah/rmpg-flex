@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
-  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, Download,
+  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye,
 } from 'lucide-react';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -18,8 +17,6 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
-import { exportToCsv } from '../utils/csvExport';
-import WarrantBadge from '../components/WarrantBadge';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -75,7 +72,7 @@ export default function FieldInterviewsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
-  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
 
   // Data state
@@ -103,13 +100,9 @@ export default function FieldInterviewsPage() {
   const [personResults, setPersonResults] = useState<any[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const personSearchGenRef = useRef(0);
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<FieldInterview | null>(null);
-
-  // URL search params (auto-open new form from MDT)
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Fetch ──
   const fetchFis = useCallback(async (options?: { silent?: boolean }) => {
@@ -123,14 +116,11 @@ export default function FieldInterviewsPage() {
         archived: showArchived ? 'true' : 'false',
       });
       const res = await apiFetch<{ data: FieldInterview[]; pagination: any }>(`/field-interviews?${params}`);
-      const newFis = res.data || [];
-      setFis(newFis);
+      setFis(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-      // Keep selected item in sync with refreshed data
-      setSelectedFi(prev => prev ? newFis.find((fi: FieldInterview) => fi.id === prev.id) || null : null);
     } catch (err: any) {
-      setError(err?.message || 'Operation failed');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -144,44 +134,13 @@ export default function FieldInterviewsPage() {
     if (personSearch.length < 2) { setPersonResults([]); return; }
     if (personSearchTimer.current) clearTimeout(personSearchTimer.current);
     personSearchTimer.current = setTimeout(async () => {
-      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&per_page=8`);
-        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
-      } catch { if (gen === personSearchGenRef.current) setPersonResults([]); }
+      } catch { setPersonResults([]); }
     }, 300);
     return () => { if (personSearchTimer.current) clearTimeout(personSearchTimer.current); };
   }, [personSearch]);
-
-  // ---------- Auto-open new form from URL params (MDT link) ----------
-  useEffect(() => {
-    const isNew = searchParams.get('new');
-    if (isNew !== 'true') return;
-    // Clear params immediately so it doesn't re-trigger
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      const lat = next.get('lat');
-      const lng = next.get('lng');
-      next.delete('new');
-      next.delete('lat');
-      next.delete('lng');
-      return next;
-    }, { replace: true });
-    // Build prefilled form data
-    const lat = searchParams.get('lat');
-    const lng = searchParams.get('lng');
-    const prefilled = { ...EMPTY_FORM };
-    if (lat && lng) {
-      prefilled.location = `${lat}, ${lng}`;
-    }
-    setEditingFi(null);
-    setFormData(prefilled);
-    setSelectedPerson(null);
-    setPersonSearch('');
-    clearAllErrors();
-    setFormOpen(true);
-  }, [searchParams]);
 
   // ── Handlers ──
   const handleOpenNew = () => {
@@ -250,7 +209,7 @@ export default function FieldInterviewsPage() {
       setEditingFi(null);
       await fetchFis();
     } catch (err: any) {
-      setError(err?.message || 'Operation failed');
+      setError(err.message);
     } finally {
       setSubmitting(false);
     }
@@ -262,7 +221,7 @@ export default function FieldInterviewsPage() {
       addToast('Field interview archived', 'success');
       await fetchFis();
       if (selectedFi?.id === fi.id) setSelectedFi(null);
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err: any) { setError(err.message); }
   };
 
   const handleUnarchive = async (fi: FieldInterview) => {
@@ -270,7 +229,7 @@ export default function FieldInterviewsPage() {
       await apiFetch(`/field-interviews/${fi.id}/unarchive`, { method: 'POST' });
       addToast('Field interview restored', 'success');
       await fetchFis();
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err: any) { setError(err.message); }
   };
 
   const update = (field: string, value: any) => setFormData(prev => ({ ...prev, [field]: value }));
@@ -295,42 +254,12 @@ export default function FieldInterviewsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full app-grid-bg">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <PanelTitleBar icon={ClipboardList} title="FIELD INTERVIEWS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/field-interviews?per_page=9999" exportFilename="field_interviews_export.csv" />
-        <button
-          onClick={() => exportToCsv('field_interviews_filtered.csv', fis, [
-            { key: 'fi_number', label: 'FI #' },
-            { key: 'status', label: 'Status' },
-            { key: 'subject_last_name', label: 'Last Name' },
-            { key: 'subject_first_name', label: 'First Name' },
-            { key: 'subject_dob', label: 'DOB' },
-            { key: 'subject_gender', label: 'Gender' },
-            { key: 'subject_race', label: 'Race' },
-            { key: 'subject_height', label: 'Height' },
-            { key: 'subject_weight', label: 'Weight' },
-            { key: 'subject_hair', label: 'Hair' },
-            { key: 'subject_eye', label: 'Eyes' },
-            { key: 'subject_clothing', label: 'Clothing' },
-            { key: 'location', label: 'Location' },
-            { key: 'contact_reason', label: 'Contact Reason' },
-            { key: 'contact_type', label: 'Contact Type' },
-            { key: 'action_taken', label: 'Action Taken' },
-            { key: 'vehicle_plate', label: 'Vehicle Plate' },
-            { key: 'vehicle_description', label: 'Vehicle Desc.' },
-            { key: 'officer_name', label: 'Officer' },
-            { key: 'narrative', label: 'Narrative' },
-            { key: 'created_at', label: 'Created' },
-          ])}
-          className="toolbar-btn"
-          title="Export filtered view to CSV"
-          disabled={fis.length === 0}
-        >
-          <Download style={{ width: 11, height: 11 }} /> CSV
-        </button>
         <button onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New FI Card
         </button>
@@ -393,16 +322,15 @@ export default function FieldInterviewsPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{fi.fi_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${REASON_COLORS[fi.contact_reason] || REASON_COLORS.other}`}>
-                      {(fi.contact_reason || '').replace(/_/g, ' ').toUpperCase()}
+                      {fi.contact_reason.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[fi.status]}`}>
-                      {(fi.status || '').toUpperCase()}
+                      {fi.status.toUpperCase()}
                     </span>
                   </div>
                 </div>
-                <div className="text-xs text-white font-medium flex items-center gap-1.5">
+                <div className="text-xs text-white font-medium">
                   {fi.subject_last_name ? `${fi.subject_last_name}, ${fi.subject_first_name || ''}` : 'Unknown Subject'}
-                  {fi.person_flags && <WarrantBadge flags={fi.person_flags} size="sm" />}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
@@ -453,23 +381,9 @@ export default function FieldInterviewsPage() {
               </div>
             </div>
 
-            {/* Warrant warning banner */}
-            {selectedFi.person_flags && (() => {
-              try {
-                const flags = typeof selectedFi.person_flags === 'string' ? JSON.parse(selectedFi.person_flags || '[]') : (selectedFi.person_flags || []);
-                const hasWarrant = flags.some((f: any) => f?.type === 'ACTIVE_WARRANT' || f === 'ACTIVE_WARRANT');
-                if (!hasWarrant) return null;
-                return (
-                  <div className="bg-red-900/50 border border-red-500 rounded-sm px-3 py-2 text-red-200 text-sm font-bold mb-3">
-                    ⚠️ SUBJECT HAS ACTIVE WARRANTS — Exercise caution
-                  </div>
-                );
-              } catch { return null; }
-            })()}
-
             {/* Detail grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium flex items-center gap-1.5">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}{selectedFi.person_flags && <WarrantBadge flags={selectedFi.person_flags} size="sm" />}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedFi.subject_dob ? formatDate(selectedFi.subject_dob) : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Gender / Race</span><div className="text-white">{[selectedFi.subject_gender, selectedFi.subject_race].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Build</span><div className="text-white">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
@@ -577,22 +491,22 @@ export default function FieldInterviewsPage() {
                 </div>
               </div>
 
-              {/* Section / Zone / Beat — cascading: zone scoped to section, beat scoped to zone */}
+              {/* Section / Zone / Beat */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Section</label>
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+                    value={formData.section_id || ''} onChange={e => update('section_id', e.target.value)}>
                     <option value="">—</option>
-                    {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
+                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Zone</label>
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
+                    value={formData.zone_id || ''} onChange={e => update('zone_id', e.target.value)}>
                     <option value="">—</option>
-                    {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
                   </select>
                 </div>
                 <div>
@@ -600,7 +514,7 @@ export default function FieldInterviewsPage() {
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
-                    {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
+                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </div>
               </div>

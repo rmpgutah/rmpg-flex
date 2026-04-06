@@ -12,7 +12,6 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { identifyBeat } from './geofence';
 import { reverseGeocodeDetailed } from './geocode';
-import { localNow } from './timeUtils';
 
 // Use createRequire for jsPDF — tsx ESM interop can resolve the named
 // export incorrectly under long-running processes (not-a-constructor bug).
@@ -95,14 +94,14 @@ interface UnitTrail {
 function formatDateTime(isoStr: string): string {
   try {
     const d = new Date(isoStr);
-    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', timeZone: 'America/Denver' }) + ' '
-      + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/Denver' });
+    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' '
+      + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch { return isoStr; }
 }
 
 function formatDate(isoStr: string): string {
   try {
-    return new Date(isoStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'America/Denver' });
+    return new Date(isoStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return isoStr; }
 }
 
@@ -192,7 +191,6 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
         distFromPrev = haversineM(prevAccepted.latitude, prevAccepted.longitude, row.latitude, row.longitude);
         const prevTime = new Date(prevAccepted.recorded_at).getTime();
         const curTime = new Date(row.recorded_at).getTime();
-        if (isNaN(prevTime) || isNaN(curTime)) continue;
         timeDelta = (curTime - prevTime) / 1000;
 
         if (timeDelta > 0) {
@@ -282,7 +280,7 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
           response_distance_miles: Math.round((responseDist / 1609.34) * 100) / 100,
           breadcrumb_count: callPoints.length,
         });
-      } catch (e: any) { console.warn('[DailyReport] Section skipped:', e?.message); }
+      } catch { /* skip */ }
     }
 
     // Zone coverage
@@ -358,7 +356,7 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
             lastRoadName = result.road_name;
             lastIntersection = result.nearest_intersection;
           }
-        } catch (e: any) { console.warn('[DailyReport] Section skipped:', e?.message); }
+        } catch { /* skip on error */ }
         lastGeoLat = pt.lat;
         lastGeoLng = pt.lng;
         geocodeCount++;
@@ -396,7 +394,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 18;
   const contentW = pageW - margin * 2;
-  const reportDate = new Date().toLocaleString('en-US', { timeZone: 'America/Denver' });
+  const reportDate = new Date().toLocaleString('en-US');
   const totalPoints = trails.reduce((s, t) => s + t.stats.total_points, 0);
 
   let yPos = margin;
@@ -412,7 +410,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       brandText = b.report_header_text || brandText;
       brandSub = b.report_subheader_text || brandSub;
     }
-  } catch (e: any) { console.warn('[DailyReport] Using defaults:', e?.message); }
+  } catch { /* use defaults */ }
 
   // ── Section header (light bg + dark text) ──
   function drawSectionHeader(title: string) {
@@ -464,7 +462,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
           doc.setFillColor(255, 255, 255);
           doc.roundedRect(margin - 1, 1.5, 13, 11, 1, 1, 'F');
           doc.addImage(logoPngB64, 'PNG', margin - 0.5, 2, 12, 10);
-        } catch (e: any) { console.warn('[DailyReport] Ignored error:', e?.message); }
+        } catch { /* ignore */ }
       }
 
       const textX = logoPngB64 ? margin + 14 : margin;
@@ -517,7 +515,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       const logoData = fs.readFileSync(logoPath);
       logoPngB64 = 'data:image/png;base64,' + logoData.toString('base64');
     }
-  } catch (e: any) { console.warn('[DailyReport] Logo unavailable:', e?.message); }
+  } catch { /* no logo available */ }
 
   // White background with subtle border at top
   doc.setFillColor(255, 255, 255);
@@ -533,7 +531,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       const logoSize = 30;
       const logoX = (pageW - logoSize) / 2;
       doc.addImage(logoPngB64, 'PNG', logoX, 6, logoSize, logoSize);
-    } catch (e: any) { console.warn('[DailyReport] Ignored error:', e?.message); }
+    } catch { /* ignore */ }
   }
 
   // Bold centered title
@@ -783,10 +781,10 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
  */
 export async function generateAndSaveDailyReport(dateStr?: string): Promise<string | null> {
   const date = dateStr || (() => {
-    // Default to yesterday in local timezone (since this runs at midnight)
+    // Default to yesterday (since this runs at midnight)
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return d.toISOString().slice(0, 10);
   })();
 
   console.log(`[Daily Report] Generating patrol tracking report for ${date}...`);
@@ -816,7 +814,7 @@ export async function generateAndSaveDailyReport(dateStr?: string): Promise<stri
     const metaPath = path.join(REPORTS_DIR, `${filename}.meta.json`);
     fs.writeFileSync(metaPath, JSON.stringify({
       date,
-      generated_at: localNow(),
+      generated_at: new Date().toISOString(),
       units: trails.length,
       total_breadcrumbs: totalPoints,
       file_size_bytes: pdfBuffer.length,
@@ -849,7 +847,7 @@ export function listDailyReports(): { filename: string; date: string; size: numb
         date = meta.date || '';
         generated_at = meta.generated_at || generated_at;
       }
-    } catch (e: any) { console.warn('[DailyReport] Using defaults:', e?.message); }
+    } catch { /* use defaults */ }
 
     // Extract date from filename if not in meta
     if (!date) {
@@ -895,7 +893,7 @@ export function startDailyReportScheduler(): void {
 
     const msUntilMidnight = nextMidnight.getTime() - now.getTime();
     const hoursUntil = Math.round(msUntilMidnight / 3600000 * 10) / 10;
-    console.log(`[Daily Report] Next generation scheduled in ${hoursUntil}h (${nextMidnight.toLocaleString('en-US', { timeZone: 'America/Denver' })})`);
+    console.log(`[Daily Report] Next generation scheduled in ${hoursUntil}h (${nextMidnight.toLocaleString()})`);
 
     midnightTimer = setTimeout(async () => {
       try {

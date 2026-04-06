@@ -9,40 +9,26 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
 
-// Validate :id params as positive integers
-router.param('id', (req: Request, res: Response, next) => {
-  const raw = String(req.params.id);
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
-    return;
-  }
-  next();
-});
-
 // ─── Helper: Generate next invoice number ─────────────────
 function generateInvoiceNumber(): string {
   const db = getDb();
-  const year = parseInt(localToday().slice(0, 4), 10);
+  const year = new Date().getFullYear();
   const prefix = `INV-${year}-`;
-  return db.transaction(() => {
-    const last = db.prepare(
-      "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
-    ).get(`${escapeLike(prefix)}%`) as any;
-    let seq = 1;
-    if (last) {
-      const parts = last.invoice_number.split('-');
-      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-      seq = isNaN(parsed) ? 1 : parsed + 1;
-    }
-    return `${prefix}${String(seq).padStart(4, '0')}`;
-  })();
+  const last = db.prepare(
+    "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1"
+  ).get(`${prefix}%`) as any;
+  let seq = 1;
+  if (last) {
+    const parts = last.invoice_number.split('-');
+    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+    seq = isNaN(parsed) ? 1 : parsed + 1;
+  }
+  return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
 // ─── Helper: Parse payment terms to days ──────────────────
@@ -54,14 +40,13 @@ function parsePaymentTermsDays(terms?: string): number {
 
 // ─── Helper: Add days to a date string ────────────────────
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  if (isNaN(d.getTime())) return dateStr;
+  const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return d.toISOString().split('T')[0];
 }
 
 // ─── Helper: Recalculate invoice totals ───────────────────
-function recalculateInvoiceTotals(invoiceId: number | string): void {
+function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
   const db = getDb();
   const now = localNow();
 
@@ -92,7 +77,7 @@ function recalculateInvoiceTotals(invoiceId: number | string): void {
     const payResult = db.prepare(
       'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
     ).get(invoiceId) as any;
-    const amountPaid = payResult?.paid ?? 0;
+    const amountPaid = payResult.paid;
     const balanceDue = Math.max(0, total - amountPaid);
 
     db.prepare(`
@@ -114,7 +99,7 @@ function recalculateInvoiceTotals(invoiceId: number | string): void {
       db.prepare(`
         UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
         WHERE id = ?
-      `).run(agg?.total_invoiced ?? 0, agg?.total_paid ?? 0, agg?.outstanding ?? 0, now, inv.client_id);
+      `).run(agg.total_invoiced, agg.total_paid, agg.outstanding, now, inv.client_id);
     }
   });
 
@@ -122,7 +107,7 @@ function recalculateInvoiceTotals(invoiceId: number | string): void {
 }
 
 // ─── GET /api/invoices/stats ──────────────────────────────
-router.get('/stats', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/stats', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { client_id } = req.query;
@@ -170,10 +155,10 @@ router.get('/stats', requireRole('admin', 'manager', 'contract_manager'), (req: 
 
 // ─── GET /api/invoices ────────────────────────────────────
 // List invoices with pagination and filters
-router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.min(10000, Math.max(1, parseInt(req.query.page as string, 10) || 1));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
 
@@ -185,11 +170,8 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
       params.push(req.query.status);
     }
     if (req.query.client_id) {
-      const clientId = parseInt(req.query.client_id as string, 10);
-      if (!isNaN(clientId)) {
-        conditions.push('i.client_id = ?');
-        params.push(clientId);
-      }
+      conditions.push('i.client_id = ?');
+      params.push(req.query.client_id);
     }
     if (req.query.date_from) {
       conditions.push('i.issue_date >= ?');
@@ -200,8 +182,8 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
       params.push(req.query.date_to);
     }
     if (req.query.q) {
-      const q = `%${escapeLike(String(req.query.q))}%`;
-      conditions.push("(i.invoice_number LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\' OR i.notes LIKE ? ESCAPE '\\')");
+      const q = `%${req.query.q}%`;
+      conditions.push('(i.invoice_number LIKE ? OR c.name LIKE ? OR i.notes LIKE ?)');
       params.push(q, q, q);
     }
 
@@ -242,7 +224,7 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
 
 // ─── GET /api/invoices/:id ────────────────────────────────
 // Full invoice detail with line items and payments
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -281,15 +263,12 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
     const { client_id, period_start, period_end, issue_date, notes, internal_notes } = req.body;
 
     if (!client_id || !period_start || !period_end) {
       return res.status(400).json({ error: 'client_id, period_start, and period_end are required' });
-    }
-    if (isNaN(new Date(period_start).getTime()) || isNaN(new Date(period_end).getTime())) {
-      return res.status(400).json({ error: 'period_start and period_end must be valid dates' });
     }
 
     // Get client for billing snapshot
@@ -333,7 +312,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
 
 // ─── POST /api/invoices/:id/generate ──────────────────────
 // Auto-generate line items from billing period
-router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -388,7 +367,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
 
         const rate = client.rate_per_hour || 0;
         for (const h of hours) {
-          const hrs = Number.isFinite(Number(h.total_hours)) ? Number(h.total_hours) : 0;
+          const hrs = h.total_hours || 0;
           const amt = Math.round(hrs * rate * 100) / 100;
           const desc = `Service hours — ${h.officer_name || 'Officer'} at ${h.property_name || 'Property'} (${String(h.clock_in).substring(0, 10)}) — ${hrs.toFixed(2)} hrs`;
           insertItem.run(invoice.id, 'service_hours', desc, hrs, rate, amt, 'time_entry', h.id, sortOrder++, now);
@@ -553,10 +532,10 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
 
 // ─── PUT /api/invoices/:id ────────────────────────────────
 // Update invoice fields
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -591,7 +570,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 
     // Recalculate if amounts changed
     if (req.body.tax_amount !== undefined || req.body.late_fee_amount !== undefined) {
-      recalculateInvoiceTotals(String(req.params.id));
+      recalculateInvoiceTotals(req.params.id);
     }
 
     db.prepare(
@@ -611,10 +590,10 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 
 // ─── PUT /api/invoices/:id/status ─────────────────────────
 // Status transition with validation
-router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
     const { status } = req.body;
 
@@ -656,7 +635,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
     db.prepare(`UPDATE invoices SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
     // Recalculate client aggregates
-    recalculateInvoiceTotals(String(req.params.id));
+    recalculateInvoiceTotals(req.params.id);
 
     db.prepare(
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -672,7 +651,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
 
 // ─── POST /api/invoices/:id/line-items ────────────────────
 // Add a line item
-router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -698,7 +677,7 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(req.params.id, line_type, description, qty, price, amount, linked_entity_type || null, linked_entity_id || null, maxSort.m + 1, now);
 
-    recalculateInvoiceTotals(String(req.params.id));
+    recalculateInvoiceTotals(req.params.id);
 
     const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: item || { id: result.lastInsertRowid } });
@@ -710,16 +689,14 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
 
 // ─── PUT /api/invoices/:id/line-items/:itemId ─────────────
 // Update a line item
-router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const itemId = parseInt(String(req.params.itemId), 10);
-    if (isNaN(itemId)) { res.status(400).json({ error: 'Invalid item ID' }); return; }
 
     const item = db.prepare(
       'SELECT * FROM invoice_line_items WHERE id = ? AND invoice_id = ?'
-    ).get(itemId, req.params.id) as any;
+    ).get(req.params.itemId, req.params.id) as any;
     if (!item) return res.status(404).json({ error: 'Line item not found' });
 
     const { description, quantity, unit_price, sort_order } = req.body;
@@ -738,7 +715,7 @@ router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'man
       req.params.itemId
     );
 
-    recalculateInvoiceTotals(String(req.params.id));
+    recalculateInvoiceTotals(req.params.id);
 
     const updated = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(req.params.itemId);
     res.json({ data: updated });
@@ -749,7 +726,7 @@ router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'man
 });
 
 // ─── DELETE /api/invoices/:id/line-items/:itemId ──────────
-router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare(
@@ -758,13 +735,7 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
     if (!item) return res.status(404).json({ error: 'Line item not found' });
 
     db.prepare('DELETE FROM invoice_line_items WHERE id = ?').run(req.params.itemId);
-    recalculateInvoiceTotals(String(req.params.id));
-
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(req.user!.userId, 'line_item_deleted', 'invoice', req.params.id,
-      `Deleted line item #${req.params.itemId} from invoice #${req.params.id}`, req.ip || 'unknown', localNow());
-
+    recalculateInvoiceTotals(req.params.id);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete line item error:', error?.message || 'Unknown error');
@@ -774,17 +745,17 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
 
 // ─── POST /api/invoices/:id/payments ──────────────────────
 // Record a payment
-router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;
-    if (amount == null || amount === '' || !payment_date) {
+    if (!amount || !payment_date) {
       return res.status(400).json({ error: 'amount and payment_date are required' });
     }
 
@@ -794,7 +765,7 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
     `).run(req.params.id, amount, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
 
     // Recalculate totals
-    recalculateInvoiceTotals(String(req.params.id));
+    recalculateInvoiceTotals(req.params.id);
 
     // Auto-transition status
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -824,10 +795,10 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
 
 // ─── DELETE /api/invoices/:id/payments/:paymentId ─────────
 // Reverse a payment
-router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
 
     const payment = db.prepare(
@@ -835,25 +806,22 @@ router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 
     ).get(req.params.paymentId, req.params.id) as any;
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
-    // Atomically delete payment, recalculate totals, and revert status
-    db.transaction(() => {
-      db.prepare('DELETE FROM payments WHERE id = ?').run(req.params.paymentId);
-      recalculateInvoiceTotals(String(req.params.id));
+    db.prepare('DELETE FROM payments WHERE id = ?').run(req.params.paymentId);
+    recalculateInvoiceTotals(req.params.id);
 
-      // May need to revert status from paid/partial back to sent
-      const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-      if (updated) {
-        if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
-          db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-        } else if (updated.balance_due > 0 && updated.status === 'paid') {
-          db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-        }
+    // May need to revert status from paid/partial back to sent
+    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
+    if (updated) {
+      if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
+        db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+      } else if (updated.balance_due > 0 && updated.status === 'paid') {
+        db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
       }
+    }
 
-      db.prepare(
-        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated?.invoice_number || req.params.id}`, req.ip || 'unknown', now);
-    })();
+    db.prepare(
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, req.ip || 'unknown', now);
 
     res.json({ success: true });
   } catch (error: any) {
@@ -864,7 +832,7 @@ router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 
 
 // ─── GET /api/invoices/:id/pdf-data ───────────────────────
 // Return all data needed for client-side PDF generation
-router.get('/:id/pdf-data', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id/pdf-data', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -903,7 +871,7 @@ router.get('/:id/pdf-data', validateParamId, requireRole('admin', 'manager', 'co
 // ─── GET /api/invoices/:id/person-chain ─────────────────
 // Get Person ↔ Client ↔ Incident traceability data for this invoice
 // Shows all persons linked to the client, and their involvement in invoiced incidents
-router.get('/:id/person-chain', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id/person-chain', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;

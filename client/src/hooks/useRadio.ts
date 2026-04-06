@@ -364,8 +364,7 @@ export function useRadio() {
           }
           const reader = new FileReader();
           reader.onload = () => {
-            const rdParts = (reader.result as string).split(',');
-            const base64 = rdParts.length > 1 ? rdParts[1] : rdParts[0];
+            const base64 = (reader.result as string).split(',')[1];
             if (chunkCount <= 2) {
               console.log('[Radio TX] Sending chunk #' + chunkCount + ', base64 length:', base64?.length || 0);
             }
@@ -766,7 +765,6 @@ export function useRadio() {
     // on the radio and log it as an EMERGENCY entry in the TX log.
     const panicPlayerRef: { current: StreamPlayer | null } = { current: null };
     let panicDismissTimer: ReturnType<typeof setTimeout> | null = null;
-    let pageDismissTimer: ReturnType<typeof setTimeout> | null = null;
 
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -840,9 +838,8 @@ export function useRadio() {
         },
       }));
 
-      // Auto-dismiss page after 15 seconds (tracked for cleanup)
-      if (pageDismissTimer) clearTimeout(pageDismissTimer);
-      pageDismissTimer = setTimeout(() => {
+      // Auto-dismiss page after 15 seconds
+      setTimeout(() => {
         setState(prev => prev.incomingPage?.timestamp === data.timestamp ? { ...prev, incomingPage: null } : prev);
       }, 15000);
     });
@@ -888,7 +885,6 @@ export function useRadio() {
       unsubOverride();
       panicPlayerRef.current?.destroy();
       if (panicDismissTimer) clearTimeout(panicDismissTimer);
-      if (pageDismissTimer) clearTimeout(pageDismissTimer);
     };
   }, [subscribe, user?.id]);
 

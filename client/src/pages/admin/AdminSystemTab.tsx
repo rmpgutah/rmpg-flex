@@ -1069,7 +1069,7 @@ export default function AdminSystemTab({
 
     const d = dirtyRef.current;
     const token = localStorage.getItem('rmpg_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const sendKeepalive = (url: string, method: string, body: unknown) => {

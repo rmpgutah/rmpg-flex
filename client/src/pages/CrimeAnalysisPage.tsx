@@ -20,7 +20,6 @@ export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState('90');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -30,7 +29,6 @@ export default function CrimeAnalysisPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       let url = '/reports/crime-analysis';
       if (dateRange === 'custom' && startDate && endDate) {
@@ -40,9 +38,7 @@ export default function CrimeAnalysisPage() {
       }
       const res = await apiFetch<{ data: any }>(url);
       if (mountedRef.current) setData(res.data);
-    } catch {
-      if (mountedRef.current) setError('Failed to load crime analysis data');
-    }
+    } catch { /* silent */ }
     finally { if (mountedRef.current) setLoading(false); }
   }, [dateRange, startDate, endDate]);
 
@@ -59,18 +55,6 @@ export default function CrimeAnalysisPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-2" />
-          <div className="text-xs text-red-400">{error}</div>
-          <button onClick={fetchData} className="mt-2 text-xs text-brand-400 hover:text-brand-300">Retry</button>
-        </div>
-      </div>
-    );
-  }
-
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -79,9 +63,9 @@ export default function CrimeAnalysisPage() {
     );
   }
 
-  const maxOffenseCount = Math.max(1, ...(data.topOffenses || []).map((o: any) => o.count ?? 0));
-  const maxHotspotCount = Math.max(1, ...(data.hotspots || []).map((h: any) => h.count ?? 0));
-  const maxTodCount = Math.max(1, ...(data.timeOfDay || []).map((t: any) => t.count ?? 0));
+  const maxOffenseCount = Math.max(...(data.topOffenses || []).map((o: any) => o.count), 1);
+  const maxHotspotCount = Math.max(...(data.hotspots || []).map((h: any) => h.count), 1);
+  const maxTodCount = Math.max(...(data.timeOfDay || []).map((t: any) => t.count), 1);
 
   return (
     <div className="h-full flex flex-col">
@@ -136,8 +120,8 @@ export default function CrimeAnalysisPage() {
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
             { label: 'Total Incidents', value: data.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0, color: 'text-white' },
-            { label: 'Clearance Rate', value: `${data.clearanceRate?.rate ?? 0}%`, color: 'text-green-400' },
-            { label: 'Avg Response', value: `${data.responseMetrics?.[0]?.avg_minutes ?? '—'} min`, color: 'text-amber-400' },
+            { label: 'Clearance Rate', value: `${data.clearanceRate?.rate || 0}%`, color: 'text-green-400' },
+            { label: 'Avg Response', value: `${data.responseMetrics?.[0]?.avg_minutes || '—'} min`, color: 'text-amber-400' },
             { label: 'Repeat Offenders', value: data.repeatOffenders?.length || 0, color: 'text-red-400' },
           ].map(card => (
             <div key={card.label} className="panel-beveled p-3 text-center">
@@ -249,7 +233,7 @@ export default function CrimeAnalysisPage() {
             <div className="p-3 space-y-2">
               {(data.dayOfWeek || []).map((day: any, idx: number) => {
                 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                const maxDow = Math.max(1, ...(data.dayOfWeek || []).map((d: any) => d.count));
+                const maxDow = Math.max(...(data.dayOfWeek || []).map((d: any) => d.count), 1);
                 return (
                   <div key={idx} className="flex items-center gap-2">
                     <span className="text-[10px] text-rmpg-300 w-8">{dayNames[day.day_of_week] || day.day_of_week}</span>
@@ -326,7 +310,7 @@ export default function CrimeAnalysisPage() {
                 <div>
                   <div className="flex items-end gap-1 h-28">
                     {(data.trendData || []).map((month: any, idx: number) => {
-                      const maxTrend = Math.max(1, ...(data.trendData || []).map((m: any) => m.count));
+                      const maxTrend = Math.max(...(data.trendData || []).map((m: any) => m.count), 1);
                       return (
                         <div key={idx} className="flex-1 flex flex-col items-center">
                           <div

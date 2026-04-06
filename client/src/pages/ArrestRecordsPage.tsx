@@ -22,7 +22,6 @@ import EmptyState from '../components/EmptyState';
 import SplitPanel from '../components/SplitPanel';
 import CollapsibleSection from '../components/CollapsibleSection';
 import CriminalHistorySection from '../components/CriminalHistorySection';
-import { localToday } from '../utils/dateUtils';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -185,14 +184,14 @@ function exportCsv(records: ArrestRecord[]) {
   ]);
 
   const csv = [headers, ...rows]
-    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}"`).join(','))
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     .join('\n');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `arrest-records-${localToday()}.csv`;
+  a.download = `arrest-records-${new Date().toISOString().split('T')[0]}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -452,7 +451,7 @@ export default function ArrestRecordsPage() {
   // ── Derived ─────────────────────────────────────────────
 
   const totalPages = Math.ceil(recordsTotal / 30);
-  const maxPopulation = stats?.per_county?.length ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
+  const maxPopulation = stats?.per_county ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
   const isManualRecord = (rec: ArrestRecord) => rec.entry_source === 'manual';
 
   // ── Render: Left Panel (List) ───────────────────────────

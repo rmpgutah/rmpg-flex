@@ -175,7 +175,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { identify: identifyDistrict } = useDistrictIdentify();
-  const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
 
   // Person/vehicle record search for linking
   const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
@@ -184,8 +184,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const personSearchGenRef = useRef(0);
-  const vehicleSearchGenRef = useRef(0);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const vehicleDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -203,13 +201,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
     if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
     if (query.length < 2) { setPersonSearchResults([]); setShowPersonDropdown(false); return; }
     personSearchTimerRef.current = setTimeout(async () => {
-      const gen = ++personSearchGenRef.current;
       try {
         const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
-        if (gen !== personSearchGenRef.current) return;
         setPersonSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
         setShowPersonDropdown(true);
-      } catch { if (gen === personSearchGenRef.current) setPersonSearchResults([]); }
+      } catch { setPersonSearchResults([]); }
     }, 300);
   }, []);
 
@@ -217,13 +213,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
     if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
     if (query.length < 2) { setVehicleSearchResults([]); setShowVehicleDropdown(false); return; }
     vehicleSearchTimerRef.current = setTimeout(async () => {
-      const gen = ++vehicleSearchGenRef.current;
       try {
         const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`);
-        if (gen !== vehicleSearchGenRef.current) return;
         setVehicleSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
         setShowVehicleDropdown(true);
-      } catch { if (gen === vehicleSearchGenRef.current) setVehicleSearchResults([]); }
+      } catch { setVehicleSearchResults([]); }
     }, 300);
   }, []);
 
@@ -768,14 +762,20 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone</label>
               <select className="select-dark" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">— Select —</option>
-                {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                {(formData.section_id
+                  ? Array.from(new Set(districts.filter(d => d.section_id === formData.section_id).map(d => d.zone_id))).sort()
+                  : zones
+                ).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Beat</label>
               <select className="select-dark" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
                 <option value="">— Select —</option>
-                {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
+                {(formData.zone_id
+                  ? Array.from(new Set(districts.filter(d => d.zone_id === formData.zone_id).map(d => d.beat_id))).sort()
+                  : beats
+                ).map(b => <option key={b} value={b}>{beatLabels.get(b) || b}</option>)}
               </select>
             </div>
           </div>}

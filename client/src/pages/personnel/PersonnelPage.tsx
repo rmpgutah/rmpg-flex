@@ -878,21 +878,21 @@ export default function PersonnelPage() {
   // ----------------------------------------------------------
 
   const rosterList = (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Search + New Officer */}
-      <div className="p-3 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+      <div className="p-3 border-b border-rmpg-600">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark search-glow pl-9 w-full text-[11px]"
+              className="input-dark pl-9 w-full text-[11px]"
               placeholder="Search by name, badge, rank, department..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors">
+              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -904,80 +904,66 @@ export default function PersonnelPage() {
             <Plus className="w-3 h-3" /> New Officer
           </button>
         </div>
-        {/* Mini stat line */}
-        <div className="flex items-center gap-3 mt-2 text-[9px] text-rmpg-500 font-mono">
-          <span className="flex items-center gap-1"><span className="led-dot led-green" />{onDutyCount} on duty</span>
-          <span className="personnel-divider" />
-          <span>{filteredOfficers.length} of {officers.length} shown</span>
-          {searchQuery && <span className="text-brand-400">— filtered</span>}
-        </div>
       </div>
 
       {/* Officer List */}
-      <div className="flex-1 overflow-auto min-h-0">
-        {filteredOfficers.map((officer) => {
+      <div className="flex-1 overflow-auto py-1">
+        {filteredOfficers.map(officer => {
           const officerCreds = credentials.filter(c => c.officer_id === officer.id);
           const hasExpired = officerCreds.some(c => c.status === 'expired');
           const hasExpiring = officerCreds.some(c => c.status === 'expiring_soon');
           const isSelected = selectedOfficer?.id === officer.id;
-          const isOnDuty = officer.status === 'on_duty';
           return (
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
-              className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-rmpg-700/50 border-l-[3px] transition-all duration-150 ${
+              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all border-l-2 ${
                 isSelected
-                  ? 'bg-brand-900/20 border-l-brand-500'
-                  : isOnDuty
-                    ? 'bg-surface-base border-l-green-600/60 hover:bg-brand-900/10'
-                    : 'bg-surface-base border-l-transparent hover:bg-brand-900/10'
+                  ? 'bg-brand-900/15 border-l-brand-500'
+                  : 'bg-surface-base hover:brightness-110 border-l-transparent'
               }`}
             >
-              <OfficerAvatar officer={officer} size="md" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-rmpg-100 truncate">
-                    {officer.last_name}, {officer.first_name}
-                  </span>
-                  <span className={`badge-pill ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
-                    {toDisplayLabel(officer.role)}
-                  </span>
-                  {hasExpired && <span className="led-dot led-red" title="Expired credential" />}
-                  {!hasExpired && hasExpiring && <span className="led-dot led-amber" title="Expiring credential" />}
+              <div className="flex items-center gap-3">
+                <OfficerAvatar officer={officer} size="md" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-rmpg-100 truncate">
+                      {officer.last_name}, {officer.first_name}
+                    </span>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
+                      {toDisplayLabel(officer.role)}
+                    </span>
+                    {hasExpired && <span className="led-dot led-red" />}
+                    {!hasExpired && hasExpiring && <span className="led-dot led-amber" />}
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
+                    {officer.rank && <span>{officer.rank}</span>}
+                    {officer.department && <span>{officer.department}</span>}
+                    {officer.badge_number && <span className="font-mono text-[10px]">#{officer.badge_number}</span>}
+                  </div>
+                  <CredentialProgressBar credentials={officerCreds} />
                 </div>
-                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-rmpg-400">
-                  {officer.rank && <span className="text-rmpg-300">{officer.rank}</span>}
-                  {officer.rank && officer.department && <span className="text-rmpg-600">&middot;</span>}
-                  {officer.department && <span>{officer.department}</span>}
-                  {officer.badge_number && (
-                    <span className="font-mono text-rmpg-500 bg-rmpg-800/50 px-1 py-0.5 text-[9px]">#{officer.badge_number}</span>
+                <div className="text-right flex-shrink-0">
+                  <div className="flex items-center gap-1.5 justify-end">
+                    <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
+                    <span className={`text-[10px] font-bold uppercase ${
+                      officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-500'
+                    }`}>
+                      {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
+                    </span>
+                  </div>
+                  {officer.shift_preference && (
+                    <div className="text-[9px] text-rmpg-500 mt-0.5">{officer.shift_preference}</div>
                   )}
                 </div>
-                <CredentialProgressBar credentials={officerCreds} />
-              </div>
-              <div className="text-right flex-shrink-0">
-                <div className="flex items-center gap-1.5 justify-end">
-                  <span className={isOnDuty ? 'led-dot led-green led-breathing' : 'led-dot led-off'} />
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                    isOnDuty ? 'text-green-400' : 'text-rmpg-500'
-                  }`}>
-                    {isOnDuty ? 'ON DUTY' : 'OFF'}
-                  </span>
-                </div>
-                {officer.shift_preference && (
-                  <div className="text-[9px] text-rmpg-500 mt-0.5 font-mono">{officer.shift_preference}</div>
-                )}
               </div>
             </div>
           );
         })}
         {filteredOfficers.length === 0 && (
-          <div className="empty-state-container mx-2 mt-4">
-            <div className="empty-state-icon">
-              <Users className="w-6 h-6" />
-            </div>
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
-            <p className="text-[10px] text-rmpg-600 mt-1">{searchQuery ? 'Try adjusting your search terms' : 'Create a new officer to get started'}</p>
+          <div className="panel-inset p-8 text-center mx-2 mt-2">
+            <Users className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
+            <p className="text-sm text-rmpg-400">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
           </div>
         )}
       </div>
@@ -1064,35 +1050,42 @@ export default function PersonnelPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* Stats Bar */}
-      <div className={`${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-2 border-b border-rmpg-600 flex items-center gap-2.5`} style={{ background: '#0d1520' }}>
-        {[
-          { label: 'On Duty', value: onDutyCount, borderColor: 'border-l-green-500', icon: null, led: 'led-green led-breathing', color: 'text-green-400' },
-          { label: 'Off Duty', value: offDutyCount, borderColor: 'border-l-rmpg-600', icon: null, led: 'led-off', color: 'text-rmpg-300' },
-          { label: 'Clocked In', value: clockedInCount, borderColor: 'border-l-brand-500', icon: Clock, led: null, color: 'text-brand-400' },
-          { label: 'Period Hours', value: totalHoursThisPeriod.toFixed(1), borderColor: 'border-l-blue-500', icon: BarChart3, led: null, color: 'text-blue-400' },
-          { label: 'Total Personnel', value: officers.length, borderColor: 'border-l-rmpg-500', icon: Users, led: null, color: 'text-rmpg-200' },
-        ].map((s) => (
-          <div key={s.label} className={`panel-beveled bg-surface-sunken p-2 border-l-[3px] ${s.borderColor} min-w-[90px]`}>
-            <div className="flex items-center gap-1.5 mb-0.5">
-              {s.led ? <span className={`led-dot ${s.led}`} /> : s.icon ? <s.icon className="w-3 h-3 text-rmpg-500" /> : null}
-              <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">{s.label}</span>
-            </div>
-            <div className={`text-lg font-bold font-mono ${s.color}`}>{s.value}</div>
-          </div>
-        ))}
+      {/* Stats Bar — compact stat cards */}
+      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`}>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
+          <span className="led-dot led-green" />
+          <span className="text-rmpg-400 uppercase tracking-wider">Active</span>
+          <span className="text-green-400 font-bold text-base ml-0.5">{onDutyCount}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
+          <span className="led-dot led-off" />
+          <span className="text-rmpg-400 uppercase tracking-wider">Off Duty</span>
+          <span className="text-rmpg-200 font-bold text-base ml-0.5">{offDutyCount}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
+          <Clock className="w-3 h-3 text-brand-400" />
+          <span className="text-rmpg-400 uppercase tracking-wider">Clocked In</span>
+          <span className="text-brand-400 font-bold text-base ml-0.5">{clockedInCount}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
+          <BarChart3 className="w-3 h-3 text-rmpg-300" />
+          <span className="text-rmpg-400 uppercase tracking-wider">Hours</span>
+          <span className="text-white font-bold text-base ml-0.5">{totalHoursThisPeriod.toFixed(1)}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
+          <Users className="w-3 h-3 text-rmpg-300" />
+          <span className="text-rmpg-400 uppercase tracking-wider">Total</span>
+          <span className="text-white font-bold text-base ml-0.5">{officers.length}</span>
+        </div>
         {expiringCreds > 0 && (
-          <div className="panel-beveled bg-surface-sunken p-2 border-l-[3px] border-l-amber-500 ml-auto">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <AlertTriangle className="w-3 h-3 text-amber-400" />
-              <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Alerts</span>
-            </div>
-            <div className="text-lg font-bold font-mono text-amber-400">{expiringCreds}</div>
+          <div className="flex items-center gap-1.5 ml-auto px-2.5 py-1 panel-beveled border-l-2 border-l-amber-500 text-[10px]">
+            <span className="led-dot led-amber" />
+            <span className="text-amber-400 font-bold font-mono">{expiringCreds} credential alert{expiringCreds !== 1 ? 's' : ''}</span>
           </div>
         )}
       </div>
 
-      {/* Tab Navigation — enhanced with count badges */}
+      {/* Tab Navigation */}
       <div className="tab-bar overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
@@ -1112,8 +1105,8 @@ export default function PersonnelPage() {
               <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-brand-400' : ''}`} />
               {tab.label}
               {count !== undefined && (
-                <span className={`tab-count-badge ml-0.5 ${
-                  alert ? 'bg-amber-900/40 text-amber-400 border border-amber-700/40' : 'bg-rmpg-800 text-rmpg-500'
+                <span className={`text-[8px] px-1 py-0.5 ml-0.5 font-mono ${
+                  alert ? 'bg-amber-900/30 text-amber-400 border border-amber-700/30' : 'text-rmpg-500'
                 }`}>
                   {count}
                 </span>
@@ -1124,8 +1117,8 @@ export default function PersonnelPage() {
         })}
       </div>
 
-      {/* Content — each tab owns its own scroll container */}
-      <div className="flex-1 overflow-hidden flex min-h-0">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto flex">
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center flex-1">

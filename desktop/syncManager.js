@@ -14,7 +14,7 @@ let pullTimers = {};
 let isSyncing = false;
 let syncStartedAt = null;  // timestamp when sync started — for stale lock detection
 let lastPushAt = null;
-const SYNC_LOCK_TIMEOUT = 15_000; // 15s — if sync is still locked after this, force-release
+const SYNC_LOCK_TIMEOUT = 60_000; // 60s — if sync is still locked after this, force-release
 
 // ─── Pull Sync Intervals (ms) ───────────────────────────────
 const PULL_INTERVALS = {
@@ -27,9 +27,6 @@ const PULL_INTERVALS = {
   time_entries:       120_000,  // 2 min
   persons:            600_000,  // 10 min
   vehicles_records:   600_000,  // 10 min
-  citations:          120_000,  // 2 min
-  field_interviews:   300_000,  // 5 min
-  evidence_property:  300_000,  // 5 min
 };
 
 const REFERENCE_TABLES = ['users', 'clients', 'properties'];
@@ -88,11 +85,6 @@ function releaseSyncLock() {
   syncStartedAt = null;
 }
 
-// Yield to the event loop so keyboard/mouse events aren't starved
-function yieldToUI() {
-  return new Promise(resolve => setImmediate(resolve));
-}
-
 async function pullAll() {
   if (!acquireSyncLock()) return;
 
@@ -104,8 +96,6 @@ async function pullAll() {
       await pullTable(table);
       i++;
       emit('offline:sync-progress', { phase: 'pull', table, current: i, total: Object.keys(PULL_INTERVALS).length });
-      // Yield between tables so the UI stays responsive
-      await yieldToUI();
     }
 
     emit('offline:sync-complete', { pulled: i, pushed: 0, errors: 0 });
@@ -281,19 +271,13 @@ async function pushGpsBreadcrumbs() {
 
     if (response && response.pushed > 0) {
       const ids = unsyncedPoints.map(p => p.id);
-      // Mark as synced in small batches to avoid blocking the event loop
-      const BATCH = 50;
-      for (let i = 0; i < ids.length; i += BATCH) {
-        const chunk = ids.slice(i, i + BATCH);
-        const tx = db.transaction(() => {
-          for (const id of chunk) {
-            db.prepare('UPDATE gps_breadcrumbs SET is_synced = 1 WHERE id = ?').run(id);
-          }
-        });
-        tx();
-        // Yield to UI between batches
-        await new Promise(resolve => setImmediate(resolve));
-      }
+      // Mark as synced in batches
+      const tx = db.transaction(() => {
+        for (const id of ids) {
+          db.prepare('UPDATE gps_breadcrumbs SET is_synced = 1 WHERE id = ?').run(id);
+        }
+      });
+      tx();
       console.log(`[SYNC] Pushed ${unsyncedPoints.length} GPS breadcrumbs`);
     }
   } catch (err) {

@@ -91,8 +91,8 @@ function parseArcGisResponse(data: any): PropertyRecord[] {
       zoning: attrs.ZONING || attrs.ZONE || attrs.zoning || '',
       sqft: attrs.SQFT || attrs.BUILDING_SQFT || attrs.sqft || '',
       yearBuilt: attrs.YEAR_BUILT || attrs.year_built || attrs.YR_BUILT || '',
-      latitude: geom.y ?? geom.lat ?? undefined,
-      longitude: geom.x ?? geom.lng ?? geom.lon ?? undefined,
+      latitude: geom.y || geom.lat || undefined,
+      longitude: geom.x || geom.lng || geom.lon || undefined,
     });
   }
 
@@ -216,7 +216,7 @@ function isCommercialProperty(type: string): boolean {
 function normalizeDate(dateStr: string): string {
   if (!dateStr) return '';
   if (dateStr.includes('T')) return dateStr.slice(0, 10);
-  if (/^\d{13}$/.test(dateStr)) { const ms = new Date(parseInt(dateStr, 10)); return `${ms.getFullYear()}-${String(ms.getMonth() + 1).padStart(2, '0')}-${String(ms.getDate()).padStart(2, '0')}`; }
+  if (/^\d{13}$/.test(dateStr)) return new Date(parseInt(dateStr, 10)).toISOString().slice(0, 10);
   const m = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
   if (m) {
     const year = m[3].length === 2 ? `20${m[3]}` : m[3];
@@ -239,8 +239,7 @@ export async function scrapeCommercialRe(): Promise<ScrapeResult> {
   let lastError: string | undefined;
 
   const config = getSourceConfig(SOURCE_KEY);
-  let extraConfig: any = {};
-  try { if (config?.extra_config) extraConfig = JSON.parse(config.extra_config); } catch { /* malformed config — use defaults */ }
+  const extraConfig = config?.extra_config ? JSON.parse(config.extra_config) : {};
   const minValue = extraConfig.min_value || 100_000;
 
   let fetched = false;
@@ -314,8 +313,8 @@ export async function scrapeCommercialRe(): Promise<ScrapeResult> {
           try {
             const data = JSON.parse(body);
             records = Array.isArray(data) ? parseSocrataResponse(data) : parseArcGisResponse(data);
-          } catch (e: any) {
-            console.warn('[CommercialRE] Parse failure:', e?.message);
+          } catch {
+            // Parse failure
           }
         } else {
           records = parseHtmlResults(body);

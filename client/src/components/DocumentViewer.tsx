@@ -5,7 +5,6 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import {
   X,
   Download,
@@ -34,9 +33,6 @@ export default function DocumentViewer({
   title = 'Document Viewer',
   type = 'auto',
 }: DocumentViewerProps) {
-  // Validate src protocol to prevent javascript:/data: XSS
-  const safeSrc = /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
-
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -66,12 +62,12 @@ export default function DocumentViewer({
 
   const handleDownload = useCallback(() => {
     const a = document.createElement('a');
-    a.href = safeSrc;
+    a.href = src;
     a.download = title || 'document';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [safeSrc, title]);
+  }, [src, title]);
 
   const handlePrint = useCallback(() => {
     if (detectedType === 'pdf') {
@@ -85,14 +81,14 @@ export default function DocumentViewer({
         const body = printWindow.document.body;
         body.style.cssText = 'margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000;';
         const img = printWindow.document.createElement('img');
-        img.src = safeSrc;
+        img.src = src;
         img.style.cssText = 'max-width:100%;max-height:100vh;';
         body.appendChild(img);
         printWindow.document.close();
         img.onload = () => printWindow.print();
       }
     }
-  }, [safeSrc, detectedType]);
+  }, [src, detectedType]);
 
   // Close on Escape
   useEffect(() => {
@@ -106,8 +102,8 @@ export default function DocumentViewer({
 
   if (!isOpen) return null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-black/90" role="dialog" aria-modal="true">
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90" role="dialog" aria-modal="true">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -228,7 +224,7 @@ export default function DocumentViewer({
         {detectedType === 'pdf' ? (
           <iframe
             id="doc-viewer-iframe"
-            src={safeSrc}
+            src={src}
             className="border border-rmpg-600 bg-white"
             style={{
               width: isFullscreen ? '100%' : `${Math.min(zoom, 100)}%`,
@@ -240,7 +236,7 @@ export default function DocumentViewer({
           />
         ) : (
           <img
-            src={safeSrc}
+            src={src}
             alt={title}
             className="max-w-full max-h-full object-contain select-none"
             style={{
@@ -262,7 +258,6 @@ export default function DocumentViewer({
             : `Zoom: ${zoom}%`}
         </span>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

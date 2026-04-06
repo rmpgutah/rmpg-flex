@@ -13,7 +13,6 @@ import {
   testConnection, getApiKey, encryptApiKey,
   ServeManagerError,
 } from '../utils/serveManagerClient';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -91,21 +90,14 @@ function initSmTables(): void {
   `);
 }
 
-// Lazy init — tables are created on first request, after initDatabase() has run
-let smTablesReady = false;
-function ensureSmTables(): void {
-  if (smTablesReady) return;
-  initSmTables();
-  smTablesReady = true;
-}
-router.use((_req, _res, next) => { try { ensureSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); } next(); });
+try { initSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); }
 
 // ============================================================
 // Helpers
 // ============================================================
 
 function ensureTables(): void {
-  try { ensureSmTables(); } catch { /* ignore */ }
+  try { initSmTables(); } catch { /* ignore */ }
 }
 
 function requireApiKey(_req: Request, res: Response): boolean {
@@ -249,7 +241,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (req: Req
     const result = await testConnection();
     res.json(result);
   } catch (error: any) {
-    res.status(502).json({ success: false, error: 'Connection test failed' });
+    res.json({ success: false, error: 'Connection test failed' });
   }
 });
 
@@ -341,9 +333,9 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
     }
 
     // Cache mode
-    const parsedPage = parseInt(String(page), 10);
+    const parsedPage = parseInt(String(page, 10), 10);
     const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
-    const parsedPerPage = parseInt(String(per_page), 10);
+    const parsedPerPage = parseInt(String(per_page, 10), 10);
     const limit = Math.min(100, Math.max(1, isNaN(parsedPerPage) ? 25 : parsedPerPage));
     const offset = (pageNum - 1) * limit;
 
@@ -351,8 +343,8 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
     const pArr: any[] = [];
 
     if (q) {
-      const like = `%${escapeLike(String(q))}%`;
-      conditions.push("(sm_job_number LIKE ? ESCAPE '\\' OR recipient_name LIKE ? ESCAPE '\\' OR client_company_name LIKE ? ESCAPE '\\' OR client_job_number LIKE ? ESCAPE '\\')");
+      const like = `%${q}%`;
+      conditions.push('(sm_job_number LIKE ? OR recipient_name LIKE ? OR client_company_name LIKE ? OR client_job_number LIKE ?)');
       pArr.push(like, like, like, like);
     }
     if (status) { conditions.push('job_status = ?'); pArr.push(status); }
@@ -377,7 +369,7 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
 });
 
 // GET /jobs/:id
-router.get('/jobs/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.get('/jobs/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     ensureTables();
@@ -430,7 +422,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 });
 
 // PUT /jobs/:id — update on SM
-router.put('/jobs/:id', validateParamId, requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
@@ -452,7 +444,7 @@ router.put('/jobs/:id', validateParamId, requireRole('admin', 'manager'), async 
 });
 
 // POST /jobs/:id/cancel
-router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
@@ -487,7 +479,7 @@ router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager')
 // ============================================================
 
 // GET /jobs/:jobId/attempts
-router.get('/jobs/:jobId/attempts', validateNumericParams('jobId'), requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.get('/jobs/:jobId/attempts', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     ensureTables();
@@ -541,7 +533,7 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
 // ============================================================
 
 // POST /jobs/:jobId/notes
-router.post('/jobs/:jobId/notes', validateNumericParams('jobId'), requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.post('/jobs/:jobId/notes', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const result = await smPost(`/jobs/${req.params.jobId}/notes`, { type: 'note', ...req.body });
@@ -712,7 +704,7 @@ router.get('/sync/log', requireRole('admin', 'manager'), (req: Request, res: Res
 // ============================================================
 
 // PUT /jobs/:id/link — link SM job to local warrant/call
-router.put('/jobs/:id/link', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/jobs/:id/link', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     ensureTables();
     const db = getDb();
@@ -781,7 +773,7 @@ router.get('/poller/status', requireRole('admin', 'manager'), (_req: Request, re
   try {
     res.json({
       enabled: getPollerConfig('servemanager_poller_enabled') === 'true',
-      poll_interval: parseInt(getPollerConfig('servemanager_poll_interval') || '300', 10),
+      poll_interval: parseInt(getPollerConfig('servemanager_poll_interval', 10) || '300', 10),
       target_client: getPollerConfig('servemanager_target_client') || 'ICU Investigations, LLC',
       auto_create_calls: getPollerConfig('servemanager_auto_create_calls') !== 'false',
       last_poll_at: getPollerConfig('servemanager_last_poll_at') || null,

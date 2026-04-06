@@ -1,11 +1,7 @@
 import { Router, Request, Response } from 'express';
-import fs from 'fs';
-import path from 'path';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
-import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -50,10 +46,10 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // ─── GET /api/company-documents/:id ─── Get single document ───
-router.get('/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const docId = parseInt(String(req.params.id), 10);
+    const docId = parseInt(String(req.params.id, 10), 10);
     if (isNaN(docId)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const doc = db.prepare(`
       SELECT d.*, u.full_name as creator_name,
@@ -62,15 +58,9 @@ router.get('/:id', validateParamId, (req: Request, res: Response) => {
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN attachments a ON d.file_id = a.file_id
       WHERE d.id = ?
-    `).get(docId) as any;
+    `).get(docId);
 
     if (!doc) {
-      res.status(404).json({ error: 'Document not found' });
-      return;
-    }
-    // Non-admins cannot access unpublished documents
-    const isAdmin = ['admin', 'manager'].includes(req.user?.role || '');
-    if (!isAdmin && doc.published !== 1) {
       res.status(404).json({ error: 'Document not found' });
       return;
     }
@@ -125,8 +115,6 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     `).get(result.lastInsertRowid);
     if (!doc) { res.status(500).json({ error: 'Failed to retrieve created document' }); return; }
 
-    auditLog(req, 'CREATE', 'company_documents', Number(result.lastInsertRowid), `Created document: ${title}`);
-
     res.status(201).json(doc || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create company document error:', error?.message || 'Unknown error');
@@ -135,10 +123,10 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 });
 
 // ─── PUT /api/company-documents/:id ─── Update document (admin/manager) ───
-router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
+    const id = parseInt(String(req.params.id, 10), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const existing = db.prepare('SELECT id FROM company_documents WHERE id = ?').get(id);
     if (!existing) {
@@ -179,8 +167,6 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     values.push(id);
     db.prepare(`UPDATE company_documents SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 
-    auditLog(req, 'UPDATE', 'company_documents', id, `Updated document: ${title || 'untitled'}`);
-
     const doc = db.prepare(`
       SELECT d.*, u.full_name as creator_name,
              a.original_name as file_name, a.file_size, a.mime_type
@@ -198,10 +184,10 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
 });
 
 // ─── DELETE /api/company-documents/:id ─── Delete document (admin/manager) ───
-router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
+    const id = parseInt(String(req.params.id, 10), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const doc = db.prepare('SELECT * FROM company_documents WHERE id = ?').get(id) as any;
 
@@ -214,28 +200,11 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     if (doc.file_id) {
       const att = db.prepare('SELECT file_path FROM attachments WHERE file_id = ?').get(doc.file_id) as any;
       if (att) {
-        // Remove the actual file from disk to prevent orphaned files
-        if (att.file_path) {
-          const uploadsDir = path.resolve(process.cwd(), 'uploads');
-          const filePath = path.resolve(uploadsDir, path.basename(att.file_path));
-          // Resolve symlinks before checking containment — prevents symlink-based traversal
-          let realPath: string;
-          try { realPath = fs.realpathSync(filePath); } catch { realPath = filePath; }
-          const realUploadsDir = fs.existsSync(uploadsDir) ? fs.realpathSync(uploadsDir) : uploadsDir;
-          if (!realPath.startsWith(realUploadsDir + path.sep) && realPath !== realUploadsDir) {
-            console.warn(`[SECURITY] Path traversal blocked in companyDocuments delete: ${att.file_path}`);
-          } else {
-            try { fs.unlinkSync(realPath); } catch { /* file may already be deleted */ }
-          }
-        }
         db.prepare('DELETE FROM attachments WHERE file_id = ?').run(doc.file_id);
       }
     }
 
     db.prepare('DELETE FROM company_documents WHERE id = ?').run(id);
-
-    auditLog(req, 'DELETE', 'company_documents', id, `Deleted document: ${doc.title}`);
-
     res.json({ message: 'Document deleted' });
   } catch (error: any) {
     console.error('Delete company document error:', error?.message || 'Unknown error');

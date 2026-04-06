@@ -57,7 +57,7 @@ export default function TrustedDevicesList() {
     try {
       const res = await fetch(`/api/auth/security/trusted-devices/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setDevices(prev => prev.filter(d => d.id !== id));
     } catch { /* ignore */ }

@@ -2,10 +2,8 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
-import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -25,14 +23,14 @@ router.get('/checkpoints', requireRole('admin', 'manager', 'supervisor', 'office
     `).all();
 
     res.json(checkpoints);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching checkpoints:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch checkpoints' });
   }
 });
 
 // GET /api/patrol/checkpoints/property/:propertyId - Checkpoints for a specific property
-router.get('/checkpoints/property/:propertyId', validateNumericParams('propertyId'), requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/checkpoints/property/:propertyId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const checkpoints = db.prepare(`
@@ -46,7 +44,7 @@ router.get('/checkpoints/property/:propertyId', validateNumericParams('propertyI
     `).all(req.params.propertyId);
 
     res.json(checkpoints);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching property checkpoints:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch property checkpoints' });
   }
@@ -62,101 +60,54 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       return;
     }
 
-    const parsedPropertyId = parseInt(String(property_id), 10);
-    if (isNaN(parsedPropertyId) || parsedPropertyId < 1) {
-      res.status(400).json({ error: 'Invalid property_id' });
-      return;
-    }
-
-    // Validate GPS coordinates if provided
-    if (latitude != null) {
-      const lat = parseFloat(latitude);
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
-        return;
-      }
-    }
-    if (longitude != null) {
-      const lng = parseFloat(longitude);
-      if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
-        return;
-      }
-    }
-
     const db = getDb();
+    const qr_code = crypto.randomUUID();
 
-    // Verify property exists
-    const property = db.prepare('SELECT id FROM properties WHERE id = ?').get(parsedPropertyId);
-    if (!property) {
-      res.status(404).json({ error: 'Property not found' });
-      return;
-    }
-    // Generate unique QR code with collision check
-    let qr_code: string;
-    let attempts = 0;
-    do {
-      qr_code = crypto.randomUUID();
-      const existing = db.prepare('SELECT id FROM patrol_checkpoints WHERE qr_code = ?').get(qr_code);
-      if (!existing) break;
-      attempts++;
-    } while (attempts < 5);
-    if (attempts >= 5) {
-      res.status(500).json({ error: 'Failed to generate unique QR code' });
-      return;
-    }
+    const result = db.prepare(`
+      INSERT INTO patrol_checkpoints (
+        property_id, name, description, qr_code, latitude, longitude,
+        scan_required_interval_minutes, is_active, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      property_id,
+      name,
+      description || null,
+      qr_code,
+      latitude ?? null,
+      longitude ?? null,
+      scan_required_interval_minutes,
+      is_active !== undefined ? (is_active ? 1 : 0) : 1,
+      localNow()
+    );
 
-    const checkpoint = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO patrol_checkpoints (
-          property_id, name, description, qr_code, latitude, longitude,
-          scan_required_interval_minutes, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        property_id,
-        name,
-        description || null,
-        qr_code,
-        latitude ?? null,
-        longitude ?? null,
-        scan_required_interval_minutes,
-        is_active !== undefined ? (is_active ? 1 : 0) : 1,
-        localNow()
-      );
-
-      const cp = db.prepare(`
-        SELECT pc.*, p.name as property_name
-        FROM patrol_checkpoints pc
-        LEFT JOIN properties p ON pc.property_id = p.id
-        WHERE pc.id = ?
-      `).get(result.lastInsertRowid);
-
-      if (cp) {
-        db.prepare(`
-          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-          VALUES (?, 'checkpoint_created', 'patrol_checkpoint', ?, ?, ?, ?)
-        `).run(
-          req.user!.userId,
-          result.lastInsertRowid,
-          `Created checkpoint: ${name}`,
-          req.ip || 'unknown',
-          localNow()
-        );
-      }
-
-      return cp;
-    })();
-
+    const checkpoint = db.prepare(`
+      SELECT pc.*, p.name as property_name
+      FROM patrol_checkpoints pc
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE pc.id = ?
+    `).get(result.lastInsertRowid);
     if (!checkpoint) { res.status(500).json({ error: 'Failed to retrieve created checkpoint' }); return; }
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'checkpoint_created', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      result.lastInsertRowid,
+      `Created checkpoint: ${name}`,
+      req.ip || 'unknown',
+      localNow()
+    );
+
     res.status(201).json(checkpoint);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create checkpoint' });
   }
 });
 
 // PUT /api/patrol/checkpoints/:id - Update checkpoint
-router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { property_id, name, description, latitude, longitude, scan_required_interval_minutes, is_active } = req.body;
@@ -167,22 +118,6 @@ router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 
     if (!existing) {
       res.status(404).json({ error: 'Checkpoint not found' });
       return;
-    }
-
-    // Validate GPS coordinates if provided
-    if (latitude != null) {
-      const lat = parseFloat(latitude);
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
-        return;
-      }
-    }
-    if (longitude != null) {
-      const lng = parseFloat(longitude);
-      if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
-        return;
-      }
     }
 
     // Build dynamic SET clause — only update fields explicitly provided
@@ -211,9 +146,9 @@ router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 
 
     // Activity log
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?, ?)
-    `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown', localNow());
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?)
+    `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT pc.*, p.name as property_name
@@ -223,14 +158,14 @@ router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 
     `).get(id);
 
     res.json(updated);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to update checkpoint' });
   }
 });
 
 // DELETE /api/patrol/checkpoints/:id - Delete checkpoint
-router.delete('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const db = getDb();
@@ -241,34 +176,28 @@ router.delete('/checkpoints/:id', validateParamId, requireRole('admin', 'manager
       return;
     }
 
-    // Cascade: delete associated scans first, then the checkpoint
-    const scanCount = (db.prepare('SELECT COUNT(*) as c FROM patrol_scans WHERE checkpoint_id = ?').get(id) as any)?.c || 0;
+    db.prepare('DELETE FROM patrol_checkpoints WHERE id = ?').run(id);
 
-    db.transaction(() => {
-      db.prepare('DELETE FROM patrol_scans WHERE checkpoint_id = ?').run(id);
-      db.prepare('DELETE FROM patrol_checkpoints WHERE id = ?').run(id);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'checkpoint_deleted', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      id,
+      `Deleted checkpoint: ${existing.name}`,
+      req.ip || 'unknown',
+      localNow()
+    );
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-        VALUES (?, 'checkpoint_deleted', 'patrol_checkpoint', ?, ?, ?, ?)
-      `).run(
-        req.user!.userId,
-        id,
-        `Deleted checkpoint: ${existing.name} (${scanCount} associated scans also removed)`,
-        req.ip || 'unknown',
-        localNow()
-      );
-    })();
-
-    res.json({ message: `Checkpoint deleted successfully${scanCount > 0 ? ` (${scanCount} scan records removed)` : ''}` });
-  } catch (error: any) {
+    res.json({ message: 'Checkpoint deleted successfully' });
+  } catch (error) {
     console.error('Error deleting checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete checkpoint' });
   }
 });
 
 // POST /api/patrol/checkpoints/:id/archive
-router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
@@ -278,9 +207,9 @@ router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'm
     const now = localNow();
     db.prepare('UPDATE patrol_checkpoints SET archived_at = ? WHERE id = ?').run(now, checkpoint.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'checkpoint_archived', 'patrol_checkpoint', ?, ?, ?, ?)`).run(
-      req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'checkpoint_archived', 'patrol_checkpoint', ?, ?, ?)`).run(
+      req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
     res.json(updated);
@@ -291,7 +220,7 @@ router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'm
 });
 
 // POST /api/patrol/checkpoints/:id/unarchive
-router.post('/checkpoints/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/checkpoints/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
@@ -300,10 +229,9 @@ router.post('/checkpoints/:id/unarchive', validateParamId, requireRole('admin', 
 
     db.prepare('UPDATE patrol_checkpoints SET archived_at = NULL WHERE id = ?').run(checkpoint.id);
 
-    const now = localNow();
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'checkpoint_unarchived', 'patrol_checkpoint', ?, ?, ?, ?)`).run(
-      req.user!.userId, checkpoint.id, `Unarchived checkpoint: ${checkpoint.name}`, req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'checkpoint_unarchived', 'patrol_checkpoint', ?, ?, ?)`).run(
+      req.user!.userId, checkpoint.id, `Unarchived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
     res.json(updated);
@@ -321,22 +249,6 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     if (!qr_code) {
       res.status(400).json({ error: 'Missing required field: qr_code' });
       return;
-    }
-
-    // Validate GPS coordinates if provided (officer's scan location)
-    if (latitude != null) {
-      const lat = parseFloat(latitude);
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
-        return;
-      }
-    }
-    if (longitude != null) {
-      const lng = parseFloat(longitude);
-      if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
-        return;
-      }
     }
 
     const db = getDb();
@@ -400,14 +312,14 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     );
 
     res.status(201).json({ ...(scan as any), checkpoint_name: checkpoint.name, status });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error recording scan:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to record scan' });
   }
 });
 
 // GET /api/patrol/scans/export - Export patrol scans as CSV
-router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { checkpointId, officerId, startDate, endDate } = req.query;
 
@@ -442,7 +354,6 @@ router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), expor
       LEFT JOIN users u ON ps.officer_id = u.id
       ${whereClause}
       ORDER BY ps.scanned_at DESC
-      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'patrol_scans_export.csv', [
@@ -506,7 +417,7 @@ router.get('/scans', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
 
     res.json(scans);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching scans:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch scans' });
   }
@@ -578,7 +489,7 @@ router.get('/compliance', requireRole('admin', 'manager', 'supervisor', 'officer
     });
 
     res.json(compliance);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching compliance stats:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch compliance stats' });
   }

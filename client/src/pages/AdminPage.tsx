@@ -57,7 +57,6 @@ import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
-import AdminSkipTracerV2Tab from './admin/AdminSkipTracerV2Tab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
 import AdminEmailTab from './admin/AdminEmailTab';
@@ -225,7 +224,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'skiptracer_v2' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -651,7 +650,6 @@ export default function AdminPage() {
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
         { id: 'skiptracer', label: 'Skip Tracer', icon: Search },
-        { id: 'skiptracer_v2', label: 'Skip Tracer V2', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
@@ -670,7 +668,7 @@ export default function AdminPage() {
   // ============================================================
 
   return (
-    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
+    <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
@@ -764,7 +762,7 @@ export default function AdminPage() {
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto card-glass">
+        <div className="flex-1 overflow-auto">
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -902,14 +900,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'skiptracer_v2' && (
-          <AdminSkipTracerV2Tab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'sessions' && (
           <AdminSessionsTab
             LoadingSpinner={LoadingSpinner}
@@ -968,14 +958,6 @@ export default function AdminPage() {
 
         {activeTab === 'skiptracer' && (
           <AdminSkipTracerTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'skiptracer_v2' && (
-          <AdminSkipTracerV2Tab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

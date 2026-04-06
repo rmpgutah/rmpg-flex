@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, addOfflineTileLayer, switchToOfflineMode, restoreFromOfflineMode } from '../../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, addOfflineTileLayer } from '../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -62,7 +62,6 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
-import GpsBreadcrumbPanel from './GpsBreadcrumbPanel';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
@@ -126,8 +125,6 @@ export default function MapPage() {
   const showOfflineFallback = mapError != null && !isAuthError;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
   const offlineTileCleanupRef = useRef<(() => void) | null>(null);
-  const prevMapTypeRef = useRef<string | null>(null);   // tracks mapTypeId before offline switch
-  const isOfflineModeRef = useRef(false);                // whether we switched to offline base map
 
   const [layers, setLayers] = useState({ units: true, incidents: true, properties: true });
 
@@ -166,9 +163,6 @@ export default function MapPage() {
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
 
-  // GPS History panel
-  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
-
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
@@ -191,14 +185,6 @@ export default function MapPage() {
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addressMarkerRef = useRef<any>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Clean up address search/dismiss timers on unmount
-  useEffect(() => {
-    return () => {
-      if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
-      if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
-    };
-  }, []);
 
   // GPS own-position
   const gps = useGpsTracking();
@@ -452,7 +438,6 @@ export default function MapPage() {
     // Auto-retry with exponential backoff if the script fails to load
     // (e.g. server restart, brief network blip, slow vehicle WiFi).
     let cancelled = false;
-    let pendingOnlineListener: (() => void) | null = null;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
     let dismissObserver: MutationObserver | null = null;
@@ -468,11 +453,7 @@ export default function MapPage() {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#0a1220',
-        // Force raster rendering — vector tiles (WebGL) ignore JSON styles,
-        // causing black/unstyled map areas at certain zoom levels.
-        renderingType: 'RASTER' as any,
-        isFractionalZoomEnabled: false,
+        backgroundColor: '#060c14',
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
@@ -532,35 +513,18 @@ export default function MapPage() {
       devLog('[MapPage] Using OverlayView markers (no mapId configured)');
 
       // Monitor tile loading — detect blank map on slow WiFi
-      // When tiles stall (5s), switch to offline-only base map so the map
-      // NEVER goes blank. When tiles recover, restore Google tiles.
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
       tileMonitorCleanupRef.current = monitorTileLoading(map, {
         onStalled: () => {
-          devWarn('[MapPage] Map tiles stalled — switching to offline base map');
+          devWarn('[MapPage] Map tiles stalled — connection may be too slow');
           setTilesStalled(true);
-          // Switch to offline-only base map so cached tiles fill the entire view
-          if (!isOfflineModeRef.current && mapInstanceRef.current) {
-            prevMapTypeRef.current = switchToOfflineMode(mapInstanceRef.current);
-            isOfflineModeRef.current = true;
-          }
         },
         onLoaded: () => {
           devLog('[MapPage] Map tiles loaded successfully');
           setTilesStalled(false);
-          // Restore Google tiles as base map
-          if (isOfflineModeRef.current && mapInstanceRef.current && prevMapTypeRef.current) {
-            restoreFromOfflineMode(mapInstanceRef.current, prevMapTypeRef.current, DARK_MAP_STYLE);
-            isOfflineModeRef.current = false;
-          }
         },
         onRecovering: () => {
-          devLog('[MapPage] Attempting tile recovery — restoring Google tiles...');
-          // Switch back to Google to test connectivity
-          if (isOfflineModeRef.current && mapInstanceRef.current && prevMapTypeRef.current) {
-            restoreFromOfflineMode(mapInstanceRef.current, prevMapTypeRef.current, DARK_MAP_STYLE);
-            isOfflineModeRef.current = false;
-          }
+          devLog('[MapPage] Attempting tile recovery...');
         },
       });
 
@@ -575,13 +539,11 @@ export default function MapPage() {
         devWarn('[MapPage] Device offline — pausing retries until connectivity returns');
         const onBack = () => {
           window.removeEventListener('online', onBack);
-          pendingOnlineListener = null;
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
             attemptLoad(attempt); // resume at same attempt count (don't penalize for offline time)
           }
         };
-        pendingOnlineListener = onBack;
         window.addEventListener('online', onBack);
         return;
       }
@@ -623,7 +585,6 @@ export default function MapPage() {
 
     return () => {
       cancelled = true; // Stop any pending retries
-      if (pendingOnlineListener) { window.removeEventListener('online', pendingOnlineListener); pendingOnlineListener = null; }
       unsubOnline();
       if (dismissTimer) clearTimeout(dismissTimer);
       if (dismissObserver) dismissObserver.disconnect();
@@ -743,7 +704,7 @@ export default function MapPage() {
               const assignedCall = unit.current_call_id
                 ? calls.find(c => String(c.id) === String(unit.current_call_id))
                 : null;
-              const routeBtnHtml = (assignedCall && assignedCall.latitude != null && assignedCall.longitude != null && unit.latitude != null && unit.longitude != null)
+              const routeBtnHtml = (assignedCall && assignedCall.latitude && assignedCall.longitude && unit.latitude && unit.longitude)
                 ? `<button data-route-unit="${escapeHtml(unit.call_sign)}" data-route-call="${escapeHtml(assignedCall.call_number)}"
                      data-route-ulat="${unit.latitude}" data-route-ulng="${unit.longitude}"
                      data-route-clat="${assignedCall.latitude}" data-route-clng="${assignedCall.longitude}"
@@ -1651,16 +1612,6 @@ export default function MapPage() {
         <div className={`absolute left-2 z-10 pointer-events-none opacity-40 ${isMobile ? 'top-14' : 'top-2'}`}>
           <RmpgLogo height={20} iconOnly />
         </div>
-
-        {/* GPS History Playback Panel */}
-        {!isMobile && (
-          <GpsBreadcrumbPanel
-            map={mapInstanceRef.current}
-            mapLoaded={mapLoaded}
-            isOpen={historyPanelOpen}
-            onToggle={() => setHistoryPanelOpen(!historyPanelOpen)}
-          />
-        )}
 
         {/* Offline fallback: Leaflet map with cached tiles when Google Maps fails
             due to connectivity (not API key errors). Shows GPS, unit positions, calls. */}
@@ -2609,11 +2560,11 @@ export default function MapPage() {
                       </div>
 
                       {/* Current assignments list */}
-                      {shiftPlanning.activePlan?.assignments?.length > 0 && (
+                      {shiftPlanning.activePlan.assignments.length > 0 && (
                         <div className="border-t border-rmpg-700 pt-1 mt-1">
                           <div className="flex items-center justify-between px-2 mb-1">
                             <span className="text-[8px] text-rmpg-500 uppercase tracking-wider font-bold">
-                              Assignments ({shiftPlanning.activePlan?.assignments.length})
+                              Assignments ({shiftPlanning.activePlan.assignments.length})
                             </span>
                             <div className="flex items-center gap-1">
                               <button
@@ -2633,7 +2584,7 @@ export default function MapPage() {
                             </div>
                           </div>
                           <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
-                            {shiftPlanning.activePlan?.assignments.map((assignment) => (
+                            {shiftPlanning.activePlan.assignments.map((assignment) => (
                               <div
                                 key={assignment.id}
                                 className="flex items-center gap-1.5 px-2 py-0.5 hover:bg-rmpg-800/50"
@@ -2690,7 +2641,7 @@ export default function MapPage() {
                         >
                           <Copy className="w-2 h-2" /> Duplicate
                         </button>
-                        {shiftPlanning.activePlan?.assignments.length > 0 && (
+                        {shiftPlanning.activePlan.assignments.length > 0 && (
                           <button
                             onClick={() => shiftPlanning.removeAllAssignments()}
                             className="toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
@@ -3460,7 +3411,7 @@ export default function MapPage() {
                 <button
                   onClick={() => {
                     const map = mapInstanceRef.current;
-                    if (map && gps.latitude != null && gps.longitude != null) {
+                    if (map && gps.latitude && gps.longitude) {
                       map.panTo({ lat: gps.latitude, lng: gps.longitude });
                       map.setZoom(16);
                     }

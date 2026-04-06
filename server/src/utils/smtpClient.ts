@@ -55,38 +55,31 @@ export async function sendViaSMTP(options: SmtpSendOptions): Promise<void> {
   const to = Array.isArray(options.to) ? options.to.join(', ') : options.to;
   const cc = options.cc?.join(', ');
 
-  try {
-    await transporter.sendMail({
-      from: mailbox,
-      to,
-      cc,
-      replyTo: options.replyTo,
-      subject: options.subject,
-      html: options.html,
-      attachments: options.attachments?.map(a => ({
-        filename: a.filename,
-        content: a.content,
-        contentType: a.contentType,
-      })),
-    });
+  await transporter.sendMail({
+    from: mailbox,
+    to,
+    cc,
+    replyTo: options.replyTo,
+    subject: options.subject,
+    html: options.html,
+    attachments: options.attachments?.map(a => ({
+      filename: a.filename,
+      content: a.content,
+      contentType: a.contentType,
+    })),
+  });
 
-    console.log(`[SMTP] Email sent to ${to} — subject: ${options.subject}`);
-  } finally {
-    transporter.close();
-  }
+  console.log(`[SMTP] Email sent to ${to} — subject: ${options.subject}`);
 }
 
 /** Test the SMTP connection by verifying credentials. */
 export async function testSMTPConnection(): Promise<{ success: boolean; error?: string }> {
-  let transporter: nodemailer.Transporter | undefined;
   try {
-    transporter = createTransporter();
+    const transporter = createTransporter();
     await transporter.verify();
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || 'SMTP connection failed' };
-  } finally {
-    transporter?.close();
   }
 }
 

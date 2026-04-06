@@ -129,7 +129,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
         const num = c?.find(x => x.types.includes('street_number'))?.short_name || '';
         const route = c?.find(x => x.types.includes('route'))?.short_name || '';
         const city = c?.find(x => x.types.includes('locality'))?.short_name || '';
-        let addr = num && route ? `${num} ${route}` : route || (results[0].formatted_address || '').split(',')[0];
+        let addr = num && route ? `${num} ${route}` : route || results[0].formatted_address.split(',')[0];
         if (city) addr += `, ${city}`;
         geocodeCacheSet(key, addr);
         setLiveAddress(addr);
@@ -184,12 +184,9 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   // ── Derived values ──────────────────────────────────────────
 
-  // Use signed URL params (pre-fetched by parent) or fall back to legacy token
-  const signedQuery = (video as any)._signedQuery || (() => {
-    const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
-    return `token=${encodeURIComponent(token)}`;
-  })();
-  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?${signedQuery}`;
+  const headers = getAuthHeaders();
+  const token = headers['Authorization']?.replace('Bearer ', '') || '';
+  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
   const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
   const displaySpeed = liveTelemetry?.speedMph ?? video.speed_mph;
   const displayLat = liveTelemetry?.lat ?? video.latitude;
@@ -407,7 +404,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
               {hasLiveGps && (
                 <div className="flex items-center gap-1 text-[7px] font-mono text-green-500/30">
                   <span className="led-dot led-green animate-led-pulse" style={{ width: 4, height: 4 }} />
-                  GPS TELEMETRY — {gpsTrack?.length ?? 0} PTS — LIVE
+                  GPS TELEMETRY — {gpsTrack!.length} PTS — LIVE
                 </div>
               )}
             </div>

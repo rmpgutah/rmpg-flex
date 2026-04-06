@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useId, useMemo, startTransition } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -34,7 +34,6 @@ import {
   Search,
   Building2,
   Terminal,
-  Briefcase,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -91,7 +90,6 @@ import {
 } from '../../utils/callOptions';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
-import { DebouncedInput, DebouncedTextarea } from '../../components/DebouncedInput';
 
 export default function DispatchPage() {
   const unitModalTitleId = useId();
@@ -100,7 +98,7 @@ export default function DispatchPage() {
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
-  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
   const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
@@ -153,18 +151,6 @@ export default function DispatchPage() {
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
-  const [serveLink, setServeLink] = useState<any>(null);
-  const [sendingToServe, setSendingToServe] = useState(false);
-
-  // Clean up search timers and abort controllers on unmount
-  useEffect(() => {
-    return () => {
-      if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
-      if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
-      if (personAbortRef.current) personAbortRef.current.abort();
-      if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
-    };
-  }, []);
 
   // Close person/vehicle dropdowns on outside click
   useEffect(() => {
@@ -409,7 +395,6 @@ export default function DispatchPage() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(body),
@@ -548,16 +533,8 @@ export default function DispatchPage() {
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
   }, [fetchData]);
 
-  // Live sync — debounced auto-refresh prevents rapid API calls from multiple WebSocket events
-  const silentRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const silentRefresh = useCallback(() => {
-    if (silentRefreshTimer.current) clearTimeout(silentRefreshTimer.current);
-    silentRefreshTimer.current = setTimeout(() => {
-      fetchData({ silent: true });
-      silentRefreshTimer.current = null;
-    }, 300);
-  }, [fetchData]);
-  useEffect(() => () => { if (silentRefreshTimer.current) clearTimeout(silentRefreshTimer.current); }, []);
+  // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
+  const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
   useLiveSync('dispatch', silentRefresh);
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
@@ -801,7 +778,7 @@ export default function DispatchPage() {
 
   // Fetch linked incidents and activity when a call is selected
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); return; }
+    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); return; }
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
@@ -823,15 +800,6 @@ export default function DispatchPage() {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
         if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings : []);
       } catch { if (!cancelled) setCallWarnings([]); }
-      // Fetch serve queue link for PSO calls
-      if (selectedCall.incident_type === 'pso_client_request') {
-        try {
-          const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
-          if (!cancelled) setServeLink(serveData);
-        } catch { if (!cancelled) setServeLink(null); }
-      } else {
-        if (!cancelled) setServeLink(null);
-      }
     })();
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
@@ -1171,7 +1139,6 @@ export default function DispatchPage() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
           });
@@ -1319,7 +1286,6 @@ export default function DispatchPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
@@ -1635,65 +1601,26 @@ export default function DispatchPage() {
   };
 
   const updateEditField = useCallback((field: string, value: any) => {
-    // Use startTransition so text input state updates are non-blocking —
-    // React will yield to user keystrokes before committing the re-render
-    // of this 4,600+ line component tree
-    startTransition(() => {
-      setEditData((prev) => ({ ...prev, [field]: value }));
-    });
+    setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  // ── Dispatch timer alarm — escalating tones + voice for overdue calls ──
-  // Tracks which severity level was already announced per call to avoid repeats
-  const timerAlarmsRef = useRef<Map<string, string>>(new Map()); // callId → last severity played
+  // ── Dispatch alarm interval — check overdue calls every 5s ──
+  const alarmPlayedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const check = () => {
       const activeCalls = calls.filter(c => isActiveStatus(c.status));
       for (const c of activeCalls) {
         const state = getTimerState(c);
-        const lastPlayed = timerAlarmsRef.current.get(c.id);
-        const callNum = c.call_number || c.id;
-        const incType = c.incident_type ? c.incident_type.replace(/_/g, ' ') : '';
-        const loc = c.location || '';
-
-        // Stale: pending > 3 min with no units assigned
-        if (c.status === 'pending' && state.elapsed > 180 && (c.assigned_units || []).length === 0 && lastPlayed !== 'stale') {
-          timerAlarmsRef.current.set(c.id, 'stale');
-          playTone('stale_call');
-          break;
-        }
-
-        // Warning severity (approaching limit)
-        if (state.severity === 'warning' && lastPlayed !== 'warning' && lastPlayed !== 'critical' && lastPlayed !== 'overdue') {
-          timerAlarmsRef.current.set(c.id, 'warning');
-          playTone('timer_soft');
-          break;
-        }
-
-        // Critical severity (at limit)
-        if (state.severity === 'critical' && lastPlayed !== 'critical' && lastPlayed !== 'overdue') {
-          timerAlarmsRef.current.set(c.id, 'critical');
-          playTone('timer_urgent');
-          break;
-        }
-
-        // Overdue (past limit)
-        if (state.isOverdue && lastPlayed !== 'overdue') {
-          timerAlarmsRef.current.set(c.id, 'overdue');
-          playTone('timer_critical');
-          // Voice announcement for overdue calls
-          import('../../utils/voiceAlerts').then(({ announceAllUnits }) => {
-            const elapsed = state.formatted;
-            announceAllUnits(`Call ${callNum.replace(/^[A-Z]+-/i, '').replace(/^\d{4}-?0*/, '')}${incType ? ', ' + incType : ''}, has been active for ${elapsed} and is now overdue${loc ? ', at ' + loc.split(',')[0] : ''}`);
-          });
-          break;
+        if (state.isOverdue && !alarmPlayedRef.current.has(c.id)) {
+          alarmPlayedRef.current.add(c.id);
+          playTone('alarm');
+          break; // One alarm at a time
         }
       }
-
-      // Clean up resolved calls
+      // Clean up resolved overdue flags
       const activeIds = new Set(activeCalls.map(c => c.id));
-      for (const id of timerAlarmsRef.current.keys()) {
-        if (!activeIds.has(id)) timerAlarmsRef.current.delete(id);
+      for (const id of alarmPlayedRef.current) {
+        if (!activeIds.has(id)) alarmPlayedRef.current.delete(id);
       }
     };
     check();
@@ -2130,67 +2057,6 @@ export default function DispatchPage() {
                       {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
                     </div>
 
-                    {/* Serve Queue Integration */}
-                    {(
-                      <div className="mt-2 pt-2 border-t border-rmpg-600">
-                        {serveLink ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{
-                                background: serveLink.status === 'served' ? '#22c55e' : serveLink.status === 'failed' ? '#ef4444' : '#f59e0b'
-                              }} />
-                              <span className="text-[10px] font-bold text-rmpg-300 uppercase">Serve Queue</span>
-                              <span className="text-[10px] font-mono text-cyan-400">
-                                {serveLink.attempt_count}/{serveLink.max_attempts} attempts
-                              </span>
-                              <span className="text-[10px] font-mono px-1 rounded" style={{
-                                background: serveLink.status === 'served' ? '#22c55e20' : serveLink.status === 'failed' ? '#dc262620' : '#f59e0b20',
-                                color: serveLink.status === 'served' ? '#4ade80' : serveLink.status === 'failed' ? '#f87171' : '#fbbf24',
-                              }}>
-                                {serveLink.status?.toUpperCase()}
-                              </span>
-                            </div>
-                            <button
-                              className="text-[10px] text-blue-400 hover:text-blue-300 underline"
-                              onClick={() => window.open('/serve', '_blank')}
-                            >
-                              View in Process Server
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            className="w-full py-2 px-3 text-xs font-semibold rounded flex items-center justify-center gap-2 transition-colors"
-                            style={{
-                              background: sendingToServe ? '#374151' : '#7c3aed20',
-                              border: '1px solid #7c3aed50',
-                              color: sendingToServe ? '#9ca3af' : '#a78bfa',
-                            }}
-                            disabled={sendingToServe}
-                            onClick={async () => {
-                              setSendingToServe(true);
-                              try {
-                                const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
-                                  method: 'POST',
-                                  body: JSON.stringify({}),
-                                });
-                                if (result) {
-                                  setServeLink(result);
-                                  addToast('Sent to Serve Queue', 'success');
-                                }
-                              } catch (err: any) {
-                                addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
-                              } finally {
-                                setSendingToServe(false);
-                              }
-                            }}
-                          >
-                            <Briefcase style={{ width: 14, height: 14 }} />
-                            {sendingToServe ? 'Sending...' : 'Send to Serve Queue'}
-                          </button>
-                        )}
-                      </div>
-                    )}
-
                     {/* Visit History (mobile) */}
                     {Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-rmpg-600">
@@ -2214,41 +2080,6 @@ export default function DispatchPage() {
                                 {visit.cleared_at && <div>Cleared: {formatTime(visit.cleared_at)}</div>}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Dispatch Chain (mobile) */}
-                    {selectedCall.incident_type === 'pso_client_request' && ((selectedCall as any).parentCall || ((selectedCall as any).childCalls && (selectedCall as any).childCalls.length > 0)) && (
-                      <div className="mt-3 pt-2 border-t border-rmpg-600">
-                        <div className="field-label mb-1.5">Dispatch Chain</div>
-                        <div className="space-y-1">
-                          {(selectedCall as any).parentCall && (
-                            <button
-                              className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2 py-1 text-[10px]"
-                              onClick={() => {
-                                const parent = (selectedCall as any).parentCall;
-                                const found = calls.find(c => c.id === parent.id);
-                                if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${parent.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(err => console.warn('[Dispatch] Failed to load parent call:', err));
-                              }}
-                            >
-                              <span className="font-bold text-amber-300">PARENT:</span> <span className="font-mono text-blue-400">{(selectedCall as any).parentCall.call_number}</span> <span className="text-rmpg-300">{((selectedCall as any).parentCall.status || '').toUpperCase()}</span>
-                            </button>
-                          )}
-                          {((selectedCall as any).childCalls || []).map((child: any) => (
-                            <button
-                              key={child.id}
-                              className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2 py-1 text-[10px]"
-                              onClick={() => {
-                                const found = calls.find(c => c.id === child.id);
-                                if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${child.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(err => console.warn('[Dispatch] Failed to load follow-up call:', err));
-                              }}
-                            >
-                              <span className="font-bold text-cyan-300">FOLLOW-UP:</span> <span className="font-mono text-blue-400">{child.call_number}</span> <span className="text-rmpg-300">{(child.status || '').toUpperCase()}</span>
-                            </button>
                           ))}
                         </div>
                       </div>
@@ -2423,12 +2254,11 @@ export default function DispatchPage() {
               Archive Cleared
             </button>
           )}
-          <DebouncedInput
+          <input
             type="text"
             placeholder="Search calls..."
             value={searchQuery}
-            onChange={setSearchQuery}
-            debounceMs={200}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="input-dark text-xs flex-1"
             style={{ minWidth: '100px', maxWidth: '160px' }}
           />
@@ -2613,16 +2443,6 @@ export default function DispatchPage() {
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
                   )}
                   <span className="text-sm font-bold text-green-400 font-mono">{selectedCall.call_number}</span>
-                  {selectedCall.case_number && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5">
-                      CASE {selectedCall.case_number}
-                    </span>
-                  )}
-                  {selectedCall.incident_number && (
-                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5">
-                      INC {selectedCall.incident_number}
-                    </span>
-                  )}
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                   {callWarnings.length > 0 && (
@@ -2741,34 +2561,6 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
                     )}
-                    {/* Send to Serve Queue — PSO calls */}
-                    {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
-                      <button
-                        className="toolbar-btn"
-                        style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
-                        disabled={sendingToServe}
-                        onClick={async () => {
-                          setSendingToServe(true);
-                          try {
-                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
-                              method: 'POST',
-                              body: JSON.stringify({}),
-                            });
-                            if (result) {
-                              setServeLink(result);
-                              addToast('Sent to Serve Queue', 'success');
-                            }
-                          } catch (err: any) {
-                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
-                          } finally {
-                            setSendingToServe(false);
-                          }
-                        }}
-                        title="Send this process service to the serve queue"
-                      >
-                        <Briefcase style={{ width: 10, height: 10 }} /> {sendingToServe ? 'Sending...' : 'Serve Queue'}
-                      </button>
-                    )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
                       <button
@@ -2879,7 +2671,7 @@ export default function DispatchPage() {
                   const counts: Record<string, number> = {
                     persons: callPersons.length + callVehicles.length,
                     timeline: activityEntries.length,
-                    notes: (selectedCall?.notes || []).length,
+                    notes: (selectedCall.notes || []).length,
                   };
                   const count = counts[tab];
                   return (
@@ -3012,38 +2804,6 @@ export default function DispatchPage() {
                             return match ? <span className="text-rmpg-300">{match.description}</span> : null;
                           })()}
                         </p>
-                      </div>
-                    )}
-                    {!isEditing && !selectedCall.disposition && selectedCall.status !== 'cleared' && selectedCall.status !== 'closed' && (
-                      <div>
-                        <label className="field-label">Disposition:</label>
-                        <select
-                          className="select-dark text-xs mt-0.5"
-                          value=""
-                          onChange={async (e) => {
-                            const newDisp = e.target.value;
-                            if (!newDisp) return;
-                            try {
-                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
-                                method: 'PUT',
-                                body: JSON.stringify({ disposition: newDisp }),
-                              });
-                              const updatedCall = mapDbCall(result);
-                              setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-                              setSelectedCall(updatedCall);
-                              addToast(`Disposition set to ${newDisp}`, 'success');
-                            } catch (err: any) {
-                              addToast(err?.message || 'Failed to set disposition', 'error');
-                            }
-                          }}
-                        >
-                          <option value="">— Set Disposition —</option>
-                          {dispositionCodes.map((d) => (
-                            <option key={d.code} value={d.code}>
-                              {d.code} — {d.description}
-                            </option>
-                          ))}
-                        </select>
                       </div>
                     )}
                   </div>
@@ -3253,7 +3013,7 @@ export default function DispatchPage() {
                         {selectedCall.ending_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
                         {selectedCall.starting_mileage && selectedCall.ending_mileage && (
                           <span className="text-blue-400 font-semibold">
-                            Total: {((Number(selectedCall.ending_mileage) || 0) - (Number(selectedCall.starting_mileage) || 0)).toFixed(1)} mi
+                            Total: {(Number(selectedCall.ending_mileage) - Number(selectedCall.starting_mileage)).toFixed(1)} mi
                           </span>
                         )}
                       </div>
@@ -3268,8 +3028,12 @@ export default function DispatchPage() {
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
-                      const filteredZones = zonesForSection(editData.section_id);
-                      const filteredBeats = beatsForZone(editData.zone_id);
+                      const filteredZones = editData.section_id
+                        ? Array.from(new Set(districts.filter(d => d.section_id === editData.section_id).map(d => d.zone_id))).sort()
+                        : zones;
+                      const filteredBeats = editData.zone_id
+                        ? Array.from(new Set(districts.filter(d => d.zone_id === editData.zone_id).map(d => d.beat_id))).sort()
+                        : beats;
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -3310,7 +3074,7 @@ export default function DispatchPage() {
                                 setEditData(prev => ({ ...prev, beat_id: beatVal, dispatch_code: match?.dispatch_code || '' }));
                               }}>
                                 <option value="">— Select —</option>
-                                {filteredBeats.map(b => <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>)}
+                                {filteredBeats.map(b => <option key={b} value={b}>{beatLabels.get(b) || b}</option>)}
                               </select>
                             </div>
                             <div>
@@ -3333,8 +3097,8 @@ export default function DispatchPage() {
                         )}
                         {selectedCall.section_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.section_id} — {sectionLabels.get(selectedCall.section_id) || ''}</span>}
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
-                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
-                        {selectedCall.latitude != null && selectedCall.longitude != null && (
+                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {beatLabels.get(selectedCall.beat_id) || selectedCall.beat_id}</span>}
+                        {selectedCall.latitude && selectedCall.longitude && (
                           <span className="text-rmpg-400 font-mono text-[9px]">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
                           </span>
@@ -3384,9 +3148,8 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
                                 <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace(/_/g, ' ')}</span>
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace('_', ' ')}</span>
                                   {cp.last_name}, {cp.first_name}
-                                  <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
                                   <button onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
@@ -3501,7 +3264,6 @@ export default function DispatchPage() {
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded">{(cp.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
-                                <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
                                 {cp.sex && <span className="text-rmpg-500">{cp.sex}</span>}
@@ -3777,7 +3539,7 @@ export default function DispatchPage() {
                             ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                             : 'bg-amber-900/40 border border-amber-700/50 text-amber-400'
                         }`}>
-                          {(selectedCall.process_service_result || '').replace(/_/g, ' ').toUpperCase()}
+                          {selectedCall.process_service_result.replace(/_/g, ' ').toUpperCase()}
                         </span>
                       )}
                       {!isEditing && (selectedCall.process_attempts || 0) > 0 && (
@@ -3902,82 +3664,6 @@ export default function DispatchPage() {
                           </div>
                         );
                       })}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── DISPATCH CHAIN — PSO auto re-dispatch links, Info tab ─── */}
-                {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && ((selectedCall as any).parentCall || ((selectedCall as any).childCalls && (selectedCall as any).childCalls.length > 0)) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
-                      <Link className="w-3 h-3" /> Dispatch Chain
-                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded" style={{ background: '#d4a01720', border: '1px solid #d4a01740', color: '#d4a017' }}>
-                        RE-DISPATCH HISTORY
-                      </span>
-                    </label>
-                    <div className="space-y-1">
-                      {/* Parent call */}
-                      {(selectedCall as any).parentCall && (() => {
-                        const parent = (selectedCall as any).parentCall;
-                        return (
-                          <button
-                            key={`parent-${parent.id}`}
-                            className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2.5 py-1.5 hover:bg-rmpg-700/60 transition-colors"
-                            onClick={() => {
-                              const found = calls.find(c => c.id === parent.id);
-                              if (found) {
-                                setSelectedCall(found);
-                              } else {
-                                apiFetch(`/api/dispatch/calls/${parent.id}`).then((data: any) => {
-                                  if (data) setSelectedCall(mapDbCall(data));
-                                }).catch(err => console.warn('[Dispatch] Failed to load parent call:', err));
-                              }
-                            }}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-[8px] font-bold px-1 py-0 rounded bg-amber-900/30 border border-amber-700/40 text-amber-300">PARENT</span>
-                              <span className="text-[10px] font-mono text-blue-400">{parent.call_number}</span>
-                              <span className="text-[9px] text-rmpg-400">Attempt #{parent.pso_attempt_number || 1}</span>
-                              <span className={`text-[8px] font-bold px-1 py-0 rounded ${
-                                parent.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
-                                : parent.status === 'pending' ? 'bg-yellow-900/40 border border-yellow-700/50 text-yellow-400'
-                                : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
-                              }`}>{(parent.status || '').toUpperCase()}</span>
-                              {parent.disposition && <span className="text-[9px] text-rmpg-400 truncate">{parent.disposition}</span>}
-                            </div>
-                          </button>
-                        );
-                      })()}
-                      {/* Child calls */}
-                      {((selectedCall as any).childCalls || []).map((child: any) => (
-                        <button
-                          key={`child-${child.id}`}
-                          className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2.5 py-1.5 hover:bg-rmpg-700/60 transition-colors"
-                          onClick={() => {
-                            const found = calls.find(c => c.id === child.id);
-                            if (found) {
-                              setSelectedCall(found);
-                            } else {
-                              apiFetch(`/api/dispatch/calls/${child.id}`).then((data: any) => {
-                                if (data) setSelectedCall(mapDbCall(data));
-                              }).catch(err => console.warn('[Dispatch] Failed to load follow-up call:', err));
-                            }
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-[8px] font-bold px-1 py-0 rounded bg-cyan-900/30 border border-cyan-700/40 text-cyan-300">FOLLOW-UP</span>
-                            <span className="text-[10px] font-mono text-blue-400">{child.call_number}</span>
-                            <span className="text-[9px] text-rmpg-400">Attempt #{child.pso_attempt_number || 1}</span>
-                            <span className={`text-[8px] font-bold px-1 py-0 rounded ${
-                              child.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
-                              : child.status === 'pending' ? 'bg-yellow-900/40 border border-yellow-700/50 text-yellow-400'
-                              : child.status === 'dispatched' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                              : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
-                            }`}>{(child.status || '').toUpperCase()}</span>
-                            {child.disposition && <span className="text-[9px] text-rmpg-400 truncate">{child.disposition}</span>}
-                          </div>
-                        </button>
-                      ))}
                     </div>
                   </div>
                 )}
@@ -4178,26 +3864,6 @@ export default function DispatchPage() {
                 )}
               </div>
 
-              {/* Quick Actions — Create Incident / Citation from call */}
-              {!isEditing && (
-                <div className="px-3 pb-2 flex items-center gap-2">
-                  <button
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-[#1a2636] text-brand-300 border border-[#1e3048] rounded hover:bg-[#243447] transition-colors"
-                    onClick={() => navigate(`/incidents?prefill_call_id=${selectedCall.id}`)}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    Create Incident
-                  </button>
-                  <button
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-[#1a2636] text-amber-300 border border-[#1e3048] rounded hover:bg-[#243447] transition-colors"
-                    onClick={() => navigate(`/citations?prefill_call_id=${selectedCall.id}`)}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    Create Citation
-                  </button>
-                </div>
-              )}
-
               {/* Disposition Prompt — shown when Clear is clicked */}
               {dispositionPromptCallId === selectedCall.id && (
                 <div className="px-3">
@@ -4247,7 +3913,7 @@ export default function DispatchPage() {
 
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-rmpg-600 flex flex-col bg-surface-deep overflow-hidden flex-shrink-0">
-            {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
+            {selectedCall?.latitude && selectedCall?.longitude ? (
               <DispatchMiniMap
                 call={selectedCall}
                 units={units}

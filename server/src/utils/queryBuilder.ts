@@ -35,10 +35,6 @@ export interface QueryResult {
  *
  * db.prepare(`SELECT * FROM warrants ${whereClause} ORDER BY created_at DESC`).all(...params);
  */
-// Validate column identifiers to prevent SQL injection via column name interpolation.
-// Only allows: word chars, dots (table.column), and optional table prefix.
-const SAFE_COLUMN_RE = /^[a-zA-Z_][a-zA-Z0-9_.]*$/;
-
 export function buildWhere(conditions: WhereCondition[]): QueryResult {
   if (conditions.length === 0) return { whereClause: '', params: [] };
 
@@ -46,9 +42,6 @@ export function buildWhere(conditions: WhereCondition[]): QueryResult {
   const params: any[] = [];
 
   for (const cond of conditions) {
-    if (!SAFE_COLUMN_RE.test(cond.column)) {
-      throw new Error(`Invalid column identifier: ${cond.column}`);
-    }
     switch (cond.operator) {
       case 'IS NULL':
       case 'IS NOT NULL':
@@ -123,9 +116,7 @@ export function buildWhereFromQuery(
     let value: any = rawValue;
 
     if (config.wrap) {
-      // Escape LIKE metacharacters (%, _, \) in the raw value before wrapping
-      const escaped = String(rawValue).replace(/[%_\\]/g, '\\$&');
-      value = `${config.wrap}${escaped}${config.wrap}`;
+      value = `${config.wrap}${rawValue}${config.wrap}`;
     }
 
     conditions.push({
@@ -162,10 +153,7 @@ export function buildOrderBy(
   },
 ): string {
   const column = sort && options.allowed.includes(sort) ? sort : options.default;
-  if (!SAFE_COLUMN_RE.test(column)) {
-    throw new Error(`Invalid ORDER BY column: ${column}`);
-  }
   const direction = order?.toUpperCase() === 'ASC' ? 'ASC' : (order?.toUpperCase() === 'DESC' ? 'DESC' : (options.defaultOrder ?? 'DESC'));
-  const prefix = options.prefix && SAFE_COLUMN_RE.test(options.prefix) ? `${options.prefix}.` : '';
+  const prefix = options.prefix ? `${options.prefix}.` : '';
   return `ORDER BY ${prefix}${column} ${direction}`;
 }

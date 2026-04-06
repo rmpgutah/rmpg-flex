@@ -4,18 +4,15 @@ import { localNow } from './timeUtils';
 import config from '../config';
 
 // ─── Check if a user's password has expired ─────────────
-// Respects the password_expiry_exempt flag — exempt users never expire.
 
-export function isPasswordExpired(user: { password_expires_at?: string | null; password_expiry_exempt?: number | null }): boolean {
-  if (user.password_expiry_exempt) return false;
+export function isPasswordExpired(user: { password_expires_at?: string | null }): boolean {
   if (!user.password_expires_at) return false;
   return new Date(user.password_expires_at) < new Date();
 }
 
 // ─── Check if password is expiring soon (within warning period) ──
 
-export function isPasswordExpiringSoon(user: { password_expires_at?: string | null; password_expiry_exempt?: number | null }): boolean {
-  if (user.password_expiry_exempt) return false;
+export function isPasswordExpiringSoon(user: { password_expires_at?: string | null }): boolean {
   if (!user.password_expires_at) return false;
   const warningMs = config.password.expiryWarningDays * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(user.password_expires_at).getTime();
@@ -24,22 +21,9 @@ export function isPasswordExpiringSoon(user: { password_expires_at?: string | nu
 }
 
 // ─── Set password expiry from now ───────────────────────
-// Skips exempt users — they keep password_expires_at as NULL.
 
 export function setPasswordExpiry(userId: number): void {
   const db = getDb();
-
-  // Check exemption before setting expiry
-  const user = db.prepare('SELECT password_expiry_exempt FROM users WHERE id = ?').get(userId) as { password_expiry_exempt: number } | undefined;
-  if (user?.password_expiry_exempt) {
-    // Still clear force flag and update timestamps, but don't set expiry
-    db.prepare(`
-      UPDATE users SET password_expires_at = NULL, password_changed_at = ?, force_password_change = 0, updated_at = ?
-      WHERE id = ?
-    `).run(localNow(), localNow(), userId);
-    return;
-  }
-
   const expiresAt = new Date(
     Date.now() + config.password.expiryDays * 24 * 60 * 60 * 1000
   ).toISOString();

@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { id: 'map',      path: '/map',      icon: Map,        label: 'Map' },
   { id: 'calls',    path: '/dispatch',  icon: LayoutList, label: 'Calls' },
   { id: 'radio',    path: '/radio',     icon: Radio,      label: 'Radio' },
-  { id: 'alerts',   path: '/communications', icon: Bell,   label: 'Alerts' },
+  { id: 'alerts',   path: '/notifications', icon: Bell,   label: 'Alerts' },
 ] as const;
 
 interface MobileBottomNavProps {

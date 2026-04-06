@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -91,7 +90,7 @@ router.get('/shift-plans', requireRole('admin', 'manager', 'supervisor', 'dispat
       params.push(status);
     }
 
-    sql += ' ORDER BY sp.date DESC, sp.created_at DESC LIMIT 500';
+    sql += ' ORDER BY sp.date DESC, sp.created_at DESC';
 
     const rows = db.prepare(sql).all(...params) as any[];
     const plans = rows.map(parseAssignments);
@@ -146,7 +145,7 @@ router.get('/shift-plans/coverage/:date', requireRole('admin', 'manager', 'super
 // ============================================================
 // GET /shift-plans/:id — Get single plan by id
 // ============================================================
-router.get('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -248,7 +247,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 // ============================================================
 // PUT /shift-plans/:id — Update a shift plan
 // ============================================================
-router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
@@ -307,7 +306,7 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 // ============================================================
 // DELETE /shift-plans/:id — Admin/manager only: delete a shift plan
 // ============================================================
-router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/shift-plans/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
@@ -333,7 +332,7 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
 // ============================================================
 // POST /shift-plans/:id/activate — Activate a plan, deactivate others for same date
 // ============================================================
-router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/shift-plans/:id/activate', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;

@@ -166,7 +166,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark pl-8"
+            className="input-field pl-8"
             placeholder="Search by plate, make, model, VIN..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setSelectedVehicle(null); }}
@@ -244,7 +244,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       {/* Role */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
-        <select className="select-dark" value={role} onChange={(e) => setRole(e.target.value as VehicleRole)}>
+        <select className="input-field" value={role} onChange={(e) => setRole(e.target.value as VehicleRole)}>
           {VEHICLE_ROLES.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
           ))}
@@ -255,7 +255,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
         <textarea
-          className="textarea-dark"
+          className="input-field"
           rows={2}
           placeholder="Additional details about this vehicle's involvement..."
           value={notes}

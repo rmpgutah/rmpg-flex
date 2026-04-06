@@ -2,18 +2,11 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
-import { escapeLike, validateParamId, validateCoordinates, validateDateField } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
-import { auditLog } from '../utils/auditLogger';
-import { universalWarrantCheck } from '../utils/universalWarrantScanner';
-import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
-
-// ─── Migration: add case_id to evidence table if missing ───
-try { getDb().prepare('ALTER TABLE evidence ADD COLUMN case_id INTEGER').run(); } catch { /* column already exists */ }
 
 /**
  * Screen a person against the OFAC consolidated sanctions list.
@@ -86,8 +79,8 @@ const PERSON_LIST_COLUMNS = `id, first_name, last_name, middle_name, alias_nickn
 router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', flags, search, archived } = req.query;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const { page = '1', limit = '50', flags, archived } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -98,11 +91,6 @@ router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 
       whereClause += " AND flags LIKE ? ESCAPE '\\'";
       const safeFlags = String(flags).replace(/[%_\\]/g, '\\$&');
       params.push(`%"${safeFlags}"%`);
-    }
-    if (search) {
-      whereClause += " AND (first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR dl_number LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
-      params.push(s, s, s, s, s);
     }
 
     // Archive filter
@@ -146,12 +134,12 @@ router.get('/persons/search', requireRole('admin', 'manager', 'supervisor', 'off
       return;
     }
 
-    const searchTerm = `%${escapeLike(q as string)}%`;
+    const searchTerm = `%${q}%`;
 
     const persons = db.prepare(`
       SELECT ${PERSON_LIST_COLUMNS} FROM persons
-      WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\'
-        OR email LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
+      WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ?
+        OR address LIKE ? OR (first_name || ' ' || last_name) LIKE ?
       ORDER BY last_name, first_name
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
@@ -164,7 +152,7 @@ router.get('/persons/search', requireRole('admin', 'manager', 'supervisor', 'off
 });
 
 // GET /api/records/persons/export - Export persons as CSV
-router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { flags } = req.query;
@@ -183,7 +171,6 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), exp
       FROM persons
       ${whereClause}
       ORDER BY last_name, first_name
-      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'persons_export.csv', [
@@ -204,7 +191,7 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), exp
 });
 
 // GET /api/records/persons/:id - Get person details
-router.get('/persons/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     let person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -217,8 +204,8 @@ router.get('/persons/:id', validateParamId, requireRole('admin', 'manager', 'sup
     // Auto-screen against OFAC if this person was never checked
     if (!person.watchlist_checked_at && person.first_name && person.last_name) {
       screenPersonOfac(person.id, person.first_name, person.last_name);
-      // Re-fetch to include updated watchlist_match (use safe column list — excludes ssn_full)
-      person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(req.params.id) as any;
+      // Re-fetch to include updated watchlist_match
+      person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     }
 
     // Get owned vehicles
@@ -244,7 +231,7 @@ router.get('/persons/:id', validateParamId, requireRole('admin', 'manager', 'sup
 });
 
 // GET /api/records/persons/:id/history - Get person's incident history
-router.get('/persons/:id/history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -259,17 +246,17 @@ router.get('/persons/:id/history', validateParamId, requireRole('admin', 'manage
       SELECT al.*, u.full_name as user_name
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
-      WHERE al.details LIKE ? ESCAPE '\\' OR al.details LIKE ? ESCAPE '\\' OR al.details LIKE ? ESCAPE '\\'
+      WHERE al.details LIKE ? OR al.details LIKE ? OR al.details LIKE ?
       ORDER BY al.created_at DESC
       LIMIT 50
-    `).all(`%${escapeLike(person.first_name)}%`, `%${escapeLike(person.last_name)}%`, `%${escapeLike(fullName)}%`);
+    `).all(`%${person.first_name}%`, `%${person.last_name}%`, `%${fullName}%`);
 
     // Get BOLOs that mention this person
     const bolos = db.prepare(`
       SELECT * FROM bolos
-      WHERE subject_description LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
-      ORDER BY created_at DESC LIMIT 100
-    `).all(`%${escapeLike(person.last_name)}%`, `%${escapeLike(person.last_name)}%`);
+      WHERE subject_description LIKE ? OR description LIKE ?
+      ORDER BY created_at DESC
+    `).all(`%${person.last_name}%`, `%${person.last_name}%`);
 
     res.json({
       person,
@@ -283,7 +270,7 @@ router.get('/persons/:id/history', validateParamId, requireRole('admin', 'manage
 });
 
 // GET /api/records/persons/:id/system-history - Aggregated system history
-router.get('/persons/:id/system-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/system-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -439,7 +426,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
-      height || null, height_feet != null && height_feet !== '' ? (parseInt(height_feet, 10) || null) : null, height_inches != null && height_inches !== '' ? (parseInt(height_inches, 10) || null) : null,
+      height || null, height_feet != null && height_feet !== '' ? parseInt(height_feet, 10) : null, height_inches != null && height_inches !== '' ? parseInt(height_inches, 10) : null,
       weight || null, build || null, complexion || null,
       hair_color || null, eye_color || null, scars_marks_tattoos || null,
       clothing_description || null, address || null, city || null, state || null, zip || null,
@@ -456,18 +443,16 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
       photo_url || null, JSON.stringify(flags || []), notes || null,
     );
 
-    auditLog(req, 'person_created', 'person', Number(result.lastInsertRowid), `Created person record: ${first_name} ${last_name}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'person_created', 'person', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created person record: ${first_name} ${last_name}`, req.ip || 'unknown');
 
     // Auto-screen against OFAC sanctions BEFORE returning response
     screenPersonOfac(Number(result.lastInsertRowid), first_name, last_name);
 
-    // Async warrant check — fire-and-forget
-    universalWarrantCheck(Number(result.lastInsertRowid)).catch(err =>
-      console.error('[Warrant Check] Async check failed:', err.message)
-    );
-
-    // SELECT after screening so watchlist_match is included in response (safe column list excludes ssn_full)
-    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(result.lastInsertRowid);
+    // SELECT after screening so watchlist_match is included in response
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
     if (!person) { res.status(500).json({ error: 'Failed to retrieve created person' }); return; }
     res.status(201).json(person);
   } catch (error: any) {
@@ -477,7 +462,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
 });
 
 // PUT /api/records/persons/:id - Update person
-router.put('/persons/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -511,8 +496,8 @@ router.put('/persons/:id', validateParamId, requireRole('admin', 'manager', 'sup
       first_name: v => v || null, last_name: v => v || null, middle_name: v => v ?? null,
       alias_nickname: v => v ?? null, dob: v => v ?? null, gender: v => v ?? null,
       race: v => v ?? null, height: v => v ?? null,
-      height_feet: v => { if (v == null || v === '') return null; const n = parseInt(v, 10); return isNaN(n) ? null : n; },
-      height_inches: v => { if (v == null || v === '') return null; const n = parseInt(v, 10); return isNaN(n) ? null : n; },
+      height_feet: v => v != null && v !== '' ? parseInt(v, 10) : null,
+      height_inches: v => v != null && v !== '' ? parseInt(v, 10) : null,
       weight: v => v ?? null,
       build: v => v ?? null, complexion: v => v ?? null, hair_color: v => v ?? null,
       eye_color: v => v ?? null, scars_marks_tattoos: v => v ?? null,
@@ -557,10 +542,15 @@ router.put('/persons/:id', validateParamId, requireRole('admin', 'manager', 'sup
       values.push(localNow());
       values.push(req.params.id);
 
+      const updateTx = db.transaction(() => {
         db.prepare(`UPDATE persons SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+        db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'person_updated', 'person', ?, ?, ?)
+        `).run(req.user!.userId, req.params.id, `Updated person record: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+      });
+      updateTx();
     }
-
-    auditLog(req, 'person_updated', 'person', String(req.params.id), `Updated person record #${req.params.id}`);
 
     const updated = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id);
     res.json(updated);
@@ -571,7 +561,7 @@ router.put('/persons/:id', validateParamId, requireRole('admin', 'manager', 'sup
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/persons/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -580,21 +570,16 @@ router.delete('/persons/:id', validateParamId, requireRole('admin', 'manager'), 
       return;
     }
 
-    let deleted = false;
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_persons WHERE person_id = ?').run(person.id);
       db.prepare('UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?').run(person.id);
-      const result = db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
-      deleted = result.changes > 0;
+      db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'person_deleted', 'person', ?, ?, ?)
+      `).run(req.user!.userId, person.id, `Deleted person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
     });
     deleteTx();
-
-    if (!deleted) {
-      res.status(500).json({ error: 'Failed to delete person record' });
-      return;
-    }
-
-    auditLog(req, 'person_deleted', 'person', person.id, `Deleted person record #${person.id}`);
 
     res.json({ message: 'Person deleted' });
   } catch (error: any) {
@@ -629,16 +614,16 @@ router.post('/persons/screen-all-ofac', requireRole('admin', 'manager', 'supervi
 });
 
 // POST /api/records/persons/:id/screen-ofac - Force re-screen a single person
-router.post('/persons/:id/screen-ofac', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/persons/:id/screen-ofac', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(req.params.id) as any;
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
 
     // Force re-screen regardless of previous check
     screenPersonOfac(person.id, person.first_name, person.last_name);
 
-    const updated = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(req.params.id);
+    const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
     console.error('OFAC re-screen error:', error?.message || 'Unknown error');
@@ -647,28 +632,36 @@ router.post('/persons/:id/screen-ofac', validateParamId, requireRole('admin', 'm
 });
 
 // POST /api/records/persons/:id/archive
-router.post('/persons/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/persons/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (person.archived_at) { res.status(400).json({ error: 'Person is already archived' }); return; }
     const now = localNow();
-    db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
-    auditLog(req, 'person_archived', 'person', person.id, `Archived person record #${person.id}`);
+    const archiveTx = db.transaction(() => {
+      db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'person_archived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Archived person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+    });
+    archiveTx();
     res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
   } catch (error: any) { console.error('Archive person error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/records/persons/:id/unarchive
-router.post('/persons/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/persons/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (!person.archived_at) { res.status(400).json({ error: 'Person is not archived' }); return; }
-    db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
-    auditLog(req, 'person_unarchived', 'person', person.id, `Restored person record #${person.id}`);
+    const unarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'person_unarchived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Restored person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+    });
+    unarchiveTx();
     res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
   } catch (error: any) { console.error('Unarchive person error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -679,26 +672,19 @@ router.post('/persons/:id/unarchive', validateParamId, requireRole('admin', 'man
 router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', search, archived } = req.query;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const { page = '1', limit = '50', archived } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
-    const params: any[] = [];
-
     if (archived === 'true') {
       whereClause += ' AND v.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
       whereClause += ' AND v.archived_at IS NULL';
     }
-    if (search) {
-      whereClause += " AND (v.plate_number LIKE ? ESCAPE '\\' OR v.make LIKE ? ESCAPE '\\' OR v.model LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\' OR v.color LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
-      params.push(s, s, s, s, s);
-    }
 
-    const countRow = db.prepare(`SELECT COUNT(*) as total FROM vehicles_records v ${whereClause}`).get(...params) as any;
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM vehicles_records v ${whereClause}`).get() as any;
 
     const vehicles = db.prepare(`
       SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
@@ -707,7 +693,7 @@ router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer',
       ${whereClause}
       ORDER BY v.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limitNum, offset);
+    `).all(limitNum, offset);
 
     res.json({
       data: vehicles,
@@ -735,14 +721,14 @@ router.get('/vehicles/search', requireRole('admin', 'manager', 'supervisor', 'of
       return;
     }
 
-    const searchTerm = `%${escapeLike(q as string)}%`;
+    const searchTerm = `%${q}%`;
 
     const vehicles = db.prepare(`
       SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
       FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
-      WHERE v.plate_number LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\' OR v.make LIKE ? ESCAPE '\\'
-        OR v.model LIKE ? ESCAPE '\\' OR v.color LIKE ? ESCAPE '\\' OR v.notes LIKE ? ESCAPE '\\'
+      WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+        OR v.color LIKE ? OR v.notes LIKE ?
       ORDER BY v.created_at DESC
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
@@ -755,7 +741,7 @@ router.get('/vehicles/search', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // GET /api/records/vehicles/export - Export vehicles as CSV
-router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -765,7 +751,6 @@ router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), ex
       FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
       ORDER BY v.created_at DESC
-      LIMIT 50000
     `).all();
 
     sendCsv(res, 'vehicles_export.csv', [
@@ -786,7 +771,7 @@ router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), ex
 });
 
 // GET /api/records/vehicles/:id - Get vehicle
-router.get('/vehicles/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare(`
@@ -825,15 +810,6 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       flags, notes,
     } = req.body;
 
-    // Validate VIN format if provided (17 alphanumeric chars, no I/O/Q)
-    if (vin) {
-      const cleanVin = String(vin).toUpperCase().trim();
-      if (cleanVin.length !== 17 || !/^[A-HJ-NPR-Z0-9]{17}$/.test(cleanVin)) {
-        res.status(400).json({ error: 'VIN must be exactly 17 alphanumeric characters (no I, O, or Q)' });
-        return;
-      }
-    }
-
     const result = db.prepare(`
       INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
         body_style, doors, vin, owner_person_id,
@@ -854,7 +830,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       damage_description || null, distinguishing_features || null,
       trim || null, engine_type || null, fuel_type || null, transmission || null, drive_type || null,
       tow_status || null, tow_company || null, tow_date || null, plate_type || null,
-      commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer ?? null,
+      commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer || null,
       owner_address || null, owner_phone || null, lien_holder || null,
       stolen_status || null, stolen_date || null, recovery_date || null,
       JSON.stringify(flags || []), notes || null,
@@ -863,7 +839,10 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
     if (!vehicle) { res.status(500).json({ error: 'Failed to retrieve created vehicle' }); return; }
 
-    auditLog(req, 'vehicle_created', 'vehicle', Number(result.lastInsertRowid), `Created vehicle record: ${plate_number || 'No plate'}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'vehicle_created', 'vehicle', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${plate_number || 'No plate'} ${make || ''} ${model || ''}`, req.ip || 'unknown');
 
     res.status(201).json(vehicle);
   } catch (error: any) {
@@ -873,7 +852,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // PUT /api/records/vehicles/:id - Update vehicle
-router.put('/vehicles/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -937,7 +916,11 @@ router.put('/vehicles/:id', validateParamId, requireRole('admin', 'manager', 'su
       db.prepare(`UPDATE vehicles_records SET ${fields.join(', ')} WHERE id = ?`).run(...values);
     }
 
-    auditLog(req, 'vehicle_updated', 'vehicle', String(req.params.id), `Updated vehicle record #${req.params.id}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'vehicle_updated', 'vehicle', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Updated vehicle: ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -948,7 +931,7 @@ router.put('/vehicles/:id', validateParamId, requireRole('admin', 'manager', 'su
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/vehicles/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -957,20 +940,15 @@ router.delete('/vehicles/:id', validateParamId, requireRole('admin', 'manager'),
       return;
     }
 
-    let deleted = false;
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_vehicles WHERE vehicle_id = ?').run(vehicle.id);
-      const result = db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(vehicle.id);
-      deleted = result.changes > 0;
+      db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(vehicle.id);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'vehicle_deleted', 'vehicle', ?, ?, ?)
+      `).run(req.user!.userId, vehicle.id, `Deleted vehicle: ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''}`, req.ip || 'unknown');
     });
     deleteTx();
-
-    if (!deleted) {
-      res.status(500).json({ error: 'Failed to delete vehicle record' });
-      return;
-    }
-
-    auditLog(req, 'vehicle_deleted', 'vehicle', vehicle.id, `Deleted vehicle record #${vehicle.id}`);
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
     console.error('Delete vehicle error:', error?.message || 'Unknown error');
@@ -979,28 +957,36 @@ router.delete('/vehicles/:id', validateParamId, requireRole('admin', 'manager'),
 });
 
 // POST /api/records/vehicles/:id/archive
-router.post('/vehicles/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/vehicles/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
     if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
     if (v.archived_at) { res.status(400).json({ error: 'Vehicle is already archived' }); return; }
     const now = localNow();
-    db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, v.id);
-    auditLog(req, 'vehicle_archived', 'vehicle', v.id, `Archived vehicle record #${v.id}`);
+    const vArchiveTx = db.transaction(() => {
+      db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, v.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'vehicle_archived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Archived vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
+    });
+    vArchiveTx();
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
   } catch (error: any) { console.error('Archive vehicle error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/records/vehicles/:id/unarchive
-router.post('/vehicles/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/vehicles/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
     if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
     if (!v.archived_at) { res.status(400).json({ error: 'Vehicle is not archived' }); return; }
-    db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(v.id);
-    auditLog(req, 'vehicle_unarchived', 'vehicle', v.id, `Restored vehicle record #${v.id}`);
+    const vUnarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(v.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        Values (?, 'vehicle_unarchived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Restored vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
+    });
+    vUnarchiveTx();
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
   } catch (error: any) { console.error('Unarchive vehicle error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1011,7 +997,7 @@ router.post('/vehicles/:id/unarchive', validateParamId, requireRole('admin', 'ma
 router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { clientId, archived, search } = req.query;
+    const { clientId, archived } = req.query;
 
     const conditions: string[] = [];
     const params: any[] = [];
@@ -1019,12 +1005,6 @@ router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer
     if (clientId) {
       conditions.push('p.client_id = ?');
       params.push(clientId);
-    }
-
-    if (search) {
-      conditions.push("(p.name LIKE ? ESCAPE '\\' OR p.address LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')");
-      const s = `%${escapeLike(String(search))}%`;
-      params.push(s, s, s);
     }
 
     // Archive filter
@@ -1052,7 +1032,7 @@ router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // GET /api/records/properties/:id - Get property details
-router.get('/properties/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare(`
@@ -1161,22 +1141,6 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       return;
     }
 
-    // Validate GPS coordinates if provided
-    if (latitude != null) {
-      const lat = parseFloat(latitude);
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
-        return;
-      }
-    }
-    if (longitude != null) {
-      const lng = parseFloat(longitude);
-      if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
-        return;
-      }
-    }
-
     const result = db.prepare(`
       INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
         risk_level, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active)
@@ -1190,7 +1154,11 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
     );
 
-    auditLog(req, 'property_created', 'property', Number(result.lastInsertRowid), `Created property: ${name}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'property_created', 'property', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created property: ${name}`, req.ip || 'unknown');
 
     const property = db.prepare(`
       SELECT p.*, c.name as client_name
@@ -1208,7 +1176,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
 // ─── INCIDENT CROSS-REFERENCES ───────────────────────
 
 // GET /api/records/persons/:id/incidents - All incidents linked to a person
-router.get('/persons/:id/incidents', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -1236,7 +1204,7 @@ router.get('/persons/:id/incidents', validateParamId, requireRole('admin', 'mana
 });
 
 // GET /api/records/vehicles/:id/incidents - All incidents linked to a vehicle
-router.get('/vehicles/:id/incidents', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/vehicles/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1267,55 +1235,30 @@ router.get('/vehicles/:id/incidents', validateParamId, requireRole('admin', 'man
 router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', per_page, archived, search, status, type, case_id } = req.query;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
-    const limitNum = Math.min(200, Math.max(1, parseInt((per_page || limit) as string, 10) || 50));
+    const { page = '1', limit = '50', archived } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
-    const params: any[] = [];
-
     // Archive filter
     if (archived === 'true') {
       whereClause += ' AND e.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
       whereClause += ' AND e.archived_at IS NULL';
     }
-    // Case ID filter
-    if (case_id) {
-      whereClause += ' AND e.case_id = ?';
-      params.push(parseInt(case_id as string, 10));
-    }
-    // Status filter
-    if (status) {
-      whereClause += ' AND e.status = ?';
-      params.push(status as string);
-    }
-    // Type filter
-    if (type) {
-      whereClause += ' AND e.evidence_type = ?';
-      params.push(type as string);
-    }
-    // Search filter
-    if (search) {
-      whereClause += ' AND (e.evidence_number LIKE ? OR e.description LIKE ? OR e.serial_number LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
 
-    const countRow = db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get(...params) as any;
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get() as any;
 
     const evidence = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
-             c.case_number as linked_case_number, c.title as linked_case_title
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
-      LEFT JOIN cases c ON e.case_id = c.id
       ${whereClause}
       ORDER BY e.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limitNum, offset);
+    `).all(limitNum, offset);
 
     res.json({
       data: evidence,
@@ -1333,7 +1276,7 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
 });
 
 // PUT /api/records/evidence/:id - Update evidence
-router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1349,7 +1292,6 @@ router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'su
 
     const eFieldMap: Record<string, (v: any) => any> = {
       description: v => v ?? null, evidence_type: v => v ?? null,
-      incident_id: v => v ?? null, case_id: v => v ?? null,
       storage_location: v => v ?? null, collected_date: v => v ?? null,
       category: v => v ?? null, packaging_type: v => v ?? null,
       serial_number: v => v ?? null, brand: v => v ?? null, model: v => v ?? null,
@@ -1374,15 +1316,17 @@ router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'su
       db.prepare(`UPDATE evidence SET ${eFields.join(', ')} WHERE id = ?`).run(...eValues);
     }
 
-    auditLog(req, 'evidence_updated', 'evidence', String(req.params.id), `Updated evidence #${req.params.id}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'evidence_updated', 'evidence', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Updated evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
-             c.case_number as linked_case_number, c.title as linked_case_title
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
-      LEFT JOIN cases c ON e.case_id = c.id
       WHERE e.id = ?
     `).get(req.params.id);
     res.json(updated);
@@ -1393,7 +1337,7 @@ router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'su
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/evidence/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1402,12 +1346,14 @@ router.delete('/evidence/:id', validateParamId, requireRole('admin', 'manager'),
       return;
     }
 
-    const result = db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
-    if (result.changes === 0) {
-      res.status(500).json({ error: 'Failed to delete evidence record' });
-      return;
-    }
-    auditLog(req, 'evidence_deleted', 'evidence', evidence.id, `Deleted evidence #${evidence.id}`);
+    const delEvTx = db.transaction(() => {
+      db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'evidence_deleted', 'evidence', ?, ?, ?)
+      `).run(req.user!.userId, evidence.id, `Deleted evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    });
+    delEvTx();
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete evidence error:', error?.message || 'Unknown error');
@@ -1416,7 +1362,7 @@ router.delete('/evidence/:id', validateParamId, requireRole('admin', 'manager'),
 });
 
 // POST /api/records/evidence/:id/archive
-router.post('/evidence/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/evidence/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1424,8 +1370,13 @@ router.post('/evidence/:id/archive', validateParamId, requireRole('admin', 'mana
     if (evidence.archived_at) { res.status(400).json({ error: 'Evidence is already archived' }); return; }
 
     const now = localNow();
-    db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, evidence.id);
-    auditLog(req, 'evidence_archived', 'evidence', evidence.id, `Archived evidence #${evidence.id}`);
+    const eArchiveTx = db.transaction(() => {
+      db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, evidence.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'evidence_archived', 'evidence', ?, ?, ?)`).run(
+        req.user!.userId, evidence.id, `Archived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    });
+    eArchiveTx();
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.json(updated);
@@ -1436,15 +1387,20 @@ router.post('/evidence/:id/archive', validateParamId, requireRole('admin', 'mana
 });
 
 // POST /api/records/evidence/:id/unarchive
-router.post('/evidence/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/evidence/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
     if (!evidence) { res.status(404).json({ error: 'Evidence not found' }); return; }
     if (!evidence.archived_at) { res.status(400).json({ error: 'Evidence is not archived' }); return; }
 
-    db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(evidence.id);
-    auditLog(req, 'evidence_unarchived', 'evidence', evidence.id, `Unarchived evidence #${evidence.id}`);
+    const eUnarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(evidence.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'evidence_unarchived', 'evidence', ?, ?, ?)`).run(
+        req.user!.userId, evidence.id, `Unarchived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    });
+    eUnarchiveTx();
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.json(updated);
@@ -1455,7 +1411,7 @@ router.post('/evidence/:id/unarchive', validateParamId, requireRole('admin', 'ma
 });
 
 // POST /api/records/evidence/:id/custody - Add chain of custody entry
-router.post('/evidence/:id/custody', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/evidence/:id/custody', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1489,7 +1445,14 @@ router.post('/evidence/:id/custody', validateParamId, requireRole('admin', 'mana
       JSON.stringify(chain), evidence.id
     );
 
-    auditLog(req, 'custody_entry', 'evidence', evidence.id, `Chain of custody entry for evidence #${evidence.id}: ${action} - ${to_person}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'custody_entry', 'evidence', ?, ?, ?)
+    `).run(
+      req.user!.userId, evidence.id,
+      `Chain of custody: ${action} - ${to_person}`,
+      req.ip || 'unknown'
+    );
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.status(201).json(updated);
@@ -1549,7 +1512,7 @@ router.get('/evidence/locations', requireRole('admin', 'manager', 'supervisor', 
 });
 
 // POST /api/records/evidence/:id/chain-action — Enhanced chain-of-custody action
-router.post('/evidence/:id/chain-action', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/evidence/:id/chain-action', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1584,11 +1547,9 @@ router.post('/evidence/:id/chain-action', validateParamId, requireRole('admin', 
     db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
 
-    const auditActionMap: Record<string, 'evidence_check_in' | 'evidence_check_out' | 'evidence_transfer' | 'evidence_lab_submit' | 'evidence_release' | 'evidence_dispose'> = {
-      check_in: 'evidence_check_in', check_out: 'evidence_check_out', transfer: 'evidence_transfer',
-      lab_submit: 'evidence_lab_submit', release: 'evidence_release', dispose: 'evidence_dispose',
-    };
-    auditLog(req, auditActionMap[action], 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, 'evidence', ?, ?, ?, ?)`).run(
+      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), req.ip || 'unknown', localNow());
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
@@ -1598,7 +1559,7 @@ router.post('/evidence/:id/chain-action', validateParamId, requireRole('admin', 
 });
 
 // PUT /api/records/properties/:id - Update property
-router.put('/properties/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1639,7 +1600,11 @@ router.put('/properties/:id', validateParamId, requireRole('admin', 'manager', '
       db.prepare(`UPDATE properties SET ${pFields.join(', ')} WHERE id = ?`).run(...pValues);
     }
 
-    auditLog(req, 'property_updated', 'property', String(req.params.id), `Updated property #${req.params.id}: ${property.name}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'property_updated', 'property', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Updated property: ${property.name}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT p.*, c.name as client_name
@@ -1655,7 +1620,7 @@ router.put('/properties/:id', validateParamId, requireRole('admin', 'manager', '
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/properties/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1664,7 +1629,6 @@ router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'
       return;
     }
 
-    let deleted = false;
     const delTx = db.transaction(() => {
       // Remove any record links involving this property
       db.prepare("DELETE FROM record_links WHERE (source_type = 'property' AND source_id = ?) OR (target_type = 'property' AND target_id = ?)").run(req.params.id, req.params.id);
@@ -1675,17 +1639,13 @@ router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'
       db.prepare('DELETE FROM patrol_checkpoints WHERE property_id = ?').run(req.params.id);
       // Remove attachments referencing this property
       db.prepare("DELETE FROM attachments WHERE entity_type = 'property' AND entity_id = ?").run(req.params.id);
-      const result = db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id);
-      deleted = result.changes > 0;
+      db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'property_deleted', 'property', ?, ?, ?)
+      `).run(req.user!.userId, property.id, `Deleted property: ${property.name}`, req.ip || 'unknown');
     });
     delTx();
-
-    if (!deleted) {
-      res.status(500).json({ error: 'Failed to delete property record' });
-      return;
-    }
-
-    auditLog(req, 'property_deleted', 'property', property.id, `Deleted property #${property.id}: ${property.name}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete property error:', error?.message || 'Unknown error');
@@ -1694,28 +1654,36 @@ router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'
 });
 
 // POST /api/records/properties/:id/archive
-router.post('/properties/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/properties/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
     if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
     if (prop.archived_at) { res.status(400).json({ error: 'Property is already archived' }); return; }
     const now = localNow();
-    db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, prop.id);
-    auditLog(req, 'property_archived', 'property', prop.id, `Archived property #${prop.id}: ${prop.name}`);
+    const pArchiveTx = db.transaction(() => {
+      db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, prop.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'property_archived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Archived property: ${prop.name}`, req.ip || 'unknown');
+    });
+    pArchiveTx();
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
   } catch (error: any) { console.error('Archive property error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/records/properties/:id/unarchive
-router.post('/properties/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/properties/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
     if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
     if (!prop.archived_at) { res.status(400).json({ error: 'Property is not archived' }); return; }
-    db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(prop.id);
-    auditLog(req, 'property_unarchived', 'property', prop.id, `Restored property #${prop.id}: ${prop.name}`);
+    const pUnarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(prop.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'property_unarchived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Restored property: ${prop.name}`, req.ip || 'unknown');
+    });
+    pUnarchiveTx();
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
   } catch (error: any) { console.error('Unarchive property error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1740,10 +1708,10 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
     }
 
     // Generate evidence number
-    const currentYear = parseInt(localToday().slice(0, 4), 10);
+    const currentYear = new Date().getFullYear();
     const lastEvidence = db.prepare(
-      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
-    ).get(`EV-${escapeLike(String(currentYear))}-%`) as any;
+      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`EV-${currentYear}-%`) as any;
 
     let nextNum = 1;
     if (lastEvidence) {
@@ -1772,15 +1740,17 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
       notes || null
     );
 
-    auditLog(req, 'evidence_created', 'evidence', Number(result.lastInsertRowid), `Created evidence #${result.lastInsertRowid}: ${evidenceNumber}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'evidence_created', 'evidence', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created evidence: ${evidenceNumber} - ${description}`, req.ip || 'unknown');
 
     const created = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
-             c.case_number as linked_case_number, c.title as linked_case_title
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
-      LEFT JOIN cases c ON e.case_id = c.id
       WHERE e.id = ?
     `).get(result.lastInsertRowid);
     res.status(201).json(created);
@@ -1890,7 +1860,13 @@ router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', '
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(source_type, source_id, target_type, target_id, relationship || 'associated', notes || null, req.user!.userId);
 
-    auditLog(req, 'record_linked', 'record_link', Number(result.lastInsertRowid), `Linked ${source_type} #${source_id} to ${target_type} #${target_id}`);
+    // Activity log
+    const sourceLabel = getRecordLabel(db, source_type, source_id);
+    const targetLabel = getRecordLabel(db, target_type, target_id);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'record_linked', 'record_link', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Linked ${source_type} "${sourceLabel}" to ${target_type} "${targetLabel}"`, req.ip || 'unknown');
 
     const created = db.prepare(`
       SELECT rl.*, u.full_name as created_by_name
@@ -1910,7 +1886,7 @@ router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', '
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/links/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -1921,7 +1897,10 @@ router.delete('/links/:id', validateParamId, requireRole('admin', 'manager'), (r
 
     db.prepare('DELETE FROM record_links WHERE id = ?').run(req.params.id);
 
-    auditLog(req, 'record_unlinked', 'record_link', link.id, `Removed link between ${link.source_type} #${link.source_id} and ${link.target_type} #${link.target_id}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'record_unlinked', 'record_link', ?, ?, ?)
+    `).run(req.user!.userId, link.id, `Removed link between ${link.source_type} #${link.source_id} and ${link.target_type} #${link.target_id}`, req.ip || 'unknown');
 
     res.json({ success: true });
   } catch (error: any) {
@@ -1959,14 +1938,14 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return;
     }
 
-    const term = `%${escapeLike(String(q).trim())}%`;
+    const term = `%${String(q).trim()}%`;
     const results: any[] = [];
 
     if (!type || type === 'person') {
       const persons = db.prepare(`
         SELECT id, first_name, last_name, 'person' as record_type
         FROM persons
-        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
+        WHERE first_name LIKE ? OR last_name LIKE ? OR (first_name || ' ' || last_name) LIKE ?
         LIMIT 10
       `).all(term, term, term) as any[];
       results.push(...persons.map(p => ({
@@ -1979,7 +1958,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       const vehicles = db.prepare(`
         SELECT id, make, model, plate_number, color, 'vehicle' as record_type
         FROM vehicles_records
-        WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR plate_number LIKE ? ESCAPE '\\' OR vin LIKE ? ESCAPE '\\'
+        WHERE make LIKE ? OR model LIKE ? OR plate_number LIKE ? OR vin LIKE ?
         LIMIT 10
       `).all(term, term, term, term) as any[];
       results.push(...vehicles.map(v => ({
@@ -1992,7 +1971,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       const properties = db.prepare(`
         SELECT id, name, address, 'property' as record_type
         FROM properties
-        WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\'
+        WHERE name LIKE ? OR address LIKE ?
         LIMIT 10
       `).all(term, term) as any[];
       results.push(...properties.map(p => ({
@@ -2005,7 +1984,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       const evidence = db.prepare(`
         SELECT id, evidence_number, description, 'evidence' as record_type
         FROM evidence
-        WHERE evidence_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR serial_number LIKE ? ESCAPE '\\'
+        WHERE evidence_number LIKE ? OR description LIKE ? OR serial_number LIKE ?
         LIMIT 10
       `).all(term, term, term) as any[];
       results.push(...evidence.map(e => ({
@@ -2026,7 +2005,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
 // ═══════════════════════════════════════════════════
 
 // GET /api/records/persons/:id/criminal-history
-router.get('/persons/:id/criminal-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/criminal-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -2044,10 +2023,10 @@ router.get('/persons/:id/criminal-history', validateParamId, requireRole('admin'
 });
 
 // POST /api/records/persons/:id/criminal-history
-router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/persons/:id/criminal-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const personId = req.params.id;
     const {
       record_type, offense, offense_level, statute, case_number,
@@ -2074,8 +2053,6 @@ router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin
       notes || null, user.userId,
     );
 
-    auditLog(req, 'criminal_history_created', 'criminal_history', Number(result.lastInsertRowid), `Created criminal history entry for person #${personId}: ${offense}`);
-
     const newRecord = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(newRecord);
   } catch (error: any) {
@@ -2085,7 +2062,7 @@ router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin
 });
 
 // PUT /api/records/criminal-history/:id
-router.put('/criminal-history/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -2118,8 +2095,6 @@ router.put('/criminal-history/:id', validateParamId, requireRole('admin', 'manag
       sentence || null, source || null, notes || null, localNow(), req.params.id,
     );
 
-    auditLog(req, 'criminal_history_updated', 'criminal_history', String(req.params.id), `Updated criminal history record #${req.params.id}`);
-
     const updated = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
@@ -2129,11 +2104,10 @@ router.put('/criminal-history/:id', validateParamId, requireRole('admin', 'manag
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
-    auditLog(req, 'criminal_history_deleted', 'criminal_history', String(req.params.id), `Deleted criminal history record #${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete criminal history error:', error?.message || 'Unknown error');
@@ -2146,7 +2120,7 @@ router.delete('/criminal-history/:id', validateParamId, requireRole('admin', 'ma
 // ═══════════════════════════════════════════════════
 
 // GET /api/records/persons/:id/clients - Get all clients linked to a person
-router.get('/persons/:id/clients', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/clients', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -2167,7 +2141,7 @@ router.get('/persons/:id/clients', validateParamId, requireRole('admin', 'manage
 });
 
 // GET /api/records/clients/:id/persons - Get all persons linked to a client
-router.get('/clients/:id/persons', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/clients/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -2191,7 +2165,7 @@ router.get('/clients/:id/persons', validateParamId, requireRole('admin', 'manage
 router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const { client_id, person_id, relationship, title, notes, is_primary } = req.body;
 
     if (!client_id || !person_id) {
@@ -2223,7 +2197,14 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
       user.userId
     );
 
-    auditLog(req, 'client_person_linked', 'person', person_id, `Linked person ${person.first_name} ${person.last_name} to client ${client.name}`);
+    // Activity log
+    db.prepare(
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      user.userId, 'client_person_linked', 'person', person_id,
+      `Linked person ${person.first_name} ${person.last_name} to client ${client.name} as ${relationship || 'contact'}`,
+      req.ip || 'unknown', localNow()
+    );
 
     const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(result.lastInsertRowid);
     if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
@@ -2238,7 +2219,7 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // PUT /api/records/client-persons/:id - Update link details
-router.put('/client-persons/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/client-persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id) as any;
@@ -2268,8 +2249,6 @@ router.put('/client-persons/:id', validateParamId, requireRole('admin', 'manager
       req.params.id
     );
 
-    auditLog(req, 'client_person_updated', 'person', link.person_id, `Updated client-person link #${req.params.id}`);
-
     const updated = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
@@ -2279,7 +2258,7 @@ router.put('/client-persons/:id', validateParamId, requireRole('admin', 'manager
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/client-persons/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -2293,7 +2272,15 @@ router.delete('/client-persons/:id', validateParamId, requireRole('admin', 'mana
 
     db.prepare('DELETE FROM client_persons WHERE id = ?').run(req.params.id);
 
-    auditLog(req, 'client_person_unlinked', 'person', link.person_id, `Unlinked person ${link.first_name} ${link.last_name} from client ${link.client_name}`);
+    // Activity log
+    const user = (req as any).user;
+    db.prepare(
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      user.userId, 'client_person_unlinked', 'person', link.person_id,
+      `Unlinked person ${link.first_name} ${link.last_name} from client ${link.client_name}`,
+      req.ip || 'unknown', localNow()
+    );
 
     res.json({ message: 'Link removed' });
   } catch (error: any) {
@@ -2304,7 +2291,7 @@ router.delete('/client-persons/:id', validateParamId, requireRole('admin', 'mana
 
 // GET /api/records/persons/:id/invoice-summary - Get billable summary for a person
 // Shows all clients they're linked to, incidents for those clients, and invoice history
-router.get('/persons/:id/invoice-summary', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/invoice-summary', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -2374,16 +2361,16 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
       return;
     }
 
-    const searchTerm = `%${escapeLike(q as string)}%`;
+    const searchTerm = `%${q}%`;
 
     switch (type) {
       case 'person': {
         // Search persons by name
         const persons = db.prepare(`
           SELECT ${PERSON_LIST_COLUMNS} FROM persons
-          WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\'
-            OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
-            OR (last_name || ', ' || first_name) LIKE ? ESCAPE '\\'
+          WHERE first_name LIKE ? OR last_name LIKE ?
+            OR (first_name || ' ' || last_name) LIKE ?
+            OR (last_name || ', ' || first_name) LIKE ?
           ORDER BY last_name, first_name
           LIMIT 5
         `).all(searchTerm, searchTerm, searchTerm, searchTerm) as any[];
@@ -2421,8 +2408,8 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
           SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
           FROM vehicles_records v
           LEFT JOIN persons p ON v.owner_person_id = p.id
-          WHERE v.plate_number LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\'
-            OR v.make LIKE ? ESCAPE '\\' OR v.model LIKE ? ESCAPE '\\'
+          WHERE v.plate_number LIKE ? OR v.vin LIKE ?
+            OR v.make LIKE ? OR v.model LIKE ?
           ORDER BY v.created_at DESC
           LIMIT 5
         `).all(searchTerm, searchTerm, searchTerm, searchTerm);
@@ -2434,16 +2421,16 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
       case 'phone': {
         // Search persons by phone number — normalise both sides to digits-only
         const rawDigits = (q as string).replace(/\D/g, '');
-        const phoneTerm = `%${escapeLike(rawDigits.length >= 4 ? rawDigits : q as string)}%`;
+        const phoneTerm = `%${rawDigits.length >= 4 ? rawDigits : q}%`;
 
         // Strip common formatting chars from stored phone values for comparison
         const stripSql = (col: string) =>
           `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col},''), '-', ''), '(', ''), ')', ''), ' ', '')`;
 
         const persons = db.prepare(`
-          SELECT ${PERSON_COLUMNS} FROM persons
-          WHERE ${stripSql('phone')} LIKE ? ESCAPE '\\'
-            OR ${stripSql('phone_secondary')} LIKE ? ESCAPE '\\'
+          SELECT * FROM persons
+          WHERE ${stripSql('phone')} LIKE ?
+            OR ${stripSql('phone_secondary')} LIKE ?
           ORDER BY last_name, first_name
           LIMIT 5
         `).all(phoneTerm, phoneTerm) as any[];
@@ -2477,10 +2464,10 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
           FROM warrants w
           LEFT JOIN persons p ON w.subject_person_id = p.id
           WHERE w.status = 'active'
-            AND (w.warrant_number LIKE ? ESCAPE '\\'
-              OR p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\'
-              OR (p.first_name || ' ' || p.last_name) LIKE ? ESCAPE '\\'
-              OR w.charge_description LIKE ? ESCAPE '\\')
+            AND (w.warrant_number LIKE ?
+              OR p.first_name LIKE ? OR p.last_name LIKE ?
+              OR (p.first_name || ' ' || p.last_name) LIKE ?
+              OR w.charge_description LIKE ?)
           ORDER BY w.created_at DESC
           LIMIT 10
         `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
@@ -2500,10 +2487,10 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
       case 'phone': {
         // Search persons by phone number
         const phoneTerm = (q as string).replace(/[^\d]/g, ''); // strip non-digits
-        const phoneSearch = `%${escapeLike(phoneTerm)}%`;
+        const phoneSearch = `%${phoneTerm}%`;
         const persons = db.prepare(`
           SELECT ${PERSON_LIST_COLUMNS} FROM persons
-          WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), '(', ''), ')', ''), ' ', '') LIKE ? ESCAPE '\\'
+          WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), '(', ''), ')', ''), ' ', '') LIKE ?
           ORDER BY last_name, first_name
           LIMIT 5
         `).all(phoneSearch) as any[];
@@ -2537,7 +2524,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
         // Persons at this address
         const addrPersons = db.prepare(`
           SELECT ${PERSON_LIST_COLUMNS} FROM persons
-          WHERE address LIKE ? ESCAPE '\\' OR (address || ' ' || COALESCE(city,'') || ' ' || COALESCE(state,'') || ' ' || COALESCE(zip,'')) LIKE ? ESCAPE '\\'
+          WHERE address LIKE ? OR (address || ' ' || COALESCE(city,'') || ' ' || COALESCE(state,'') || ' ' || COALESCE(zip,'')) LIKE ?
           ORDER BY last_name, first_name
           LIMIT 10
         `).all(addrSearch, addrSearch) as any[];
@@ -2561,7 +2548,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
             SELECT call_number, incident_type, priority, disposition, created_at,
               weapons_involved, domestic_violence
             FROM calls_for_service
-            WHERE location_address LIKE ? ESCAPE '\\'
+            WHERE location_address LIKE ?
             ORDER BY created_at DESC
             LIMIT 5
           `).all(addrSearch);
@@ -2573,7 +2560,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
           properties = db.prepare(`
             SELECT name, address, gate_code, alarm_code, post_orders, hazard_notes
             FROM properties
-            WHERE address LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\'
+            WHERE address LIKE ? OR name LIKE ?
             LIMIT 5
           `).all(addrSearch, addrSearch);
         } catch { /* properties table may not exist */ }
@@ -2586,7 +2573,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
               (subject_first_name || ' ' || subject_last_name) as subject_name,
               expiration_date
             FROM trespass_orders
-            WHERE location LIKE ? ESCAPE '\\' AND status = 'active'
+            WHERE location LIKE ? AND status = 'active'
             ORDER BY created_at DESC
             LIMIT 10
           `).all(addrSearch);

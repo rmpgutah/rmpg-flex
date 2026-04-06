@@ -17,13 +17,7 @@ function escapeCsvValue(value: any): string {
     return '';
   }
 
-  let str = String(value);
-
-  // CSV formula injection protection — prefix dangerous characters so spreadsheets
-  // don't interpret cell values as formulas (e.g., =cmd|'/C calc'!A0)
-  if (/^[=+\-@\t\r]/.test(str)) {
-    str = `'${str}`;
-  }
+  const str = String(value);
 
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
@@ -56,8 +50,7 @@ export function sendCsv(
   }
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  const safeFilename = filename.replace(/["\r\n\0]/g, '_');
-  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
   const headerRow = columns.map((col) => escapeCsvValue(col.header)).join(',');
 

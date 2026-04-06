@@ -95,7 +95,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         <label className="field-label mb-1 block">Title *</label>
         <input
           type="text"
-          className="input-dark"
+          className="input-field w-full"
           value={form.title}
           onChange={e => set('title', e.target.value)}
           required
@@ -107,7 +107,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         <div>
           <label className="field-label mb-1 block">Classification</label>
           <select
-            className="select-dark"
+            className="input-field w-full"
             value={form.classification}
             onChange={e => set('classification', e.target.value)}
           >
@@ -119,7 +119,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         <div>
           <label className="field-label mb-1 block">Retention Status</label>
           <select
-            className="select-dark"
+            className="input-field w-full"
             value={form.retention_status}
             onChange={e => set('retention_status', e.target.value)}
           >
@@ -136,7 +136,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
           <label className="field-label mb-1 block">Case Number</label>
           <input
             type="text"
-            className="input-dark"
+            className="input-field w-full"
             value={form.case_number}
             onChange={e => set('case_number', e.target.value)}
             placeholder="e.g. RKY26-00042-CRM"
@@ -146,7 +146,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
           <label className="field-label mb-1 block">Recorded At</label>
           <input
             type="datetime-local"
-            className="input-dark"
+            className="input-field w-full"
             value={form.recorded_at}
             onChange={e => set('recorded_at', e.target.value)}
           />
@@ -157,7 +157,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       <div>
         <label className="field-label mb-1 block">Notes</label>
         <textarea
-          className="textarea-dark"
+          className="input-field w-full"
           rows={3}
           value={form.notes}
           onChange={e => set('notes', e.target.value)}

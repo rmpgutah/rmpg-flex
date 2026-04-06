@@ -118,7 +118,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const center = call?.latitude != null && call?.longitude != null
+    const center = call?.latitude && call?.longitude
       ? { lat: call.latitude, lng: call.longitude }
       : DEFAULT_CENTER;
 
@@ -126,13 +126,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: MINI_ZOOM,
-        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         gestureHandling: 'cooperative',
-        backgroundColor: '#0a1220',
       });
       mapRef.current = map;
       registerMapInstance(map);
@@ -188,14 +186,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     };
 
     // Call marker (red pin)
-    if (call?.latitude != null && call?.longitude != null && mapRef.current) {
+    if (call?.latitude && call?.longitude && mapRef.current) {
       const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
       markersRef.current.push(m);
     }
 
     // Assigned unit markers (blue dots)
     const assignedUnits = units.filter(u =>
-      call?.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null
+      call?.assigned_units?.includes(u.call_sign) && u.latitude && u.longitude
     );
 
     for (const unit of assignedUnits) {
@@ -212,13 +210,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
   // Auto-route: show driving route when exactly 1 assigned unit has GPS
   useEffect(() => {
-    if (!loaded || !mapRef.current || call?.latitude == null || call?.longitude == null) {
+    if (!loaded || !mapRef.current || !call?.latitude || !call?.longitude) {
       if (hasActiveRouteRef.current) clearRoute();
       return;
     }
 
     const assignedWithGps = units.filter(u =>
-      call.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null
+      call.assigned_units?.includes(u.call_sign) && u.latitude && u.longitude
     );
 
     if (assignedWithGps.length === 1) {

@@ -14,7 +14,6 @@ import { getDb } from '../models/database';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import {
@@ -47,7 +46,7 @@ router.get('/status', (_req: Request, res: Response) => {
     const stats = getIpedUsageStats();
     res.json({ ...cfg, ...stats });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -72,7 +71,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     auditLog(req, 'iped_config_updated', 'config', 'iped', `IPED config updated: ${Object.keys(values).join(', ')}`);
     res.json({ success: true, message: 'IPED configuration saved' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -84,7 +83,7 @@ router.delete('/config', requireRole('admin'), (req: Request, res: Response) => 
     auditLog(req, 'iped_config_cleared', 'config', 'iped', 'IPED configuration cleared');
     res.json({ success: true, message: 'IPED configuration cleared' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -95,7 +94,7 @@ router.post('/validate', requireRole('admin'), (_req: Request, res: Response) =>
     const result = validateIpedInstallation();
     res.json(result);
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -106,7 +105,7 @@ router.post('/test-api', requireRole('admin'), async (_req: Request, res: Respon
     const result = await testIpedApiConnection();
     res.json(result);
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -142,7 +141,7 @@ router.get('/download/info', (_req: Request, res: Response) => {
       githubUrl: 'https://github.com/sepinf-inc/IPED/releases',
     });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -153,26 +152,16 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
     const db = getDb();
     const now = localNow();
     const { evidenceId, jobType, inputPath, outputPath, profile } = req.body;
-    const userId = req.user?.userId;
-
-    // Validate profile to prevent shell injection in IPED command
-    if (profile && !/^[a-zA-Z0-9_-]+$/.test(profile)) {
-      return res.status(400).json({ error: 'Invalid profile name — only alphanumeric, dashes, underscores allowed' });
-    }
+    const userId = (req as any).user?.id;
 
     if (!inputPath) return res.status(400).json({ error: 'inputPath is required' });
     if (!['hash', 'process', 'triage', 'csam_scan'].includes(jobType)) {
       return res.status(400).json({ error: 'Invalid jobType (hash/process/triage/csam_scan)' });
     }
 
-    // Validate input path — block shell metacharacters and traversal
-    if (/[;|&`$(){}]/.test(inputPath)) {
-      return res.status(400).json({ error: 'Input path contains invalid characters' });
-    }
-
     // Validate path exists
     if (!fs.existsSync(inputPath)) {
-      return res.status(400).json({ error: 'Input path does not exist' });
+      return res.status(400).json({ error: `Input path does not exist: ${inputPath}` });
     }
 
     const result = db.prepare(`
@@ -205,8 +194,8 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
         return res.json({ success: true, jobId, completed: true, ...hashResult });
       } catch (err: any) {
         db.prepare("UPDATE iped_jobs SET status = 'failed', completed_at = ?, error_message = ?, updated_at = ? WHERE id = ?")
-          .run(localNow(), err?.message || err, localNow(), jobId);
-        console.error('IPED job error:', err?.message || err);
+          .run(localNow(), err.message, localNow(), jobId);
+        console.error('IPED job error:', err.message);
         return res.status(500).json({ error: 'Processing failed', jobId });
       }
     }
@@ -220,25 +209,25 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
         outputPath: outputPath || path.join(inputPath, '../iped-output'),
         profile,
         jobType,
-        createdBy: userId!,
+        createdBy: userId,
       }).catch(err => {
-        console.error(`[IPED] Job ${jobId} failed:`, err?.message || err);
+        console.error(`[IPED] Job ${jobId} failed:`, err.message);
       });
     }
 
     auditLog(req, 'iped_job_created', 'iped_job', jobId, `IPED ${jobType} job created for input: ${inputPath}`);
     res.json({ success: true, jobId, status: 'queued' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── GET /jobs — List processing jobs ────────────────────────
-router.get('/jobs', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.get('/jobs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.min(10000, Math.max(1, parseInt(req.query.page as string, 10) || 1));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const offset = (page - 1) * limit;
     const status = (req.query.status as string || '').trim();
@@ -266,13 +255,13 @@ router.get('/jobs', requireRole('admin', 'manager'), (req: Request, res: Respons
 
     res.json({ jobs, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── GET /jobs/:id — Job details ─────────────────────────────
-router.get('/jobs/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.get('/jobs/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -296,13 +285,13 @@ router.get('/jobs/:id', validateParamId, requireRole('admin', 'manager'), (req: 
 
     res.json({ ...job, hashes, progress });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── POST /jobs/:id/cancel — Cancel running job ──────────────
-router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
@@ -310,7 +299,7 @@ router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager')
     if (cancelled) auditLog(req, 'iped_job_cancelled', 'iped_job', id, `IPED job ${id} cancelled`);
     res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not running' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -325,21 +314,12 @@ router.post('/hash/compute', requireRole('admin', 'manager'), async (req: Reques
     }
 
     let targetPath = filePath;
-    // Validate user-supplied filePath doesn't traverse outside expected directories
-    if (filePath && (filePath.includes('..') || filePath.includes('\0'))) {
-      return res.status(400).json({ error: 'Invalid file path' });
-    }
     if (attachmentId && !filePath) {
       const db = getDb();
       const att = db.prepare('SELECT file_path FROM attachments WHERE id = ?').get(attachmentId) as any;
       if (!att) return res.status(404).json({ error: 'Attachment not found' });
       const uploadsDir = process.env.RMPG_UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
       targetPath = path.join(uploadsDir, att.file_path);
-      // Prevent path traversal — ensure resolved path stays within uploads directory
-      const resolved = path.resolve(targetPath);
-      if (!resolved.startsWith(path.resolve(uploadsDir))) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
     }
 
     if (!fs.existsSync(targetPath)) {
@@ -351,7 +331,7 @@ router.post('/hash/compute', requireRole('admin', 'manager'), async (req: Reques
 
     res.json({ ...hashes, matches, flagged: matches.length > 0 });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -365,7 +345,7 @@ router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request,
     const result = await hashEvidenceAttachments(evidenceId);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -396,7 +376,7 @@ router.get('/hash/results', requireRole('admin', 'manager'), (req: Request, res:
 
     res.json({ results, count: results.length });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -412,7 +392,7 @@ router.post('/hash/check', requireRole('admin'), (req: Request, res: Response) =
 
     res.json({ matches, hit: matches.length > 0 });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -422,7 +402,7 @@ router.get('/hash-sets', requireRole('admin'), (_req: Request, res: Response) =>
   try {
     res.json({ sets: getHashSetSummary() });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -439,7 +419,7 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
     auditLog(req, 'iped_hashset_imported', 'iped_hashset', setName, `Imported ${count} hashes into set "${setName}" (${category})`);
     res.json({ success: true, imported: count, setName, category });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -454,7 +434,7 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
     const output = await importToIpedHashDb(filePath);
     res.json({ success: true, output });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -466,7 +446,7 @@ router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Resp
     if (removed) auditLog(req, 'iped_hashset_removed', 'iped_hashset', String(req.params.name), `Hash set "${req.params.name}" removed`);
     res.json({ success: true, removed });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -474,47 +454,43 @@ router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Resp
 // ── IPED Web API Proxy Routes ───────────────────────────────
 
 // List processed cases
-router.get('/cases', requireRole('admin', 'manager'), async (_req: Request, res: Response) => {
+router.get('/cases', async (_req: Request, res: Response) => {
   try {
     const data = await proxyIpedApi('/cases');
     res.json(data);
   } catch (err: any) {
-    console.error('[IPED] List cases error:', err?.message || err);
-    res.status(502).json({ error: 'IPED API unavailable' });
+    res.status(502).json({ error: `IPED API: ${err.message}` });
   }
 });
 
 // Search within a case
-router.get('/cases/:caseId/search', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string || '';
-    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/search?q=${encodeURIComponent(query)}`);
+    const data = await proxyIpedApi(`/cases/${req.params.caseId}/search?q=${encodeURIComponent(query)}`);
     res.json(data);
   } catch (err: any) {
-    console.error('[IPED] Search error:', err?.message || err);
-    res.status(502).json({ error: 'IPED API unavailable' });
+    res.status(502).json({ error: `IPED API: ${err.message}` });
   }
 });
 
 // Get file metadata
-router.get('/cases/:caseId/file/:fileId', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/file/${encodeURIComponent(String(req.params.fileId))}`);
+    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}`);
     res.json(data);
   } catch (err: any) {
-    console.error('[IPED] File metadata error:', err?.message || err);
-    res.status(502).json({ error: 'IPED API unavailable' });
+    res.status(502).json({ error: `IPED API: ${err.message}` });
   }
 });
 
 // Get file thumbnail
-router.get('/cases/:caseId/file/:fileId/thumb', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.get('/cases/:caseId/file/:fileId/thumb', async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/file/${encodeURIComponent(String(req.params.fileId))}/thumb`);
+    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}/thumb`);
     res.json(data);
   } catch (err: any) {
-    console.error('[IPED] File thumbnail error:', err?.message || err);
-    res.status(502).json({ error: 'IPED API unavailable' });
+    res.status(502).json({ error: `IPED API: ${err.message}` });
   }
 });
 
@@ -523,7 +499,7 @@ router.get('/usage', (_req: Request, res: Response) => {
   try {
     res.json(getIpedUsageStats());
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
+    console.error('IPED error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -13,7 +13,6 @@
 // API docs: https://developer.microbilt.com/apis
 
 import { Router, Request, Response } from 'express';
-import { escapeLike } from '../middleware/sanitize';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
@@ -21,8 +20,6 @@ import { localNow } from '../utils/timeUtils';
 import config from '../config';
 import { searchOfacLocal, syncOfacData, getOfacSyncStatus, getOfacListBreakdown } from '../utils/ofacScraper';
 import { storeDlRecord, searchDlLocal, getDlStats } from '../utils/dlRecordStore';
-import { auditLog } from '../utils/auditLogger';
-import { rateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 router.use(authenticateToken);
@@ -147,7 +144,6 @@ async function getAccessToken(): Promise<string | null> {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: 'grant_type=client_credentials',
-      signal: AbortSignal.timeout(15000),
     });
 
     if (!resp.ok) {
@@ -216,7 +212,10 @@ router.put('/credentials', requireRole('admin'), (req: Request, res: Response) =
     // Clear cached token when credentials change
     cachedToken = null;
 
-    auditLog(req, 'microbilt_credentials_updated', 'integration', 0, 'Updated Microbilt API credentials');
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'microbilt_credentials_updated', 'integration', 0, ?, ?)"
+    ).run(req.user!.userId, 'Updated Microbilt API credentials', req.ip || 'unknown');
 
     res.json({ message: 'Credentials saved' });
   } catch (error: any) {
@@ -231,7 +230,10 @@ router.delete('/credentials', requireRole('admin'), (req: Request, res: Response
     Object.values(CONFIG_KEYS).forEach(key => deleteConfigValue(key));
     cachedToken = null;
 
-    auditLog(req, 'microbilt_credentials_cleared', 'integration', 0, 'Cleared Microbilt API credentials');
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'microbilt_credentials_cleared', 'integration', 0, ?, ?)"
+    ).run(req.user!.userId, 'Cleared Microbilt API credentials', req.ip || 'unknown');
 
     res.json({ message: 'Credentials cleared' });
   } catch (error: any) {
@@ -245,16 +247,17 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
   try {
     const token = await getAccessToken();
     if (!token) {
-      res.status(400).json({ success: false, error: 'No credentials configured or token request failed' });
+      res.json({ success: false, error: 'No credentials configured or token request failed' });
       return;
     }
 
     res.json({
       success: true,
       message: 'Successfully authenticated with Microbilt API',
+      token_preview: `${token.substring(0, 8)}...`,
     });
   } catch (error: any) {
-    res.status(502).json({
+    res.json({
       success: false,
       error: 'Connection test failed',
     });
@@ -272,8 +275,10 @@ router.put('/products', requireRole('admin'), (req: Request, res: Response) => {
 
     setConfigValue(CONFIG_KEYS.enabledProducts, JSON.stringify(products), false);
 
-    auditLog(req, 'microbilt_products_updated', 'integration', 0,
-      `Updated enabled products: ${products.join(', ')}`);
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'microbilt_products_updated', 'integration', 0, ?, ?)"
+    ).run(req.user!.userId, `Updated enabled products: ${products.join(', ')}`, req.ip || 'unknown');
 
     res.json({ message: 'Products updated', products });
   } catch (error: any) {
@@ -288,14 +293,7 @@ router.put('/products', requireRole('admin'), (req: Request, res: Response) => {
 // Searches the locally-synced U.S. Treasury sanctions list.
 // Data is synced daily by ofacScraper.ts from treasury.gov.
 
-const ofacSearchRateLimit = rateLimit({
-  windowMs: 60_000,
-  maxRequests: 20,
-  keyGenerator: (req: Request) => `ofac:${req.user?.userId || req.ip}`,
-  message: 'OFAC search rate limit exceeded — try again shortly',
-});
-
-router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'officer'), ofacSearchRateLimit, (req: Request, res: Response) => {
+router.post('/ofac/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { fullName, firstName, lastName } = req.body;
@@ -312,7 +310,7 @@ router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'offic
       return;
     }
 
-    const searchTerm = `%${escapeLike(searchName)}%`;
+    const searchTerm = `%${searchName}%`;
 
     // Search SDN entries by name
     const entries = db.prepare(`
@@ -322,7 +320,7 @@ router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'offic
       FROM ofac_sdn_entries e
       LEFT JOIN ofac_sdn_aliases a ON e.ent_num = a.ent_num
       LEFT JOIN ofac_sdn_addresses addr ON e.ent_num = addr.ent_num
-      WHERE e.sdn_name LIKE ? ESCAPE '\\' OR a.alias_name LIKE ? ESCAPE '\\'
+      WHERE e.sdn_name LIKE ? OR a.alias_name LIKE ?
       GROUP BY e.id
       ORDER BY e.sdn_name
       LIMIT 10
@@ -351,9 +349,6 @@ router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'offic
           })
         : [],
     }));
-
-    auditLog(req, 'ofac_search', 'ofac_screening', 0,
-      `OFAC search for "${searchName}" — ${subjects.length} hit(s)`);
 
     res.json({
       hit: subjects.length > 0,

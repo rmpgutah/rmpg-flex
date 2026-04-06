@@ -110,13 +110,11 @@ const PAGE_TITLES: Record<string, string> = {
   '/sex-offender-registry': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensics': 'Connection Analysis',
-  '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
   '/crm': 'Overwatch',
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
-  '/hr': 'HR Console',
   '/admin': 'Admin',
 };
 
@@ -148,8 +146,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
-    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
-    { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/forensics', icon: Microscope, label: 'Forensic Lab' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
@@ -163,7 +160,6 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
-    { path: '/hr', icon: ClipboardCheck, label: 'HR Console' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
@@ -315,7 +311,7 @@ export default function Layout() {
       // Fire-and-forget — don't await so the modal closes immediately
       refreshUser();
     } catch (err: any) {
-      setSetupError(err?.message || 'Failed to save. Try again.');
+      setSetupError(err.message || 'Failed to save. Try again.');
     } finally {
       setSetupSaving(false);
     }
@@ -383,7 +379,7 @@ export default function Layout() {
         const url = token
           ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
           : item.externalUrl;
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.open(url, '_blank', 'noopener');
         return;
       }
 
@@ -989,7 +985,7 @@ export default function Layout() {
                       const url = token
                         ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
                         : item.externalUrl!;
-                      window.open(url, '_blank', 'noopener,noreferrer');
+                      window.open(url, '_blank', 'noopener');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
                     className="toolbar-btn"
@@ -1020,7 +1016,7 @@ export default function Layout() {
                       } else {
                         setOpenDropdown(null);
                         if (item.newWindow) {
-                          window.open(item.path, '_blank', 'noopener,noreferrer');
+                          window.open(item.path, '_blank');
                         } else {
                           navigate(item.path);
                         }
@@ -1136,7 +1132,7 @@ export default function Layout() {
                             onClick={() => {
                               setOpenDropdown(null);
                               if (child.newWindow || item.newWindow) {
-                                window.open(child.path, '_blank', 'noopener,noreferrer');
+                                window.open(child.path, '_blank');
                               } else {
                                 navigate(child.path);
                               }

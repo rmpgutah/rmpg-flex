@@ -128,7 +128,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         setRecords(data.records || []);
         setRecordsTotal(data.total || 0);
       }
-    } catch (e) { console.error('Failed to fetch arrest records:', e); }
+    } catch { /* ignore */ }
     finally { setRecordsLoading(false); }
   }, []);
 
@@ -137,7 +137,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       const data = await apiFetch<any>('/jail-roster/status');
       setScraperStatus(data);
-    } catch (e) { console.error('Failed to fetch scraper status:', e); }
+    } catch { /* ignore */ }
     finally { setScraperLoading(false); }
   }, []);
 

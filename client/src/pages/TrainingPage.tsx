@@ -157,7 +157,7 @@ export default function TrainingPage() {
   ];
 
   return (
-    <div className="flex flex-col h-full bg-surface-sunken app-grid-bg">
+    <div className="flex flex-col h-full bg-surface-sunken">
       {/* Header */}
       <div className="panel-beveled border-b border-rmpg-700 p-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">

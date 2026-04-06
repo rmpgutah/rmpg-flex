@@ -31,7 +31,6 @@ export function formatTime(dateStr: string): string {
  */
 export function formatElapsed(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
-  if (isNaN(diff) || diff < 0) return '0m';
   const min = Math.floor(diff / 60000);
   if (min < 60) return `${min}m`;
   return `${Math.floor(min / 60)}h ${min % 60}m`;

@@ -7,13 +7,10 @@
 // - OAuth2 callback (no JWT — CSRF state validated)
 
 import { Router, Request, Response } from 'express';
-import crypto from 'crypto';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
-import config from '../config';
 import {
   CONFIG_KEYS,
   GRAPH_SCOPES,
@@ -37,31 +34,6 @@ import { syncNow, restartEmailPoller } from '../utils/emailPoller';
 
 const router = Router();
 
-/** Validate email address — blocks header injection (CRLF) and malformed addresses. */
-const EMAIL_RE = /^[^\s@<>(){}\[\]\\,;:"\r\n]+@[^\s@<>(){}\[\]\\,;:"\r\n]+\.[^\s@<>(){}\[\]\\,;:"\r\n]+$/;
-function validateEmailAddress(addr: string): boolean {
-  if (!addr || typeof addr !== 'string') return false;
-  const trimmed = addr.trim();
-  // Block any control characters (CRLF injection prevention)
-  if (/[\x00-\x1f\x7f]/.test(trimmed)) return false;
-  if (trimmed.length > 254) return false;
-  return EMAIL_RE.test(trimmed);
-}
-
-function validateEmailList(emails: string[]): string | null {
-  for (const e of emails) {
-    if (!validateEmailAddress(e)) return `Invalid email address: ${e.slice(0, 50)}`;
-  }
-  return null;
-}
-
-/** Validate Microsoft Graph folder ID — prevents path traversal in API URLs. */
-function validateFolderId(id: string): boolean {
-  if (!id || typeof id !== 'string') return false;
-  // Graph folder IDs are alphanumeric with = and - characters
-  return /^[a-zA-Z0-9_=+-]+$/.test(id) && id.length <= 200;
-}
-
 /** Convert plain text to a proper HTML email body.
  *  Escapes entities, converts basic markdown-like syntax,
  *  converts newlines to <br>, wraps in styled HTML document. */
@@ -78,16 +50,7 @@ function textToEmailHtml(text: string, signature?: string): string {
   // Basic markdown: **bold**, *italic*, [text](url)
   escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, (_match, linkText, url) => {
-    // Only allow safe URL schemes — block javascript:, data:, vbscript: etc.
-    const trimmedUrl = url.trim().toLowerCase();
-    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('mailto:')) {
-      // Escape URL for safe insertion into href attribute — prevents attribute injection
-      const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-      return `<a href="${safeUrl}" style="color:#1a5a9e;">${linkText}</a>`;
-    }
-    return `${linkText} (${url})`;
-  });
+  escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#1a5a9e;">$1</a>');
   const bodyHtml = escaped.replace(/\n/g, '<br>');
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -111,7 +74,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
 
     if (error) {
       console.error('[OAuth] Microsoft returned error:', error, error_description);
-      res.redirect('/admin?tab=email&status=error&message=Microsoft+authorization+failed');
+      res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(String(error_description || error))}`);
       return;
     }
 
@@ -120,11 +83,9 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
       return;
     }
 
-    // Validate CSRF state (timing-safe to prevent side-channel leakage)
+    // Validate CSRF state
     const storedState = getConfigValue(CONFIG_KEYS.oauthState);
-    const stateStr = String(state);
-    if (!storedState || storedState.length !== stateStr.length ||
-        !crypto.timingSafeEqual(Buffer.from(storedState), Buffer.from(stateStr))) {
+    if (!storedState || storedState !== String(state)) {
       res.redirect('/admin?tab=email&status=error&message=Invalid+state+token');
       return;
     }
@@ -132,9 +93,8 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     // Clear state to prevent replay
     deleteConfigValue(CONFIG_KEYS.oauthState);
 
-    // Exchange code for tokens — use config domain to prevent Host header injection
-    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
-    const redirectUri = `https://${host}/api/email/oauth/callback`;
+    // Exchange code for tokens — always use https (req.protocol may report http incorrectly)
+    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
     await exchangeCodeForTokens(String(code), redirectUri);
 
     // Enable integration and start poller
@@ -145,7 +105,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     res.redirect('/admin?tab=email&status=authorized');
   } catch (err: any) {
     console.error('[OAuth] Token exchange failed:', err.message);
-    res.redirect('/admin?tab=email&status=error&message=Token+exchange+failed');
+    res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(err.message)}`);
   }
 });
 
@@ -187,20 +147,12 @@ router.put('/signature', (req: Request, res: Response) => {
     const { signature } = req.body;
     const db = getDb();
     const key = `email_signature_${req.user!.userId}`;
-
-    // Validate signature size (max 10KB — includes HTML formatting)
-    if (signature && typeof signature === 'string' && signature.length > 10240) {
-      res.status(400).json({ error: 'Email signature exceeds 10KB size limit' });
-      return;
-    }
-
     // Delete existing signature first, then insert if non-empty
     db.prepare("DELETE FROM system_config WHERE config_key = ?").run(key);
     if (signature && signature.trim()) {
       db.prepare("INSERT INTO system_config (config_key, config_value, category) VALUES (?, ?, 'email')")
         .run(key, signature.trim());
     }
-    auditLog(req, 'UPDATE', 'system_config', req.user!.userId, 'Email signature updated');
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -274,18 +226,12 @@ router.get('/folders/:id/children', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/email/folders — Create a new folder (admin/manager only)
-router.post('/folders', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+// POST /api/email/folders — Create a new folder
+router.post('/folders', async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName, parentFolderId } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
-
-    // Validate folder ID to prevent path traversal in Graph API URL
-    if (parentFolderId && !validateFolderId(parentFolderId)) {
-      res.status(400).json({ error: 'Invalid folder ID format' });
-      return;
-    }
 
     const client = await getGraphClient();
     const apiPath = parentFolderId
@@ -301,11 +247,10 @@ router.post('/folders', requireRole('admin', 'manager'), async (req: Request, re
   }
 });
 
-// PATCH /api/email/folders/:id — Rename a folder (admin/manager only)
-router.patch('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+// PATCH /api/email/folders/:id — Rename a folder
+router.patch('/folders/:id', async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
-    if (!validateFolderId(req.params.id)) { res.status(400).json({ error: 'Invalid folder ID format' }); return; }
     const { displayName } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
 
@@ -319,11 +264,10 @@ router.patch('/folders/:id', requireRole('admin', 'manager'), async (req: Reques
   }
 });
 
-// DELETE /api/email/folders/:id — Delete a folder (admin/manager only)
-router.delete('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+// DELETE /api/email/folders/:id — Delete a folder
+router.delete('/folders/:id', async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
-    if (!validateFolderId(req.params.id)) { res.status(400).json({ error: 'Invalid folder ID format' }); return; }
     const client = await getGraphClient();
     await client.api(`/me/mailFolders/${req.params.id}`).delete();
     auditLog(req, 'DELETE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id }));
@@ -344,18 +288,16 @@ router.get('/messages', async (req: Request, res: Response) => {
       search,
     } = req.query;
 
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
 
     // Try live from Graph API
     if (isAuthorized()) {
       try {
         const client = await getGraphClient();
-        // Sanitize folder ID to prevent path traversal in Graph API URL
-        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '') || 'inbox';
-        let apiPath = safeFolder === 'inbox'
+        let apiPath = folder === 'inbox'
           ? '/me/mailFolders/inbox/messages'
-          : `/me/mailFolders/${safeFolder}/messages`;
+          : `/me/mailFolders/${folder}/messages`;
 
         let query = client
           .api(apiPath)
@@ -365,17 +307,7 @@ router.get('/messages', async (req: Request, res: Response) => {
           .skip((pageNum - 1) * perPage);
 
         if (search) {
-          // Sanitize search term — escape KQL special characters to prevent injection
-          // KQL operators: AND, OR, NOT, parentheses, colons, brackets, quotes
-          const safeSearch = String(search)
-            .replace(/["\\]/g, ' ')         // Remove quotes and backslashes
-            .replace(/[()[\]{}:!~?&|]/g, ' ') // Remove KQL operator chars
-            .replace(/\s+/g, ' ')            // Collapse whitespace
-            .trim()
-            .slice(0, 200);
-          if (safeSearch) {
-            query = query.search(`"${safeSearch}"`);
-          }
+          query = query.search(`"${String(search)}"`);
         }
 
         const result = await query.get();
@@ -422,8 +354,8 @@ router.get('/messages', async (req: Request, res: Response) => {
     }
 
     if (search) {
-      conditions.push("(subject LIKE ? ESCAPE '\\' OR from_address LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\' OR body_preview LIKE ? ESCAPE '\\')");
-      const term = `%${escapeLike(String(search))}%`;
+      conditions.push('(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR body_preview LIKE ?)');
+      const term = `%${search}%`;
       params.push(term, term, term, term);
     }
 
@@ -652,48 +584,14 @@ router.post('/send', async (req: Request, res: Response) => {
     const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : undefined;
     const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined;
 
-    // Validate all email addresses to prevent header injection (CRLF attacks)
-    const toErr = validateEmailList(toList);
-    if (toErr) { res.status(400).json({ error: toErr }); return; }
-    if (ccList) { const e = validateEmailList(ccList); if (e) { res.status(400).json({ error: e }); return; } }
-    if (bccList) { const e = validateEmailList(bccList); if (e) { res.status(400).json({ error: e }); return; } }
-
     const signature = getUserSignature(req.user!.userId);
 
-    // Validate attachments before processing
-    const MAX_ATTACHMENTS = 10;
-    const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25MB per attachment
-    const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total
-    const rawAttachments = attachments || [];
-    if (rawAttachments.length > MAX_ATTACHMENTS) {
-      res.status(400).json({ error: `Maximum ${MAX_ATTACHMENTS} attachments allowed` });
-      return;
-    }
-
-    // Build attachment array from client-sent base64 data with size validation
-    let totalSize = 0;
-    const emailAttachments: { filename: string; content: Buffer; contentType: string }[] = [];
-    for (const att of rawAttachments as { name: string; contentType: string; contentBytes: string }[]) {
-      if (!att.contentBytes || typeof att.contentBytes !== 'string') continue;
-      // Estimate decoded size from base64 (base64 is ~4/3 the binary size)
-      const estimatedSize = Math.ceil(att.contentBytes.length * 3 / 4);
-      if (estimatedSize > MAX_ATTACHMENT_SIZE) {
-        res.status(400).json({ error: `Attachment "${att.name}" exceeds 25MB size limit` });
-        return;
-      }
-      totalSize += estimatedSize;
-      if (totalSize > MAX_TOTAL_SIZE) {
-        res.status(400).json({ error: 'Total attachment size exceeds 50MB limit' });
-        return;
-      }
-      // Sanitize filename — strip path separators to prevent path traversal
-      const safeName = (att.name || 'attachment').replace(/[/\\]/g, '_').slice(0, 255);
-      emailAttachments.push({
-        filename: safeName,
-        content: Buffer.from(att.contentBytes, 'base64'),
-        contentType: att.contentType || 'application/octet-stream',
-      });
-    }
+    // Build attachment array from client-sent base64 data
+    const emailAttachments = (attachments || []).map((att: { name: string; contentType: string; contentBytes: string }) => ({
+      filename: att.name,
+      content: Buffer.from(att.contentBytes, 'base64'),
+      contentType: att.contentType || 'application/octet-stream',
+    }));
 
     const sent = await sendEmail({
       to: toList,
@@ -767,9 +665,6 @@ router.post('/messages/:id/forward', async (req: Request, res: Response) => {
     if (!to) { res.status(400).json({ error: 'Recipient required' }); return; }
 
     const toList = Array.isArray(to) ? to : [to];
-    const fwdErr = validateEmailList(toList);
-    if (fwdErr) { res.status(400).json({ error: fwdErr }); return; }
-
     const client = await getGraphClient();
 
     const signature = getUserSignature(req.user!.userId);
@@ -813,7 +708,6 @@ router.patch('/messages/:id', async (req: Request, res: Response) => {
       db.prepare('UPDATE email_cache SET is_flagged = ? WHERE graph_id = ?').run(isFlagged ? 1 : 0, req.params.id);
     }
 
-    auditLog(req, 'UPDATE', 'email', 0, JSON.stringify({ messageId: req.params.id, isRead, isFlagged }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -852,7 +746,6 @@ router.post('/messages/:id/move', async (req: Request, res: Response) => {
 
     const { folderId } = req.body;
     if (!folderId) { res.status(400).json({ error: 'Folder ID required' }); return; }
-    if (!validateFolderId(folderId)) { res.status(400).json({ error: 'Invalid folder ID format' }); return; }
 
     const client = await getGraphClient();
     await client.api(`/me/messages/${req.params.id}/move`).post({
@@ -863,7 +756,6 @@ router.post('/messages/:id/move', async (req: Request, res: Response) => {
     const db = getDb();
     db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ?').run(folderId, req.params.id);
 
-    auditLog(req, 'MOVE_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id, folderId }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -893,7 +785,7 @@ router.get('/templates', (_req: Request, res: Response) => {
 });
 
 // GET /api/email/templates/:id — Get single template
-router.get('/templates/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/templates/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
@@ -926,21 +818,18 @@ router.post('/templates', (req: Request, res: Response) => {
 });
 
 // PUT /api/email/templates/:id — Update template
-router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
+router.put('/templates/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name, category, subject, body } = req.body;
     const now = localNow();
-
-    const existing = db.prepare('SELECT id FROM email_templates WHERE id = ?').get(req.params.id);
-    if (!existing) { res.status(404).json({ error: 'Template not found' }); return; }
 
     db.prepare(`
       UPDATE email_templates SET name = ?, category = ?, subject = ?, body = ?, updated_at = ?
       WHERE id = ?
     `).run(name, category, subject, body, now, req.params.id);
 
-    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template: ${name}`);
+    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id, 10), 10), `Updated template: ${name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -949,7 +838,7 @@ router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/templates/:id — Delete template
-router.delete('/templates/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/templates/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
@@ -957,7 +846,7 @@ router.delete('/templates/:id', validateParamId, requireRole('admin', 'manager')
     if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates' }); return; }
 
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);
+    auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id, 10), 10), `Deleted template: ${template.name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -979,13 +868,13 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     }
 
     const db = getDb();
-    const query = `%${escapeLike(String(q).trim())}%`;
+    const query = `%${String(q).trim()}%`;
     const results: { name: string; email: string; type: string }[] = [];
 
     // Search users (internal contacts)
     const users = db.prepare(`
       SELECT full_name, email FROM users
-      WHERE (full_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')
+      WHERE (full_name LIKE ? OR email LIKE ? OR username LIKE ?)
         AND email IS NOT NULL AND email != ''
         AND active = 1
       ORDER BY full_name LIMIT 10
@@ -998,7 +887,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // Search persons (external contacts)
     const persons = db.prepare(`
       SELECT first_name, last_name, email FROM persons
-      WHERE ((first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
+      WHERE (first_name || ' ' || last_name LIKE ? OR email LIKE ?)
         AND email IS NOT NULL AND email != ''
         AND archived_at IS NULL
       ORDER BY last_name, first_name LIMIT 10
@@ -1061,7 +950,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
     const db = getDb();
     const links = db.prepare(`
       SELECT el.*,
-        i.incident_number as incident_case_number,
+        i.case_number as incident_case_number,
         c.call_number as call_number,
         p.first_name || ' ' || p.last_name as person_name,
         u.full_name as linked_by_name
@@ -1081,7 +970,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
 });
 
 // GET /api/email/links/incident/:incidentId — Get emails linked to an incident
-router.get('/links/incident/:incidentId', validateNumericParams('incidentId'), (req: Request, res: Response) => {
+router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const links = db.prepare(`
@@ -1101,11 +990,10 @@ router.get('/links/incident/:incidentId', validateNumericParams('incidentId'), (
 });
 
 // DELETE /api/email/link/:id — Remove a link
-router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/link/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE', 'email_link', parseInt(String(req.params.id), 10), 'Email-incident link removed');
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -1171,7 +1059,7 @@ router.get('/scheduled', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/scheduled/:id — Cancel a scheduled email
-router.delete('/scheduled/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/scheduled/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
@@ -1180,7 +1068,6 @@ router.delete('/scheduled/:id', validateParamId, (req: Request, res: Response) =
     if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails' }); return; }
 
     db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
-    auditLog(req, 'CANCEL_EMAIL', 'scheduled_email', parseInt(String(req.params.id), 10), `Cancelled scheduled email: ${row.subject || 'untitled'}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -1222,14 +1109,11 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     }
     clearCachedAuth();
 
-    // Clear cached emails atomically
+    // Clear cached emails
     const db = getDb();
-    const clearCache = db.transaction(() => {
-      db.prepare('DELETE FROM email_cache').run();
-      db.prepare('DELETE FROM email_attachments').run();
-      db.prepare('DELETE FROM email_folders').run();
-    });
-    clearCache();
+    db.prepare('DELETE FROM email_cache').run();
+    db.prepare('DELETE FROM email_attachments').run();
+    db.prepare('DELETE FROM email_folders').run();
 
     auditLog(req, 'DELETE', 'system_config', 0, 'ms_email_credentials_cleared');
     res.json({ success: true });
@@ -1250,9 +1134,8 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     // Store who initiated the OAuth flow
     setConfigValue(CONFIG_KEYS.oauthInitiator, String(req.user!.userId));
 
-    // Use hardcoded domain in production to prevent Host header injection
-    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
-    const redirectUri = `https://${host}/api/email/oauth/callback`;
+    // Always use https — req.protocol may report http incorrectly with https.createServer
+    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
     const url = getAuthorizationUrl(redirectUri);
 
     auditLog(req, 'OAUTH_INITIATE', 'system_config', 0, 'ms_email_oauth_started');

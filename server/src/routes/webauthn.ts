@@ -19,14 +19,12 @@ import type {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { getDb } from '../models/database';
 import { authenticateToken, generateAccessToken, generateRefreshToken, generateTempToken, JwtPayload } from '../middleware/auth';
-import { mfaRateLimit } from '../middleware/rateLimiter';
 import { createSecurityNotification, trustDevice, hashDeviceFingerprint, parseDeviceName } from '../utils/deviceFingerprint';
 import { isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
-import { validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -114,7 +112,7 @@ router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
 
 // ─── POST /api/auth/webauthn/register-options ───────
 // Generate registration options — user must be authenticated
-router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/register-options', authenticateToken, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const db = getDb();
@@ -165,7 +163,7 @@ router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Re
 
 // ─── POST /api/auth/webauthn/register-verify ────────
 // Verify registration response and store credential
-router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/register-verify', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { challengeId, response: regResponse, name } = req.body as {
       challengeId: string;
@@ -260,7 +258,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
 
 // ─── DELETE /api/auth/webauthn/credentials/:id ──────
 // Remove a registered security key
-router.delete('/credentials/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.delete('/credentials/:id', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const credId = parseInt(req.params.id as string, 10);
@@ -315,7 +313,7 @@ router.delete('/credentials/:id', validateParamId, authenticateToken, (req: Requ
 // ─── POST /api/auth/webauthn/authenticate-options ───
 // Generate authentication options — called during 2FA step
 // Accepts a tempToken (2FA-pending JWT) OR requires authenticated session
-router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/authenticate-options', async (req: Request, res: Response) => {
   try {
     const { tempToken } = req.body;
 
@@ -377,7 +375,7 @@ router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Res
 
 // ─── POST /api/auth/webauthn/authenticate-verify ────
 // Verify authentication response — completes 2FA via security key
-router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Response) => {
+router.post('/authenticate-verify', async (req: Request, res: Response) => {
   try {
     const { challengeId, tempToken, response: authResponse, trustDevice: shouldTrust, deviceFingerprint } = req.body as {
       challengeId: string;
@@ -488,11 +486,9 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     };
 
     // ── Check if password change is required before issuing final tokens ──
-    let _pwExpired = false;
-    try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
     const needsPasswordChange = user.must_change_password === 1
       || user.force_password_change === 1
-      || _pwExpired;
+      || isPasswordExpired(user.password_changed_at);
 
     if (needsPasswordChange) {
       const pwTempToken = generateTempToken(payload, ['password_change']);

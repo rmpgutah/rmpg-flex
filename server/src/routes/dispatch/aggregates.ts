@@ -6,8 +6,6 @@ import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
-import { escapeLike } from '../../middleware/sanitize';
-import { assignUnitsToCall } from '../../utils/callUnits';
 
 const router = Router();
 
@@ -211,11 +209,11 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
     // ── Reverse-geocode officer GPS → address (with fallback) ──
     // Must happen BEFORE the transaction since it's async
-    let locationAddress = latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
+    let locationAddress = latitude && longitude
       ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
       : 'Unknown location';
 
-    if (latitude != null && longitude != null) {
+    if (latitude && longitude) {
       try {
         const addr = await reverseGeocodeAddress(Number(latitude), Number(longitude));
         if (addr) locationAddress = addr;
@@ -223,11 +221,10 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     }
 
     // ── All DB writes in a single transaction for atomicity ──
+    const callNumber = generateCallNumber(db);
     const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
 
     const panicTx = db.transaction(() => {
-      // Generate call number INSIDE transaction to prevent race conditions
-      const callNumber = generateCallNumber(db);
       // Log the panic alert to activity log
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -264,7 +261,6 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
       const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
         .get(callResult.lastInsertRowid) as any;
-      if (!call) throw new Error('Failed to retrieve auto-created panic call');
 
       // Auto-assign officer's unit to the call
       const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
@@ -274,11 +270,9 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
         db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
           .run('dispatched', call.id, now, unit.id);
 
-        // Write to both assigned_unit_ids (backward compat) and call_units junction table
         const unitIds = JSON.stringify([unit.id]);
         db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
           .run(unitIds, call.id);
-        assignUnitsToCall(call.id, [unit.id]);
       }
 
       // Log call creation
@@ -287,10 +281,10 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
         VALUES (?, 'call_created', 'call', ?, ?, ?)
       `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
 
-      return { call, unit, callNumber };
+      return { call, unit };
     });
 
-    const { call, unit, callNumber } = panicTx();
+    const { call, unit } = panicTx();
 
     // ── Broadcasts happen AFTER transaction commits ──
     if (unit) {
@@ -345,7 +339,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
       return;
     }
 
-    const searchTerm = `%${escapeLike(String(address))}%`;
+    const searchTerm = `%${address}%`;
 
     // Find prior calls at this address (fuzzy match on location_address)
     const calls = db.prepare(`
@@ -354,7 +348,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
         c.weapons_involved, c.domestic_violence, c.injuries_reported,
         c.alcohol_involved, c.drugs_involved, c.description
       FROM calls_for_service c
-      WHERE c.location_address LIKE ? ESCAPE '\\'
+      WHERE c.location_address LIKE ?
       ORDER BY c.created_at DESC
       LIMIT 20
     `).all(searchTerm) as any[];
@@ -386,7 +380,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
     let propertyHazard: string | null = null;
     try {
       const prop = db.prepare(`
-        SELECT hazard_notes FROM properties WHERE address LIKE ? ESCAPE '\\' AND hazard_notes IS NOT NULL LIMIT 1
+        SELECT hazard_notes FROM properties WHERE address LIKE ? AND hazard_notes IS NOT NULL LIMIT 1
       `).get(searchTerm) as any;
       if (prop?.hazard_notes) {
         propertyHazard = prop.hazard_notes;
@@ -429,21 +423,21 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
       // Try both orderings: "first last" and "last, first"
       personRows = db.prepare(`
         SELECT * FROM persons
-        WHERE (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
-           OR (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
-           OR ((first_name || ' ' || last_name) LIKE ? ESCAPE '\\')
+        WHERE (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name || ' ' || last_name LIKE ?)
         LIMIT 10
       `).all(
-        `%${escapeLike(parts[0])}%`, `%${escapeLike(parts[1])}%`,
-        `%${escapeLike(parts[1])}%`, `%${escapeLike(parts[0])}%`,
-        `%${escapeLike(searchName)}%`
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`,
+        `%${searchName}%`
       );
-    } else if (parts.length === 1) {
+    } else {
       personRows = db.prepare(`
         SELECT * FROM persons
-        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\'
+        WHERE first_name LIKE ? OR last_name LIKE ?
         LIMIT 10
-      `).all(`%${escapeLike(parts[0])}%`, `%${escapeLike(parts[0])}%`);
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
     }
 
     // Enrich each person with warrants and criminal history
@@ -469,22 +463,22 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         FROM warrants w
         LEFT JOIN persons p ON w.subject_person_id = p.id
         WHERE w.status = 'active'
-          AND ((p.first_name LIKE ? ESCAPE '\\' AND p.last_name LIKE ? ESCAPE '\\')
-            OR (p.first_name LIKE ? ESCAPE '\\' AND p.last_name LIKE ? ESCAPE '\\'))
+          AND ((p.first_name LIKE ? AND p.last_name LIKE ?)
+            OR (p.first_name LIKE ? AND p.last_name LIKE ?))
         LIMIT 10
       `).all(
-        `%${escapeLike(parts[0])}%`, `%${escapeLike(parts[1])}%`,
-        `%${escapeLike(parts[1])}%`, `%${escapeLike(parts[0])}%`
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`
       );
-    } else if (parts.length === 1) {
+    } else {
       directWarrantHits = db.prepare(`
         SELECT w.*, p.first_name AS subject_first_name, p.last_name AS subject_last_name
         FROM warrants w
         LEFT JOIN persons p ON w.subject_person_id = p.id
         WHERE w.status = 'active'
-          AND (p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\')
+          AND (p.first_name LIKE ? OR p.last_name LIKE ?)
         LIMIT 10
-      `).all(`%${escapeLike(parts[0])}%`, `%${escapeLike(parts[0])}%`);
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
     }
 
     // Deduplicate warrant hits (already found via person enrichment)
@@ -501,7 +495,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         p.warrants.length > 0 ||
         p.person.caution_flags ||
         p.person.is_sex_offender ||
-        (p.criminalHistory && p.criminalHistory.length > 0)
+        p.person.has_criminal_history
       ) ||
       uniqueDirectWarrants.length > 0;
 

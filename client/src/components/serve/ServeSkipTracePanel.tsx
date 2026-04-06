@@ -142,7 +142,7 @@ export default function ServeSkipTracePanel({
       setResult(data);
       onLookupComplete?.();
     } catch (err: any) {
-      setError(err?.message || 'Skip trace lookup failed');
+      setError(err.message || 'Skip trace lookup failed');
     } finally {
       setLoading(false);
     }

@@ -89,7 +89,7 @@ export function usePanicAudio() {
           // Convert blob to base64 and send via WebSocket
           const reader = new FileReader();
           reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1] || '';
+            const base64 = (reader.result as string).split(',')[1];
             send({
               type: 'panic_audio',
               data: {
@@ -214,7 +214,7 @@ export function usePanicAudio() {
         if (event.data.size > 0) {
           const reader = new FileReader();
           reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1] || '';
+            const base64 = (reader.result as string).split(',')[1];
             send({
               type: 'panic_audio_response',
               targetUserId,

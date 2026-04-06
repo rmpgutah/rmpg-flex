@@ -126,7 +126,7 @@ export default function RecordsPage() {
     if (!options?.silent) setLoadingEvidence(true);
     try {
       const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=200&archived=${showArchived}`);
-      setEvidence(res?.data || []);
+      setEvidence(res.data || []);
     } catch {
       setEvidence([]);
     } finally {
@@ -150,7 +150,7 @@ export default function RecordsPage() {
     fetchProperties();
     fetchEvidence();
     fetchClients();
-  }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence, fetchClients]);
+  }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence]);
 
   // Live sync
   const silentRefreshAll = useCallback(() => {
@@ -288,7 +288,7 @@ export default function RecordsPage() {
   const selectedLabel = (() => {
     if (activeTab === 'persons' && personsState.selectedPerson) {
       const p = personsState.selectedPerson;
-      return `${p.last_name || ''}, ${p.first_name || ''}${p.middle_name ? ` ${p.middle_name[0]}.` : ''}`;
+      return `${p.last_name}, ${p.first_name}${p.middle_name ? ` ${p.middle_name[0]}.` : ''}`;
     }
     if (activeTab === 'vehicles' && vehiclesState.selectedVehicle) {
       return vehiclesState.selectedVehicle.license_plate;
@@ -518,7 +518,7 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
 
   const rightPanel = (
-    <div className="h-full flex flex-col card-glass">
+    <div className="h-full flex flex-col">
       {/* Panel Title Bar — Selected Record */}
       <PanelTitleBar
         title={selectedLabel}
@@ -560,7 +560,7 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
+    <div className="flex flex-col h-full animate-fade-in">
       <SplitPanel
         left={leftPanel}
         right={rightPanel}

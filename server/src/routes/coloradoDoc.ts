@@ -15,7 +15,7 @@ const router = Router();
 router.use(authenticateToken);
 
 // GET /api/colorado-doc/search — Search CDOC offenders by name
-router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.get('/search', async (req: Request, res: Response) => {
   try {
     const { lastName, firstName } = req.query;
 
@@ -40,7 +40,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer'), 
 });
 
 // GET /api/colorado-doc/offender/:docNumber — Get specific offender by DOC number
-router.get('/offender/:docNumber', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.get('/offender/:docNumber', (req: Request, res: Response) => {
   try {
     const offender = getCdocOffender(req.params.docNumber as string);
     if (!offender) {

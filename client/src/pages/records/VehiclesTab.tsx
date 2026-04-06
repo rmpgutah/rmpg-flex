@@ -31,21 +31,16 @@ import type { VehicleFormData } from '../../components/VehicleFormModal';
 // ── DB Mapper ──────────────────────────────────────
 
 function parseFlags(raw: unknown): string[] {
-  let arr: unknown[] = [];
-  if (Array.isArray(raw)) {
-    arr = raw;
-  } else if (typeof raw === 'string') {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) arr = parsed;
-    } catch { /* invalid JSON — skip */ }
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
-  // Normalize: objects like {type, severity, count, updated_at} → string label
-  return arr.map(item => {
-    if (typeof item === 'string') return item;
-    if (item && typeof item === 'object' && 'type' in item) return String((item as any).type);
-    return String(item ?? '');
-  }).filter(Boolean);
+  return [];
 }
 
 export function mapDbVehicle(row: Record<string, unknown>): Vehicle {
@@ -208,7 +203,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
   useEffect(() => {
     if (!selectedVehicle) { setVehicleAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedVehicle.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
+    const flagsLower = selectedVehicle.flags.map(f => f.toLowerCase());
     if (flagsLower.some(f => f.includes('stolen'))) {
       alerts.push({ type: 'flag', priority: 'critical', title: 'STOLEN VEHICLE', description: 'Vehicle reported stolen — do not approach alone' });
     }
@@ -312,7 +307,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark search-glow pl-9 w-full text-[11px]"
+            className="input-dark pl-9 w-full text-[11px]"
             placeholder="Search by plate, make, model, VIN, owner..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -328,10 +323,9 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
       {/* Vehicle List */}
       <div className="flex-1 overflow-auto">
         {filteredVehicles.length === 0 && (
-          <div className="record-empty-state">
-            <Car className="w-8 h-8 text-rmpg-500 mb-2 opacity-40" />
+          <div className="text-center py-12">
+            <Car className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
             <p className="text-sm text-rmpg-400">{searchQuery ? 'No vehicles match your search.' : 'No vehicle records found.'}</p>
-            <p className="text-[9px] text-rmpg-500 mt-1">{searchQuery ? 'Try a different search term' : 'Add a vehicle record to get started'}</p>
           </div>
         )}
         {filteredVehicles.map((v) => (
@@ -339,15 +333,15 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             key={v.id}
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
             className={`
-              record-list-item px-4 py-3 border-b border-rmpg-700/50 cursor-pointer
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
               ${selectedVehicle?.id === v.id
-                ? 'record-selected border-l-2 border-l-brand-500'
-                : 'border-l-2 border-l-transparent'
+                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
               }
             `}
           >
             <div className="flex items-center gap-3">
-              <div className={`record-avatar flex-shrink-0 w-9 h-9 rounded flex items-center justify-center text-[10px] font-bold font-mono border transition-all duration-150 ${
+              <div className={`flex-shrink-0 w-9 h-9 rounded flex items-center justify-center text-[10px] font-bold font-mono border ${
                 v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
                   ? 'bg-red-900/40 text-red-400 border-red-700/50'
                   : 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
@@ -380,17 +374,14 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               <div className="flex flex-col items-end gap-1">
                 {v.flags.length > 0 && (
                   <div className="flex gap-1">
-                    {v.flags.slice(0, 2).map((flag, i) => {
-                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-                      return (
-                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                          {label}
-                        </span>
-                      );
-                    })}
+                    {v.flags.slice(0, 2).map((flag) => (
+                      <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                        {flag}
+                      </span>
+                    ))}
                   </div>
                 )}
-                <div className="record-actions flex items-center gap-1">
+                <div className="flex items-center gap-1">
                   {!showArchived && (
                     <button onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
                       <Pencil className="w-3 h-3" />
@@ -447,7 +438,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
   if (!selectedVehicle) return null;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden detail-panel-enter card-glass">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Alert Banner + Status badges */}
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={vehicleAlerts} />
@@ -461,14 +452,11 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* Flags */}
         {selectedVehicle.flags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {selectedVehicle.flags.map((flag, i) => {
-              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-              return (
-                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                  {label}
-                </span>
-              );
-            })}
+            {selectedVehicle.flags.map((flag) => (
+              <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                {flag}
+              </span>
+            ))}
           </div>
         )}
       </div>

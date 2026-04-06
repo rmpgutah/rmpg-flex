@@ -19,7 +19,6 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
-import { escapeLike } from '../middleware/sanitize';
 
 // ── API endpoints ────────────────────────────────────────────
 const CDOC_SEARCH_URL = 'https://www.doc.state.co.us/oss/api/offender/search';
@@ -160,12 +159,12 @@ function getCachedResults(lastName: string, firstName?: string): CdocOffenderRes
   const db = getDb();
   const cutoff = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-  let sql = "SELECT * FROM colorado_doc_offenders WHERE UPPER(last_name) LIKE ? ESCAPE '\\' AND fetched_at > ?";
-  const params: any[] = [`%${escapeLike(lastName.trim().toUpperCase())}%`, cutoff];
+  let sql = 'SELECT * FROM colorado_doc_offenders WHERE UPPER(last_name) LIKE ? AND fetched_at > ?';
+  const params: any[] = [`%${lastName.trim().toUpperCase()}%`, cutoff];
 
   if (firstName && firstName.trim().length > 0) {
-    sql += " AND UPPER(first_name) LIKE ? ESCAPE '\\'";
-    params.push(`%${escapeLike(firstName.trim().toUpperCase())}%`);
+    sql += ' AND UPPER(first_name) LIKE ?';
+    params.push(`%${firstName.trim().toUpperCase()}%`);
   }
 
   sql += ' ORDER BY last_name, first_name LIMIT 100';
@@ -176,7 +175,7 @@ function getCachedResults(lastName: string, firstName?: string): CdocOffenderRes
       ...r,
       source: 'cache',
     }));
-  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
+  } catch {
     return [];
   }
 }
@@ -184,19 +183,19 @@ function getCachedResults(lastName: string, firstName?: string): CdocOffenderRes
 function getLocalResults(lastName: string, firstName?: string): CdocOffenderResult[] {
   const db = getDb();
 
-  let sql = "SELECT * FROM colorado_doc_offenders WHERE UPPER(last_name) LIKE ? ESCAPE '\\'";
-  const params: any[] = [`%${escapeLike(lastName.trim().toUpperCase())}%`];
+  let sql = 'SELECT * FROM colorado_doc_offenders WHERE UPPER(last_name) LIKE ?';
+  const params: any[] = [`%${lastName.trim().toUpperCase()}%`];
 
   if (firstName && firstName.trim().length > 0) {
-    sql += " AND UPPER(first_name) LIKE ? ESCAPE '\\'";
-    params.push(`%${escapeLike(firstName.trim().toUpperCase())}%`);
+    sql += ' AND UPPER(first_name) LIKE ?';
+    params.push(`%${firstName.trim().toUpperCase()}%`);
   }
 
   sql += ' ORDER BY last_name, first_name LIMIT 100';
 
   try {
     return db.prepare(sql).all(...params) as CdocOffenderResult[];
-  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
+  } catch {
     return [];
   }
 }
@@ -272,7 +271,7 @@ export function getCdocOffender(docNumber: string): CdocOffenderResult | null {
   const db = getDb();
   try {
     return db.prepare('SELECT * FROM colorado_doc_offenders WHERE doc_number = ?').get(docNumber) as CdocOffenderResult | null;
-  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
+  } catch {
     return null;
   }
 }
@@ -287,7 +286,7 @@ export function getCdocStats(): { total: number; facilities: { facility: string;
       "SELECT COALESCE(facility, 'Unknown') as facility, COUNT(*) as count FROM colorado_doc_offenders GROUP BY facility ORDER BY count DESC LIMIT 20"
     ).all() as { facility: string; count: number }[];
     return { total, facilities };
-  } catch (e: any) { console.warn('[CDOC] Error:', e?.message);
+  } catch {
     return { total: 0, facilities: [] };
   }
 }

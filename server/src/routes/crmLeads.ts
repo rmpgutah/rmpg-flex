@@ -12,7 +12,6 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -49,11 +48,9 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(source);
     }
     if (pipeline_stage) {
-      const stages = (pipeline_stage as string).split(',').filter(Boolean).slice(0, 20);
-      if (stages.length > 0) {
-        sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
-        params.push(...stages);
-      }
+      const stages = (pipeline_stage as string).split(',').slice(0, 20);
+      sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
+      params.push(...stages);
     }
     if (score_min) {
       sql += ' AND l.lead_score >= ?';
@@ -68,8 +65,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       }
     }
     if (search) {
-      sql += " AND (l.business_name LIKE ? ESCAPE '\\' OR l.contact_name LIKE ? ESCAPE '\\' OR l.address LIKE ? ESCAPE '\\' OR l.city LIKE ? ESCAPE '\\')";
-      const q = `%${escapeLike(String(search))}%`;
+      sql += " AND (l.business_name LIKE ? OR l.contact_name LIKE ? OR l.address LIKE ? OR l.city LIKE ?)";
+      const q = `%${search}%`;
       params.push(q, q, q, q);
     }
     if (date_from) {
@@ -81,8 +78,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(date_to + ' 23:59:59');
     }
     if (service_interest) {
-      sql += " AND l.service_interest LIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(String(service_interest))}%`);
+      sql += ' AND l.service_interest LIKE ?';
+      params.push(`%${service_interest}%`);
     }
 
     sql += ' ORDER BY l.lead_score DESC, l.created_at DESC LIMIT 500';
@@ -90,13 +87,13 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Get Single Lead ─────────────────────────────────────────
-router.get('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -124,7 +121,7 @@ router.get('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
 
     res.json({ ...lead, activity });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -179,7 +176,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     );
 
     const leadId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_leads', leadId, `Created lead: ${business_name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_leads' as any, leadId, `Created lead: ${business_name.trim()}`);
 
     // Log creation activity
     db.prepare(`
@@ -191,13 +188,13 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     if (!lead) return res.status(404).json({ error: 'Lead not found after creation' });
     res.json(lead);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Update Lead ─────────────────────────────────────────────
-router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -245,7 +242,7 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
     params.push(id);
 
     db.prepare(`UPDATE crm_leads SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Updated lead: ${existing.business_name}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Updated lead: ${existing.business_name}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -255,13 +252,13 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
     `).get(id);
     res.json(lead);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Delete Lead ─────────────────────────────────────────────
-router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/leads/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -274,16 +271,16 @@ router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (r
     // Cascade: delete activity (handled by FK ON DELETE CASCADE, but be explicit)
     db.prepare('DELETE FROM crm_lead_activity WHERE lead_id = ?').run(id);
     db.prepare('DELETE FROM crm_leads WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_leads', String(id), `Deleted lead: ${existing.business_name}`);
+    auditLog(req, 'DELETE', 'crm_leads' as any, String(id), `Deleted lead: ${existing.business_name}`);
     res.json({ success: true });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Move Pipeline Stage ─────────────────────────────────────
-router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/stage', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -319,7 +316,7 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
       VALUES (?, 'stage_change', ?, ?, ?, ?, ?)
     `).run(id, `Pipeline: ${existing.pipeline_stage} → ${pipeline_stage}`, existing.pipeline_stage, pipeline_stage, req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -329,13 +326,13 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
     `).get(id);
     res.json(lead);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Assign Lead ─────────────────────────────────────────────
-router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/assign', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -362,7 +359,7 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
       VALUES (?, 'assignment', ?, ?, ?, ?, ?)
     `).run(id, `Assigned to ${assigneeName}`, String(existing.assigned_to || ''), String(assigned_to || ''), req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Assigned lead to ${assigneeName}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Assigned lead to ${assigneeName}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -372,13 +369,13 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
     `).get(id);
     res.json(lead);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Convert Lead to Client ──────────────────────────────────
-router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/leads/:id/convert', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -436,12 +433,12 @@ router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager
     `).run(id, String(clientId), req.user?.userId || null, now);
 
     auditLog(req, 'CREATE', 'client', clientId, `Converted lead "${lead.business_name}" to client`);
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Converted to client #${clientId}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Converted to client #${clientId}`);
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -457,22 +454,15 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
       return;
     }
 
-    // Validate all IDs are positive integers to prevent type coercion issues
-    const validIds = lead_ids.map((id: any) => parseInt(String(id), 10)).filter((n: number) => !isNaN(n) && n > 0);
-    if (validIds.length === 0) {
-      res.status(400).json({ error: 'No valid lead IDs provided' });
-      return;
-    }
-
     const now = localNow();
-    const placeholders = validIds.map(() => '?').join(',');
+    const placeholders = lead_ids.map(() => '?').join(',');
     let updated = 0;
 
     switch (action) {
       case 'mark_contacted':
         updated = db.prepare(
           `UPDATE crm_leads SET pipeline_stage = 'contacted', updated_at = ? WHERE id IN (${placeholders}) AND pipeline_stage = 'new'`
-        ).run(now, ...validIds).changes;
+        ).run(now, ...lead_ids).changes;
         break;
 
       case 'assign':
@@ -482,24 +472,24 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         }
         updated = db.prepare(
           `UPDATE crm_leads SET assigned_to = ?, updated_at = ? WHERE id IN (${placeholders})`
-        ).run(assigned_to, now, ...validIds).changes;
+        ).run(assigned_to, now, ...lead_ids).changes;
         break;
 
       case 'dismiss':
         updated = db.prepare(
           `UPDATE crm_leads SET pipeline_stage = 'dismissed', updated_at = ? WHERE id IN (${placeholders})`
-        ).run(now, ...validIds).changes;
+        ).run(now, ...lead_ids).changes;
         break;
 
       default:
-        res.status(400).json({ error: 'Unknown action. Must be one of: mark_contacted, assign, dismiss' });
+        res.status(400).json({ error: `Unknown action: ${action}` });
         return;
     }
 
-    auditLog(req, 'UPDATE', 'crm_leads', validIds.join(','), `Bulk ${action}: ${updated} leads`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
     res.json({ success: true, updated });
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -518,13 +508,13 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
     `).all();
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Lead Activity Log ───────────────────────────────────────
-router.get('/lead-activity/:leadId', validateNumericParams('leadId'), requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { leadId } = req.params;
@@ -541,7 +531,7 @@ router.get('/lead-activity/:leadId', validateNumericParams('leadId'), requireRol
 
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -580,7 +570,7 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
     if (!activity) return res.status(404).json({ error: 'Activity not found' });
     res.json(activity);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -592,7 +582,7 @@ router.get('/scrape-sources', requireRole('admin', 'manager', 'contract_manager'
     const rows = db.prepare('SELECT * FROM lead_scrape_sources ORDER BY source_key').all();
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -627,7 +617,7 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
     const source = db.prepare('SELECT * FROM lead_scrape_sources WHERE source_key = ?').get(key);
     res.json(source);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -640,7 +630,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const sourceKey = String(key);
     const scraper = getRegisteredScraper(sourceKey);
     if (!scraper) {
-      res.status(404).json({ error: 'No scraper registered for the specified source' });
+      res.status(404).json({ error: `No scraper registered for source: ${sourceKey}` });
       return;
     }
 
@@ -650,7 +640,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const result = await runScraper(sourceKey);
     res.json(result);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -676,7 +666,7 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
+    console.error('CRM leads error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

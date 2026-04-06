@@ -7,7 +7,6 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { storeDlRecord } from '../utils/dlRecordStore';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
@@ -21,7 +20,7 @@ router.use(authenticateToken);
 router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.min(10000, Math.max(1, parseInt(req.query.page as string, 10) || 1));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
     const search = (req.query.search as string || '').trim();
@@ -30,8 +29,8 @@ router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: 
     const params: any[] = [];
 
     if (search) {
-      where = "WHERE full_name LIKE ? ESCAPE '\\' OR dl_number LIKE ? ESCAPE '\\' OR dl_state LIKE ? ESCAPE '\\'";
-      const term = `%${escapeLike(String(search))}%`;
+      where = "WHERE full_name LIKE ? OR dl_number LIKE ? OR dl_state LIKE ?";
+      const term = `%${search}%`;
       params.push(term, term, term);
     }
 
@@ -54,7 +53,7 @@ router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: 
 });
 
 // GET /api/dl-records/:id — get single DL record detail
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -136,7 +135,7 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
 });
 
 // DELETE /api/dl-records/:id — delete a DL record (admin only)
-router.delete('/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);

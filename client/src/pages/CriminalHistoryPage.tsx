@@ -72,8 +72,8 @@ export default function CriminalHistoryPage() {
       // Fetch all related records for this person
       const [incidents, citations, fis] = await Promise.all([
         apiFetch<any>(`/records/persons/${person.id}/incidents`).catch(() => ({ data: [] })),
-        apiFetch<any>(`/citations?q=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => ({ data: [] })),
-        apiFetch<any>(`/field-interviews?search=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => ({ data: [] })),
+        apiFetch<any[]>(`/citations?subject_name=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => []),
+        apiFetch<any[]>(`/field-interviews?subject_name=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => []),
       ]);
 
       const entries: HistoryEntry[] = [];
@@ -93,8 +93,8 @@ export default function CriminalHistoryPage() {
         });
       });
 
-      // Citations — API returns { data: [...], pagination: {...} }
-      const citData = Array.isArray(citations?.data) ? citations.data : Array.isArray(citations) ? citations : [];
+      // Citations
+      const citData = Array.isArray(citations) ? citations : [];
       citData.forEach((cit: any) => {
         entries.push({
           id: String(cit.id),
@@ -107,21 +107,21 @@ export default function CriminalHistoryPage() {
         });
       });
 
-      // Field Interviews — API returns { data: [...], pagination: {...} }
-      const fiData = Array.isArray(fis?.data) ? fis.data : Array.isArray(fis) ? fis : [];
+      // Field Interviews
+      const fiData = Array.isArray(fis) ? fis : [];
       fiData.forEach((fi: any) => {
         entries.push({
           id: String(fi.id),
           type: 'field_interview',
           date: fi.created_at || '',
-          reference_number: fi.fi_number || `FI-${fi.id}`,
-          description: fi.contact_reason || fi.narrative || 'Field Interview',
+          reference_number: `FI-${fi.id}`,
+          description: fi.reason || 'Field Interview',
           status: 'completed',
           location: fi.location,
         });
       });
 
-      entries.sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+      entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setHistory(entries);
     } catch (err) {
       console.error('History fetch error:', err);

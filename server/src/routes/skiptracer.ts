@@ -20,23 +20,13 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate } from '../utils/websocket';
-import { rateLimit } from '../middleware/rateLimiter';
 import config from '../config';
 
 const router = Router();
 router.use(authenticateToken);
-
-// Rate limit all skip tracer searches: 20 searches per 5-minute window per user
-const skipSearchRateLimit = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  maxRequests: 20,
-  keyGenerator: (req) => `skiptracer:${req.user?.userId || req.ip}`,
-  message: 'Skip tracer search rate limit exceeded. Please wait before searching again.',
-});
 
 // ============================================================
 // Encryption helpers (same pattern as microbilt.ts)
@@ -160,7 +150,6 @@ async function rapidApiFetch(path: string, params: Record<string, string>): Prom
       'x-rapidapi-key': apiKey,
       'x-rapidapi-host': RAPIDAPI_HOST,
     },
-    signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) {
@@ -203,17 +192,13 @@ function persistSearch(searchType: string, queryParams: Record<string, string>, 
 
 // ── Status ──────────────────────────────────────────────────
 router.get('/status', (_req: Request, res: Response) => {
-  try {
-    const apiKey = getApiKey();
-    const enabled = getConfigValue(CONFIG_KEYS.enabled);
-    res.json({
-      configured: !!apiKey,
-      enabled: enabled === '1',
-      host: RAPIDAPI_HOST,
-    });
-  } catch {
-    res.json({ configured: false, enabled: false, host: RAPIDAPI_HOST });
-  }
+  const apiKey = getApiKey();
+  const enabled = getConfigValue(CONFIG_KEYS.enabled);
+  res.json({
+    configured: !!apiKey,
+    enabled: enabled === '1',
+    host: RAPIDAPI_HOST,
+  });
 });
 
 // ── Save config (admin only) ────────────────────────────────
@@ -266,7 +251,7 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
   try {
     const apiKey = getApiKey();
     if (!apiKey) {
-      return res.status(400).json({ success: false, error: 'API key not configured' });
+      return res.json({ success: false, error: 'API key not configured' });
     }
 
     // Quick test: search by name with a known test query
@@ -276,7 +261,6 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
         'x-rapidapi-key': apiKey,
         'x-rapidapi-host': RAPIDAPI_HOST,
       },
-      signal: AbortSignal.timeout(15000),
     });
 
     if (testRes.ok) {
@@ -289,20 +273,18 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     } else {
       const text = await testRes.text().catch(() => '');
-      console.error('[SkipTracer] API test returned:', testRes.status, text.slice(0, 200));
-      res.status(502).json({
+      res.json({
         success: false,
-        error: `API returned status ${testRes.status}`,
+        error: `API returned ${testRes.status}: ${text.slice(0, 200)}`,
       });
     }
   } catch (err: any) {
-    console.error('[SkipTracer] Connection test error:', err?.message || err);
-    res.status(502).json({ success: false, error: 'Failed to connect to skip tracer API' });
+    res.json({ success: false, error: err.message });
   }
 });
 
 // ── Search by Name ──────────────────────────────────────────
-router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byname', async (req: Request, res: Response) => {
   try {
     const { name, page } = req.query;
     if (!name) return res.status(400).json({ error: 'name parameter required' });
@@ -321,7 +303,7 @@ router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Resp
 });
 
 // ── Search by Address ───────────────────────────────────────
-router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byaddress', async (req: Request, res: Response) => {
   try {
     const { address, page } = req.query;
     if (!address) return res.status(400).json({ error: 'address parameter required' });
@@ -340,7 +322,7 @@ router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: R
 });
 
 // ── Search by Name and Address ──────────────────────────────
-router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/bynameaddress', async (req: Request, res: Response) => {
   try {
     const { name, address, page } = req.query;
     if (!name || !address) return res.status(400).json({ error: 'name and address parameters required' });
@@ -359,7 +341,7 @@ router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, re
 });
 
 // ── Search by Phone ─────────────────────────────────────────
-router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byphone', async (req: Request, res: Response) => {
   try {
     const { phone, page } = req.query;
     if (!phone) return res.status(400).json({ error: 'phone parameter required' });
@@ -378,7 +360,7 @@ router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Res
 });
 
 // ── Search by Email ─────────────────────────────────────────
-router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Response) => {
+router.get('/search/byemail', async (req: Request, res: Response) => {
   try {
     const { email, page } = req.query;
     if (!email) return res.status(400).json({ error: 'email parameter required' });
@@ -397,7 +379,7 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
 });
 
 // ── Person Details by ID (email, phone) ─────────────────────
-router.get('/person/:id', validateParamId, async (req: Request, res: Response) => {
+router.get('/person/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
     if (!id) return res.status(400).json({ error: 'id parameter required' });
@@ -416,8 +398,8 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit), 10) || 50, 200);
-    const offset = Math.max(0, Math.min(parseInt(String(req.query.offset), 10) || 0, 10000));
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
 
     const rows = db.prepare(`
       SELECT s.*, u.full_name AS searched_by_name

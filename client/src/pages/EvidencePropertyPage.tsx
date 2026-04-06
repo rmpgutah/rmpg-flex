@@ -6,16 +6,14 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   Package, Search, Plus, ChevronDown, MapPin, Clock, User,
   ArrowRightLeft, CheckCircle, AlertTriangle, X, Save, Loader2,
   Box, Warehouse, Tag, FileText, Archive, Video,
   PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2,
-  Play, Shield, Camera, Download,
+  Play, Shield, Camera,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { exportToCsv } from '../utils/csvExport';
 import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
 import { apiFetch } from '../hooks/useApi';
@@ -99,9 +97,6 @@ export default function EvidencePropertyPage() {
   });
   const [newEvidenceSubmitting, setNewEvidenceSubmitting] = useState(false);
 
-  // URL search params (auto-open new evidence from incidents page)
-  const [searchParams, setSearchParams] = useSearchParams();
-
   // Detail tab
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
 
@@ -109,10 +104,6 @@ export default function EvidencePropertyPage() {
   const [bwcVideos, setBwcVideos] = useState<BodyCamVideo[]>([]);
   const [bwcLoading, setBwcLoading] = useState(false);
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
-
-  // Cases for linking
-  const [caseOptions, setCaseOptions] = useState<any[]>([]);
-  const [linkingCase, setLinkingCase] = useState(false);
 
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
@@ -125,13 +116,10 @@ export default function EvidencePropertyPage() {
         ...(filterType ? { type: filterType } : {}),
       });
       const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?${params}`);
-      const newItems = res.data || [];
-      setItems(newItems);
+      setItems(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-      // Keep selected item in sync with refreshed data
-      setSelected((prev: any) => prev ? newItems.find((i: any) => i.id === prev.id) || null : null);
-    } catch { addToast('Failed to load evidence items', 'error'); } finally { setLoading(false); }
+    } catch { /* silent */ } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType]);
 
   const fetchStats = useCallback(async () => {
@@ -159,33 +147,7 @@ export default function EvidencePropertyPage() {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
   useEffect(() => { fetchStats(); fetchLocations(); }, [fetchStats, fetchLocations]);
-  useEffect(() => {
-    apiFetch<{ data: any[] }>('/cases?limit=500').then(r => setCaseOptions(r.data || [])).catch(err => console.warn('[API] Data load failed:', err));
-  }, []);
   useLiveSync('records', () => { fetchItems({ silent: true }); fetchStats(); });
-
-  // ---------- Auto-open new evidence from URL params (incidents page link) ----------
-  useEffect(() => {
-    const isNew = searchParams.get('new');
-    if (isNew !== 'true') return;
-    // Grab params before clearing
-    const incidentId = searchParams.get('incident_id') || '';
-    const location = searchParams.get('location') || '';
-    // Clear params immediately so it doesn't re-trigger
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('new');
-      next.delete('incident_id');
-      next.delete('location');
-      return next;
-    }, { replace: true });
-    setNewEvidence({
-      description: '', evidence_type: 'other', category: '', storage_location: location,
-      serial_number: '', brand: '', model: '', estimated_value: '',
-      collected_date: '', notes: '', incident_id: incidentId,
-    });
-    setNewEvidenceOpen(true);
-  }, [searchParams]);
 
   // When detail tab switches to BWC, fetch videos
   useEffect(() => {
@@ -215,7 +177,7 @@ export default function EvidencePropertyPage() {
       const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
       setSelected(updated.data);
     } catch (err: any) {
-      addToast(err?.message || 'Failed to record action', 'error');
+      addToast(err.message || 'Failed to record action', 'error');
     } finally { setChainSubmitting(false); }
   };
 
@@ -244,24 +206,8 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true });
       fetchStats();
     } catch (err: any) {
-      addToast(err?.message || 'Failed to create evidence', 'error');
+      addToast(err.message || 'Failed to create evidence', 'error');
     } finally { setNewEvidenceSubmitting(false); }
-  };
-
-  const handleLinkCase = async (caseId: string) => {
-    if (!selected) return;
-    setLinkingCase(true);
-    try {
-      const res = await apiFetch<any>(`/records/evidence/${selected.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ case_id: caseId ? parseInt(caseId, 10) : null }),
-      });
-      setSelected(res);
-      addToast(caseId ? 'Evidence linked to case' : 'Case link removed', 'success');
-      fetchItems({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to link case', 'error');
-    } finally { setLinkingCase(false); }
   };
 
   let chainOfCustody: any[] = [];
@@ -308,35 +254,10 @@ export default function EvidencePropertyPage() {
 
   // ─── Render ────────────────────────────────────────
   return (
-    <div className={`h-full flex app-grid-bg ${isMobile ? 'flex-col' : ''}`}>
+    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left Panel: Evidence List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>
-          <button
-            onClick={() => exportToCsv('evidence_export.csv', items, [
-              { key: 'evidence_number', label: 'Evidence #' },
-              { key: 'status', label: 'Status' },
-              { key: 'description', label: 'Description' },
-              { key: 'evidence_type', label: 'Type' },
-              { key: 'category', label: 'Category' },
-              { key: 'serial_number', label: 'Serial #' },
-              { key: 'brand', label: 'Brand' },
-              { key: 'model', label: 'Model' },
-              { key: 'estimated_value', label: 'Est. Value' },
-              { key: 'storage_location', label: 'Storage Location' },
-              { key: 'collected_by_name', label: 'Collected By' },
-              { key: 'collected_date', label: 'Collected Date' },
-              { key: 'incident_number', label: 'Incident #' },
-              { key: 'linked_case_number', label: 'Linked Case' },
-              { key: 'notes', label: 'Notes' },
-              { key: 'created_at', label: 'Created' },
-            ])}
-            className="toolbar-btn"
-            title="Export CSV"
-            disabled={items.length === 0}
-          >
-            <Download style={{ width: 11, height: 11 }} /> CSV
-          </button>
           <button
             onClick={() => setNewEvidenceOpen(true)}
             className="toolbar-btn toolbar-btn-primary"
@@ -545,7 +466,7 @@ export default function EvidencePropertyPage() {
                         ['Serial Number', selected.serial_number || '—'],
                         ['Make / Model', [selected.make || selected.brand, selected.model].filter(Boolean).join(' ') || '—'],
                         ['Quantity', selected.quantity || '1'],
-                        ['Estimated Value', selected.estimated_value && !isNaN(Number(selected.estimated_value)) ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
+                        ['Estimated Value', selected.estimated_value ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
                       ].map(([label, value]) => (
                         <div key={label as string}>
                           <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -573,30 +494,6 @@ export default function EvidencePropertyPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
-
-                  {/* Link to Case */}
-                  <div className="panel-inset p-3">
-                    <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 tracking-wider">Linked Case</div>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={selected.case_id || ''}
-                        onChange={e => handleLinkCase(e.target.value)}
-                        disabled={linkingCase}
-                        className="select-dark flex-1 text-xs"
-                      >
-                        <option value="">— No linked case —</option>
-                        {caseOptions.map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.case_number} — {c.title}</option>
-                        ))}
-                      </select>
-                      {linkingCase && <Loader2 className="w-3 h-3 animate-spin text-rmpg-500" />}
-                    </div>
-                    {selected.linked_case_number && (
-                      <div className="mt-1.5 text-[10px] text-brand-400">
-                        Currently linked: {selected.linked_case_number} — {selected.linked_case_title}
-                      </div>
-                    )}
                   </div>
 
                   {/* Notes */}

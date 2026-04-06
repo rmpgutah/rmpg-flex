@@ -163,7 +163,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ mappings: CpgMapping[] }>('/clearpathgps/mappings');
       setMappings(data.mappings || []);
-    } catch (e) { console.error('Failed to fetch GPS mappings:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   // ── Fetch units ──
@@ -171,7 +171,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<DispatchUnit[]>('/dispatch/units');
       setUnits(Array.isArray(data) ? data : []);
-    } catch (e) { console.error('Failed to fetch units:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   // ── Fetch settings ──
@@ -179,7 +179,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ history_backfill: boolean }>('/clearpathgps/settings');
       setHistoryBackfill(data.history_backfill);
-    } catch (e) { console.error('Failed to fetch GPS settings:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   // ── Fetch dashcam events ──
@@ -189,7 +189,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       const data = await apiFetch<{ events: DashcamEvent[]; total: number }>('/clearpathgps/dashcam-events?limit=50');
       setDashcamEvents(data.events || []);
       setDashcamTotal(data.total || 0);
-    } catch (e) { console.error('Failed to fetch dashcam events:', e); }
+    } catch { /* ignore */ }
     finally { setLoadingDashcam(false); }
   }, []);
 
@@ -200,7 +200,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setMediaStatus(data);
       setMediaSyncEnabled(data.media_sync_enabled);
       setMediaPollInterval(data.media_poll_interval_seconds || 300);
-    } catch (e) { console.error('Failed to fetch media status:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
@@ -427,7 +427,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 

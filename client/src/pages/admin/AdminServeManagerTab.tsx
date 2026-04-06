@@ -73,7 +73,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     try {
       const res = await apiFetch<{ data: SMSyncLogEntry[] }>('/servemanager/sync/log');
       setSyncLog(res.data);
-    } catch (e) { console.error('Failed to fetch sync log:', e); }
+    } catch { /* ignore */ }
   }, []);
 
   const fetchJobs = useCallback(async () => {
@@ -101,7 +101,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setPollerTargetClient(data.target_client);
       setPollerAutoCreate(data.auto_create_calls);
       setPollerDirty(false);
-    } catch (e) { console.error('Failed to fetch poller status:', e); }
+    } catch { /* ignore if not configured yet */ }
   }, []);
 
   useEffect(() => { fetchStatus(); fetchSyncLog(); }, [fetchStatus, fetchSyncLog]);
@@ -564,7 +564,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                       <span className="text-rmpg-300">{att.service_status || 'Attempted'}</span>
                       {att.serve_type && <span className="text-rmpg-500">({att.serve_type})</span>}
                       {att.server_name && <span className="text-rmpg-400">{att.server_name}</span>}
-                      {att.lat != null && att.lng != null && <MapPin className="w-3 h-3 text-rmpg-500" />}
+                      {att.lat && att.lng && <MapPin className="w-3 h-3 text-rmpg-500" />}
                       <span className="ml-auto text-rmpg-500">{att.served_at ? new Date(att.served_at).toLocaleString() : ''}</span>
                     </div>
                   ))}

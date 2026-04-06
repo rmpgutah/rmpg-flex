@@ -88,6 +88,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch('/email/admin/credentials', {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId, clientSecret, tenantId }),
       });
       setClientId(''); setClientSecret(''); setTenantId('');
@@ -115,8 +116,8 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       const data = await apiFetch<{ url: string }>('/email/admin/oauth/authorize');
       // Validate redirect URL is a legitimate OAuth provider
       const url = new URL(data.url);
-      const allowedHosts = new Set(['login.microsoftonline.com', 'accounts.google.com', 'login.live.com']);
-      if (!allowedHosts.has(url.hostname)) {
+      const allowedHosts = ['login.microsoftonline.com', 'accounts.google.com', 'login.live.com'];
+      if (!allowedHosts.some(h => url.hostname === h || url.hostname.endsWith('.' + h))) {
         throw new Error('Unexpected OAuth redirect domain');
       }
       window.location.href = data.url;
@@ -142,6 +143,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch('/email/admin/enable', {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !status?.enabled }),
       });
       await fetchStatus();
@@ -155,6 +157,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch('/email/admin/enable', {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pollInterval: seconds }),
       });
       await fetchStatus();
@@ -169,6 +172,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       if (smtpPassword) reqBody.password = smtpPassword;
       await apiFetch('/email/admin/smtp-settings', {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reqBody),
       });
       setSmtpPassword('');

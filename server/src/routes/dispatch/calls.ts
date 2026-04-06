@@ -1,16 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { validateParamId, escapeLike } from '../../middleware/sanitize';
-import { generateCallNumber, generateCaseNumber } from '../../utils/caseNumbers';
+import { generateCallNumber } from '../../utils/caseNumbers';
 import { sendCsv } from '../../utils/csvExport';
-import { localNow, localToday } from '../../utils/timeUtils';
+import { localNow } from '../../utils/timeUtils';
 import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
-import { exportRateLimit } from '../../middleware/rateLimiter';
-import { getCallUnitIds, getCallUnitsDetailed, getUnitsForCalls } from '../../utils/callUnits';
 
 // ── PSO Service Window helpers (shared with callActions.ts) ──
 type ServiceWindow = 'early_morning' | 'daytime' | 'evening';
@@ -49,7 +46,6 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       startDate,
       endDate,
       propertyId,
-      search,
       archived,
       page = '1',
       limit = '50',
@@ -78,11 +74,6 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       whereClause += ' AND c.property_id = ?';
       params.push(propertyId);
     }
-    if (search) {
-      whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.call_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.narrative LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
-      params.push(s, s, s, s);
-    }
 
     // Archive filter: exclude archived calls by default, include only when requested
     if (archived === 'true') {
@@ -91,7 +82,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       whereClause += " AND c.status != 'archived'";
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -99,8 +90,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     const calls = db.prepare(`
       SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name,
-        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number
+        cl.name as client_name
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
@@ -179,24 +169,6 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Validate numeric fields to prevent type coercion issues
-    if (latitude != null && (isNaN(Number(latitude)) || Math.abs(Number(latitude)) > 90)) {
-      res.status(400).json({ error: 'Invalid latitude value' });
-      return;
-    }
-    if (longitude != null && (isNaN(Number(longitude)) || Math.abs(Number(longitude)) > 180)) {
-      res.status(400).json({ error: 'Invalid longitude value' });
-      return;
-    }
-    if (req.body.num_subjects != null && (isNaN(Number(req.body.num_subjects)) || Number(req.body.num_subjects) < 0)) {
-      res.status(400).json({ error: 'Invalid num_subjects value' });
-      return;
-    }
-    if (req.body.num_victims != null && (isNaN(Number(req.body.num_victims)) || Number(req.body.num_victims) < 0)) {
-      res.status(400).json({ error: 'Invalid num_victims value' });
-      return;
-    }
-
     // Normalize and validate priority against CHECK constraint (P1, P2, P3, P4)
     const normalizedPriority = String(priority).toUpperCase();
     const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
@@ -205,25 +177,8 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Auto-generate case number for every dispatch call
-    const INCIDENT_TO_CASE_TYPE: Record<string, string> = {
-      theft: 'theft', burglary: 'burglary', robbery: 'criminal', assault: 'assault', battery: 'assault',
-      vandalism: 'criminal', criminal_mischief: 'criminal', drug_activity: 'narcotics', weapons_offense: 'criminal',
-      fraud_forgery: 'fraud', kidnapping: 'criminal', arson: 'criminal', sexual_assault: 'criminal',
-      stalking: 'criminal', identity_theft: 'fraud', criminal_trespass: 'criminal', shoplifting: 'theft',
-      auto_theft: 'theft', criminal_threat: 'criminal', prostitution: 'criminal',
-      trespass: 'disorder', disturbance: 'disorder', noise_complaint: 'disorder', loitering: 'disorder',
-      panhandling: 'disorder', domestic_dispute: 'domestic', prowler: 'disorder', harassment: 'disorder',
-      traffic_accident: 'accident', hit_and_run: 'accident', dui_dwi: 'traffic', parking_violation: 'traffic',
-      traffic_hazard: 'traffic', abandoned_vehicle: 'traffic', reckless_driving: 'traffic', traffic_stop: 'traffic',
-      medical_emergency: 'medical', overdose: 'medical', mental_health_crisis: 'medical',
-      fire: 'fire', fire_alarm: 'fire', hazmat: 'fire',
-      death_investigation: 'death', missing_person: 'missing_person', juvenile_runaway: 'juvenile',
-      alarm_response: 'security', access_control: 'security', patrol_check: 'security', lock_unlock: 'security',
-      property_damage: 'property', lost_found: 'property',
-      daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
-    };
-    const caseType = INCIDENT_TO_CASE_TYPE[incident_type] || 'general';
+    // Generate call number: CFS-YYYY-NNNNN
+    const callNumber = generateCallNumber(db);
 
     // Determine status — allow historical entries to set any valid status
     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
@@ -246,7 +201,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let autoZoneName: string | null = null;
     let autoBeatName: string | null = null;
     let autoBeatDescriptor: string | null = null;
-    if (latitude != null && longitude != null) {
+    if (latitude && longitude) {
       try {
         const beat = identifyBeat(Number(latitude), Number(longitude));
         if (beat) {
@@ -276,31 +231,10 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       } catch { /* geofence not configured, skip */ }
     }
 
-    // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up district table
-    if (autoSectionId && autoZoneId && autoBeatId && !autoDispatchCode) {
-      const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
-      ).get(autoSectionId, autoZoneId, autoBeatId) as any;
-      if (districtMatch) {
-        autoDispatchCode = districtMatch.dispatch_code;
-        if (!autoSectionName) autoSectionName = districtMatch.section_name;
-        if (!autoZoneName) autoZoneName = districtMatch.zone_name;
-        if (!autoBeatName) autoBeatName = districtMatch.beat_name;
-        if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
-      } else {
-        autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
-      }
-    }
-
     // Transaction: insert call + activity log atomically
-    // NOTE: callNumber and caseNumber are generated INSIDE the transaction to prevent
-    // race conditions where two concurrent requests could get the same number.
     const createCallTx = db.transaction(() => {
-      const callNumber = generateCallNumber(db);
-      const caseNumber = generateCaseNumber(db, caseType);
-
       const result = db.prepare(`
-        INSERT INTO calls_for_service (call_number, case_number, incident_type, priority, status, caller_name, caller_phone,
+        INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, caller_phone,
           caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
           cross_street, location_building, location_floor, location_room, zone_beat,
           section_id, zone_id, beat_id, dispatch_code,
@@ -320,13 +254,13 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           process_service_type, process_served_to, process_served_address,
           contract_id, client_id,
           created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, archived_at, disposition)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        callNumber, caseNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
+        callNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
         caller_relationship || null, caller_address || null, location_address, property_id || null,
         latitude ?? null, longitude ?? null, description || null, notes || null,
         source || 'phone', req.user!.userId,
@@ -356,31 +290,12 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
       const call = (db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
 
-      // Create a corresponding case record for bidirectional linkage
-      const caseNow = customCreatedAt || localNow();
-      const caseResult = db.prepare(`
-        INSERT INTO cases (case_number, title, case_type, status, priority, summary, linked_calls, created_by, created_at, updated_at, opened_date)
-        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        caseNumber,
-        `${(incident_type || '').replace(/_/g, ' ').toUpperCase()} — ${location_address || 'Unknown location'}`,
-        caseType,
-        normalizedPriority === 'P1' ? 'critical' : normalizedPriority === 'P2' ? 'high' : 'normal',
-        description || null,
-        JSON.stringify([call.id]),
-        req.user!.userId, caseNow, caseNow, localToday(),
-      );
-
-      // Back-link case_id to the call
-      db.prepare('UPDATE calls_for_service SET case_id = ? WHERE id = ?').run(caseResult.lastInsertRowid, call.id);
-      call.case_id = caseResult.lastInsertRowid;
-
       // Log activity
       const isHistorical = !!customCreatedAt;
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${incident_type}`, req.ip || 'unknown');
+      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber}: ${incident_type}`, req.ip || 'unknown');
 
       return call;
     });
@@ -423,7 +338,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 });
 
 // GET /api/dispatch/calls/export - Export calls as CSV
-router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, startDate, endDate } = req.query;
@@ -454,7 +369,6 @@ router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), expor
       FROM calls_for_service c
       ${whereClause}
       ORDER BY c.created_at DESC
-      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'calls_export.csv', [
@@ -494,10 +408,10 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
       SELECT id, call_number, incident_type, priority, status, location_address, created_at
       FROM calls_for_service
       WHERE status NOT IN ('cleared','closed','cancelled','archived')
-        AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ? ESCAPE '\\'
+        AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
       ORDER BY created_at DESC
       LIMIT 5
-    `).all(`%${escapeLike(normalized)}%`) as any[];
+    `).all(`%${normalized}%`) as any[];
 
     res.json({ duplicates, count: duplicates.length });
   } catch (error: any) {
@@ -507,7 +421,7 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
 });
 
 // GET /api/dispatch/calls/:id - Get single call with details
-router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -527,8 +441,21 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
       return;
     }
 
-    // Get assigned units with officer info (from call_units junction table)
-    const assignedUnits = getCallUnitsDetailed(Number(req.params.id));
+    // Get assigned units with officer info
+    let assignedUnits: any[] = [];
+    try {
+      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+      const unitIds = Array.isArray(parsed) ? parsed : [];
+      if (unitIds.length > 0) {
+        const placeholders = unitIds.map(() => '?').join(',');
+        assignedUnits = db.prepare(`
+          SELECT u.*, usr.full_name as officer_name, usr.badge_number
+          FROM units u
+          LEFT JOIN users usr ON u.officer_id = usr.id
+          WHERE u.id IN (${placeholders})
+        `).all(...unitIds);
+      }
+    } catch { /* ignore parse errors */ }
 
     // Get related incidents
     const incidents = db.prepare(`
@@ -551,32 +478,12 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
       visit_history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(call.id) as any[];
     }
 
-    // Surface the first linked incident number on the call object for display
-    const firstIncidentNumber = (incidents as any[]).length > 0 ? (incidents as any[])[0].incident_number : null;
-
-    // Fetch dispatch chain (parent/child calls) for PSO re-dispatch tracking
-    let parentCall: any = null;
-    let childCalls: any[] = [];
-    if (call.parent_call_id) {
-      parentCall = db.prepare(`
-        SELECT id, call_number, status, pso_attempt_number, created_at, closed_at, disposition
-        FROM calls_for_service WHERE id = ?
-      `).get(call.parent_call_id) || null;
-    }
-    childCalls = db.prepare(`
-      SELECT id, call_number, status, pso_attempt_number, created_at, closed_at, disposition
-      FROM calls_for_service WHERE parent_call_id = ? ORDER BY created_at ASC
-    `).all(call.id) as any[];
-
     res.json({
       ...call,
-      incident_number: call.incident_number || firstIncidentNumber,
       assigned_units: assignedUnits,
       related_incidents: incidents,
       activity,
       visit_history,
-      parentCall,
-      childCalls,
     });
   } catch (error: any) {
     console.error('Get call error:', error?.message || 'Unknown error');
@@ -585,7 +492,7 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -735,27 +642,6 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     addField('section_id', autoSectionId);
     addField('zone_id', autoZoneId);
     addField('beat_id', autoBeatId);
-
-    // Auto-resolve dispatch_code + district names from S/Z/B IDs
-    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.section_id;
-    const finalZoneId = autoZoneId !== undefined ? autoZoneId : call.zone_id;
-    const finalBeatId = autoBeatId !== undefined ? autoBeatId : call.beat_id;
-    if (finalSectionId && finalZoneId && finalBeatId) {
-      const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
-      ).get(finalSectionId, finalZoneId, finalBeatId) as any;
-      if (districtMatch) {
-        addField('dispatch_code', districtMatch.dispatch_code);
-        addField('section_name', districtMatch.section_name);
-        addField('zone_name', districtMatch.zone_name);
-        addField('beat_name', districtMatch.beat_name);
-        addField('beat_descriptor', districtMatch.beat_descriptor);
-      } else {
-        // Build dispatch_code from IDs even without a district record
-        addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
-      }
-    }
-
     addField('responding_officer', responding_officer);
     addField('secondary_type', secondary_type);
     addField('contact_method', contact_method);
@@ -803,7 +689,7 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     addField('process_service_type', process_service_type);
     addField('process_served_to', process_served_to);
     addField('process_served_address', process_served_address);
-    addField('process_attempts', process_attempts !== undefined ? (isNaN(Number(process_attempts)) ? null : Number(process_attempts)) : undefined);
+    addField('process_attempts', process_attempts !== undefined ? Number(process_attempts) : undefined);
     addField('process_served_at', process_served_at);
     addField('process_service_result', process_service_result);
     addField('client_id', resolvedUpdateClientId);
@@ -827,7 +713,7 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
 
     // If location changed but no coordinates provided, geocode asynchronously
-    if (location_address && latitude == null && longitude == null) {
+    if (location_address && !latitude && !longitude) {
       geocodeCallIfNeeded(updated.id, location_address, updated.latitude, updated.longitude);
     }
 
@@ -841,7 +727,7 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
 });
 
 // POST /api/dispatch/calls/:id/redispatch - Re-dispatch a PSO call (increment attempt)
-router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   // Note: primary handler is now at top-level in index.ts — this is a fallback
   try {
     const db = getDb();
@@ -876,13 +762,16 @@ router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'mana
     };
 
     // ── Snapshot current visit into history BEFORE resetting ──
-    // Get assigned unit call signs for the snapshot (from call_units junction table)
-    const callUnitIds = getCallUnitIds(call.id);
+    // Get assigned unit call signs for the snapshot
     let assignedCallSigns: string[] = [];
-    if (callUnitIds.length) {
-      const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${callUnitIds.map(() => '?').join(',')})`).all(...callUnitIds) as any[];
-      assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
-    }
+    try {
+      const parsedIds = JSON.parse(call.assigned_unit_ids || '[]');
+      const unitIds = Array.isArray(parsedIds) ? parsedIds : [];
+      if (unitIds.length) {
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
+        assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
+      }
+    } catch { /* ignore parse errors */ }
 
     // Classify this visit's time window for PSO compliance tracking
     const attemptTime = call.onscene_at || call.cleared_at || call.closed_at || now;
@@ -958,7 +847,7 @@ router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'mana
 });
 
 // GET /api/dispatch/calls/:id/visit-history - Get visit history for a PSO call
-router.get('/calls/:id/visit-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.get('/calls/:id/visit-history', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, incident_type FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -975,7 +864,7 @@ router.get('/calls/:id/visit-history', validateParamId, requireRole('admin', 'ma
 });
 
 // GET /api/dispatch/calls/:id/pso-compliance - Check PSO service window compliance
-router.get('/calls/:id/pso-compliance', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.get('/calls/:id/pso-compliance', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, incident_type, pso_service_windows, pso_attempt_number, pso_72hr_deadline, created_at FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
   Loader2, Navigation, Trash2,
@@ -75,7 +75,6 @@ export default function ServeAttemptModal({
   // Step 3 — Documentation
   const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
   const [ageRange, setAgeRange] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
@@ -95,10 +94,7 @@ export default function ServeAttemptModal({
 
   // ─── GPS Acquisition ────────────────────────────────────────────────
 
-  const gpsCancelledRef = useRef(false);
-
   const acquireGps = useCallback(() => {
-    gpsCancelledRef.current = false;
     setGps({ latitude: null, longitude: null, accuracy: null, loading: true, error: null });
     if (!navigator.geolocation) {
       setGps(prev => ({ ...prev, loading: false, error: 'Geolocation not available' }));
@@ -106,7 +102,6 @@ export default function ServeAttemptModal({
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        if (gpsCancelledRef.current) return;
         setGps({
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
@@ -116,8 +111,7 @@ export default function ServeAttemptModal({
         });
       },
       (err) => {
-        if (gpsCancelledRef.current) return;
-        setGps(prev => ({ ...prev, loading: false, error: err?.message || 'GPS error' }));
+        setGps(prev => ({ ...prev, loading: false, error: err.message }));
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
@@ -131,7 +125,6 @@ export default function ServeAttemptModal({
       setAttemptType(null);
       setFailedReason(null);
       setPhotos([]);
-      setUploadError(null);
       setAgeRange('');
       setHeight('');
       setWeight('');
@@ -144,7 +137,6 @@ export default function ServeAttemptModal({
       setSubmitting(false);
       setSubmitResult(null);
     }
-    return () => { gpsCancelledRef.current = true; };
   }, [isOpen, acquireGps]);
 
   // ─── Distance Warning ───────────────────────────────────────────────
@@ -166,7 +158,6 @@ export default function ServeAttemptModal({
     if (toUpload.length === 0) return;
 
     setUploading(true);
-    setUploadError(null);
     try {
       for (const file of toUpload) {
         const formData = new FormData();
@@ -177,8 +168,8 @@ export default function ServeAttemptModal({
         });
         setPhotos(prev => [...prev, { id: result.id, url: result.url }]);
       }
-    } catch (err: any) {
-      setUploadError(err?.message || 'Photo upload failed — tap to retry');
+    } catch {
+      // upload failed silently — user can retry
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -477,10 +468,6 @@ export default function ServeAttemptModal({
                 />
               </label>
 
-              {uploadError && (
-                <p className="text-xs text-red-400">{uploadError}</p>
-              )}
-
               {photos.length > 0 && (
                 <div className="flex gap-2 flex-wrap">
                   {photos.map((photo) => (
@@ -665,19 +652,19 @@ export default function ServeAttemptModal({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-rmpg-400">Type</span>
-                    <span className="text-rmpg-100 capitalize">{attemptType?.replace(/_/g, ' ')}</span>
+                    <span className="text-rmpg-100 capitalize">{attemptType?.replace('_', ' ')}</span>
                   </div>
                   {attemptType === 'failed' && failedReason && (
                     <div className="flex justify-between">
                       <span className="text-rmpg-400">Reason</span>
-                      <span className="text-rmpg-100 capitalize">{failedReason.replace(/_/g, ' ')}</span>
+                      <span className="text-rmpg-100 capitalize">{failedReason.replace('_', ' ')}</span>
                     </div>
                   )}
-                  {gps.latitude != null && gps.longitude != null && (
+                  {gps.latitude && (
                     <div className="flex justify-between">
                       <span className="text-rmpg-400">GPS</span>
                       <span className="text-rmpg-100 font-mono text-xs">
-                        {gps.latitude.toFixed(6)}, {gps.longitude.toFixed(6)} ({gps.accuracy}m)
+                        {gps.latitude?.toFixed(6)}, {gps.longitude?.toFixed(6)} ({gps.accuracy}m)
                       </span>
                     </div>
                   )}
