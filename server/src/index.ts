@@ -586,16 +586,16 @@ try {
     console.log('');
 
     // Start patrol monitor for missed scan alerts
-    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    try { startPatrolMonitor(5 * 60 * 1000); } catch (err: any) { console.warn('[Patrol] Monitor start failed:', err?.message); }
 
     // Start midnight daily patrol report scheduler
-    startDailyReportScheduler();
+    try { startDailyReportScheduler(); } catch (err: any) { console.warn('[DailyReport] Scheduler start failed:', err?.message); }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    scheduleOfacSync();
+    try { scheduleOfacSync(); } catch (err: any) { console.warn('[OFAC] Sync scheduler start failed:', err?.message); }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
-    startHealthChecker();
+    try { startHealthChecker(); } catch (err: any) { console.warn('[HealthChecker] Start failed:', err?.message); }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {

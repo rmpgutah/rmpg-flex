@@ -211,7 +211,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     // Run cross-linking for the new record
     try { crossLinkArrests(); } catch { /* non-critical */ }
 
-    res.json({ success: true, id: newId, message: 'Booking record created' });
+    res.status(201).json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
     if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
       res.status(400).json({ error: err.message }); return;

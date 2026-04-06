@@ -925,6 +925,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       req.ip || 'unknown'
     );
 
+    auditLog(req, 'CREATE', 'fleet_vehicle', result.lastInsertRowid as number, `Created fleet vehicle: ${vehicle_number}`);
     res.status(201).json({
       ...created,
       equipment: safeParseJson(created.equipment, []),
@@ -1030,6 +1031,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       req.ip || 'unknown'
     );
 
+    auditLog(req, 'UPDATE', 'fleet_vehicle', parseInt(id), `Updated fleet vehicle: ${updated.vehicle_number}`);
     res.json({
       ...updated,
       equipment: safeParseJson(updated.equipment, []),
@@ -1340,6 +1342,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
       req.ip || 'unknown'
     );
 
+    auditLog(req, 'CREATE', 'fleet_maintenance', result.lastInsertRowid as number, `Logged ${type || 'maintenance'} for vehicle ${vehicle.vehicle_number}: ${description}`);
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Error logging maintenance record:', error);
@@ -1639,6 +1642,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       req.ip || 'unknown'
     );
 
+    auditLog(req, 'CREATE', 'fleet_fuel_log', result.lastInsertRowid as number, `Logged ${gallons} gal fuel for vehicle ${vehicle.vehicle_number}`);
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Error logging fuel entry:', error);

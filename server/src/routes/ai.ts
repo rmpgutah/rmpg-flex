@@ -5,6 +5,7 @@ import aiManager from '../utils/aiManager';
 import { checkSystemHealth, getHealthSummary } from '../utils/aiSystemHealth';
 import { runDataCleanupScan, autoFixStaleCall, autoFixOrphanedUnit } from '../utils/aiDataCleanup';
 import { getDb } from '../models/database';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -46,6 +47,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     }
 
     const saved = aiManager.saveConfig(updates);
+    auditLog(req, 'UPDATE', 'ai_config', 0, 'Updated AI configuration');
     // Return masked version
     const masked = JSON.parse(JSON.stringify(saved));
     if (masked.providers.groq.apiKey) masked.providers.groq.apiKey = maskKey(masked.providers.groq.apiKey);
@@ -85,6 +87,7 @@ router.post('/analyze', requireRole('admin', 'manager', 'supervisor', 'dispatche
     }
 
     const result = await analyzeCall({ incident_type, description, notes, location_address, existing_flags });
+    auditLog(req, 'AI_ANALYZE', 'ai', 0, `AI call analysis for incident_type: ${incident_type}`);
     res.json({ available: isAIAvailable(), result });
   } catch (err: any) {
     console.error('[AI] /analyze error:', err?.message || err);
@@ -103,6 +106,7 @@ router.post('/narrative', requireRole('admin', 'manager', 'supervisor', 'dispatc
     }
 
     const narrative = await generateNarrative({ notes, incident_type, location_address });
+    auditLog(req, 'AI_NARRATIVE', 'ai', 0, `AI narrative generated for incident_type: ${incident_type || 'unspecified'}`);
     res.json({ available: isAIAvailable(), narrative });
   } catch (err: any) {
     console.error('[AI] /narrative error:', err?.message || err);
