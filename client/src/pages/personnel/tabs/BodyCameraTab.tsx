@@ -48,8 +48,8 @@ interface Props {
   onDeleteCamera: (camId: number) => void;
   onSelectOfficer?: (officerId: string) => void;
   onPlayVideo?: (video: BodyCamVideo) => void;
-  onDeleteVideo?: (videoId: number) => void;
   onEditVideo?: (video: BodyCamVideo) => void;
+  onDeleteVideo?: (videoId: number) => void;
   onUploadVideo?: () => void;
   /** Role-gating: only admin/manager can add/edit/delete */
   canManage?: boolean;
@@ -65,7 +65,7 @@ interface Props {
 export default function BodyCameraTab({
   cameras, videos,
   onAddCamera, onEditCamera, onDeleteCamera,
-  onSelectOfficer, onPlayVideo, onDeleteVideo, onEditVideo,
+  onSelectOfficer, onPlayVideo, onEditVideo, onDeleteVideo,
   onUploadVideo, canManage = true,
   onBulkDeleteVideos, onBulkClassifyVideos, onBulkDeleteCameras,
   bulkLoading = false,
@@ -251,7 +251,7 @@ export default function BodyCameraTab({
       )}
 
       {/* ── Summary Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      <div className="grid grid-cols-6 gap-2">
         {SUMMARY_CARDS.map(card => (
           <div
             key={card.label}
@@ -346,7 +346,8 @@ export default function BodyCameraTab({
             <button
               onClick={async () => {
                 if (!confirm(`Delete ${selectedCameraIds.size} camera(s) and all their videos?`)) return;
-                try { await onBulkDeleteCameras(Array.from(selectedCameraIds)); setSelectedCameraIds(new Set()); } catch { /* handled by parent */ }
+                await onBulkDeleteCameras(Array.from(selectedCameraIds));
+                setSelectedCameraIds(new Set());
               }}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
@@ -375,7 +376,8 @@ export default function BodyCameraTab({
             <button
               onClick={async () => {
                 if (!confirm(`Delete ${selectedVideoIds.size} video(s)? This cannot be undone.`)) return;
-                try { await onBulkDeleteVideos(Array.from(selectedVideoIds)); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
+                await onBulkDeleteVideos(Array.from(selectedVideoIds));
+                setSelectedVideoIds(new Set());
               }}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
@@ -398,7 +400,8 @@ export default function BodyCameraTab({
               </select>
               <button
                 onClick={async () => {
-                  try { await onBulkClassifyVideos(Array.from(selectedVideoIds), bulkClassification); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
+                  await onBulkClassifyVideos(Array.from(selectedVideoIds), bulkClassification);
+                  setSelectedVideoIds(new Set());
                 }}
                 disabled={bulkLoading}
                 className="toolbar-btn-primary text-[10px] px-2.5 py-1 flex items-center gap-1"
@@ -644,7 +647,7 @@ export default function BodyCameraTab({
                             <button
                               onClick={() => onEditVideo(vid)}
                               className="toolbar-btn p-1"
-                              title="Edit video metadata"
+                              title="Edit video details"
                             >
                               <Edit3 className="w-3 h-3" />
                             </button>

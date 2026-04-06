@@ -1,9 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X, Zap, Star, Shield, Clock, Award, Calendar, User, Activity, GraduationCap, MapPinned,
   Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown,
+  Car, Radio, Map, ExternalLink,
 } from 'lucide-react';
-import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo } from '../../types';
+import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping, DashcamVideo } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
@@ -17,6 +19,7 @@ import ActivityDetailTab from './detail-tabs/ActivityDetailTab';
 import TrainingDetailTab from './detail-tabs/TrainingDetailTab';
 import EquipmentDetailTab from './detail-tabs/EquipmentDetailTab';
 import BodyCameraDetailTab from './detail-tabs/BodyCameraDetailTab';
+import DashCameraDetailTab from './detail-tabs/DashCameraDetailTab';
 import DeploymentDetailTab from './detail-tabs/DeploymentDetailTab';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
@@ -169,8 +172,16 @@ interface Props {
   onDeleteBodyCamera: (camId: number) => void;
   onUploadVideo: () => void;
   onDeleteVideo: (videoId: number) => void;
-  onEditVideo: (video: BodyCamVideo) => void;
+  onEditVideo?: (video: BodyCamVideo) => void;
   onPlayVideo: (video: BodyCamVideo) => void;
+  dashcamEvents: DashcamEvent[];
+  dashcamDeviceMapping: CpgDeviceMapping | null;
+  dashcamLoading: boolean;
+  dashcamVideos?: DashcamVideo[];
+  onPlayDashcamVideo?: (video: DashcamVideo) => void;
+  onDeleteDashcamVideo?: (videoId: number) => void;
+  onEditDashcamVideo?: (video: DashcamVideo) => void;
+  onUploadDashcamVideo?: () => void;
   onAddDeployment: (officerId: string) => void;
   onEditOfficer: () => void;
   onDeleteOfficer: () => void;
@@ -197,12 +208,15 @@ export default function PersonnelDetailPanel({
   bodyCameras, bodyCamVideos, bodyCamerasLoading,
   onAddBodyCamera, onEditBodyCamera, onDeleteBodyCamera,
   onUploadVideo, onDeleteVideo, onEditVideo, onPlayVideo,
+  dashcamEvents, dashcamDeviceMapping, dashcamLoading,
+  dashcamVideos, onPlayDashcamVideo, onDeleteDashcamVideo, onEditDashcamVideo, onUploadDashcamVideo,
   onAddDeployment,
   onEditOfficer, onDeleteOfficer,
   onArchiveOfficer, onUnarchiveOfficer, isArchived,
   onClockIn, onClockOut, onStartBreak, onEndBreak, onEditTimeEntry, onDeleteTimeEntry,
   onClose,
 }: Props) {
+  const navigate = useNavigate();
   const officerCreds = credentials.filter(c => c.officer_id === officer.id);
   const officerSchedules = schedules.filter(s => s.officer_id === officer.id);
   const officerTime = timeEntries.filter(t => t.officer_id === officer.id);
@@ -362,6 +376,20 @@ export default function PersonnelDetailPanel({
         </div>
       </div>
 
+      {/* Cross-Links Row */}
+      <div className="flex items-center gap-1.5 px-4 py-1 border-b border-rmpg-700 bg-surface-sunken">
+        <span className="text-[8px] text-rmpg-600 uppercase font-bold tracking-wider mr-1">Quick Links</span>
+        <button className="toolbar-btn text-[9px]" onClick={() => navigate(`/fleet?officerId=${officer.id}`)} title="View assigned vehicle">
+          <Car className="w-3 h-3" /> Fleet
+        </button>
+        <button className="toolbar-btn text-[9px]" onClick={() => navigate(`/dispatch?officerId=${officer.id}`)} title="View unit in Dispatch">
+          <Radio className="w-3 h-3" /> Dispatch
+        </button>
+        <button className="toolbar-btn text-[9px]" onClick={() => navigate(`/map?officerId=${officer.id}`)} title="View on Map">
+          <Map className="w-3 h-3" /> Map
+        </button>
+      </div>
+
       {/* Tab Bar */}
       <div className="tab-bar">
         {DETAIL_TABS.map(({ id, label, icon: Icon }) => {
@@ -443,6 +471,18 @@ export default function PersonnelDetailPanel({
             onEditVideo={onEditVideo}
             onPlayVideo={onPlayVideo}
             loading={bodyCamerasLoading}
+          />
+        )}
+        {activeTab === 'dash_cameras' && (
+          <DashCameraDetailTab
+            events={dashcamEvents}
+            deviceMapping={dashcamDeviceMapping}
+            loading={dashcamLoading}
+            videos={dashcamVideos}
+            onPlayVideo={onPlayDashcamVideo}
+            onDeleteVideo={onDeleteDashcamVideo}
+            onEditVideo={onEditDashcamVideo}
+            onUploadVideo={onUploadDashcamVideo}
           />
         )}
         {activeTab === 'deployment' && (

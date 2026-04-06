@@ -1,34 +1,36 @@
 // ============================================================
 // RMPG Flex — Dash Camera Video Upload Modal
 // ============================================================
+// Manual upload of dash cam footage. Adapted from VideoUploadModal.tsx
+// with dashcam-specific fields (device, event type, speed, address).
 
-import React, { useState, useRef } from 'react';
-import { Upload, X, Car, Loader2, MapPin, Gauge } from 'lucide-react';
-
-interface FleetVehicle {
-  id: number;
-  vehicle_number: string;
-  make?: string;
-  model?: string;
-  year?: number;
-}
-
-interface UnitOption {
-  id: number;
-  call_sign: string;
-}
+import React, { useState, useRef, useCallback } from 'react';
+import { X, Upload, Car, Loader2, AlertTriangle } from 'lucide-react';
+import type { CpgDeviceMapping } from '../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onUploaded: () => void;
-  vehicles: FleetVehicle[];
-  units: UnitOption[];
+  onSuccess: () => void;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
+  deviceMappings: CpgDeviceMapping[];
+  officers: { id: number; full_name: string }[];
 }
 
-const CLASSIFICATIONS = [
+const EVENT_TYPE_OPTIONS = [
+  { value: '', label: 'None / General' },
+  { value: 'hard_brake', label: 'Hard Brake' },
+  { value: 'speeding', label: 'Speeding' },
+  { value: 'impact', label: 'Impact' },
+  { value: 'hard_accel', label: 'Hard Acceleration' },
+  { value: 'hard_turn', label: 'Hard Turn' },
+  { value: 'video_start', label: 'Video Start' },
+  { value: 'camera_triggered', label: 'Camera Triggered' },
+  { value: 'panic', label: 'Panic' },
+];
+
+const CLASSIFICATION_OPTIONS = [
   { value: 'routine', label: 'Routine' },
   { value: 'evidence', label: 'Evidence' },
   { value: 'flagged', label: 'Flagged' },
@@ -36,150 +38,169 @@ const CLASSIFICATIONS = [
 ];
 
 export default function DashCamUploadModal({
-  isOpen, onClose, onUploaded, vehicles, units, apiBase, getAuthHeaders,
+  isOpen, onClose, onSuccess, apiBase, getAuthHeaders,
+  deviceMappings, officers,
 }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
-  const [vehicleId, setVehicleId] = useState('');
-  const [unitId, setUnitId] = useState('');
-  const [recordedAt, setRecordedAt] = useState('');
-  const [speedMph, setSpeedMph] = useState('');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
-  const [address, setAddress] = useState('');
-  const [caseNumber, setCaseNumber] = useState('');
+  const [officerId, setOfficerId] = useState('');
+  const [deviceId, setDeviceId] = useState('');
+  const [eventType, setEventType] = useState('');
   const [classification, setClassification] = useState('routine');
+  const [recordedAt, setRecordedAt] = useState('');
+  const [caseNumber, setCaseNumber] = useState('');
   const [notes, setNotes] = useState('');
+  const [speed, setSpeed] = useState('');
+  const [address, setAddress] = useState('');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  if (!isOpen) return null;
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setFile(null);
     setTitle('');
-    setVehicleId('');
-    setUnitId('');
-    setRecordedAt('');
-    setSpeedMph('');
-    setLatitude('');
-    setLongitude('');
-    setAddress('');
-    setCaseNumber('');
+    setOfficerId('');
+    setDeviceId('');
+    setEventType('');
     setClassification('routine');
+    setRecordedAt('');
+    setCaseNumber('');
     setNotes('');
-    setProgress(0);
-    setError('');
-    setDuration(null);
+    setSpeed('');
+    setAddress('');
     setUploading(false);
-  };
+    setProgress(0);
+    setError(null);
+    setDuration(null);
+  }, []);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (uploading) return;
     reset();
     onClose();
-  };
+  }, [uploading, reset, onClose]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) {
-      setFile(f);
-      setError('');
-      setDuration(null);
-      if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''));
-      const videoEl = document.createElement('video');
-      videoEl.preload = 'metadata';
-      videoEl.onloadedmetadata = () => {
-        if (videoEl.duration && isFinite(videoEl.duration)) setDuration(Math.round(videoEl.duration));
-        URL.revokeObjectURL(videoEl.src);
-      };
-      videoEl.onerror = () => URL.revokeObjectURL(videoEl.src);
-      videoEl.src = URL.createObjectURL(f);
+  const handleFileSelect = useCallback((selectedFile: File) => {
+    setFile(selectedFile);
+    setError(null);
+    if (!title) {
+      const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '');
+      setTitle(nameWithoutExt);
     }
-  };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+    // Extract duration from video metadata
+    const videoEl = document.createElement('video');
+    videoEl.preload = 'metadata';
+    videoEl.onloadedmetadata = () => {
+      if (isFinite(videoEl.duration)) {
+        setDuration(Math.round(videoEl.duration));
+      }
+      URL.revokeObjectURL(videoEl.src);
+    };
+    videoEl.src = URL.createObjectURL(selectedFile);
+  }, [title]);
+
+  const handleDeviceChange = useCallback((cpgDeviceId: string) => {
+    setDeviceId(cpgDeviceId);
+    // Auto-resolve officer from device mapping
+    if (cpgDeviceId) {
+      const mapping = deviceMappings.find(m => m.cpg_device_id === cpgDeviceId);
+      if (mapping?.officer_name) {
+        const officer = officers.find(o => o.full_name === mapping.officer_name);
+        if (officer) setOfficerId(String(officer.id));
+      }
+    }
+  }, [deviceMappings, officers]);
+
+  const handleUpload = useCallback(async () => {
     if (!file || !title) {
-      setError('File and title are required');
+      setError('Please provide a video file and title');
       return;
     }
 
     setUploading(true);
     setProgress(0);
-    setError('');
+    setError(null);
 
     const formData = new FormData();
     formData.append('video', file);
     formData.append('title', title);
-    if (vehicleId) formData.append('vehicle_id', vehicleId);
-    if (unitId) formData.append('unit_id', unitId);
+    if (officerId) formData.append('officer_id', officerId);
+    if (deviceId) formData.append('cpg_device_id', deviceId);
+    if (eventType) formData.append('event_type', eventType);
     formData.append('classification', classification);
-    if (duration != null) formData.append('duration_seconds', String(duration));
     if (recordedAt) formData.append('recorded_at', recordedAt);
-    if (speedMph) formData.append('speed_mph', speedMph);
-    if (latitude) formData.append('latitude', latitude);
-    if (longitude) formData.append('longitude', longitude);
-    if (address) formData.append('address', address);
     if (caseNumber) formData.append('case_number', caseNumber);
     if (notes) formData.append('notes', notes);
+    if (speed) formData.append('speed_mph', speed);
+    if (address) formData.append('address', address);
+    if (duration != null) formData.append('duration_seconds', String(duration));
+
+    // Find unit_id from device mapping
+    if (deviceId) {
+      const mapping = deviceMappings.find(m => m.cpg_device_id === deviceId);
+      if (mapping) formData.append('unit_id', String(mapping.unit_id));
+    }
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${apiBase}/fleet/dashcam-videos`);
-    xhr.timeout = 600000;
+    xhr.timeout = 600000; // 10 min
 
-    const headers = getAuthHeaders();
-    for (const [key, val] of Object.entries(headers)) xhr.setRequestHeader(key, val);
-
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 100));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setProgress(Math.round((e.loaded / e.total) * 100));
+      }
     };
 
     xhr.onload = () => {
       setUploading(false);
       if (xhr.status >= 200 && xhr.status < 300) {
         reset();
-        onUploaded();
+        onSuccess();
         onClose();
       } else {
         try {
           const resp = JSON.parse(xhr.responseText);
-          setError(resp.error || `Upload failed (HTTP ${xhr.status})`);
+          setError(resp.error || `Upload failed (${xhr.status})`);
         } catch {
-          setError(`Upload failed (HTTP ${xhr.status})`);
+          setError(`Upload failed (${xhr.status})`);
         }
       }
     };
 
-    xhr.onerror = () => { setUploading(false); setError('Network error — upload failed.'); };
-    xhr.ontimeout = () => { setUploading(false); setError('Upload timed out.'); };
+    xhr.onerror = () => {
+      setUploading(false);
+      setError('Network error — check your connection and try again.');
+    };
+
+    xhr.ontimeout = () => {
+      setUploading(false);
+      setError('Upload timed out. The file may be too large.');
+    };
+
+    const headers = getAuthHeaders();
+    xhr.open('POST', `${apiBase}/dashcam-videos`);
+    xhr.setRequestHeader('Authorization', headers['Authorization'] || '');
     xhr.send(formData);
-  };
+  }, [file, title, officerId, deviceId, eventType, classification, recordedAt, caseNumber, notes, speed, address, duration, deviceMappings, apiBase, getAuthHeaders, reset, onSuccess, onClose]);
+
+  if (!isOpen) return null;
 
   const formatSize = (bytes: number) => {
-    if (!bytes) return '-';
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
-  const formatDurationHMS = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={handleClose}>
-      <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-[560px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={handleClose}>
+      <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-[600px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
           <div className="flex items-center gap-2">
-            <Upload className="w-4 h-4 text-brand-400" />
+            <Car className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Upload Dash Camera Video</h2>
           </div>
           <button onClick={handleClose} disabled={uploading} className="toolbar-btn p-1">
@@ -187,134 +208,147 @@ export default function DashCamUploadModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <div className="p-4 space-y-3">
           {error && (
-            <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20">
-              <p className="text-xs text-red-400">{error}</p>
+            <div className="panel-beveled p-2.5 flex items-center gap-2 border border-red-700/40 bg-red-900/10">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+              <span className="text-[10px] text-red-400">{error}</span>
             </div>
           )}
 
-          {/* File Input */}
-          <div className="panel-inset p-3">
-            <label className="field-label mb-2 block">Video File <span className="text-red-400">*</span></label>
+          {/* File Drop Zone */}
+          <div
+            className={`panel-inset p-6 text-center cursor-pointer hover:bg-surface-hover transition-colors ${file ? 'border-brand-500' : ''}`}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm"
+              onChange={e => { if (e.target.files?.[0]) handleFileSelect(e.target.files[0]); }}
+              className="hidden"
+            />
             {file ? (
-              <div className="flex items-center gap-2">
-                <Car className="w-4 h-4 text-brand-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-rmpg-200 truncate">{file.name}</p>
-                  <p className="text-[9px] text-rmpg-500">
-                    {formatSize(file.size)} &bull; {file.type}
-                    {duration != null && <> &bull; {formatDurationHMS(duration)}</>}
-                  </p>
+              <div className="flex items-center justify-center gap-3">
+                <Car className="w-6 h-6 text-brand-400" />
+                <div className="text-left">
+                  <p className="text-xs font-semibold text-rmpg-100 truncate max-w-[300px]">{file.name}</p>
+                  <p className="text-[10px] text-rmpg-400">{formatSize(file.size)}{duration ? ` | ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}` : ''}</p>
                 </div>
-                <button type="button" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="toolbar-btn p-1">
-                  <X className="w-3 h-3" />
-                </button>
               </div>
             ) : (
-              <button type="button" onClick={() => fileRef.current?.click()} className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-lg hover:border-brand-500 transition-colors flex flex-col items-center gap-2">
-                <Upload className="w-6 h-6 text-rmpg-500" />
-                <span className="text-xs text-rmpg-400">Click to select video</span>
-                <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM</span>
-              </button>
+              <>
+                <Upload className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
+                <p className="text-xs text-rmpg-400">Click to select a video file</p>
+                <p className="text-[9px] text-rmpg-600 mt-0.5">Accepted: MP4, MOV, AVI, WebM</p>
+              </>
             )}
-            <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm" onChange={handleFileChange} className="hidden" />
           </div>
 
-          {/* Metadata */}
-          <div className="panel-inset p-3 space-y-3">
+          {/* Form Fields */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="field-label mb-1 block">Title *</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="input-dark text-xs w-full" placeholder="Video title" />
+            </div>
+
             <div>
-              <label className="field-label">Title <span className="text-red-400">*</span></label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" />
+              <label className="field-label mb-1 block">Device</label>
+              <select value={deviceId} onChange={e => handleDeviceChange(e.target.value)} className="input-dark text-xs w-full">
+                <option value="">— Select device —</option>
+                {deviceMappings.filter(d => d.is_active).map(d => (
+                  <option key={d.cpg_device_id} value={d.cpg_device_id}>
+                    {d.cpg_display_name} ({d.call_sign || 'unassigned'})
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="field-label">Vehicle</label>
-                <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="select-dark">
-                  <option value="">Select vehicle...</option>
-                  {vehicles.map(v => <option key={v.id} value={v.id}>#{v.vehicle_number} — {[v.year, v.make, v.model].filter(Boolean).join(' ')}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="field-label">Unit</label>
-                <select value={unitId} onChange={e => setUnitId(e.target.value)} className="select-dark">
-                  <option value="">Select unit...</option>
-                  {units.map(u => <option key={u.id} value={u.id}>{u.call_sign}</option>)}
-                </select>
-              </div>
+
+            <div>
+              <label className="field-label mb-1 block">Officer</label>
+              <select value={officerId} onChange={e => setOfficerId(e.target.value)} className="input-dark text-xs w-full">
+                <option value="">— Select officer —</option>
+                {officers.map(o => (
+                  <option key={o.id} value={o.id}>{o.full_name}</option>
+                ))}
+              </select>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="field-label">Recorded Date</label>
-                <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" />
-              </div>
-              <div>
-                <label className="field-label">Classification</label>
-                <select value={classification} onChange={e => setClassification(e.target.value)} className="select-dark">
-                  {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-              </div>
+
+            <div>
+              <label className="field-label mb-1 block">Event Type</label>
+              <select value={eventType} onChange={e => setEventType(e.target.value)} className="input-dark text-xs w-full">
+                {EVENT_TYPE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label mb-1 block">Classification</label>
+              <select value={classification} onChange={e => setClassification(e.target.value)} className="input-dark text-xs w-full">
+                {CLASSIFICATION_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label mb-1 block">Recorded At</label>
+              <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark text-xs w-full" />
+            </div>
+
+            <div>
+              <label className="field-label mb-1 block">Case Number</label>
+              <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} className="input-dark text-xs w-full" placeholder="Optional" />
+            </div>
+
+            <div>
+              <label className="field-label mb-1 block">Speed (mph)</label>
+              <input type="number" value={speed} onChange={e => setSpeed(e.target.value)} className="input-dark text-xs w-full" placeholder="Optional" />
+            </div>
+
+            <div>
+              <label className="field-label mb-1 block">Address</label>
+              <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="input-dark text-xs w-full" placeholder="Optional" />
+            </div>
+
+            <div className="col-span-2">
+              <label className="field-label mb-1 block">Notes</label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} className="input-dark text-xs w-full h-16 resize-none" placeholder="Optional notes" />
             </div>
           </div>
 
-          {/* Location & Speed */}
-          <div className="panel-inset p-3 space-y-3">
-            <p className="field-label flex items-center gap-1 text-brand-400"><MapPin className="w-3 h-3" /> Location & Speed Data</p>
-            <p className="text-[9px] text-rmpg-500 -mt-1">Auto-populated from ClearPathGPS if unit and recorded date are set</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              <div>
-                <label className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed (MPH)</label>
-                <input type="number" step="0.1" value={speedMph} onChange={e => setSpeedMph(e.target.value)} placeholder="e.g. 45" className="input-dark" />
-              </div>
-              <div>
-                <label className="field-label">Latitude</label>
-                <input type="number" step="0.0001" value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 40.7608" className="input-dark" />
-              </div>
-              <div>
-                <label className="field-label">Longitude</label>
-                <input type="number" step="0.0001" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -111.8910" className="input-dark" />
-              </div>
-            </div>
-            <div>
-              <label className="field-label">Street Address</label>
-              <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="e.g. 123 S State St, Salt Lake City, UT" className="input-dark" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="field-label">Case Number</label>
-                <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" />
-              </div>
-            </div>
-            <div>
-              <label className="field-label">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" />
-            </div>
-          </div>
-
-          {/* Progress Bar */}
+          {/* Upload Progress */}
           {uploading && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-rmpg-400 flex items-center gap-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin text-brand-400" /> Uploading...
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="flex items-center gap-1 text-rmpg-400">
+                  <Loader2 className="w-3 h-3 animate-spin text-brand-400" />
+                  Uploading...
                 </span>
-                <span className="text-brand-400 font-mono font-bold">{progress}%</span>
+                <span className="font-mono text-brand-400">{progress}%</span>
               </div>
-              <div className="w-full h-2 bg-surface-sunken rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-brand-600 to-brand-400 transition-all duration-300" style={{ width: `${progress}%` }} />
+              <div className="w-full bg-rmpg-700 rounded-full h-1.5">
+                <div className="bg-brand-500 h-1.5 rounded-full transition-all" style={{ width: `${progress}%` }} />
               </div>
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button type="button" onClick={handleClose} disabled={uploading} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-            <button type="submit" disabled={uploading || !file || !title} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-rmpg-700">
+            <button onClick={handleClose} disabled={uploading} className="toolbar-btn text-xs px-4 py-1.5">
+              Cancel
+            </button>
+            <button
+              onClick={handleUpload}
+              disabled={uploading || !file || !title}
+              className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
+            >
               {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               {uploading ? 'Uploading...' : 'Upload Video'}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

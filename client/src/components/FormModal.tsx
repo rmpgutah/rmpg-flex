@@ -120,14 +120,14 @@ export default function FormModal({
               onClick={guardedClose}
               className="toolbar-btn"
               style={{ padding: '1px 4px' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#164d87'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#164d88'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
             >
               <X style={{ width: 10, height: 10 }} />
             </button>
           </div>
         </div>
-        <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form onSubmit={onSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {children}
           <div className="flex items-center justify-end gap-2 pt-4" style={{ borderTop: '1px solid #1e3048' }}>
             <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting}>
@@ -148,7 +148,7 @@ export default function FormModal({
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #0f1a28 0%, #141e2b 100%)' }}
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />

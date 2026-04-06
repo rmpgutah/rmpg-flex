@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
   Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2,
@@ -70,6 +71,7 @@ function parseEquipment(eq: unknown): string[] {
 
 export default function FleetPage() {
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
@@ -80,7 +82,7 @@ export default function FleetPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'analytics', 'gps_history'] as const);
   const [modal, setModal] = useState<ModalMode>('none');
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
   const [maintForm, setMaintForm] = useState<MaintenanceFormState>(EMPTY_MAINT_FORM);
@@ -137,6 +139,23 @@ export default function FleetPage() {
   // Live sync — auto-refresh when any device modifies fleet (silent to avoid unmounting UI)
   const silentRefreshVehicles = useCallback(() => fetchVehicles({ silent: true }), [fetchVehicles]);
   useLiveSync('fleet', silentRefreshVehicles);
+
+  // Deep-link: auto-select vehicle from query params (?vehicleId=, ?unitId=)
+  useEffect(() => {
+    if (vehicles.length === 0) return;
+    const vehicleId = searchParams.get('vehicleId');
+    const unitId = searchParams.get('unitId');
+    let match: FleetVehicle | undefined;
+    if (vehicleId) {
+      match = vehicles.find(v => String(v.id) === vehicleId);
+    } else if (unitId) {
+      match = vehicles.find(v => String(v.assigned_unit_id) === unitId);
+    }
+    if (match) {
+      setSelectedId(match.id);
+      setSearchParams({}, { replace: true });
+    }
+  }, [vehicles, searchParams, setSearchParams]);
 
   const fetchDetail = useCallback(async (id: string | number) => {
     try {

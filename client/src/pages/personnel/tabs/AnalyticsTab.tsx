@@ -20,7 +20,7 @@ interface Props {
   loading: boolean;
 }
 
-const AXIS_TICK = { fill: '#5a6e80', fontSize: 9 };
+const AXIS_TICK = { fill: '#707070', fontSize: 9 };
 const GRID_STROKE = '#162236';
 const BRAND_500 = '#1a5a9e';
 const OVERTIME_COLOR = '#f59e0b';
@@ -56,7 +56,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Headcount Summary Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-2">
         {headcountCards.map((card) => {
           const Icon = card.icon;
           return (
@@ -73,7 +73,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
       <div className="panel-inset h-px" />
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {/* Hours Trend */}
         <div className="panel-beveled p-4 bg-surface-base">
           <div className="flex items-center gap-1.5 mb-3">

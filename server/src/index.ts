@@ -13,14 +13,15 @@ import config from './config';
 import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
 import { securityHeaders } from './middleware/securityHeaders';
+import compression from 'compression';
 import { sanitizeInput } from './middleware/sanitize';
 import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
-import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
-import { startHealthChecker } from './utils/integrationHealthChecker';
-import { getDb } from './models/database';
+import { startTraccarPoller } from './utils/traccarPoller';
+import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
+import { startAnomalyDetector } from './utils/anomalyDetector';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,7 +62,9 @@ import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
 import microbiltRoutes from './routes/microbilt';
-import dlRecordRoutes from './routes/dlRecords';
+import traccarRoutes from './routes/traccar';
+import clearPathGpsRoutes from './routes/clearpathgps';
+import dashcamVideoRoutes from './routes/dashcamVideos';
 import fieldInterviewRoutes from './routes/fieldInterviews';
 import trespassOrderRoutes from './routes/trespassOrders';
 import caseRoutes from './routes/cases';
@@ -71,10 +74,6 @@ import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
-import forensicsRoutes from './routes/forensics';
-import ipedRoutes from './routes/iped';
-import clearpathgpsRoutes from './routes/clearpathgps';
-import integrationsRoutes from './routes/integrations';
 
 const app = express();
 
@@ -98,8 +97,9 @@ app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(compression({ level: 6, threshold: 1024 })); // gzip responses > 1KB
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(sanitizeInput);
 
 // Apply rate limiting to API routes
@@ -169,7 +169,9 @@ app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
 app.use('/api/microbilt', microbiltRoutes);
-app.use('/api/dl-records', dlRecordRoutes);
+app.use('/api/traccar', traccarRoutes);
+app.use('/api/clearpathgps', clearPathGpsRoutes);
+app.use('/api', dashcamVideoRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
 app.use('/api/trespass-orders', trespassOrderRoutes);
 app.use('/api/cases', caseRoutes);
@@ -179,10 +181,6 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
-app.use('/api/forensics', forensicsRoutes);
-app.use('/api/iped', ipedRoutes);
-app.use('/api/clearpathgps', clearpathgpsRoutes);
-app.use('/api/integrations', integrationsRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -344,50 +342,14 @@ try {
     // Start midnight daily patrol report scheduler
     startDailyReportScheduler();
 
-    // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    scheduleOfacSync();
+    // Start Traccar fleet GPS position poller (if enabled)
+    startTraccarPoller();
 
-    // Start integration health checker (probes every 5 min, alerts on status changes)
-    startHealthChecker();
+    // Start ClearPathGPS fleet poller (if enabled — runs alongside Traccar during transition)
+    startClearPathGpsPoller();
 
-    // Auto-backfill OFAC screening for existing person records (runs 60s after boot
-    // to allow OFAC data sync to complete first)
-    setTimeout(() => {
-      try {
-        const db = getDb();
-        const unchecked = db.prepare(
-          'SELECT id, first_name, last_name FROM persons WHERE watchlist_checked_at IS NULL AND first_name IS NOT NULL AND last_name IS NOT NULL'
-        ).all() as { id: number; first_name: string; last_name: string }[];
-
-        if (unchecked.length > 0) {
-          console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
-          let matches = 0;
-          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-          for (const p of unchecked) {
-            try {
-              const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });
-              const matchInfo = hits.length > 0
-                ? JSON.stringify(hits.map((h: any) => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
-                : null;
-              db.prepare('UPDATE persons SET watchlist_match = ?, watchlist_checked_at = ? WHERE id = ?').run(matchInfo, now, p.id);
-              if (hits.length > 0) {
-                matches++;
-                // Create notification for matches
-                try {
-                  db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, created_at) VALUES ('system', 'high', ?, ?, 'person', ?, ?)`)
-                    .run(`OFAC WATCHLIST MATCH: ${p.first_name} ${p.last_name}`, `Person #${p.id} matches OFAC sanctions list`, p.id, now);
-                } catch { /* notifications table may not exist */ }
-              }
-            } catch { /* skip individual failures */ }
-          }
-          console.log(`[OFAC Backfill] Complete — ${unchecked.length} screened, ${matches} match(es) found`);
-        } else {
-          console.log('[OFAC Backfill] All person records already screened');
-        }
-      } catch (err) {
-        console.warn('[OFAC Backfill] Failed:', (err as Error).message);
-      }
-    }, 60_000); // 60s delay — after OFAC sync (15s) has time to complete
+    // Start anomaly detector for dispatch intelligence
+    startAnomalyDetector(60000); // Check every 60 seconds
   });
 } catch (error) {
   console.error('Failed to start server:', error);

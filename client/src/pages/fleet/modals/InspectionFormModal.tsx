@@ -115,7 +115,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="panel-beveled w-[680px] max-h-[85vh] flex flex-col" style={{ background: '#1a2636' }}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT INSPECTION' : 'VEHICLE INSPECTION'} icon={ClipboardCheck} id={titleId}>
           <span className={`px-2 py-0.5 text-[9px] font-bold uppercase border ${resultColor[form.overall_result]}`}>
@@ -126,7 +126,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {/* Top form fields */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <div>
               <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Type *</label>
               <select className="select-dark w-full text-[11px]" value={form.inspection_type}

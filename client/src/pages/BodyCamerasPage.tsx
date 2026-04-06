@@ -12,6 +12,7 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import VideoUploadModal from '../components/VideoUploadModal';
 import VideoPlayer from '../components/VideoPlayer';
+import BodyCamVideoEditModal from '../components/BodyCamVideoEditModal';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -41,6 +42,7 @@ export default function BodyCamerasPage() {
   const [editData, setEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
   const [editMode, setEditMode] = useState<'create' | 'edit'>('create');
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+  const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
 
   // Officer list for the form modal dropdown
@@ -135,6 +137,15 @@ export default function BodyCamerasPage() {
     } catch {
       addToast('Failed to delete video', 'error');
     }
+  };
+
+  const handleEditBodyCamVideo = async (videoId: number, data: Record<string, any>) => {
+    await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    await refreshBodyCameras();
+    addToast('Video updated', 'success');
   };
 
   const openAdd = () => {
@@ -253,6 +264,7 @@ export default function BodyCamerasPage() {
             onEditCamera={openEdit}
             onDeleteCamera={handleDelete}
             onPlayVideo={setPlayingVideo}
+            onEditVideo={canManage ? setEditingVideo : undefined}
             onDeleteVideo={handleVideoDelete}
             onUploadVideo={() => setModal('upload_video')}
             canManage={canManage}
@@ -315,6 +327,13 @@ export default function BodyCamerasPage() {
             addToast('Failed to reclassify video', 'error');
           }
         } : undefined}
+      />
+
+      <BodyCamVideoEditModal
+        isOpen={!!editingVideo}
+        onClose={() => setEditingVideo(null)}
+        video={editingVideo}
+        onSave={handleEditBodyCamVideo}
       />
     </div>
   );

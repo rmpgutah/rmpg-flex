@@ -50,8 +50,6 @@ interface AddressAutocompleteProps {
   country?: string;
   /** Restrict to address results only (default: true) */
   addressOnly?: boolean;
-  /** Auto-focus on mount */
-  autoFocus?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -100,7 +98,7 @@ function injectAutocompleteStyles() {
       border-top: none !important;
     }
     .pac-item:hover, .pac-item-selected {
-      background: #1a2636 !important;
+      background: #182840 !important;
     }
     .pac-item-query {
       color: #e5e7eb !important;
@@ -138,7 +136,6 @@ export default function AddressAutocomplete({
   disabled = false,
   country = 'us',
   addressOnly = true,
-  autoFocus = false,
 }: AddressAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
@@ -240,7 +237,6 @@ export default function AddressAutocomplete({
         onChange={(e) => onChange(e.target.value)}
         required={required}
         disabled={disabled}
-        autoFocus={autoFocus}
       />
     );
   }
@@ -256,7 +252,6 @@ export default function AddressAutocomplete({
         value={value}
         onChange={handleChange}
         required={required}
-        autoFocus={autoFocus}
         autoComplete="off"
       />
       {placesLoaded && (

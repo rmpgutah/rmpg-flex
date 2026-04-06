@@ -162,15 +162,15 @@ export default function MobileDetailView({
             height: 48,
             paddingLeft: 4,
             paddingRight: 8,
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+            background: 'linear-gradient(180deg, #182840 0%, #141e2b 100%)',
             borderBottom: '1px solid #1e3048',
           }}
         >
-          {/* Blue accent */}
+          {/* Crimson accent */}
           <div
             className="absolute top-0 left-0 right-0 h-[2px]"
             style={{
-              background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)',
+              background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e, #0e3a6e)',
               zIndex: 1,
             }}
           />
@@ -180,7 +180,7 @@ export default function MobileDetailView({
             <button
               onClick={onClose}
               className="flex items-center justify-center w-10 h-10"
-              style={{ color: '#b0bcc8' }}
+              style={{ color: '#c8c8c8' }}
               aria-label="Go back"
             >
               <ArrowLeft style={{ width: 20, height: 20 }} />
@@ -204,7 +204,7 @@ export default function MobileDetailView({
               <button
                 onClick={() => setMenuOpen((v) => !v)}
                 className="flex items-center justify-center w-10 h-10"
-                style={{ color: '#b0bcc8' }}
+                style={{ color: '#c8c8c8' }}
                 aria-label="More actions"
               >
                 <MoreVertical style={{ width: 20, height: 20 }} />
@@ -221,7 +221,7 @@ export default function MobileDetailView({
                   <div
                     className="absolute right-0 top-full mt-1 z-50 py-1 min-w-[180px]"
                     style={{
-                      background: '#1a2636',
+                      background: '#222',
                       border: '1px solid #2a3e58',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}
@@ -237,7 +237,7 @@ export default function MobileDetailView({
                           }}
                           className="flex items-center gap-2 w-full px-4 py-3 text-left text-sm font-mono hover:bg-rmpg-700 transition-colors"
                           style={{
-                            color: action.danger ? '#ef4444' : '#b0bcc8',
+                            color: action.danger ? '#ef4444' : '#c8c8c8',
                             minHeight: 44,
                           }}
                         >

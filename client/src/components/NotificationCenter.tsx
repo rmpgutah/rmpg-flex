@@ -45,7 +45,6 @@ const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig>
 
 function formatTimestamp(dateStr: string): string {
   const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return 'UNKNOWN';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -121,7 +120,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   // ----------------------------------------------------------
   useEffect(() => {
     const unsubscribe = subscribe('notification', (message) => {
-      const incoming = message.data as Notification;
+      const incoming = message.payload as Notification;
       setNotifications((prev) => [incoming, ...prev]);
       if (!incoming.is_read) {
         setUnreadCount((prev) => prev + 1);
@@ -345,7 +344,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       {isOpen && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed z-[9990] panel-beveled"
+          className="fixed z-50 panel-beveled"
           style={{
             top: dropdownPos.top,
             left: dropdownPos.left,
@@ -448,7 +447,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   className="flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors hover:bg-rmpg-800/60"
                   style={{
                     padding: '6px 8px',
-                    background: notification.is_read ? '#141e2b' : '#1a2636',
+                    background: notification.is_read ? '#141e2b' : '#182840',
                   }}
                   title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}
                 >

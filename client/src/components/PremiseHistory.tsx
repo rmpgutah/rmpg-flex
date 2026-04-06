@@ -124,17 +124,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       </div>
     );
   }
-  if (error) {
-    return (
-      <div className={`premise-history ${compact ? 'premise-compact' : ''}`}>
-        <div className="flex items-center gap-2 px-2 py-1.5 text-[10px] text-amber-400 bg-amber-900/30 border border-amber-700/50">
-          <AlertTriangle style={{ width: 11, height: 11, flexShrink: 0 }} />
-          <span className="font-bold">PREMISE CHECK FAILED</span>
-          <span className="text-amber-500">{error}</span>
-        </div>
-      </div>
-    );
-  }
+  if (error) return null;
   if ((!data || data.total === 0) && trespassOrders.length === 0) return null;
 
   const hasTrespassOrders = trespassOrders.length > 0;
@@ -175,8 +165,8 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
         <div
           className="flex items-center gap-2 px-2 py-1.5 text-[10px] font-bold animate-emergency-blink"
           style={{
-            background: 'rgba(220, 38, 38, 0.3)',
-            borderBottom: '1px solid #991b1b',
+            background: 'rgba(26, 90, 158, 0.3)',
+            borderBottom: '1px solid #164d88',
             color: '#ff6b6b',
           }}
         >

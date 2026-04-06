@@ -77,16 +77,16 @@ export default function Force2FASetupModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#1a1a1a',
-          border: '1px solid #303030',
-          borderTop: '3px solid #bc1010',
+          background: '#141e2b',
+          border: '1px solid #1e3048',
+          borderTop: '3px solid #1a5a9e',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <ShieldCheck style={{ width: 20, height: 20, color: '#bc1010' }} />
+            <ShieldCheck style={{ width: 20, height: 20, color: '#1a5a9e' }} />
             <div className="text-lg font-bold text-white">Two-Factor Authentication Required</div>
           </div>
           <div className="text-xs text-gray-400 max-w-sm mx-auto">
@@ -108,7 +108,7 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: '#111', border: '1px solid #282828', color: '#a0a0a0' }}
+              style={{ background: '#111', border: '1px solid #162236', color: '#a0a0a0' }}
             >
               <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: '#e0e0e0' }}>
                 What You'll Need
@@ -193,7 +193,7 @@ export default function Force2FASetupModal() {
 
             <div
               className="p-3"
-              style={{ background: '#0d0000', border: '1px solid #8a0c0c' }}
+              style={{ background: '#060c14', border: '1px solid #144a7e' }}
             >
               <div className="flex items-center gap-1 mb-2">
                 <AlertCircle style={{ width: 12, height: 12, color: '#d93030' }} />
@@ -206,7 +206,7 @@ export default function Force2FASetupModal() {
                   <div
                     key={i}
                     className="text-center font-mono text-xs py-1"
-                    style={{ background: '#141414', border: '1px solid #282828', color: '#e0e0e0' }}
+                    style={{ background: '#0d1520', border: '1px solid #162236', color: '#e0e0e0' }}
                   >
                     {code}
                   </div>

@@ -34,7 +34,7 @@ async function getAppVersion(): Promise<string> {
     if (cap?.Plugins?.App?.getInfo) {
       const info = await cap.Plugins.App.getInfo();
       if (info.version && info.version !== '0.0.0') {
-        try { localStorage.setItem('rmpg_apk_version', info.version); } catch { /* quota */ }
+        localStorage.setItem('rmpg_apk_version', info.version);
         return info.version;
       }
     }
@@ -86,7 +86,7 @@ export default function AndroidUpdateChecker() {
       } else {
         // Up to date — cache version and clear stale info
         if (data.currentVersion && data.currentVersion !== '0.0.0') {
-          try { localStorage.setItem('rmpg_apk_version', data.currentVersion); } catch { /* quota */ }
+          localStorage.setItem('rmpg_apk_version', data.currentVersion);
         }
         setUpdateInfo(null);
         setDismissed(false); // allow future prompts
@@ -214,11 +214,11 @@ export default function AndroidUpdateChecker() {
             className="w-full flex items-center justify-center gap-2 py-3 px-4 font-bold text-sm uppercase tracking-wider transition-all"
             style={{
               background: downloading
-                ? 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)'
-                : 'linear-gradient(180deg, #1a5a9e 0%, #124070 100%)',
-              color: downloading ? '#8a9aaa' : '#fff',
+                ? 'linear-gradient(180deg, #333 0%, #222 100%)'
+                : 'linear-gradient(180deg, #1a5a9e 0%, #144a7e 100%)',
+              color: downloading ? '#888' : '#fff',
               border: '1px solid',
-              borderColor: downloading ? '#2a3e58' : '#d41515',
+              borderColor: downloading ? '#444' : '#d41515',
             }}
           >
             {downloading ? (

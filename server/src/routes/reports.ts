@@ -305,27 +305,31 @@ router.get('/response-times', (req: Request, res: Response) => {
       params.push(propertyId);
     }
 
+    // Response time = (dispatched_at → onscene_at) minus hold time
+    // Excludes: pending→dispatched wait, and any on_hold pauses
+    //   active_response = (onscene_at - dispatched_at) * 24 * 60 - COALESCE(total_hold_minutes, 0)
+
     // Overall average response times
     const overall = db.prepare(`
       SELECT
         AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60) as avg_dispatch_minutes,
-        AVG((julianday(enroute_at) - julianday(dispatched_at)) * 24 * 60) as avg_enroute_minutes,
-        AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_total_response_minutes,
-        MIN((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as min_response_minutes,
-        MAX((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as max_response_minutes,
+        AVG((julianday(enroute_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_enroute_minutes,
+        AVG((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_total_response_minutes,
+        MIN((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as min_response_minutes,
+        MAX((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as max_response_minutes,
         COUNT(*) as total_calls
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL ${dateFilter}
+      WHERE onscene_at IS NOT NULL AND dispatched_at IS NOT NULL ${dateFilter}
     `).get(...params) as any;
 
     // By priority
     const byPriority = db.prepare(`
       SELECT
         priority,
-        AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_response_minutes,
+        AVG((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_response_minutes,
         COUNT(*) as count
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL ${dateFilter}
+      WHERE onscene_at IS NOT NULL AND dispatched_at IS NOT NULL ${dateFilter}
       GROUP BY priority ORDER BY priority
     `).all(...params);
 
@@ -333,11 +337,11 @@ router.get('/response-times', (req: Request, res: Response) => {
     const byProperty = db.prepare(`
       SELECT
         p.name as property_name,
-        AVG((julianday(c.onscene_at) - julianday(c.created_at)) * 24 * 60) as avg_response_minutes,
+        AVG((julianday(c.onscene_at) - julianday(c.dispatched_at)) * 24 * 60 - COALESCE(c.total_hold_minutes, 0)) as avg_response_minutes,
         COUNT(*) as count
       FROM calls_for_service c
       JOIN properties p ON c.property_id = p.id
-      WHERE c.onscene_at IS NOT NULL ${dateFilterAliased}
+      WHERE c.onscene_at IS NOT NULL AND c.dispatched_at IS NOT NULL ${dateFilterAliased}
       GROUP BY c.property_id
       ORDER BY avg_response_minutes
     `).all(...params);
@@ -346,10 +350,10 @@ router.get('/response-times', (req: Request, res: Response) => {
     const dailyTrend = db.prepare(`
       SELECT
         DATE(created_at) as date,
-        AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_response_minutes,
+        AVG((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60 - COALESCE(total_hold_minutes, 0)) as avg_response_minutes,
         COUNT(*) as count
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL ${dateFilter}
+      WHERE onscene_at IS NOT NULL AND dispatched_at IS NOT NULL ${dateFilter}
       GROUP BY DATE(created_at)
       ORDER BY date DESC
       LIMIT 30
@@ -404,14 +408,17 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       params.push(endDate);
     }
 
-    // Get all active officers
-    const officers = db.prepare(`
+    // Get all active personnel (admins, managers, officers, supervisors)
+    // Exclude only those with zero call involvement
+    const allUsers = db.prepare(`
       SELECT id, full_name, badge_number, role FROM users
-      WHERE role IN ('officer', 'supervisor') AND status = 'active'
+      WHERE role IN ('admin', 'manager', 'officer', 'supervisor') AND status = 'active'
       ORDER BY full_name
     `).all() as any[];
 
-    const metrics = officers.map((officer) => {
+    const metrics: any[] = [];
+
+    for (const officer of allUsers) {
       // Incidents written
       const incidents = db.prepare(`
         SELECT COUNT(*) as count FROM incidents
@@ -442,17 +449,20 @@ router.get('/officer-activity', (req: Request, res: Response) => {
         callsResponded = callCount.count;
       }
 
-      return {
-        officer_id: officer.id,
-        full_name: officer.full_name,
-        badge_number: officer.badge_number,
-        role: officer.role,
-        incidents_written: incidents.count,
-        incidents_by_status: incidentsByStatus,
-        calls_responded: callsResponded,
-        total_hours: hours.total ? Math.round(hours.total * 100) / 100 : 0,
-      };
-    });
+      // Only include if they have been involved in calls or written incidents
+      if (callsResponded > 0 || incidents.count > 0) {
+        metrics.push({
+          officer_id: officer.id,
+          full_name: officer.full_name,
+          badge_number: officer.badge_number,
+          role: officer.role,
+          incidents_written: incidents.count,
+          incidents_by_status: incidentsByStatus,
+          calls_responded: callsResponded,
+          total_hours: hours.total ? Math.round(hours.total * 100) / 100 : 0,
+        });
+      }
+    }
 
     res.json(metrics);
   } catch (error: any) {
@@ -1449,6 +1459,357 @@ router.post('/daily-reports/generate', requireRole('admin'), async (req: Request
     res.json({ ok: true, filename });
   } catch (error: any) {
     console.error('Generate daily report error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── SHIFT NOTES CRUD ──────────────────────────────────────
+
+// POST /api/reports/shift-notes
+router.post('/shift-notes', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { content, category } = req.body;
+    if (!content) { res.status(400).json({ error: 'Content is required' }); return; }
+
+    const shiftDate = new Date().toISOString().split('T')[0];
+    const result = db.prepare(`
+      INSERT INTO shift_notes (officer_id, shift_date, content, category)
+      VALUES (?, ?, ?, ?)
+    `).run(req.user!.userId, shiftDate, content, category || 'general');
+
+    const note = db.prepare('SELECT * FROM shift_notes WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(note);
+  } catch (error: any) {
+    console.error('Shift note create error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/reports/shift-notes
+router.get('/shift-notes', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = req.query.officer_id || req.user!.userId;
+    const shiftDate = (req.query.shift_date as string) || new Date().toISOString().split('T')[0];
+
+    const notes = db.prepare(`
+      SELECT sn.*, u.full_name as officer_name
+      FROM shift_notes sn
+      LEFT JOIN users u ON sn.officer_id = u.id
+      WHERE sn.officer_id = ? AND sn.shift_date = ?
+      ORDER BY sn.created_at DESC
+    `).all(officerId, shiftDate);
+
+    res.json(notes);
+  } catch (error: any) {
+    console.error('Shift notes list error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/reports/shift-notes/:id
+router.delete('/shift-notes/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const note = db.prepare('SELECT * FROM shift_notes WHERE id = ?').get(req.params.id) as any;
+    if (!note) { res.status(404).json({ error: 'Note not found' }); return; }
+    if (note.officer_id !== req.user!.userId) { res.status(403).json({ error: 'Cannot delete another officer\'s notes' }); return; }
+
+    db.prepare('DELETE FROM shift_notes WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Shift note delete error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── SHIFT HANDOFF REPORT ──────────────────────────────────
+
+// GET /api/reports/shift-handoff
+router.get('/shift-handoff', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = req.query.officer_id || req.user!.userId;
+    const shiftStart = (req.query.shift_start as string) || new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const shiftEnd = (req.query.shift_end as string) || new Date().toISOString();
+
+    // 1. Calls handled during shift
+    const callsHandled = db.prepare(`
+      SELECT c.call_number, c.incident_type, c.priority, c.status, c.disposition,
+        c.location_address, c.risk_score, c.created_at, c.cleared_at
+      FROM calls_for_service c
+      WHERE c.created_at BETWEEN ? AND ?
+        AND c.assigned_unit_ids LIKE '%' || (SELECT id FROM units WHERE officer_id = ?) || '%'
+      ORDER BY c.created_at DESC
+    `).all(shiftStart, shiftEnd, officerId);
+
+    // 2. Open/pending calls
+    const openCalls = db.prepare(`
+      SELECT call_number, incident_type, priority, status, location_address, risk_score, created_at
+      FROM calls_for_service
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      ORDER BY priority, created_at
+    `).all();
+
+    // 3. Active BOLOs
+    const bolos = db.prepare(`
+      SELECT * FROM bolos WHERE status = 'active' ORDER BY created_at DESC
+    `).all();
+
+    // 4. Shift notes
+    const shiftDate = new Date().toISOString().split('T')[0];
+    const notes = db.prepare(`
+      SELECT * FROM shift_notes WHERE officer_id = ? AND shift_date = ? ORDER BY created_at DESC
+    `).all(officerId, shiftDate);
+
+    // 5. GPS summary — total miles patrolled
+    const breadcrumbs = db.prepare(`
+      SELECT latitude, longitude FROM gps_breadcrumbs
+      WHERE user_id = ? AND recorded_at BETWEEN ? AND ?
+      ORDER BY recorded_at ASC
+    `).all(officerId, shiftStart, shiftEnd) as any[];
+
+    let totalMiles = 0;
+    for (let i = 1; i < breadcrumbs.length; i++) {
+      const R = 3959;
+      const dLat = (breadcrumbs[i].latitude - breadcrumbs[i - 1].latitude) * Math.PI / 180;
+      const dLon = (breadcrumbs[i].longitude - breadcrumbs[i - 1].longitude) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(breadcrumbs[i - 1].latitude * Math.PI / 180) * Math.cos(breadcrumbs[i].latitude * Math.PI / 180) *
+        Math.sin(dLon / 2) ** 2;
+      totalMiles += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // 6. Call stats
+    const stats = {
+      calls_handled: callsHandled.length,
+      open_calls: openCalls.length,
+      active_bolos: bolos.length,
+      miles_patrolled: Math.round(totalMiles * 10) / 10,
+      shift_notes_count: notes.length,
+    };
+
+    res.json({
+      officer_id: officerId,
+      shift_start: shiftStart,
+      shift_end: shiftEnd,
+      stats,
+      calls_handled: callsHandled,
+      open_calls: openCalls,
+      bolos,
+      notes,
+    });
+  } catch (error: any) {
+    console.error('Shift handoff error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── SHIFT PERFORMANCE SCORECARD ──────────────────────────
+
+// GET /api/reports/shift-scorecard
+router.get('/shift-scorecard', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.query.officer_id || req.user!.userId);
+    const shiftDate = (req.query.shift_date as string) || new Date().toISOString().split('T')[0];
+    const shiftStart = `${shiftDate}T00:00:00`;
+    const shiftEnd = `${shiftDate}T23:59:59`;
+
+    // Get officer's unit ID
+    const unit = db.prepare('SELECT id FROM units WHERE officer_id = ?').get(officerId) as any;
+    const unitId = unit?.id || 0;
+
+    // 1. Response Time Score (0-25) — avg response time vs 5-minute SLA
+    const responseTimes = db.prepare(`
+      SELECT AVG(
+        CAST((julianday(COALESCE(onscene_at, cleared_at)) - julianday(created_at)) * 24 * 60 AS REAL)
+      ) as avg_minutes
+      FROM calls_for_service
+      WHERE assigned_unit_ids LIKE '%' || ? || '%'
+        AND created_at BETWEEN ? AND ?
+        AND (onscene_at IS NOT NULL OR cleared_at IS NOT NULL)
+    `).get(unitId, shiftStart, shiftEnd) as any;
+    const avgMinutes = responseTimes?.avg_minutes || 0;
+    const responseScore = avgMinutes <= 0 ? 0 : Math.max(0, Math.round(25 * (1 - avgMinutes / 10)));
+
+    // 2. Call Volume Score (0-20) — calls handled vs shift average
+    const callCount = db.prepare(`
+      SELECT COUNT(*) as cnt FROM calls_for_service
+      WHERE assigned_unit_ids LIKE '%' || ? || '%' AND created_at BETWEEN ? AND ?
+    `).get(unitId, shiftStart, shiftEnd) as any;
+    const shiftAvg = db.prepare(`
+      SELECT COUNT(*) * 1.0 / MAX(1, COUNT(DISTINCT assigned_unit_ids)) as avg_calls
+      FROM calls_for_service
+      WHERE created_at BETWEEN ? AND ?
+    `).get(shiftStart, shiftEnd) as any;
+    const volumeRatio = (callCount?.cnt || 0) / Math.max(1, shiftAvg?.avg_calls || 1);
+    const volumeScore = Math.min(20, Math.round(20 * Math.min(1.5, volumeRatio) / 1.5));
+
+    // 3. Patrol Coverage Score (0-20)
+    const scanCount = db.prepare(`
+      SELECT COUNT(*) as cnt FROM patrol_scans
+      WHERE scanned_by = ? AND scanned_at BETWEEN ? AND ?
+    `).get(officerId, shiftStart, shiftEnd) as any;
+    const coverageScore = Math.min(20, (scanCount?.cnt || 0) * 2);
+
+    // 4. Report Completion Score (0-15)
+    const reportsNeeded = db.prepare(`
+      SELECT COUNT(*) as total,
+        SUM(CASE WHEN i.status = 'approved' THEN 1 ELSE 0 END) as completed
+      FROM calls_for_service c
+      LEFT JOIN incidents i ON i.call_id = c.id
+      WHERE c.assigned_unit_ids LIKE '%' || ? || '%'
+        AND c.created_at BETWEEN ? AND ?
+        AND c.incident_type NOT IN ('patrol', 'information', 'assist_citizen', 'parking_complaint')
+    `).get(unitId, shiftStart, shiftEnd) as any;
+    const completionRate = (reportsNeeded?.total || 0) > 0
+      ? (reportsNeeded?.completed || 0) / reportsNeeded.total
+      : 1;
+    const reportScore = Math.round(15 * completionRate);
+
+    // 5. Proactive Activity Score (0-10) — self-initiated calls
+    const proactive = db.prepare(`
+      SELECT COUNT(*) as cnt FROM calls_for_service
+      WHERE source = 'patrol' AND assigned_unit_ids LIKE '%' || ? || '%'
+        AND created_at BETWEEN ? AND ?
+    `).get(unitId, shiftStart, shiftEnd) as any;
+    const proactiveScore = Math.min(10, (proactive?.cnt || 0) * 3);
+
+    // 6. Safety Score (0-10) — GPS consistency
+    const gpsGaps = db.prepare(`
+      SELECT COUNT(*) as cnt FROM gps_breadcrumbs
+      WHERE user_id = ? AND recorded_at BETWEEN ? AND ?
+    `).get(officerId, shiftStart, shiftEnd) as any;
+    // Expect ~240 breadcrumbs per hour (every 15s) for an 8-hour shift ≈ 1920
+    const gpsConsistency = Math.min(1, (gpsGaps?.cnt || 0) / 500);
+    const safetyScore = Math.round(10 * gpsConsistency);
+
+    const totalScore = responseScore + volumeScore + coverageScore + reportScore + proactiveScore + safetyScore;
+    const letterGrade = totalScore >= 90 ? 'A' : totalScore >= 80 ? 'B' : totalScore >= 70 ? 'C' : totalScore >= 60 ? 'D' : 'F';
+
+    // Trend — last 5 shifts
+    const trendData = db.prepare(`
+      SELECT DATE(created_at) as shift_date, COUNT(*) as calls
+      FROM calls_for_service
+      WHERE assigned_unit_ids LIKE '%' || ? || '%'
+        AND created_at >= datetime('now', 'localtime', '-5 days')
+      GROUP BY DATE(created_at)
+      ORDER BY shift_date DESC
+      LIMIT 5
+    `).all(unitId);
+
+    res.json({
+      officer_id: officerId,
+      shift_date: shiftDate,
+      total_score: totalScore,
+      letter_grade: letterGrade,
+      metrics: {
+        response_time: { score: responseScore, max: 25, avg_minutes: Math.round((avgMinutes || 0) * 10) / 10 },
+        call_volume: { score: volumeScore, max: 20, count: callCount?.cnt || 0 },
+        patrol_coverage: { score: coverageScore, max: 20, scans: scanCount?.cnt || 0 },
+        report_completion: { score: reportScore, max: 15, rate: Math.round(completionRate * 100) },
+        proactive_activity: { score: proactiveScore, max: 10, count: proactive?.cnt || 0 },
+        safety: { score: safetyScore, max: 10, gps_points: gpsGaps?.cnt || 0 },
+      },
+      trend: trendData,
+    });
+  } catch (error: any) {
+    console.error('Shift scorecard error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── COMMAND CENTER COMPOSITE ENDPOINT ─────────────────────
+
+// GET /api/reports/command-center
+router.get('/command-center', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Active calls
+    const activeCalls = db.prepare(`
+      SELECT c.*, p.name as property_name
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      ORDER BY
+        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
+        c.created_at ASC
+    `).all();
+
+    // Unit positions and statuses
+    const units = db.prepare(`
+      SELECT u.*, usr.full_name as officer_name, usr.badge_number
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status != 'decommissioned'
+      ORDER BY u.call_sign
+    `).all();
+
+    // Today's KPIs
+    const today = new Date().toISOString().split('T')[0];
+    const kpis = db.prepare(`
+      SELECT
+        COUNT(*) as calls_today,
+        SUM(CASE WHEN status IN ('pending', 'dispatched', 'enroute', 'onscene') THEN 1 ELSE 0 END) as active_calls,
+        AVG(CASE
+          WHEN onscene_at IS NOT NULL THEN
+            CAST((julianday(onscene_at) - julianday(created_at)) * 24 * 60 AS REAL)
+          ELSE NULL
+        END) as avg_response_min
+      FROM calls_for_service
+      WHERE created_at >= ?
+    `).get(`${today}T00:00:00`) as any;
+
+    const unitsAvailable = db.prepare(
+      "SELECT COUNT(*) as cnt FROM units WHERE status = 'available'"
+    ).get() as any;
+    const unitsTotal = db.prepare(
+      "SELECT COUNT(*) as cnt FROM units WHERE status != 'decommissioned'"
+    ).get() as any;
+
+    // Active BOLOs count
+    const boloCount = db.prepare(
+      "SELECT COUNT(*) as cnt FROM bolos WHERE status = 'active'"
+    ).get() as any;
+
+    // Active anomaly alerts
+    const anomalyAlerts = db.prepare(`
+      SELECT * FROM anomaly_alerts
+      WHERE acknowledged_at IS NULL
+        AND created_at >= datetime('now', 'localtime', '-4 hours')
+      ORDER BY created_at DESC
+      LIMIT 10
+    `).all();
+
+    // Calls by hour (last 24h)
+    const callsByHour = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+      FROM calls_for_service
+      WHERE created_at >= datetime('now', 'localtime', '-24 hours')
+      GROUP BY strftime('%H', created_at)
+      ORDER BY hour
+    `).all();
+
+    res.json({
+      active_calls: activeCalls,
+      units,
+      kpis: {
+        calls_today: kpis?.calls_today || 0,
+        active_calls: kpis?.active_calls || 0,
+        avg_response_min: Math.round((kpis?.avg_response_min || 0) * 10) / 10,
+        units_available: unitsAvailable?.cnt || 0,
+        units_total: unitsTotal?.cnt || 0,
+        active_bolos: boloCount?.cnt || 0,
+        anomaly_alerts: anomalyAlerts.length,
+      },
+      anomaly_alerts: anomalyAlerts,
+      calls_by_hour: callsByHour,
+    });
+  } catch (error: any) {
+    console.error('Command center error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

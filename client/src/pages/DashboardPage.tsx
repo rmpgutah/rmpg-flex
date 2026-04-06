@@ -189,6 +189,8 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [expiringCredentials, setExpiringCredentials] = useState<any[]>([]);
   const [activeWarrants, setActiveWarrants] = useState(0);
+  const [anomalyAlertCount, setAnomalyAlertCount] = useState(0);
+  const [predictedHotspots, setPredictedHotspots] = useState<any[]>([]);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -212,6 +214,14 @@ export default function DashboardPage() {
           .map(mapBoloEntry)
       );
       setActiveWarrants(warrantsRaw?.total ?? 0);
+
+      // Fetch anomaly alerts + predicted hotspots (non-blocking)
+      apiFetch<any[]>('/dispatch/anomaly-alerts?hours=4')
+        .then(alerts => setAnomalyAlertCount((alerts || []).filter((a: any) => !a.acknowledged_by).length))
+        .catch(() => setAnomalyAlertCount(0));
+      apiFetch<any>('/dispatch/heatmap/predicted?hours_ahead=2')
+        .then(data => setPredictedHotspots((data?.points || []).slice(0, 5)))
+        .catch(() => setPredictedHotspots([]));
     } catch (err) {
       if (!options?.silent) {
         console.error('Dashboard fetch error:', err);
@@ -282,7 +292,7 @@ export default function DashboardPage() {
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Crimson accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e 30%, #1a5a9e 70%, #0e3a6e)' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1">
@@ -438,7 +448,7 @@ export default function DashboardPage() {
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'var(--surface-base)',
-                  border: '1px solid #383838',
+                  border: '1px solid #2a3e58',
                   borderRadius: '0px',
                   color: '#e0e0e0',
                   fontSize: '11px',
@@ -609,6 +619,53 @@ export default function DashboardPage() {
               </div>
               {expiringCredentials.length > 0 && <span className="led-dot led-amber" />}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Intelligence Widgets Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Active Anomaly Alerts */}
+        <div className="panel-beveled bg-surface-base">
+          <PanelTitleBar title="ANOMALY ALERTS" icon={AlertTriangle} />
+          <div className="p-3 flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-bold font-mono" style={{ color: anomalyAlertCount > 0 ? '#ef4444' : '#22c55e' }}>
+                {anomalyAlertCount}
+              </div>
+              <div className="text-[10px] text-rmpg-400 uppercase tracking-wider">
+                {anomalyAlertCount === 0 ? 'No active alerts' : 'Unacknowledged'}
+              </div>
+            </div>
+            {anomalyAlertCount > 0 && (
+              <button onClick={() => navigate('/dispatch')} className="toolbar-btn text-xs">
+                <ArrowRight style={{ width: 10, height: 10 }} /> View
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Predicted Hotspots */}
+        <div className="panel-beveled bg-surface-base lg:col-span-2">
+          <PanelTitleBar title="PREDICTED HOTSPOTS (NEXT 2H)" icon={MapPin} />
+          <div className="p-3">
+            {predictedHotspots.length === 0 ? (
+              <div className="text-xs text-rmpg-400 text-center py-3">No predictions available</div>
+            ) : (
+              <div className="space-y-1">
+                {predictedHotspots.map((pt: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs px-2 py-1 hover:bg-rmpg-800/50">
+                    <span className="text-[10px] font-mono font-bold text-violet-400 w-5">{idx + 1}.</span>
+                    <span className="text-rmpg-200 flex-1 font-mono truncate">
+                      {pt.latitude?.toFixed(4)}, {pt.longitude?.toFixed(4)}
+                    </span>
+                    <span className="text-[9px] font-mono font-bold text-violet-400">
+                      wt:{pt.weight?.toFixed(1) ?? '?'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

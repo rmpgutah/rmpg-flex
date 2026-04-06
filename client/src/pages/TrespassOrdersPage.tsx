@@ -5,14 +5,11 @@ import {
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
-import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
-import { useFormValidation } from '../hooks/useFormValidation';
-import { useDistrictOptions } from '../hooks/useDistrictLookup';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -42,14 +39,11 @@ const EMPTY_FORM = {
   order_type: 'trespass_warning' as TrespassOrderType,
   reason: '', conditions: '', duration_days: '', notes: '',
   authorized_by: '', person_id: '', property_id: '',
-  section_id: '', zone_id: '', beat_id: '',
 };
 
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
-  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
-  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [orders, setOrders] = useState<TrespassOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<TrespassOrder | null>(null);
@@ -99,9 +93,7 @@ export default function TrespassOrdersPage() {
 
   // Fetch properties for dropdown
   useEffect(() => {
-    let cancelled = false;
-    apiFetch<any[]>('/records/properties').then(r => { if (!cancelled) setProperties(Array.isArray(r) ? r : []); }).catch((err) => { console.warn('[TrespassOrdersPage] fetch properties failed:', err); });
-    return () => { cancelled = true; };
+    apiFetch<any[]>('/records/properties').then(r => setProperties(Array.isArray(r) ? r : [])).catch(() => {});
   }, []);
 
   // Person search debounce
@@ -122,13 +114,11 @@ export default function TrespassOrdersPage() {
     setFormData({ ...EMPTY_FORM });
     setSelectedPerson(null);
     setPersonSearch('');
-    clearAllErrors();
     setFormOpen(true);
   };
 
   const handleEdit = (order: TrespassOrder) => {
     setEditingOrder(order);
-    clearAllErrors();
     setFormData({
       subject_first_name: order.subject_first_name,
       subject_last_name: order.subject_last_name,
@@ -144,21 +134,12 @@ export default function TrespassOrdersPage() {
       authorized_by: order.authorized_by || '',
       person_id: order.person_id ? String(order.person_id) : '',
       property_id: order.property_id ? String(order.property_id) : '',
-      section_id: order.section_id || '',
-      zone_id: order.zone_id || '',
-      beat_id: order.beat_id || '',
     });
     setFormOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const isValid = validateForm(formData, {
-      subject_first_name: { required: true },
-      subject_last_name: { required: true },
-      location: { required: true },
-    });
-    if (!isValid) return;
     setSubmitting(true);
     try {
       const body = {
@@ -166,10 +147,6 @@ export default function TrespassOrdersPage() {
         person_id: formData.person_id ? parseInt(formData.person_id, 10) : null,
         property_id: formData.property_id ? parseInt(formData.property_id, 10) : null,
         duration_days: formData.duration_days ? parseInt(formData.duration_days, 10) : null,
-        section_id: formData.section_id || null,
-        zone_id: formData.zone_id || null,
-        beat_id: formData.beat_id || null,
-        zone_beat: (formData.zone_id && formData.beat_id) ? `${formData.zone_id}-${formData.beat_id}` : formData.zone_id || formData.beat_id || null,
       };
       if (editingOrder) {
         await apiFetch(`/trespass-orders/${editingOrder.id}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -249,33 +226,30 @@ export default function TrespassOrdersPage() {
       <PanelTitleBar icon={ShieldBan} title="TRESPASS ORDERS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/trespass-orders?per_page=200" exportFilename="trespass_orders_export.csv" />
+        <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
         <button onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New Order
         </button>
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#141e2b' }}>
-        <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
+        <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-          <input type="text" placeholder="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
-            value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-            style={isMobile ? { minHeight: 44 } : undefined} />
+          <input type="text" placeholder="Search orders..." className="input-dark pl-7 text-xs w-full"
+            value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} />
         </div>
-        <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
-          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
-            <option value="">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="served">Served</option>
-            <option value="expired">Expired</option>
-            <option value="lifted">Lifted</option>
-            <option value="violated">Violated</option>
-          </select>
-          <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
-            <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} /> Archived
-          </label>
-        </div>
+        <select className="select-dark text-xs" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}>
+          <option value="">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="served">Served</option>
+          <option value="expired">Expired</option>
+          <option value="lifted">Lifted</option>
+          <option value="violated">Violated</option>
+        </select>
+        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer">
+          <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" /> Archived
+        </label>
       </div>
 
       {/* Content */}
@@ -285,23 +259,17 @@ export default function TrespassOrdersPage() {
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...</div>
           ) : orders.length === 0 ? (
-            <EmptyState
-              icon={Ban}
-              title="No trespass orders found"
-              description="Create a new trespass order to get started."
-              action={{ label: 'New Order', onClick: handleOpenNew }}
-            />
+            <div className="text-center py-12 text-rmpg-500 text-sm">No trespass orders found</div>
           ) : (
             orders.map(order => (
               <div key={order.id} onClick={() => setSelectedOrder(order)}
-                className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
-                style={isMobile ? { minHeight: 56 } : undefined}
+                className={`px-3 py-2 cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
-                      {order.order_type.replace(/_/g, ' ').toUpperCase()}
+                      {order.order_type.replace('_', ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[order.status]}`}>
                       {order.status.toUpperCase()}
@@ -320,19 +288,16 @@ export default function TrespassOrdersPage() {
                   <span>{order.issued_by_name || order.issued_by_display}</span>
                   <span>•</span>
                   <span>{new Date(order.created_at).toLocaleDateString()}</span>
-                  {(order.section_id || order.zone_id || order.beat_id) && (
-                    <span className="font-mono text-rmpg-500">{[order.section_id, order.zone_id, order.beat_id].filter(Boolean).join('/')}</span>
-                  )}
                   {order.expiration_date && <span className="text-amber-500/70">Exp: {new Date(order.expiration_date).toLocaleDateString()}</span>}
                 </div>
               </div>
             ))
           )}
           {totalPages > 1 && (
-            <div className={`flex items-center justify-center gap-2 py-2 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
+            <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-rmpg-400">
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Prev</button>
               <span>Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
+              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Next</button>
             </div>
           )}
         </div>
@@ -345,21 +310,21 @@ export default function TrespassOrdersPage() {
                 <h2 className="text-sm font-bold text-white font-mono">{selectedOrder.order_number}</h2>
                 <span className="text-[10px] text-rmpg-400">Issued {new Date(selectedOrder.created_at).toLocaleString()}</span>
               </div>
-              <div className={`flex items-center ${isMobile ? 'gap-2 flex-wrap' : 'gap-1'}`}>
-                <button onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>Edit</button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px' }}>Edit</button>
                 {selectedOrder.status === 'active' && (
                   <>
-                    <button onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#f59e0b', minHeight: isMobile ? 48 : undefined }}>
-                      <CheckCircle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Serve
+                    <button onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px', color: '#f59e0b' }}>
+                      <CheckCircle style={{ width: 10, height: 10 }} /> Serve
                     </button>
-                    <button onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#22c55e', minHeight: isMobile ? 48 : undefined }}>Lift</button>
-                    <button onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#a855f7', minHeight: isMobile ? 48 : undefined }}>
-                      <AlertTriangle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Violated
+                    <button onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px', color: '#22c55e' }}>Lift</button>
+                    <button onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px', color: '#a855f7' }}>
+                      <AlertTriangle style={{ width: 10, height: 10 }} /> Violated
                     </button>
                   </>
                 )}
-                <button onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
-                  <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
+                <button onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: '10px' }}>
+                  <X style={{ width: 10, height: 10 }} />
                 </button>
               </div>
             </div>
@@ -375,20 +340,17 @@ export default function TrespassOrdersPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? new Date(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-white">{selectedOrder.property_name || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{selectedOrder.location}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace('_', ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-white capitalize">{selectedOrder.status}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? new Date(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? new Date(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-white">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-white">{selectedOrder.authorized_by || '—'}</div></div>
-              {(selectedOrder.section_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
-                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-white font-mono">{[selectedOrder.section_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
-              )}
               {selectedOrder.served_at && (
                 <>
                   <div><span className="text-rmpg-500 text-[10px] uppercase">Served At</span><div className="text-white">{new Date(selectedOrder.served_at).toLocaleString()}</div></div>
@@ -421,7 +383,7 @@ export default function TrespassOrdersPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
@@ -430,7 +392,7 @@ export default function TrespassOrdersPage() {
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {/* Person search */}
               <div>
-                <label className="field-label">Link to Person Record (Optional)</label>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link to Person Record (Optional)</label>
                 <div className="relative">
                   <input type="text" className="input-dark text-xs w-full" placeholder="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
@@ -450,84 +412,53 @@ export default function TrespassOrdersPage() {
               </div>
 
               {/* Subject */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div><label className="field-label">First Name *</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} />
-                  {formErrors.subject_first_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_first_name}</p>}</div>
-                <div><label className="field-label">Last Name *</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
-                  {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
-                <div><label className="field-label">DOB</label>
+              <div className="grid grid-cols-3 gap-2">
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">First Name *</label>
+                  <input className="input-dark text-xs w-full" required value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} /></div>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Last Name *</label>
+                  <input className="input-dark text-xs w-full" required value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} /></div>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">DOB</label>
                   <input type="date" className="input-dark text-xs w-full" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
               {/* Property + Location */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div><label className="field-label">Property</label>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Property</label>
                   <select className="select-dark text-xs w-full" value={formData.property_id} onChange={e => selectProperty(e.target.value)}>
                     <option value="">— Select Property —</option>
                     {properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select></div>
-                <div><label className="field-label">Location *</label>
-                  <input className="input-dark text-xs w-full" value={formData.location} onChange={e => update('location', e.target.value)} />
-                  {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
-              </div>
-
-              {/* Section / Zone / Beat */}
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Section</label>
-                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.section_id || ''} onChange={e => update('section_id', e.target.value)}>
-                    <option value="">—</option>
-                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Zone</label>
-                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.zone_id || ''} onChange={e => update('zone_id', e.target.value)}>
-                    <option value="">—</option>
-                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Beat</label>
-                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
-                    <option value="">—</option>
-                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                </div>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Location *</label>
+                  <input className="input-dark text-xs w-full" required value={formData.location} onChange={e => update('location', e.target.value)} /></div>
               </div>
 
               {/* Order details */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div><label className="field-label">Order Type</label>
+              <div className="grid grid-cols-3 gap-2">
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Order Type</label>
                   <select className="select-dark text-xs w-full" value={formData.order_type} onChange={e => update('order_type', e.target.value)}>
                     {ORDER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select></div>
-                <div><label className="field-label">Duration (days)</label>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Duration (days)</label>
                   <input type="number" className="input-dark text-xs w-full" placeholder="Empty = permanent" value={formData.duration_days} onChange={e => update('duration_days', e.target.value)} /></div>
-                <div><label className="field-label">Authorized By</label>
+                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Authorized By</label>
                   <input className="input-dark text-xs w-full" placeholder="Supervisor name" value={formData.authorized_by} onChange={e => update('authorized_by', e.target.value)} /></div>
               </div>
 
-              <div><label className="field-label">Reason</label>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Reason</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
-              <div><label className="field-label">Conditions / Exceptions</label>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Conditions / Exceptions</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
-              <div><label className="field-label">Notes</label>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Notes</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
-              <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
+                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)' }}>
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>
-                <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </form>
           </div>

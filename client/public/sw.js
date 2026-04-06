@@ -5,7 +5,10 @@
 // Supports automatic updates with client notification.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v46';
+const CACHE_NAME = 'rmpg-flex-v52';
+const MAP_TILE_CACHE = 'rmpg-flex-map-tiles-v1';
+const MAP_TILE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAP_TILE_MAX_ENTRIES = 2000; // cap tile cache size
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -22,12 +25,13 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate — clean ALL old caches, claim clients, notify of update
+// Activate — clean old caches (preserve map tile cache), claim clients, notify of update
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      // Delete every cache that isn't the current version
-      const oldKeys = keys.filter((k) => k !== CACHE_NAME);
+      // Delete old caches but keep the current version + map tile cache
+      const keepCaches = [CACHE_NAME, MAP_TILE_CACHE];
+      const oldKeys = keys.filter((k) => !keepCaches.includes(k));
       return Promise.all(oldKeys.map((k) => caches.delete(k))).then(() => {
         if (oldKeys.length > 0) {
           // Notify all clients that an update was applied
@@ -48,16 +52,52 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Never cache API calls, WebSocket, POST requests, or external map tiles
-  // Map tiles from Google must bypass the SW entirely — cache-first fails
-  // silently on slow/intermittent connections (vehicle WiFi), causing a
-  // black screen since tiles never reach the map renderer.
+  // Never cache API calls, WebSocket, or POST requests
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/ws') ||
-    event.request.method !== 'GET' ||
-    url.origin !== self.location.origin
+    event.request.method !== 'GET'
   ) {
+    return;
+  }
+
+  // Google Maps tiles — stale-while-revalidate
+  // Serve cached tiles immediately (no black screen on spotty hotspot),
+  // then update cache from network in the background. If network fails,
+  // cached tiles still render correctly.
+  const isMapTile =
+    url.origin !== self.location.origin && (
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('gstatic.com') ||
+      url.hostname.includes('google.com')
+    );
+
+  if (isMapTile) {
+    event.respondWith(
+      caches.open(MAP_TILE_CACHE).then((cache) =>
+        cache.match(event.request).then((cached) => {
+          const networkFetch = fetch(event.request)
+            .then((response) => {
+              if (response.ok) {
+                cache.put(event.request, response.clone());
+              }
+              return response;
+            })
+            .catch(() => {
+              // Network failed — return cached or transparent fallback
+              return cached || new Response('', { status: 503 });
+            });
+
+          // Return cached immediately if available, update in background
+          return cached || networkFetch;
+        })
+      )
+    );
+    return;
+  }
+
+  // All other external origins — pass through without caching
+  if (url.origin !== self.location.origin) {
     return;
   }
 
@@ -117,3 +157,21 @@ self.addEventListener('message', (event) => {
     self.registration.update();
   }
 });
+
+// ─── Map Tile Cache Maintenance ─────────────────────────────
+// Trim the map tile cache to prevent unbounded storage growth.
+// Runs on activate and can be triggered manually.
+async function trimMapTileCache() {
+  try {
+    const cache = await caches.open(MAP_TILE_CACHE);
+    const keys = await cache.keys();
+    if (keys.length > MAP_TILE_MAX_ENTRIES) {
+      // Delete oldest entries (first in = first out)
+      const excess = keys.length - MAP_TILE_MAX_ENTRIES;
+      await Promise.all(keys.slice(0, excess).map((k) => cache.delete(k)));
+    }
+  } catch { /* non-critical */ }
+}
+
+// Trim on activate
+self.addEventListener('activate', () => { trimMapTileCache(); });

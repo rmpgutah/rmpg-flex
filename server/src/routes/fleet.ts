@@ -1975,4 +1975,58 @@ function safeParseJson(value: string | null | undefined, fallback: any): any {
   }
 }
 
+// ─── GET /api/fleet/:id/gps-history ─ GPS breadcrumbs + dashcam events ──
+router.get('/:id/gps-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) {
+      res.status(404).json({ error: 'Vehicle not found' });
+      return;
+    }
+
+    if (!vehicle.assigned_unit_id) {
+      res.json({ breadcrumbs: [], dashcam_events: [], unit_id: null, message: 'Vehicle not assigned to a unit' });
+      return;
+    }
+
+    const days = parseInt(req.query.days as string, 10) || 7;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 500, 2000);
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    // GPS breadcrumbs for this unit
+    const breadcrumbs = db.prepare(`
+      SELECT id, latitude, longitude, accuracy, heading, speed, unit_status, call_sign,
+        officer_name, current_call_number, current_call_type, recorded_at, road_name,
+        nearest_intersection, gps_source, odometer, ignition
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= ?
+      ORDER BY recorded_at DESC
+      LIMIT ?
+    `).all(vehicle.assigned_unit_id, cutoff, limit) as any[];
+
+    // Dashcam events for this unit
+    const events = db.prepare(`
+      SELECT id, event_type, event_timestamp, latitude, longitude, heading,
+        speed_mph, address, status_code_text, video_available, odometer,
+        ignition, driver_name, city, state_province
+      FROM dashcam_events
+      WHERE unit_id = ? AND event_timestamp >= ?
+      ORDER BY event_timestamp DESC
+      LIMIT ?
+    `).all(vehicle.assigned_unit_id, cutoff, limit) as any[];
+
+    res.json({
+      breadcrumbs,
+      dashcam_events: events,
+      unit_id: vehicle.assigned_unit_id,
+      vehicle_number: vehicle.vehicle_number,
+      days,
+    });
+  } catch (error: any) {
+    console.error('Fleet GPS history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

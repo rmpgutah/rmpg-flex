@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useState } from 'react';
-import { Video, Plus, Edit2, Trash2, Loader2, Camera, Play, Upload, Download, Eye } from 'lucide-react';
+import { Video, Plus, Edit2, Edit3, Trash2, Loader2, Camera, Play, Upload, Download, Eye } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo } from '../../../types';
 import { CAMERA_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS, VIDEO_CLASSIFICATION_COLORS } from '../utils/personnelConstants';
 
@@ -15,7 +15,7 @@ interface Props {
   onDeleteCamera: (camId: number) => void;
   onUploadVideo: () => void;
   onDeleteVideo: (videoId: number) => void;
-  onEditVideo: (video: BodyCamVideo) => void;
+  onEditVideo?: (video: BodyCamVideo) => void;
   onPlayVideo: (video: BodyCamVideo) => void;
   loading: boolean;
 }
@@ -102,7 +102,7 @@ export default function BodyCameraDetailTab({
       </div>
 
       {/* Camera Status Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500">
           <p className="text-lg font-bold text-blue-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
           <p className="field-label">Assigned</p>
@@ -140,7 +140,7 @@ export default function BodyCameraDetailTab({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mb-2">
+              <div className="grid grid-cols-4 gap-x-4 gap-y-1 mb-2">
                 <div>
                   <p className="field-label">Make / Model</p>
                   <p className="text-xs text-rmpg-100">{[cam.make, cam.model].filter(Boolean).join(' ') || '-'}</p>
@@ -259,13 +259,15 @@ export default function BodyCameraDetailTab({
                       >
                         <Play className="w-3 h-3" />
                       </button>
-                      <button
-                        onClick={() => onEditVideo(vid)}
-                        className="toolbar-btn p-1"
-                        title="Edit video metadata"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
+                      {onEditVideo && (
+                        <button
+                          onClick={() => onEditVideo(vid)}
+                          className="toolbar-btn p-1"
+                          title="Edit video details"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                      )}
                       <button
                         onClick={() => onDeleteVideo(vid.id)}
                         className="toolbar-btn toolbar-btn-danger p-1"

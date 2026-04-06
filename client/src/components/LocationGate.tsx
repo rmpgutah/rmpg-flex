@@ -1,52 +1,47 @@
 // ============================================================
 // RMPG Flex — Location Warning Banner
 // Shows a dismissible warning banner when GPS location
-// permission is denied. Also shows a WiFi tracking indicator
-// when position is being obtained via WiFi instead of GPS.
+// permission is denied. Does NOT block app access.
 // ============================================================
 
 import React, { useState } from 'react';
-import { AlertTriangle, X, Wifi, WifiOff } from 'lucide-react';
-import type { ConnectionType, PositionSource } from '../hooks/useGpsTracking';
+import { AlertTriangle, X } from 'lucide-react';
 
 interface LocationGateProps {
   permissionDenied: boolean;
   permissionPending: boolean;
   error: string | null;
   onRetry: () => void;
-  connectionType?: ConnectionType;
-  positionSource?: PositionSource;
 }
 
-export default function LocationGate({ permissionDenied, onRetry, connectionType, positionSource }: LocationGateProps) {
+export default function LocationGate({ permissionDenied, onRetry }: LocationGateProps) {
   const [dismissed, setDismissed] = useState(false);
-  const [wifiDismissed, setWifiDismissed] = useState(false);
 
-  // WiFi tracking indicator — shown when tracking via WiFi positioning
-  const showWifiIndicator = !wifiDismissed && !permissionDenied && connectionType === 'wifi' && (positionSource === 'wifi' || positionSource === 'ip');
+  // Nothing to show — permissionPending is intentionally silent (no bar)
+  if (dismissed || !permissionDenied) return null;
 
   // Dismissible warning banner when permission denied
   if (permissionDenied) {
     return (
       <div style={{
-        background: 'rgba(220, 38, 38, 0.12)',
-        borderBottom: '1px solid #991b1b',
+        background: 'rgba(26, 90, 158, 0.12)',
+        borderBottom: '1px solid #5a1010',
         padding: '8px 16px',
         display: 'flex',
         alignItems: 'center',
         gap: 10,
         fontSize: 11,
       }}>
-        <AlertTriangle size={14} color="#ef4444" style={{ flexShrink: 0 }} />
+        <AlertTriangle size={14} color="#d93030" style={{ flexShrink: 0 }} />
         <span style={{ color: '#ccc', flex: 1 }}>
-          <strong style={{ color: '#ef4444' }}>Location disabled</strong>
+          <strong style={{ color: '#d93030' }}>Location disabled</strong>
           {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
         </span>
         <button
           onClick={onRetry}
           style={{
             padding: '3px 10px',
-            background: '#dc2626',
+            background: '#1a5a9e',
             color: '#fff',
             border: 'none',
             fontSize: 10,
@@ -64,7 +59,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           style={{
             background: 'none',
             border: 'none',
-            color: '#5a6e80',
+            color: '#666',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',
@@ -73,41 +68,6 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           title="Dismiss"
         >
           <X size={14} />
-        </button>
-      </div>
-    );
-  }
-
-  // WiFi tracking indicator
-  if (showWifiIndicator) {
-    return (
-      <div style={{
-        background: 'rgba(59, 130, 246, 0.08)',
-        borderBottom: '1px solid #1e3a5f',
-        padding: '4px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        fontSize: 10,
-      }}>
-        <Wifi size={12} color="#3b82f6" style={{ flexShrink: 0 }} />
-        <span style={{ color: '#8a9aaa', flex: 1 }}>
-          Tracking via <strong style={{ color: '#3b82f6' }}>WiFi positioning</strong> — accuracy may be reduced
-        </span>
-        <button
-          onClick={() => setWifiDismissed(true)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#5a6e80',
-            cursor: 'pointer',
-            padding: 2,
-            display: 'flex',
-            flexShrink: 0,
-          }}
-          title="Dismiss"
-        >
-          <X size={12} />
         </button>
       </div>
     );

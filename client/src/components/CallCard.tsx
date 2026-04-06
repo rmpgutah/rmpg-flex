@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, MapPin, Users, AlertTriangle } from 'lucide-react';
+import { Clock, MapPin, Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import type { CallForService } from '../types';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
@@ -196,6 +196,20 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         <div className="flex items-center gap-1.5">
           <StatusBadge status={call.priority} type="priority" size="sm" />
           <StatusBadge status={call.status} type="call_status" size="sm" />
+          {call.risk_score != null && call.risk_score > 0 && (
+            <span
+              className="text-[8px] font-bold font-mono px-1 py-0 flex items-center gap-0.5"
+              style={{
+                color: call.risk_score >= 80 ? '#ef4444' : call.risk_score >= 60 ? '#f97316' : call.risk_score >= 30 ? '#eab308' : '#22c55e',
+                background: call.risk_score >= 80 ? 'rgba(239,68,68,0.15)' : call.risk_score >= 60 ? 'rgba(249,115,22,0.15)' : 'rgba(34,197,94,0.1)',
+                border: `1px solid ${call.risk_score >= 80 ? 'rgba(239,68,68,0.4)' : call.risk_score >= 60 ? 'rgba(249,115,22,0.4)' : 'rgba(34,197,94,0.3)'}`,
+              }}
+              title={`Risk Score: ${call.risk_score}/100`}
+            >
+              <ShieldAlert style={{ width: 8, height: 8 }} />
+              {call.risk_score}
+            </span>
+          )}
           {shouldEscalate && (
             <span className="text-[8px] font-bold font-mono text-amber-400 bg-amber-900/30 border border-amber-700/50 px-1 py-0 animate-pulse">
               ESCALATE

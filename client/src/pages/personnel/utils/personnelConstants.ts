@@ -9,7 +9,7 @@ import {
 import type React from 'react';
 
 // Main tabs
-export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'dash_cameras' | 'deployment' | 'analytics';
+export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'body_cameras' | 'dash_cameras' | 'deployment' | 'analytics';
 
 export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'dash_cameras' | 'deployment';
 
@@ -30,7 +30,8 @@ export type ModalMode =
   | 'new_body_camera'
   | 'edit_body_camera'
   | 'upload_video'
-  | 'edit_video';
+  | 'upload_dashcam_video'
+  | 'edit_dashcam_video';
 
 export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[] = [
   { id: 'roster', label: 'Roster', icon: Users },
@@ -40,6 +41,7 @@ export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[
   { id: 'credentials', label: 'Credentials', icon: Award },
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
+  { id: 'body_cameras', label: 'Body Cams', icon: Video },
   { id: 'dash_cameras', label: 'Dash Cams', icon: Car },
   { id: 'deployment', label: 'Deployment', icon: MapPinned },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -71,7 +73,6 @@ export const ROLE_COLORS: Record<string, string> = {
   supervisor: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   officer: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
   dispatcher: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
-  contract_manager: 'bg-violet-900/50 text-violet-400 border border-violet-700/50',
 };
 
 export const ACTION_COLORS: Record<string, string> = {
@@ -154,12 +155,34 @@ export const VIDEO_CLASSIFICATION_COLORS: Record<string, string> = {
 
 export const DASHCAM_EVENT_COLORS: Record<string, string> = {
   hard_brake: 'bg-red-900/50 text-red-400 border border-red-700/50',
-  speeding: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  hard_accel: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  hard_turn: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  hard_cornering: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  speeding: 'bg-red-900/50 text-red-400 border border-red-700/50',
   impact: 'bg-red-900/60 text-red-300 border border-red-600/50',
-  hard_accel: 'bg-orange-900/50 text-orange-400 border border-orange-700/50',
-  hard_turn: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
+  tamper: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
+  panic: 'bg-red-900/60 text-red-300 border border-red-600/50',
+  sos: 'bg-red-900/60 text-red-300 border border-red-600/50',
+  video_start: 'bg-green-900/50 text-green-400 border border-green-700/50',
+  video_stop: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
+  video_alarm: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  video_lost: 'bg-red-900/50 text-red-400 border border-red-700/50',
+  camera_motion: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
   camera_triggered: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
-  video_recorded: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
+  camera_event: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  // GPS / telemetry events
+  ignition_on: 'bg-green-900/50 text-green-400 border border-green-700/50',
+  ignition_off: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
+  position_update: 'bg-rmpg-800 text-rmpg-400 border border-rmpg-700',
+  inmotion: 'bg-sky-900/50 text-sky-400 border border-sky-700/50',
+  stopped: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600',
+  idle: 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/50',
+};
+
+export const DASHCAM_VIDEO_SOURCE_COLORS: Record<string, string> = {
+  manual: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  cpg_sync: 'bg-green-900/50 text-green-400 border border-green-700/50',
+  cpg_proxy: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
 };
 
 export const CHART_TOOLTIP_STYLE = {

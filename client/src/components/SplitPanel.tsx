@@ -120,8 +120,8 @@ export default function SplitPanel({
           <div
             className="flex flex-shrink-0"
             style={{
-              background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
-              borderBottom: '1px solid #141e2b',
+              background: 'linear-gradient(180deg, #1e3048 0%, #182840 100%)',
+              borderBottom: '1px solid #0f1a28',
             }}
           >
             <button
@@ -129,7 +129,7 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'left' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
-                color: mobileTab === 'left' ? '#fff' : '#7a8a9a',
+                color: mobileTab === 'left' ? '#fff' : '#808080',
                 borderBottom: mobileTab === 'left' ? '2px solid #1a5a9e' : '2px solid transparent',
               }}
             >
@@ -140,7 +140,7 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'right' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
-                color: mobileTab === 'right' ? '#fff' : '#7a8a9a',
+                color: mobileTab === 'right' ? '#fff' : '#808080',
                 borderBottom: mobileTab === 'right' ? '2px solid #1a5a9e' : '2px solid transparent',
               }}
             >
@@ -190,13 +190,13 @@ export default function SplitPanel({
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
             background: isDragging ? '#1a5a9e' : 'linear-gradient(90deg, #162236, #2a3e58, #162236)',
-            borderTop: '1px solid #3a5070',
-            borderBottom: '1px solid #141e2b',
+            borderTop: '1px solid #484848',
+            borderBottom: '1px solid #0f1a28',
             transition: isDragging ? 'none' : 'background 0.15s ease',
           }}
           onMouseDown={handleMouseDown}
           onMouseEnter={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a3e58, #3a5070, #2a3e58)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a3e58, #484848, #2a3e58)';
           }}
           onMouseLeave={(e) => {
             if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #162236, #2a3e58, #162236)';

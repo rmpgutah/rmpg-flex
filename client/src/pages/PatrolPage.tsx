@@ -28,9 +28,7 @@ import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
-import { useToast } from '../components/ToastProvider';
 
 type Checkpoint = {
   id: number;
@@ -102,9 +100,8 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#171717',
+        backgroundColor: '#060c14',
         gestureHandling: 'greedy',
-        renderingType: 'RASTER' as any,
       });
       mapInstanceRef.current = map;
       registerMapInstance(map);
@@ -158,7 +155,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         title: cp.name,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
-          fillColor: cp.is_active ? '#22c55e' : '#666666',
+          fillColor: cp.is_active ? '#22c55e' : '#6b7280',
           fillOpacity: 0.9,
           strokeColor: '#fff',
           strokeWeight: 2,
@@ -183,7 +180,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       scansByDate.set(date, list);
     });
 
-    const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
+    const colors = ['#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
     scansByDate.forEach((dayScans) => {
       const sorted = dayScans.sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());
@@ -215,8 +212,8 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     <div className="relative w-full flex-1" style={{ minHeight: 400 }}>
       <div ref={mapRef} className="absolute inset-0" />
       <div className="absolute top-2 left-2 text-[9px] font-mono text-rmpg-400 bg-black/60 px-2 py-1 border border-rmpg-700">
-        {checkpoints.filter(c => c.latitude != null && c.longitude != null).length} checkpoints •{' '}
-        {scans.filter(s => s.latitude != null && s.longitude != null).length} scan points
+        {checkpoints.filter(c => c.latitude && c.longitude).length} checkpoints •{' '}
+        {scans.filter(s => s.latitude && s.longitude).length} scan points
       </div>
     </div>
   );
@@ -224,13 +221,9 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 
 const PatrolPage: React.FC = () => {
   const isMobile = useIsMobile();
-  const { addToast } = useToast();
-
-  // Set document title
-  useEffect(() => { document.title = 'Patrol Tracking \u2014 RMPG Flex'; }, []);
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map'] as const);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [compliance, setCompliance] = useState<Compliance[]>([]);
@@ -253,41 +246,6 @@ const PatrolPage: React.FC = () => {
     is_active: true
   });
 
-  // ── Feature 11/13/15: Shift summary, break tracking, efficiency ──
-  const [shiftSummary, setShiftSummary] = useState<any>(null);
-  const [isOnBreak, setIsOnBreak] = useState(false);
-  const [efficiency, setEfficiency] = useState<any>(null);
-
-  const loadShiftSummary = async () => {
-    try {
-      const data = await apiFetch<any>('/patrol/shift-summary');
-      setShiftSummary(data);
-    } catch { /* ignore */ }
-  };
-
-  const loadEfficiency = async () => {
-    try {
-      const data = await apiFetch<any>('/patrol/efficiency');
-      setEfficiency(data);
-    } catch { /* ignore */ }
-  };
-
-  const startBreak = async (breakType = 'break') => {
-    try {
-      await apiFetch('/patrol/breaks/start', { method: 'POST', body: JSON.stringify({ break_type: breakType }) });
-      setIsOnBreak(true);
-      addToast('Break started', 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to start break', 'error'); }
-  };
-
-  const endBreak = async () => {
-    try {
-      const data = await apiFetch<any>('/patrol/breaks/end', { method: 'POST' });
-      setIsOnBreak(false);
-      addToast(`Break ended (${data?.duration_minutes || 0} min)`, 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to end break', 'error'); }
-  };
-
   // Scan filters
   const [scanFilters, setScanFilters] = useState({
     checkpointId: '',
@@ -302,19 +260,17 @@ const PatrolPage: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'compliance') {
-      loadCompliance();
       const interval = setInterval(() => {
         loadCompliance();
       }, 60000);
       return () => clearInterval(interval);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadProperties = async () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
-      setProperties(data || []);
+      setProperties(data);
     } catch (error) {
       console.error('Error loading properties:', error);
     }
@@ -343,7 +299,7 @@ const PatrolPage: React.FC = () => {
   const loadCheckpoints = async () => {
     try {
       const data = await apiFetch<Checkpoint[]>('/patrol/checkpoints');
-      setCheckpoints(data || []);
+      setCheckpoints(data);
     } catch {
       setCheckpoints([]);
     }
@@ -358,7 +314,7 @@ const PatrolPage: React.FC = () => {
       if (scanFilters.endDate) params.append('endDate', scanFilters.endDate);
 
       const data = await apiFetch<Scan[]>(`/patrol/scans?${params.toString()}`);
-      setScans(data || []);
+      setScans(data);
     } catch {
       setScans([]);
     }
@@ -367,7 +323,7 @@ const PatrolPage: React.FC = () => {
   const loadCompliance = async () => {
     try {
       const data = await apiFetch<Compliance[]>('/patrol/compliance');
-      setCompliance(data || []);
+      setCompliance(data);
     } catch {
       setCompliance([]);
     }
@@ -418,33 +374,34 @@ const PatrolPage: React.FC = () => {
   const handleSaveCheckpoint = async () => {
     try {
       const payload = {
-        property_id: parseInt(formData.property_id, 10),
+        property_id: parseInt(formData.property_id),
         name: formData.name,
         description: formData.description || null,
         latitude: formData.latitude ? parseFloat(formData.latitude) : null,
         longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-        scan_required_interval_minutes: parseInt(formData.scan_required_interval_minutes, 10),
+        scan_required_interval_minutes: parseInt(formData.scan_required_interval_minutes),
         is_active: formData.is_active
       };
 
       if (editingCheckpoint) {
         await apiFetch(`/patrol/checkpoints/${editingCheckpoint.id}`, {
           method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
         await apiFetch('/patrol/checkpoints', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       }
 
       setShowCheckpointModal(false);
       loadCheckpoints();
-      addToast(editingCheckpoint ? 'Checkpoint updated' : 'Checkpoint created', 'success');
     } catch (err: any) {
       console.error('Error saving checkpoint:', err);
-      addToast(err?.message || 'Failed to save checkpoint', 'error');
+      setError(err?.message || 'Failed to save checkpoint');
     }
   };
 
@@ -455,10 +412,9 @@ const PatrolPage: React.FC = () => {
       });
       setDeleteConfirmId(null);
       loadCheckpoints();
-      addToast('Checkpoint deleted', 'success');
     } catch (err: any) {
       console.error('Error deleting checkpoint:', err);
-      addToast(err?.message || 'Failed to delete checkpoint', 'error');
+      setError(err?.message || 'Failed to delete checkpoint');
     }
   };
 
@@ -466,10 +422,9 @@ const PatrolPage: React.FC = () => {
     try {
       await apiFetch(`/patrol/checkpoints/${id}/archive`, { method: 'POST' });
       loadCheckpoints();
-      addToast('Checkpoint archived', 'success');
     } catch (err: any) {
       console.error('Error archiving checkpoint:', err);
-      addToast(err?.message || 'Failed to archive checkpoint', 'error');
+      setError(err?.message || 'Failed to archive checkpoint');
     }
   };
 
@@ -477,10 +432,9 @@ const PatrolPage: React.FC = () => {
     try {
       await apiFetch(`/patrol/checkpoints/${id}/unarchive`, { method: 'POST' });
       loadCheckpoints();
-      addToast('Checkpoint restored', 'success');
     } catch (err: any) {
       console.error('Error unarchiving checkpoint:', err);
-      addToast(err?.message || 'Failed to restore checkpoint', 'error');
+      setError(err?.message || 'Failed to restore checkpoint');
     }
   };
 
@@ -548,68 +502,11 @@ const PatrolPage: React.FC = () => {
     return new Date(nextDue) < new Date();
   };
 
-  // ── Feature 1: Route Optimization ──
-  const [optimizedRoute, setOptimizedRoute] = useState<any>(null);
-  const [optimizing, setOptimizing] = useState(false);
-  const handleOptimizeRoute = async (propertyId?: string) => {
-    setOptimizing(true);
-    try {
-      const params = new URLSearchParams();
-      if (propertyId) params.set('property_id', propertyId);
-      const data = await apiFetch<any>(`/patrol/optimize-route?${params}`);
-      setOptimizedRoute(data);
-      addToast(`Route optimized: ${data.optimized_order?.length || 0} checkpoints, ${data.total_distance_mi} mi`, 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to optimize route', 'error'); }
-    setOptimizing(false);
-  };
-
-  // ── Feature 2: Auto-generate Patrol Log ──
-  const [patrolLog, setPatrolLog] = useState<any>(null);
-  const handleGenerateLog = async (date?: string) => {
-    try {
-      const params = new URLSearchParams();
-      if (date) params.set('date', date);
-      const data = await apiFetch<any>(`/patrol/log/generate?${params}`);
-      setPatrolLog(data);
-      addToast('Patrol log generated', 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to generate log', 'error'); }
-  };
-
-  // ── Feature 6: Exception Report ──
-  const [exceptions, setExceptions] = useState<any>(null);
-  const handleLoadExceptions = async () => {
-    try {
-      const data = await apiFetch<any>('/patrol/exceptions?days=7');
-      setExceptions(data);
-    } catch (err: any) { addToast(err?.message || 'Failed to load exceptions', 'error'); }
-  };
-
-  // ── Feature 7: Time Tracking ──
-  const [timeTracking, setTimeTracking] = useState<any>(null);
-  const handleLoadTimeTracking = async (date?: string) => {
-    try {
-      const params = new URLSearchParams();
-      if (date) params.set('date', date);
-      const data = await apiFetch<any>(`/patrol/time-tracking?${params}`);
-      setTimeTracking(data);
-    } catch (err: any) { addToast(err?.message || 'Failed to load time tracking', 'error'); }
-  };
-
-  // ── Feature 4: Coverage Heatmap data ──
-  const [coverageData, setCoverageData] = useState<any>(null);
-  const handleLoadCoverage = async () => {
-    try {
-      const data = await apiFetch<any>('/patrol/coverage-heatmap?days=7');
-      setCoverageData(data);
-    } catch (err: any) { addToast(err?.message || 'Failed to load coverage data', 'error'); }
-  };
-
   const patrolTabs = [
     { id: 'checkpoints' as const, label: 'Checkpoints', icon: QrCode },
     { id: 'scans' as const, label: 'Scan Log', icon: Clock },
     { id: 'compliance' as const, label: 'Compliance', icon: CheckCircle },
     { id: 'map' as const, label: 'Map', icon: MapIcon },
-    { id: 'summary' as const, label: 'Shift Summary', icon: CheckCircle },
   ];
 
   return (
@@ -618,7 +515,7 @@ const PatrolPage: React.FC = () => {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e 30%, #1a5a9e 70%, #0e3a6e)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>
@@ -634,12 +531,12 @@ const PatrolPage: React.FC = () => {
           <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
         )}
         {activeTab === 'checkpoints' && (
-          <button type="button" onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary print:hidden">
+          <button onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary">
             <Plus className="w-3.5 h-3.5" /> Add Checkpoint
           </button>
         )}
         {activeTab === 'compliance' && (
-          <button type="button" onClick={loadCompliance} className="toolbar-btn">
+          <button onClick={loadCompliance} className="toolbar-btn">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
         )}
@@ -657,7 +554,7 @@ const PatrolPage: React.FC = () => {
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 flex items-center gap-2 text-xs text-red-300 flex-shrink-0">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-200">
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-200">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -677,9 +574,9 @@ const PatrolPage: React.FC = () => {
             <span className="text-green-400 font-bold">{checkpoints.filter(c => c.is_active).length}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-gray-400" />
+            <Clock className="w-3 h-3 text-blue-400" />
             <span className="text-rmpg-400">Scans Today:</span>
-            <span className="text-gray-400 font-bold">
+            <span className="text-blue-400 font-bold">
               {scans.filter(s => {
                 const today = new Date().toDateString();
                 return new Date(s.scanned_at).toDateString() === today;
@@ -691,132 +588,12 @@ const PatrolPage: React.FC = () => {
             <span className="text-rmpg-400">Total Scans:</span>
             <span className="text-purple-400 font-bold">{scans.length}</span>
           </div>
-          {/* Feature 1: Route Optimization */}
-          <button type="button" onClick={() => handleOptimizeRoute()} disabled={optimizing} className="toolbar-btn ml-auto" title="Optimize patrol route">
-            {optimizing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <MapIcon className="w-3 h-3" />}
-            <span className="text-[9px]">Optimize Route</span>
-          </button>
-          {/* Feature 2: Generate Patrol Log */}
-          <button type="button" onClick={() => handleGenerateLog()} className="toolbar-btn" title="Generate patrol log">
-            <Clock className="w-3 h-3" /><span className="text-[9px]">Gen Log</span>
-          </button>
-          {/* Feature 6: Exception Report */}
-          <button type="button" onClick={handleLoadExceptions} className="toolbar-btn" title="Exception report">
-            <AlertTriangle className="w-3 h-3" /><span className="text-[9px]">Exceptions</span>
-          </button>
-          {/* Feature 7: Time Tracking */}
-          <button type="button" onClick={() => handleLoadTimeTracking()} className="toolbar-btn" title="Time tracking">
-            <Clock className="w-3 h-3" /><span className="text-[9px]">Time Track</span>
-          </button>
-        </div>
-      )}
-
-      {/* Feature 1: Route Optimization Results */}
-      {optimizedRoute && (
-        <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_mi} mi total</span>
-            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300"><X className="w-3 h-3" /></button>
-          </div>
-          <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
-            {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
-              <div key={cp.id} className="flex gap-2">
-                <span className="text-gray-500 w-4">{i + 1}.</span>
-                <span className="text-white">{cp.name}</span>
-                <span className="text-gray-500 ml-auto">{cp.distance_from_previous_mi} mi</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Feature 2: Patrol Log Panel */}
-      {patrolLog && (
-        <div className="mx-3 mt-2 p-2 bg-green-900/20 border border-green-700/50 text-xs text-green-300">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
-            <button type="button" onClick={() => setPatrolLog(null)} className="text-green-500 hover:text-green-300"><X className="w-3 h-3" /></button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
-            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{patrolLog.total_checkpoints_scanned}</span></div>
-            <div><span className="text-rmpg-400">Total Time:</span> <span className="text-white">{patrolLog.total_time_minutes} min</span></div>
-            <div><span className="text-rmpg-400">On Time:</span> <span className="text-green-400">{patrolLog.on_time}</span></div>
-            <div><span className="text-rmpg-400">Late:</span> <span className="text-amber-400">{patrolLog.late}</span></div>
-          </div>
-          <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
-            {patrolLog.entries?.map((e: any, i: number) => (
-              <div key={i} className="flex gap-2">
-                <span className="text-rmpg-500 w-24">{safeTimeStr(e.time)}</span>
-                <span className="text-white flex-1">{e.checkpoint}</span>
-                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : e.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                {e.time_since_prev_min != null && <span className="text-rmpg-500">{e.time_since_prev_min}m</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Feature 6: Exception Report Panel */}
-      {exceptions && (
-        <div className="mx-3 mt-2 p-2 bg-amber-900/20 border border-amber-700/50 text-xs text-amber-300">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
-            <button type="button" onClick={() => setExceptions(null)} className="text-amber-500 hover:text-amber-300"><X className="w-3 h-3" /></button>
-          </div>
-          {exceptions.missed_checkpoints?.length > 0 && (
-            <div className="mb-1">
-              <div className="text-[9px] text-red-400 font-bold uppercase">Missed Checkpoints ({exceptions.missed_checkpoints.length})</div>
-              {exceptions.missed_checkpoints.slice(0, 5).map((mc: any) => (
-                <div key={mc.id} className="text-[10px] flex gap-2">
-                  <span className="text-red-300">{mc.name}</span>
-                  <span className="text-rmpg-500">{mc.property_name}</span>
-                  <span className="text-rmpg-500 ml-auto">Last: {mc.last_scan ? formatTimeAgo(mc.last_scan) : 'Never'}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="text-[9px] text-amber-400 font-bold uppercase">Late Scans ({exceptions.late_scans?.length || 0})</div>
-          <div className="max-h-24 overflow-y-auto space-y-0.5">
-            {exceptions.late_scans?.slice(0, 10).map((ls: any) => (
-              <div key={ls.id} className="text-[10px] flex gap-2">
-                <span className="text-rmpg-500">{safeDateStr(ls.scanned_at)}</span>
-                <span className="text-amber-300">{ls.checkpoint_name}</span>
-                <span className="text-rmpg-500">{ls.officer_name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Feature 7: Time Tracking Panel */}
-      {timeTracking && (
-        <div className="mx-3 mt-2 p-2 bg-purple-900/20 border border-purple-700/50 text-xs text-purple-300">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Time Tracking — {timeTracking.date}</span>
-            <button type="button" onClick={() => setTimeTracking(null)} className="text-purple-500 hover:text-purple-300"><X className="w-3 h-3" /></button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
-            <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-white">{timeTracking.total_patrol_minutes} min</span></div>
-            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{timeTracking.total_checkpoints}</span></div>
-            <div><span className="text-rmpg-400">Avg Between:</span> <span className="text-white">{timeTracking.average_between_minutes} min</span></div>
-            <div><span className="text-rmpg-400">Longest Gap:</span> <span className="text-amber-400">{timeTracking.longest_gap_minutes} min</span></div>
-          </div>
-          <div className="max-h-24 overflow-y-auto space-y-0.5">
-            {timeTracking.segments?.map((s: any, i: number) => (
-              <div key={i} className="text-[10px] flex gap-2">
-                <span className="text-rmpg-500">{s.from}</span>
-                <span className="text-purple-500">→</span>
-                <span className="text-white">{s.to}</span>
-                <span className="text-purple-400 ml-auto">{s.duration_minutes} min</span>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
       {loading ? (
         <div className="flex justify-center items-center h-64 panel-inset">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-400" role="status" aria-label="Loading" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
         </div>
       ) : (
         <>
@@ -858,7 +635,7 @@ const PatrolPage: React.FC = () => {
                           className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold uppercase panel-beveled ${
                             checkpoint.is_active
                               ? 'bg-green-900/50 text-green-400 border border-green-700/50'
-                              : 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50'
+                              : 'bg-gray-700/50 text-rmpg-400 border border-rmpg-600/50'
                           }`}
                         >
                           {checkpoint.is_active ? 'Active' : 'Inactive'}
@@ -866,7 +643,7 @@ const PatrolPage: React.FC = () => {
                       </td>
                       <td>
                         <div className="flex justify-end gap-2">
-                          <button type="button"
+                          <button
                             onClick={() => handleShowQr(checkpoint.qr_code)}
                             className="text-brand-400 hover:text-brand-300"
                             title="Show QR Code"
@@ -875,21 +652,21 @@ const PatrolPage: React.FC = () => {
                           </button>
                           {!checkpoint.archived_at && (
                             <>
-                              <button type="button"
+                              <button
                                 onClick={() => handleEditCheckpoint(checkpoint)}
                                 className="text-amber-400 hover:text-amber-300"
                                 title="Edit"
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
-                              <button type="button"
+                              <button
                                 onClick={() => handleArchiveCheckpoint(checkpoint.id)}
-                                className="text-rmpg-400 hover:text-rmpg-300"
+                                className="text-slate-400 hover:text-slate-300"
                                 title="Archive"
                               >
                                 <Archive className="w-4 h-4" />
                               </button>
-                              <button type="button"
+                              <button
                                 onClick={() => setDeleteConfirmId(checkpoint.id)}
                                 className="text-red-400 hover:text-red-300"
                                 title="Delete"
@@ -899,7 +676,7 @@ const PatrolPage: React.FC = () => {
                             </>
                           )}
                           {checkpoint.archived_at && (
-                            <button type="button"
+                            <button
                               onClick={() => handleUnarchiveCheckpoint(checkpoint.id)}
                               className="text-green-400 hover:text-green-300"
                               title="Unarchive"
@@ -957,7 +734,7 @@ const PatrolPage: React.FC = () => {
                       onChange={(e) =>
                         setScanFilters(prev => ({ ...prev, startDate: e.target.value }))
                       }
-                      className="input-dark min-h-[36px]"
+                      className="input-dark"
                     />
                   </div>
                   <div>
@@ -970,11 +747,11 @@ const PatrolPage: React.FC = () => {
                       onChange={(e) =>
                         setScanFilters(prev => ({ ...prev, endDate: e.target.value }))
                       }
-                      className="input-dark min-h-[36px]"
+                      className="input-dark"
                     />
                   </div>
                   <div className="flex items-end">
-                    <button type="button"
+                    <button
                       onClick={() =>
                         setScanFilters({
                           checkpointId: '',
@@ -1017,7 +794,7 @@ const PatrolPage: React.FC = () => {
                         <td>
                           <div className={`flex items-center gap-2 text-xs ${getStatusColor(scan.status)}`}>
                             {getStatusIcon(scan.status)}
-                            <span className="capitalize">{scan.status.replace(/_/g, ' ')}</span>
+                            <span className="capitalize">{scan.status.replace('_', ' ')}</span>
                           </div>
                         </td>
                         <td className="text-xs text-rmpg-200 max-w-[200px] truncate">{scan.notes || '-'}</td>
@@ -1038,103 +815,6 @@ const PatrolPage: React.FC = () => {
           {/* Map Tab */}
           {activeTab === 'map' && (
             <PatrolMapView checkpoints={checkpoints} scans={scans} />
-          )}
-
-          {/* Feature 11/13/15: Shift Summary Tab */}
-          {activeTab === 'summary' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 mb-4">
-                <button type="button" onClick={loadShiftSummary} className="toolbar-btn toolbar-btn-primary print:hidden">
-                  <RefreshCw className="w-3 h-3" /> Load Summary
-                </button>
-                <button type="button" onClick={loadEfficiency} className="toolbar-btn">
-                  <CheckCircle className="w-3 h-3" /> Efficiency Score
-                </button>
-                <div className="ml-auto flex items-center gap-2">
-                  {/* Feature 13: Break tracking */}
-                  {isOnBreak ? (
-                    <button type="button" onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">
-                      <Clock className="w-3 h-3" /> End Break
-                    </button>
-                  ) : (
-                    <div className="flex gap-1">
-                      <button type="button" onClick={() => startBreak('break')} className="toolbar-btn">Break</button>
-                      <button type="button" onClick={() => startBreak('meal')} className="toolbar-btn">Meal</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Shift Summary Card */}
-              {shiftSummary && (
-                <div className="panel-beveled p-4 bg-surface-base space-y-3">
-                  <h3 className="text-sm font-bold text-white mb-3">Shift Summary - {shiftSummary.date}</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-400 font-mono">{shiftSummary.scans_total}</div>
-                      <div className="text-[10px] text-rmpg-400">Total Scans</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-cyan-400 font-mono">{shiftSummary.scans_on_time}</div>
-                      <div className="text-[10px] text-rmpg-400">On Time</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-amber-400 font-mono">{shiftSummary.scans_late}</div>
-                      <div className="text-[10px] text-rmpg-400">Late</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-400 font-mono">{shiftSummary.incidents_count}</div>
-                      <div className="text-[10px] text-rmpg-400">Incidents</div>
-                    </div>
-                  </div>
-                  <div className="border-t border-rmpg-600 pt-3 grid grid-cols-3 gap-4">
-                    <div>
-                      <span className="text-[10px] text-rmpg-400">Est. Mileage</span>
-                      <div className="text-sm font-mono text-white">{shiftSummary.estimated_mileage} mi</div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-rmpg-400">Break Time</span>
-                      <div className="text-sm font-mono text-white">{shiftSummary.total_break_minutes} min</div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-rmpg-400">Properties</span>
-                      <div className="text-sm font-mono text-white">{shiftSummary.properties_visited?.length || 0}</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Feature 15: Efficiency Score Card */}
-              {efficiency && (
-                <div className="panel-beveled p-4 bg-surface-base">
-                  <h3 className="text-sm font-bold text-white mb-3">Patrol Efficiency</h3>
-                  <div className="flex items-center gap-6">
-                    <div className="text-center">
-                      <div className={`text-4xl font-bold font-mono ${efficiency.efficiency_score >= 80 ? 'text-green-400' : efficiency.efficiency_score >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
-                        {efficiency.efficiency_score}%
-                      </div>
-                      <div className="text-[10px] text-rmpg-400">Efficiency Score</div>
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-rmpg-400">Completion</span>
-                        <span className="text-white font-mono">{efficiency.completion_rate}%</span>
-                      </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-rmpg-400">On-Time Rate</span>
-                        <span className="text-white font-mono">{efficiency.on_time_rate}%</span>
-                      </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           )}
 
           {/* Compliance Tab */}
@@ -1213,7 +893,7 @@ const PatrolPage: React.FC = () => {
 
       {/* Checkpoint Modal */}
       {showCheckpointModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4">
             <h2 id={checkpointModalTitleId} className="text-xl font-bold text-white mb-4">
               {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
@@ -1247,7 +927,7 @@ const PatrolPage: React.FC = () => {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="input-dark min-h-[36px]"
+                  className="input-dark"
                   placeholder="e.g., Main Entrance"
                   required
                 />
@@ -1279,13 +959,13 @@ const PatrolPage: React.FC = () => {
                       scan_required_interval_minutes: e.target.value
                     }))
                   }
-                  className="input-dark min-h-[36px]"
+                  className="input-dark"
                   placeholder="e.g., 60"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Latitude:
@@ -1295,7 +975,7 @@ const PatrolPage: React.FC = () => {
                     step="any"
                     value={formData.latitude}
                     onChange={(e) => setFormData(prev => ({ ...prev, latitude: e.target.value }))}
-                    className="input-dark min-h-[36px]"
+                    className="input-dark"
                     placeholder="Optional"
                   />
                 </div>
@@ -1308,7 +988,7 @@ const PatrolPage: React.FC = () => {
                     step="any"
                     value={formData.longitude}
                     onChange={(e) => setFormData(prev => ({ ...prev, longitude: e.target.value }))}
-                    className="input-dark min-h-[36px]"
+                    className="input-dark"
                     placeholder="Optional"
                   />
                 </div>
@@ -1320,7 +1000,7 @@ const PatrolPage: React.FC = () => {
                   id="is_active"
                   checked={formData.is_active}
                   onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  className="w-4 h-4 bg-rmpg-700 border-rmpg-600"
+                  className="w-4 h-4 bg-gray-700 border-rmpg-600"
                 />
                 <label htmlFor="is_active" className="text-sm text-rmpg-200">
                   Active
@@ -1329,13 +1009,13 @@ const PatrolPage: React.FC = () => {
             </div>
 
             <div className="flex gap-3 mt-6">
-              <button type="button"
+              <button
                 onClick={() => setShowCheckpointModal(false)}
                 className="toolbar-btn flex-1 justify-center"
               >
                 Cancel
               </button>
-              <button type="button"
+              <button
                 onClick={handleSaveCheckpoint}
                 className="toolbar-btn toolbar-btn-primary flex-1 justify-center"
                 disabled={
@@ -1353,11 +1033,11 @@ const PatrolPage: React.FC = () => {
 
       {/* QR Code Modal */}
       {showQrModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" role="dialog" aria-modal="true" aria-labelledby={qrModalTitleId}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={qrModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-lg w-full mx-4">
             <div className="flex justify-between items-center mb-4">
               <h2 id={qrModalTitleId} className="text-xl font-bold text-white">QR Code</h2>
-              <button type="button"
+              <button
                 onClick={() => setShowQrModal(false)}
                 className="text-rmpg-300 hover:text-white"
               >
@@ -1375,7 +1055,7 @@ const PatrolPage: React.FC = () => {
               Officers should scan this QR code at the checkpoint location to log their patrol.
             </p>
 
-            <button type="button"
+            <button
               onClick={() => {
                 navigator.clipboard.writeText(selectedQrCode);
                 setCopied(true);

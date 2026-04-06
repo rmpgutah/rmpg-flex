@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Users, Shield, Clock, Phone, Mail, MapPin, Calendar, Award,
   UserPlus, UserMinus, Plus, Trash2, Radio, Briefcase, ArrowRight,
-  AlertTriangle, CheckCircle, FileText, RefreshCw,
+  AlertTriangle, CheckCircle, FileText, RefreshCw, ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetPersonnelData, FleetPersonnelNote, FleetAssignment, Unit } from '../../../types';
@@ -52,6 +53,7 @@ export default function FleetPersonnelTab({
   vehicleId, personnelData, assignments, loading,
   onAssign, onUnassign, onAddNote, onDeleteNote, onRefresh,
 }: Props) {
+  const navigate = useNavigate();
   const [units, setUnits] = useState<Unit[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState('');
   const [showAssignPanel, setShowAssignPanel] = useState(false);
@@ -164,6 +166,11 @@ export default function FleetPersonnelTab({
 
             {/* Actions */}
             <div className="flex items-center gap-1.5">
+              {officer?.id && (
+                <button className="toolbar-btn text-[9px] text-cyan-400 hover:text-cyan-300" onClick={() => navigate(`/personnel?officerId=${officer.id}`)} title="View full officer profile">
+                  <ExternalLink className="w-3 h-3" /> Profile
+                </button>
+              )}
               <button className="toolbar-btn text-[9px]" onClick={() => setShowAssignPanel(!showAssignPanel)}>
                 <UserPlus className="w-3 h-3" /> Reassign
               </button>

@@ -1,14 +1,6 @@
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    resolve(__dirname, 'index.html'),
-    resolve(__dirname, 'src/**/*.{js,ts,jsx,tsx}'),
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     borderRadius: {
       none: '0',
@@ -47,23 +39,22 @@ export default {
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Spillman Flex / Motorola Solutions blue theme
-        //   Primary blue (toolbar / accents):   #1a5a9e
-        //   Logo charcoal (body / base):        #303030
-        //   Logo gold (field labels / accents):  #d4a017
-        //   Logo light grey (text):              #d0d0d0
+        // Spillman Flex / Motorola Solutions CAD aesthetic
+        //   Brand blue (Motorola primary):      #1a5a9e
+        //   Steel-blue surfaces:                #141e2b / #1a2636
+        //   Gold accent:                        #d4a017
 
         brand: {
-          50:  '#f0f5fa',    // Lightest tint
-          100: '#d6e4f0',
-          200: '#a8c8e8',
-          300: '#6ba3d4',
-          400: '#3b8ad4',    // Lighter accent
+          50:  '#e8f0fa',    // Lightest tint
+          100: '#c4d9f0',
+          200: '#8db8e0',
+          300: '#5a94cc',
+          400: '#2570b5',    // Lighter accent
           500: '#1a5a9e',    // Primary — Motorola blue
-          600: '#164d87',    // Slightly deeper
-          700: '#124070',    // Deep blue
-          800: '#0e3359',    // Very deep
-          900: '#0a2642',    // Darkest blue
+          600: '#164d88',    // Slightly deeper
+          700: '#144a7e',    // Deep blue
+          800: '#0e3a6e',    // Very deep
+          900: '#0a2a52',    // Darkest navy
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -75,23 +66,23 @@ export default {
           700: '#936c0a',
         },
 
-        // Neutral steel-blue greys — Spillman Flex dark theme
+        // Steel-blue greys — Spillman Flex console tones
         rmpg: {
-          50:  '#e8edf2',    // Light background
-          100: '#d0d8e0',    // Light grey
-          200: '#b0bcc8',    // Medium light
-          300: '#8a9aaa',    // Medium grey
-          400: '#5a6e80',    // Grey
-          500: '#3a4e60',    // Mid-dark
-          600: '#2a3a4e',    // Dark steel-blue
-          700: '#1e3048',    // Deep steel-blue
-          800: '#162236',    // Deeper
-          900: '#0d1520',    // Near black
+          50:  '#d0d8e0',    // Light steel
+          100: '#b0bcc8',    // Light grey-blue
+          200: '#8a9ab0',    // Medium light
+          300: '#6a7e96',    // Medium steel-blue
+          400: '#4a6278',    // Grey-blue
+          500: '#3a5068',    // Mid-dark steel
+          600: '#2a3e58',    // Dark steel-blue
+          700: '#1e3048',    // Deep steel
+          800: '#162236',    // Deeper navy
+          900: '#0d1520',    // Near black-navy
           950: '#060c14',    // App background
         },
 
         dispatch: {
-          emergency: '#dc2626',    // Safety red (not brand)
+          emergency: '#dc2626',    // Red (emergencies only)
           urgent:    '#d4a017',    // Brand gold
           routine:   '#4a90c4',    // Muted steel blue
           scheduled: '#6b7280',
@@ -109,7 +100,7 @@ export default {
           dispatched: '#d4a017',   // Brand gold
           enroute:    '#4a90c4',   // Steel blue
           onscene:    '#a855f7',
-          busy:       '#dc2626',   // Safety red
+          busy:       '#ef4444',   // Red
           offduty:    '#6b7280',
         },
       },

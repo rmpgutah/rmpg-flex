@@ -16,8 +16,6 @@ import {
   PhoneCall,
   PhoneIncoming,
   VolumeX,
-  Play,
-  Square,
 } from 'lucide-react';
 import { useRadio } from '../hooks/useRadio';
 import { usePrivateCall } from '../hooks/usePrivateCall';
@@ -47,16 +45,6 @@ export default function RadioPage() {
     leaveChannel,
     startTransmit,
     stopTransmit,
-    sendPage,
-    emergencyOverride,
-    startScan,
-    stopScan,
-    scanActive,
-    scanChannels,
-    incomingPage,
-    setLinkedCall,
-    linkedCallId,
-    dismissPage,
     isConnected,
     radioChannels: RADIO_CHANNELS,
   } = useRadio();
@@ -84,9 +72,6 @@ export default function RadioPage() {
   // Track whether space is held down (prevent key-repeat)
   const spaceHeldRef = useRef(false);
 
-  // Mobile sidebar drawer toggle
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-
   // ─── Keyboard PTT (Space bar) ──────────────────────────────
   useEffect(() => {
     if (!currentChannel) return;
@@ -99,7 +84,7 @@ export default function RadioPage() {
       // Block PTT during private calls
       if (isInCall) return;
 
-      if ((e.code === 'Space' || e.key === 'F5' || e.keyCode === 279) && !spaceHeldRef.current) {
+      if (e.code === 'Space' && !spaceHeldRef.current) {
         e.preventDefault();
         spaceHeldRef.current = true;
         startTransmit();
@@ -107,7 +92,7 @@ export default function RadioPage() {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if ((e.code === 'Space' || e.key === 'F5' || e.keyCode === 279) && spaceHeldRef.current) {
+      if (e.code === 'Space' && spaceHeldRef.current) {
         e.preventDefault();
         spaceHeldRef.current = false;
         stopTransmit();
@@ -135,91 +120,6 @@ export default function RadioPage() {
   const [historyChannel, setHistoryChannel] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // ─── Audio Playback ───────────────────────────────────
-  const [playingId, setPlayingId] = useState<string | number | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const blobUrlRef = useRef<string | null>(null);
-
-  const togglePlayback = useCallback(async (entryId: string | number) => {
-    if (playingId === entryId) {
-      // Stop current playback
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
-      setPlayingId(null);
-      return;
-    }
-    // Stop any existing playback and clean up previous blob
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
-    }
-
-    try {
-      // Fetch audio with JWT auth header (new Audio(url) can't set headers)
-      const token = localStorage.getItem('rmpg_token');
-      console.log('[Radio Playback] Fetching audio for entry', entryId, '| token:', token ? 'present' : 'MISSING');
-      const res = await fetch(`/api/comms/radio/audio/${entryId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        console.error('[Radio Playback] HTTP error:', res.status, res.statusText);
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const blob = await res.blob();
-      console.log('[Radio Playback] Got blob:', blob.size, 'bytes, type:', blob.type);
-      const blobUrl = URL.createObjectURL(blob);
-      blobUrlRef.current = blobUrl;
-
-      const audio = new Audio(blobUrl);
-      audio.onended = () => {
-        setPlayingId(null);
-        if (blobUrlRef.current) {
-          URL.revokeObjectURL(blobUrlRef.current);
-          blobUrlRef.current = null;
-        }
-      };
-      audio.onerror = (e) => {
-        console.error('[Radio Playback] Audio element error:', e);
-        setPlayingId(null);
-        if (blobUrlRef.current) {
-          URL.revokeObjectURL(blobUrlRef.current);
-          blobUrlRef.current = null;
-        }
-      };
-      audioRef.current = audio;
-      await audio.play();
-      console.log('[Radio Playback] Playing audio for entry', entryId);
-      setPlayingId(entryId);
-    } catch (err) {
-      console.error('[Radio Playback] Failed:', err);
-      setPlayingId(null);
-    }
-  }, [playingId]);
-
-  // Cleanup audio + blob URLs on unmount
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
-    };
-  }, []);
-
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
@@ -241,9 +141,9 @@ export default function RadioPage() {
 
   const exportHistoryCsv = () => {
     if (historyEntries.length === 0) return;
-    const header = 'Timestamp,Channel,User,Duration(s),Transcript,Has Audio\n';
+    const header = 'Timestamp,Channel,User,Duration(s),Transcript\n';
     const rows = historyEntries.map(e =>
-      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""')}","${e.audio_file ? 'Yes' : 'No'}"`
+      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""')}"`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -278,237 +178,6 @@ export default function RadioPage() {
     return `${m}:${s}`;
   };
 
-  // ─── Shared sidebar content (users + log) ──────────────────
-  const renderSidebarContent = () => (
-    <>
-      {/* Channel Users */}
-      <div
-        className="px-3 py-2"
-        style={{
-          borderBottom: '1px solid #1e3048',
-          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-        }}
-      >
-        <div className="flex items-center gap-2 mb-2">
-          <Users style={{ width: 12, height: 12, color: '#5a6e80' }} />
-          <span className="text-[10px] font-mono font-bold tracking-wider text-rmpg-400">
-            ON CHANNEL ({channelUsers.length})
-          </span>
-        </div>
-        <div className="space-y-1 max-h-32 overflow-y-auto">
-          {channelUsers.length === 0 ? (
-            <div className="text-[10px] font-mono text-rmpg-600 italic">
-              No users on channel
-            </div>
-          ) : (
-            channelUsers.map((u) => {
-              const isMe = u.userId === Number(user?.id);
-              return (
-                <div
-                  key={u.userId}
-                  className="flex items-center gap-2 py-0.5 group"
-                >
-                  <span
-                    className="led-dot"
-                    style={{
-                      background: activeSpeaker?.userId === u.userId
-                        ? '#ef4444'
-                        : '#22c55e',
-                      boxShadow: activeSpeaker?.userId === u.userId
-                        ? '0 0 4px #ef4444'
-                        : '0 0 4px #22c55e',
-                    }}
-                  />
-                  <span className="text-[11px] font-mono text-rmpg-200 truncate flex-1">
-                    {u.fullName || u.username || 'Unknown'}
-                  </span>
-                  <span className="text-[9px] font-mono text-rmpg-600 uppercase flex-shrink-0">
-                    {u.role || ''}
-                  </span>
-                  {/* Call button — only show for other users, not ourselves */}
-                  {!isMe && !isInCall && (
-                    <button
-                      onClick={() => startCall(u.userId)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 text-blue-400 hover:text-blue-300"
-                      title={`Call ${u.fullName || u.username}`}
-                    >
-                      <Phone style={{ width: 11, height: 11 }} />
-                    </button>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Transmission Log / History */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        <div
-          className="px-3 py-2 flex items-center justify-between"
-          style={{
-            borderBottom: '1px solid #162236',
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-          }}
-        >
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowHistory(false)}
-              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
-              style={{
-                color: !showHistory ? '#fff' : '#5a6e80',
-                borderBottom: !showHistory ? '2px solid #1a5a9e' : '2px solid transparent',
-              }}
-            >
-              <Radio style={{ width: 10, height: 10 }} /> LIVE
-            </button>
-            <button
-              onClick={() => setShowHistory(true)}
-              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
-              style={{
-                color: showHistory ? '#fff' : '#5a6e80',
-                borderBottom: showHistory ? '2px solid #3b82f6' : '2px solid transparent',
-              }}
-            >
-              <History style={{ width: 10, height: 10 }} /> HISTORY
-            </button>
-          </div>
-          {showHistory && (
-            <button
-              onClick={exportHistoryCsv}
-              className="text-[8px] text-rmpg-500 hover:text-white flex items-center gap-0.5"
-              title="Export CSV"
-            >
-              <Download style={{ width: 8, height: 8 }} /> CSV
-            </button>
-          )}
-        </div>
-
-        {/* History filters */}
-        {showHistory && (
-          <div className="px-3 py-1.5 flex items-center gap-1" style={{ borderBottom: '1px solid #162236', background: '#0d1520' }}>
-            <Search style={{ width: 9, height: 9, color: '#5a6e80' }} />
-            <input
-              type="text"
-              value={historySearch}
-              onChange={(e) => setHistorySearch(e.target.value)}
-              placeholder="Search transcripts..."
-              className="flex-1 bg-transparent text-[9px] text-white font-mono focus:outline-none"
-            />
-            <select
-              value={historyChannel}
-              onChange={(e) => setHistoryChannel(e.target.value)}
-              className="bg-surface-base text-[8px] text-rmpg-300 border border-rmpg-700 px-1 py-0.5 font-mono"
-            >
-              <option value="">All Channels</option>
-              {RADIO_CHANNELS.map(ch => (
-                <option key={ch.id} value={ch.id}>{ch.label}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto px-3 py-1">
-          {!showHistory ? (
-            /* Live transmission log */
-            transmissionLog.length === 0 ? (
-              <div className="text-[10px] font-mono text-rmpg-600 italic py-2">
-                No transmissions yet
-              </div>
-            ) : (
-              transmissionLog.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex items-start gap-2 py-1.5 border-b border-rmpg-800/50"
-                >
-                  <span className="text-[9px] font-mono text-rmpg-600 flex-shrink-0 mt-px">
-                    {formatLogTime(entry.startedAt)}
-                  </span>
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-mono text-rmpg-300 truncate block">
-                      {displayName(entry)}
-                    </span>
-                    <span className="text-[9px] font-mono text-rmpg-600">
-                      {formatDuration(entry.duration)}
-                      {entry.duration > 0 ? ' on ' : ''}
-                      {(entry.channel || '').toUpperCase()}
-                    </span>
-                    {entry.transcript && (
-                      <div className="text-[10px] font-mono text-rmpg-400 mt-0.5 leading-snug italic">
-                        "{entry.transcript}"
-                      </div>
-                    )}
-                  </div>
-                  {entry.hasAudio && (
-                    <span className="flex-shrink-0 mt-px" title="Audio recorded">
-                      <Volume2 size={10} className="text-green-600" />
-                    </span>
-                  )}
-                </div>
-              ))
-            )
-          ) : (
-            /* Persistent transcript history */
-            historyLoading ? (
-              <div className="text-[10px] font-mono text-rmpg-600 italic py-2">Loading...</div>
-            ) : historyEntries.length === 0 ? (
-              <div className="text-[10px] font-mono text-rmpg-600 italic py-2">
-                No transcripts found
-              </div>
-            ) : (
-              historyEntries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex items-start gap-2 py-1.5 border-b border-rmpg-800/50"
-                >
-                  <span className="text-[9px] font-mono text-rmpg-600 flex-shrink-0 mt-px">
-                    {new Date(entry.transmitted_at).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-mono text-rmpg-300 truncate">
-                        {entry.full_name || entry.username || 'Unknown'}
-                      </span>
-                      <span
-                        className="text-[7px] font-black uppercase px-1 py-px"
-                        style={{ background: '#1a5a9e', color: '#fff' }}
-                      >
-                        {(entry.channel || '').toUpperCase()}
-                      </span>
-                    </div>
-                    {entry.duration_seconds > 0 && (
-                      <span className="text-[9px] font-mono text-rmpg-600">
-                        {formatDuration(entry.duration_seconds)}
-                      </span>
-                    )}
-                    {entry.transcript && (
-                      <div className="text-[10px] font-mono text-rmpg-400 mt-0.5 leading-snug italic">
-                        "{entry.transcript}"
-                      </div>
-                    )}
-                  </div>
-                  {entry.audio_file && (
-                    <button
-                      onClick={() => togglePlayback(entry.id)}
-                      className="flex-shrink-0 mt-px p-0.5 rounded hover:bg-rmpg-800 transition-colors"
-                      title={playingId === entry.id ? 'Stop playback' : 'Play recording'}
-                    >
-                      {playingId === entry.id ? (
-                        <Square size={12} className="text-red-400" />
-                      ) : (
-                        <Play size={12} className="text-green-400" />
-                      )}
-                    </button>
-                  )}
-                </div>
-              ))
-            )
-          )}
-        </div>
-      </div>
-    </>
-  );
-
   return (
     <div className="h-full flex flex-col" style={{ background: '#141e2b' }}>
 
@@ -517,8 +186,8 @@ export default function RadioPage() {
         <div
           className="flex items-center gap-3 px-4 py-3"
           style={{
-            background: 'rgba(220, 38, 38, 0.15)',
-            borderBottom: '1px solid #991b1b',
+            background: 'rgba(26, 90, 158, 0.15)',
+            borderBottom: '1px solid #0e3a6e',
           }}
         >
           <ShieldAlert style={{ width: 18, height: 18, color: '#ef4444', flexShrink: 0 }} />
@@ -562,38 +231,6 @@ export default function RadioPage() {
         </div>
       )}
 
-      {/* ─── Incoming Page Banner ──────────────────────────────── */}
-      {incomingPage && (
-        <div
-          className="flex items-center gap-3 px-4 py-2"
-          style={{
-            background: 'rgba(59, 130, 246, 0.15)',
-            borderBottom: '2px solid #3b82f6',
-            flexShrink: 0,
-          }}
-        >
-          <Radio style={{ width: 16, height: 16, color: '#60a5fa', flexShrink: 0 }} />
-          <div className="flex-1">
-            <div className="text-[10px] font-mono font-bold text-blue-300 tracking-wider">
-              PAGE FROM {incomingPage.from_full_name || incomingPage.from_username}
-              {incomingPage.from_call_sign ? ` (${incomingPage.from_call_sign})` : ''}
-            </div>
-            {incomingPage.message && (
-              <div className="text-[10px] font-mono text-blue-400/80 mt-0.5">
-                {incomingPage.message}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={dismissPage}
-            className="text-[9px] font-mono text-blue-400 hover:text-white px-2 py-0.5"
-            style={{ border: '1px solid #3b82f680' }}
-          >
-            DISMISS
-          </button>
-        </div>
-      )}
-
       {/* ─── Active Private Call Bar ────────────────────────── */}
       {(isInCall && activeCall) && (
         <div
@@ -619,8 +256,8 @@ export default function RadioPage() {
               onClick={toggleMute}
               className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold transition-colors"
               style={{
-                border: `1px solid ${callMuted ? '#ef4444' : '#2a3e58'}`,
-                color: callMuted ? '#ef4444' : '#8a9aaa',
+                border: `1px solid ${callMuted ? '#ef4444' : '#555'}`,
+                color: callMuted ? '#ef4444' : '#aaa',
                 background: callMuted ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
               }}
             >
@@ -745,7 +382,7 @@ export default function RadioPage() {
             </div>
 
             {/* Channel grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {RADIO_CHANNELS.map((ch) => (
                 <button
                   key={ch.id}
@@ -753,19 +390,19 @@ export default function RadioPage() {
                   disabled={!isConnected}
                   className="group flex flex-col items-center p-4 transition-all duration-150 border"
                   style={{
-                    background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
+                    background: 'linear-gradient(180deg, #182840 0%, #1a2636 100%)',
                     border: '1px solid #2a3e58',
                     opacity: isConnected ? 1 : 0.4,
                   }}
                   onMouseEnter={(e) => {
                     if (isConnected) {
                       e.currentTarget.style.borderColor = '#1a5a9e';
-                      e.currentTarget.style.background = 'linear-gradient(180deg, #1e3050 0%, #1a2840 100%)';
+                      e.currentTarget.style.background = 'linear-gradient(180deg, #2a2020 0%, #1e1a1a 100%)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = '#2a3e58';
-                    e.currentTarget.style.background = 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)';
+                    e.currentTarget.style.background = 'linear-gradient(180deg, #182840 0%, #1a2636 100%)';
                   }}
                 >
                   <span className="text-sm font-bold font-mono tracking-wider text-white">
@@ -789,7 +426,7 @@ export default function RadioPage() {
           <div
             className="flex items-center justify-between px-3 py-2"
             style={{
-              background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
+              background: 'linear-gradient(180deg, #182840 0%, #1a2636 100%)',
               borderBottom: '1px solid #1e3048',
               flexShrink: 0,
             }}
@@ -804,14 +441,13 @@ export default function RadioPage() {
                     onClick={() => {
                       if (!isActive) joinChannel(ch.id);
                     }}
-                    className={`flex items-center gap-1.5 ${isMobile ? 'px-3.5 py-1.5 text-[11px]' : 'px-2.5 py-1 text-[10px]'} font-mono font-bold tracking-wider whitespace-nowrap transition-all border`}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono font-bold tracking-wider whitespace-nowrap transition-all border"
                     style={{
                       background: isActive
                         ? 'rgba(26, 90, 158, 0.25)'
                         : 'transparent',
                       borderColor: isActive ? '#1a5a9e' : 'transparent',
-                      color: isActive ? '#fff' : '#5a6e80',
-                      minHeight: isMobile ? 36 : undefined,
+                      color: isActive ? '#fff' : '#707070',
                     }}
                   >
                     {isActive && <span className="led-dot led-green" />}
@@ -821,43 +457,21 @@ export default function RadioPage() {
               })}
             </div>
 
-            {/* Right — leave + scan buttons */}
-            <div className="flex items-center gap-1 ml-2">
-              <button
-                onClick={leaveChannel}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-rmpg-400 hover:text-red-400 transition-colors"
-                style={{ border: '1px solid #2a3e58' }}
-              >
-                LEAVE
-              </button>
-              {/* Scan toggle */}
-              <button
-                onClick={() => {
-                  if (scanActive) {
-                    stopScan();
-                  } else {
-                    // Scan all channels except current
-                    const others = RADIO_CHANNELS.filter(c => c.id !== currentChannel).map(c => c.id);
-                    startScan(others);
-                  }
-                }}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold transition-colors"
-                style={{
-                  border: `1px solid ${scanActive ? '#22c55e' : '#2a3e58'}`,
-                  color: scanActive ? '#22c55e' : '#5a6e80',
-                  background: scanActive ? 'rgba(34, 197, 94, 0.1)' : 'transparent',
-                }}
-              >
-                {scanActive ? 'SCAN ON' : 'SCAN'}
-              </button>
-            </div>
+            {/* Right — leave button */}
+            <button
+              onClick={leaveChannel}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-rmpg-400 hover:text-red-400 transition-colors ml-2"
+              style={{ border: '1px solid #2a3e58' }}
+            >
+              LEAVE
+            </button>
           </div>
 
           {/* ── Main Content ────────────────────────────────── */}
           <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} overflow-hidden`}>
 
             {/* ── Left Panel: Radio Display ─────────────────── */}
-            <div className={`flex flex-col items-center justify-center ${isMobile ? 'flex-1' : 'flex-[2]'} p-4`} style={{ position: isMobile ? 'relative' : undefined }}>
+            <div className={`flex flex-col items-center justify-center ${isMobile ? 'flex-1' : 'flex-[2]'} p-4`}>
 
               {/* Channel frequency display */}
               <div
@@ -939,22 +553,22 @@ export default function RadioPage() {
                 disabled={!isConnected || !micSupported || (channelBusy && !isTransmitting) || isInCall}
                 className="relative flex items-center justify-center select-none"
                 style={{
-                  width: isMobile ? 180 : 160,
-                  height: isMobile ? 180 : 160,
+                  width: isMobile ? 140 : 160,
+                  height: isMobile ? 140 : 160,
                   borderRadius: '50%',
                   background: isInCall
-                    ? 'radial-gradient(circle, #1e3048 0%, #141e2b 70%, #0d1520 100%)'
+                    ? 'radial-gradient(circle, #2a2a3a 0%, #1a1a2a 70%, #101018 100%)'
                     : !micSupported
-                      ? 'radial-gradient(circle, #2a3e58 0%, #1a2636 70%, #0d1520 100%)'
+                      ? 'radial-gradient(circle, #3a3a3a 0%, #1e3048 70%, #141e2b 100%)'
                       : isTransmitting
-                        ? 'radial-gradient(circle, #dc2626 0%, #991b1b 70%, #450a0a 100%)'
+                        ? 'radial-gradient(circle, #d93030 0%, #144a7e 70%, #4a0606 100%)'
                         : otherSpeaking
                           ? 'radial-gradient(circle, #b89030 0%, #6a5010 70%, #3a2a06 100%)'
                           : 'radial-gradient(circle, #2a4a2a 0%, #1a3a1a 70%, #0a2a0a 100%)',
                   border: isInCall
                     ? '4px solid #3b82f680'
                     : !micSupported
-                      ? '4px solid #2a3e58'
+                      ? '4px solid #4a4a4a'
                       : isTransmitting
                         ? '4px solid #ff4444'
                         : otherSpeaking
@@ -986,7 +600,7 @@ export default function RadioPage() {
                   {isInCall ? (
                     <PhoneCall style={{ width: 32, height: 32, color: '#60a5fa' }} />
                   ) : !micSupported ? (
-                    <MicOff style={{ width: 32, height: 32, color: '#5a6e80' }} />
+                    <MicOff style={{ width: 32, height: 32, color: '#707070' }} />
                   ) : isTransmitting ? (
                     <Mic style={{ width: 32, height: 32, color: '#fff' }} />
                   ) : otherSpeaking ? (
@@ -998,7 +612,7 @@ export default function RadioPage() {
                     className="text-[10px] font-mono font-bold tracking-wider mt-2"
                     style={{
                       color: isInCall ? '#60a5fa'
-                        : !micSupported ? '#5a6e80'
+                        : !micSupported ? '#707070'
                         : isTransmitting ? '#fff'
                         : otherSpeaking ? '#d4a030'
                         : '#66cc66',
@@ -1029,10 +643,22 @@ export default function RadioPage() {
                   </span>
                 ) : (
                   <span className="text-[10px] font-mono text-rmpg-500">
-                    {isMobile ? 'Hold PTT button or press hardware key' : 'Hold PTT or SPACE to talk'}
+                    {isMobile ? 'Hold PTT to talk' : 'Hold PTT or SPACE to talk'}
                   </span>
                 )}
               </div>
+
+              {/* Live transcript while transmitting */}
+              {isTransmitting && liveTranscript && (
+                <div className="mt-3 px-4 py-2 max-w-md rounded border border-rmpg-700 bg-rmpg-900/60">
+                  <div className="text-[9px] font-mono font-bold tracking-wider text-rmpg-500 mb-1 uppercase">
+                    Live Transcript
+                  </div>
+                  <div className="text-xs font-mono text-rmpg-200 leading-relaxed">
+                    {liveTranscript}
+                  </div>
+                </div>
+              )}
 
               {/* Error display */}
               {error && (
@@ -1041,52 +667,225 @@ export default function RadioPage() {
                   <span className="break-words">{error}</span>
                 </div>
               )}
-
-              {/* Floating sidebar toggle on mobile */}
-              {isMobile && currentChannel && (
-                <button
-                  onClick={() => setShowMobileSidebar(true)}
-                  className="absolute bottom-4 right-4 flex items-center gap-1 px-3 py-2 text-[10px] font-mono font-bold z-30"
-                  style={{
-                    background: 'rgba(26, 90, 158, 0.3)',
-                    border: '1px solid #1a5a9e',
-                    color: '#4a9ede',
-                  }}
-                >
-                  <Users style={{ width: 12, height: 12 }} />
-                  {channelUsers.length}
-                </button>
-              )}
             </div>
 
             {/* ── Right Sidebar: Users + Log ──────────────── */}
-            {isMobile ? (
-              showMobileSidebar ? (
+            <div
+              className={`flex flex-col ${isMobile ? '' : 'w-72'} border-l border-rmpg-700`}
+              style={{
+                background: '#161616',
+                flexShrink: 0,
+                maxHeight: isMobile ? '40vh' : undefined,
+              }}
+            >
+              {/* Channel Users */}
+              <div
+                className="px-3 py-2"
+                style={{
+                  borderBottom: '1px solid #1e3048',
+                  background: 'linear-gradient(180deg, #1a2636 0%, #181818 100%)',
+                }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Users style={{ width: 12, height: 12, color: '#707070' }} />
+                  <span className="text-[10px] font-mono font-bold tracking-wider text-rmpg-400">
+                    ON CHANNEL ({channelUsers.length})
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {channelUsers.length === 0 ? (
+                    <div className="text-[10px] font-mono text-rmpg-600 italic">
+                      No users on channel
+                    </div>
+                  ) : (
+                    channelUsers.map((u) => {
+                      const isMe = u.userId === Number(user?.id);
+                      return (
+                        <div
+                          key={u.userId}
+                          className="flex items-center gap-2 py-0.5 group"
+                        >
+                          <span
+                            className="led-dot"
+                            style={{
+                              background: activeSpeaker?.userId === u.userId
+                                ? '#ef4444'
+                                : '#22c55e',
+                              boxShadow: activeSpeaker?.userId === u.userId
+                                ? '0 0 4px #ef4444'
+                                : '0 0 4px #22c55e',
+                            }}
+                          />
+                          <span className="text-[11px] font-mono text-rmpg-200 truncate flex-1">
+                            {u.fullName || u.username || 'Unknown'}
+                          </span>
+                          <span className="text-[9px] font-mono text-rmpg-600 uppercase flex-shrink-0">
+                            {u.role || ''}
+                          </span>
+                          {/* Call button — only show for other users, not ourselves */}
+                          {!isMe && !isInCall && (
+                            <button
+                              onClick={() => startCall(u.userId)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 text-blue-400 hover:text-blue-300"
+                              title={`Call ${u.fullName || u.username}`}
+                            >
+                              <Phone style={{ width: 11, height: 11 }} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Transmission Log / History */}
+              <div className="flex-1 overflow-hidden flex flex-col">
                 <div
-                  className="absolute inset-0 z-40 flex flex-col"
-                  style={{ background: '#0d1520' }}
+                  className="px-3 py-2 flex items-center justify-between"
+                  style={{
+                    borderBottom: '1px solid #182840',
+                    background: 'linear-gradient(180deg, #1a2636 0%, #181818 100%)',
+                  }}
                 >
-                  <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid #1e3048' }}>
-                    <span className="text-[10px] font-mono font-bold text-rmpg-400 tracking-wider">CHANNEL INFO</span>
+                  <div className="flex items-center gap-1">
                     <button
-                      onClick={() => setShowMobileSidebar(false)}
-                      className="text-[10px] font-mono text-rmpg-400 hover:text-white px-2 py-1"
-                      style={{ border: '1px solid #2a3e58' }}
+                      onClick={() => setShowHistory(false)}
+                      className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
+                      style={{
+                        color: !showHistory ? '#fff' : '#555',
+                        borderBottom: !showHistory ? '2px solid #1a5a9e' : '2px solid transparent',
+                      }}
                     >
-                      CLOSE
+                      <Radio style={{ width: 10, height: 10 }} /> LIVE
+                    </button>
+                    <button
+                      onClick={() => setShowHistory(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
+                      style={{
+                        color: showHistory ? '#fff' : '#555',
+                        borderBottom: showHistory ? '2px solid #3b82f6' : '2px solid transparent',
+                      }}
+                    >
+                      <History style={{ width: 10, height: 10 }} /> HISTORY
                     </button>
                   </div>
-                  {renderSidebarContent()}
+                  {showHistory && (
+                    <button
+                      onClick={exportHistoryCsv}
+                      className="text-[8px] text-rmpg-500 hover:text-white flex items-center gap-0.5"
+                      title="Export CSV"
+                    >
+                      <Download style={{ width: 8, height: 8 }} /> CSV
+                    </button>
+                  )}
                 </div>
-              ) : null
-            ) : (
-              <div
-                className="flex flex-col w-72 border-l border-rmpg-700"
-                style={{ background: '#0d1520', flexShrink: 0 }}
-              >
-                {renderSidebarContent()}
+
+                {/* History filters */}
+                {showHistory && (
+                  <div className="px-3 py-1.5 flex items-center gap-1" style={{ borderBottom: '1px solid #222', background: '#151515' }}>
+                    <Search style={{ width: 9, height: 9, color: '#555' }} />
+                    <input
+                      type="text"
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      placeholder="Search transcripts..."
+                      className="flex-1 bg-transparent text-[9px] text-white font-mono focus:outline-none"
+                    />
+                    <select
+                      value={historyChannel}
+                      onChange={(e) => setHistoryChannel(e.target.value)}
+                      className="bg-surface-base text-[8px] text-rmpg-300 border border-rmpg-700 px-1 py-0.5 font-mono"
+                    >
+                      <option value="">All Channels</option>
+                      {RADIO_CHANNELS.map(ch => (
+                        <option key={ch.id} value={ch.id}>{ch.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto px-3 py-1">
+                  {!showHistory ? (
+                    /* Live transmission log */
+                    transmissionLog.length === 0 ? (
+                      <div className="text-[10px] font-mono text-rmpg-600 italic py-2">
+                        No transmissions yet
+                      </div>
+                    ) : (
+                      transmissionLog.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="flex items-start gap-2 py-1.5 border-b border-rmpg-800/50"
+                        >
+                          <span className="text-[9px] font-mono text-rmpg-600 flex-shrink-0 mt-px">
+                            {formatLogTime(entry.startedAt)}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-mono text-rmpg-300 truncate block">
+                              {displayName(entry)}
+                            </span>
+                            <span className="text-[9px] font-mono text-rmpg-600">
+                              {formatDuration(entry.duration)}
+                              {entry.duration > 0 ? ' on ' : ''}
+                              {(entry.channel || '').toUpperCase()}
+                            </span>
+                            {entry.transcript && (
+                              <div className="text-[10px] font-mono text-rmpg-400 mt-0.5 leading-snug italic">
+                                "{entry.transcript}"
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )
+                  ) : (
+                    /* Persistent transcript history */
+                    historyLoading ? (
+                      <div className="text-[10px] font-mono text-rmpg-600 italic py-2">Loading...</div>
+                    ) : historyEntries.length === 0 ? (
+                      <div className="text-[10px] font-mono text-rmpg-600 italic py-2">
+                        No transcripts found
+                      </div>
+                    ) : (
+                      historyEntries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="flex items-start gap-2 py-1.5 border-b border-rmpg-800/50"
+                        >
+                          <span className="text-[9px] font-mono text-rmpg-600 flex-shrink-0 mt-px">
+                            {new Date(entry.transmitted_at).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] font-mono text-rmpg-300 truncate">
+                                {entry.full_name || entry.username || 'Unknown'}
+                              </span>
+                              <span
+                                className="text-[7px] font-black uppercase px-1 py-px"
+                                style={{ background: '#1a5a9e', color: '#fff' }}
+                              >
+                                {(entry.channel || '').toUpperCase()}
+                              </span>
+                            </div>
+                            {entry.duration_seconds > 0 && (
+                              <span className="text-[9px] font-mono text-rmpg-600">
+                                {formatDuration(entry.duration_seconds)}
+                              </span>
+                            )}
+                            {entry.transcript && (
+                              <div className="text-[10px] font-mono text-rmpg-400 mt-0.5 leading-snug italic">
+                                "{entry.transcript}"
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}

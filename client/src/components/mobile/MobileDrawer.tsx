@@ -147,8 +147,8 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-// Paths blocked for client_viewer role
-const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
+// Paths blocked for contract_manager role
+const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar',
@@ -243,15 +243,15 @@ export default function MobileDrawer({
       <div
         ref={drawerRef}
         className="absolute top-0 left-0 bottom-0 mobile-drawer open"
-        style={{ width: 'min(85vw, 320px)', paddingTop: 'env(safe-area-inset-top)' }}
+        style={{ width: 'min(85vw, 320px)' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Blue accent */}
+        {/* Crimson accent */}
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: 'linear-gradient(90deg, #1a5a9e, #0e3359)' }}
+          style={{ background: 'linear-gradient(90deg, #1a5a9e, #0e3a6e)' }}
         />
 
         {/* ── User Header ── */}
@@ -268,15 +268,15 @@ export default function MobileDrawer({
               src={user.profile_image}
               alt={user.first_name}
               className="w-11 h-11 object-cover flex-shrink-0"
-              style={{ border: '2px solid #3a5070' }}
+              style={{ border: '2px solid #484848' }}
             />
           ) : (
             <div
               className="w-11 h-11 flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                background: 'linear-gradient(135deg, #144a7e, #1a5a9e)',
                 color: '#fff',
-                border: '2px solid #3b8ad4',
+                border: '2px solid #d93030',
               }}
             >
               {initials}
@@ -303,8 +303,7 @@ export default function MobileDrawer({
           {/* Close button */}
           <button
             onClick={onClose}
-            aria-label="Close menu"
-            className="flex items-center justify-center w-11 h-11 text-rmpg-400"
+            className="flex items-center justify-center w-8 h-8 text-rmpg-400"
           >
             <X style={{ width: 18, height: 18 }} />
           </button>
@@ -313,10 +312,10 @@ export default function MobileDrawer({
         {/* ── Navigation Groups ── */}
         <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100vh - 200px)' }}>
           {NAV_GROUPS.map((group) => {
-            const isClientViewer = user?.role === 'client_viewer';
+            const isContractMgr = user?.role === 'contract_manager';
             const visibleItems = group.items.filter((item) => {
               if (item.adminOnly && !isAdmin) return false;
-              if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+              if (isContractMgr && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
               return true;
             });
             if (visibleItems.length === 0) return null;
@@ -326,7 +325,7 @@ export default function MobileDrawer({
                 {/* Group label */}
                 <div
                   className="px-4 py-2 text-[9px] font-bold uppercase tracking-[0.12em] font-mono"
-                  style={{ color: '#5a6e80' }}
+                  style={{ color: '#585858' }}
                 >
                   {group.label}
                 </div>
@@ -349,7 +348,7 @@ export default function MobileDrawer({
                         background: isActive
                           ? 'rgba(26, 90, 158, 0.15)'
                           : 'transparent',
-                        color: isActive ? '#fff' : '#b0bcc8',
+                        color: isActive ? '#fff' : '#c8c8c8',
                         borderLeft: isActive
                           ? '3px solid #1a5a9e'
                           : '3px solid transparent',
@@ -442,9 +441,9 @@ export default function MobileDrawer({
             }}
             className="w-full flex items-center justify-center gap-2 py-3 transition-colors"
             style={{
-              background: 'rgba(220, 38, 38, 0.1)',
-              border: '1px solid rgba(220, 38, 38, 0.3)',
-              color: '#ef4444',
+              background: 'rgba(26, 90, 158, 0.1)',
+              border: '1px solid rgba(26, 90, 158, 0.3)',
+              color: '#d93030',
             }}
           >
             <LogOut style={{ width: 16, height: 16 }} />

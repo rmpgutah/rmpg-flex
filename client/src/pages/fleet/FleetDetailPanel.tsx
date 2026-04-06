@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
-  Archive, RotateCcw, Trash2, Printer, ChevronDown, Camera, MapPin,
+  Archive, RotateCcw, Trash2, Printer, ChevronDown, MapPin, ExternalLink, Map,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -14,12 +15,11 @@ import FleetInspectionsTab from './tabs/FleetInspectionsTab';
 import FleetAssignmentsTab from './tabs/FleetAssignmentsTab';
 import FleetPersonnelTab from './tabs/FleetPersonnelTab';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
-import FleetDashCamTab from './tabs/FleetDashCamTab';
-import FleetGpsTab from './tabs/FleetGpsTab';
+import FleetGpsHistoryTab from './tabs/FleetGpsHistoryTab';
 import { formatMilitary } from './utils/fleetFormatters';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'dashcam' | 'gps';
+export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'gps_history';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -54,8 +54,7 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { key: 'dashcam', label: 'Dash Cam', icon: Camera },
-  { key: 'gps', label: 'GPS', icon: MapPin },
+  { key: 'gps_history', label: 'GPS History', icon: MapPin },
 ];
 
 interface Props {
@@ -179,6 +178,7 @@ export default function FleetDetailPanel({
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
   onClose,
 }: Props) {
+  const navigate = useNavigate();
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Detail header */}
@@ -214,9 +214,14 @@ export default function FleetDetailPanel({
               {STATUS_LABEL[detail.status]}
             </span>
             {detail.assigned_unit_call_sign && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-amber-900/30 text-amber-400 border border-amber-700/40">
+              <button
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-amber-900/30 text-amber-400 border border-amber-700/40 hover:bg-amber-900/50 hover:border-amber-600 transition-colors cursor-pointer"
+                onClick={() => navigate(`/dispatch?unitId=${detail.assigned_unit_id}`)}
+                title="View unit in Dispatch"
+              >
                 <Radio className="w-3 h-3" /> {detail.assigned_unit_call_sign}
-              </span>
+                <ExternalLink className="w-2 h-2 opacity-60" />
+              </button>
             )}
             {getExpiryStatus(detail.registration_expiry) === 'expired' && (
               <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">REG EXPIRED</span>
@@ -241,6 +246,11 @@ export default function FleetDetailPanel({
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5">
+          {detail.assigned_unit_id && (
+            <button className="toolbar-btn text-cyan-400 hover:text-cyan-300" onClick={() => navigate(`/map?unitId=${detail.assigned_unit_id}`)} title="View vehicle on map">
+              <Map className="w-3 h-3" /> Map
+            </button>
+          )}
           <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} />
           {!isArchived && (
             <>
@@ -317,8 +327,7 @@ export default function FleetDetailPanel({
           />
         )}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
-        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
-        {activeTab === 'gps' && <FleetGpsTab vehicleId={detail.id} />}
+        {activeTab === 'gps_history' && <FleetGpsHistoryTab vehicleId={String(detail.id)} />}
       </div>
     </div>
   );

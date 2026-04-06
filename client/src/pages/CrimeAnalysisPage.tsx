@@ -6,7 +6,7 @@
 // metrics — all driven by existing calls/incidents data.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, BarChart3, Clock, MapPin, Users, AlertTriangle,
   RefreshCw, Loader2, Calendar, Filter,
@@ -21,26 +21,15 @@ export default function CrimeAnalysisPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState('90');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      let url = '/reports/crime-analysis';
-      if (dateRange === 'custom' && startDate && endDate) {
-        url += `?start_date=${startDate}&end_date=${endDate}`;
-      } else if (dateRange !== 'custom') {
-        url += `?days=${dateRange}`;
-      }
-      const res = await apiFetch<{ data: any }>(url);
-      if (mountedRef.current) setData(res.data);
+      const res = await apiFetch<{ data: any }>(`/reports/crime-analysis?days=${dateRange}`);
+      setData(res.data);
     } catch { /* silent */ }
-    finally { if (mountedRef.current) setLoading(false); }
-  }, [dateRange, startDate, endDate]);
+    finally { setLoading(false); }
+  }, [dateRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -80,35 +69,7 @@ export default function CrimeAnalysisPage() {
             <option value="90">Last 90 Days</option>
             <option value="180">Last 6 Months</option>
             <option value="365">Last Year</option>
-            <option value="custom">Custom Range</option>
           </select>
-          {dateRange === 'custom' && (
-            <>
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none"
-                title="Start date"
-              />
-              <span className="text-[10px] text-rmpg-500">to</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none"
-                title="End date"
-              />
-            </>
-          )}
-          <ExportButton
-            exportUrl={
-              dateRange === 'custom' && startDate && endDate
-                ? `/reports/crime-analysis/export?format=csv&start_date=${startDate}&end_date=${endDate}`
-                : `/reports/crime-analysis/export?format=csv&days=${dateRange}`
-            }
-            exportFilename="crime_analysis.csv"
-          />
           <button onClick={fetchData} className="toolbar-btn">
             <RefreshCw style={{ width: 11, height: 11 }} />
           </button>
@@ -146,7 +107,7 @@ export default function CrimeAnalysisPage() {
                       className="h-full"
                       style={{
                         width: `${(offense.count / maxOffenseCount) * 100}%`,
-                        background: 'linear-gradient(90deg, #124070, #1a5a9e)',
+                        background: 'linear-gradient(90deg, #144a7e, #1a5a9e)',
                       }}
                     />
                   </div>
@@ -317,7 +278,7 @@ export default function CrimeAnalysisPage() {
                             className="w-full"
                             style={{
                               height: `${Math.max((month.count / maxTrend) * 100, 2)}%`,
-                              background: 'linear-gradient(180deg, #1a5a9e, #124070)',
+                              background: 'linear-gradient(180deg, #1a5a9e, #144a7e)',
                             }}
                             title={`${month.month}: ${month.count} incidents`}
                           />

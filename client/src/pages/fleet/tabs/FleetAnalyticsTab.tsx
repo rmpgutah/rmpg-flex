@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell,
+  LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import {
   BarChart3, Car, Fuel, Wrench, DollarSign, AlertTriangle, XCircle, Gauge,
@@ -47,35 +47,35 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Fleet Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+      <div className="grid grid-cols-6 gap-2">
+        <div className="panel-beveled p-2 text-center" style={{ background: '#161616' }}>
           <Car className="w-3 h-3 mx-auto text-cyan-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-cyan-400">{fleet_summary.total_vehicles}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Vehicles</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center" style={{ background: '#161616' }}>
           <Gauge className="w-3 h-3 mx-auto text-brand-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-brand-400">{fleet_summary.avg_mileage.toLocaleString()}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Avg Mi</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center" style={{ background: '#161616' }}>
           <Wrench className="w-3 h-3 mx-auto text-amber-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-amber-400">${(fleet_summary.total_maintenance_cost / 1000).toFixed(1)}k</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Maint Cost</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center" style={{ background: '#161616' }}>
           <Fuel className="w-3 h-3 mx-auto text-green-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-green-400">${(fleet_summary.total_fuel_cost / 1000).toFixed(1)}k</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Fuel Cost</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: fleet_summary.vehicles_needing_service > 0 ? '#1a1400' : '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center" style={{ background: fleet_summary.vehicles_needing_service > 0 ? '#1a1400' : '#161616' }}>
           <AlertTriangle className="w-3 h-3 mx-auto mb-0.5" style={{ color: fleet_summary.vehicles_needing_service > 0 ? '#f59e0b' : '#22c55e' }} />
           <div className="text-sm font-bold font-mono" style={{ color: fleet_summary.vehicles_needing_service > 0 ? '#f59e0b' : '#22c55e' }}>
             {fleet_summary.vehicles_needing_service}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Need Svc</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: fleet_summary.inspections_failing > 0 ? '#1a0a0a' : '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center" style={{ background: fleet_summary.inspections_failing > 0 ? '#1a0a0a' : '#161616' }}>
           <XCircle className="w-3 h-3 mx-auto mb-0.5" style={{ color: fleet_summary.inspections_failing > 0 ? '#ef4444' : '#22c55e' }} />
           <div className="text-sm font-bold font-mono" style={{ color: fleet_summary.inspections_failing > 0 ? '#ef4444' : '#22c55e' }}>
             {fleet_summary.inspections_failing}
@@ -85,7 +85,7 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {/* Maintenance Cost Trend */}
         <div className="panel-beveled p-3 bg-surface-base">
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
@@ -95,8 +95,8 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={maintenance_cost_trend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
-                <XAxis dataKey="month" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
-                <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }}
+                <XAxis dataKey="month" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
+                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }}
                   tickFormatter={(v) => `$${v}`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [`$${Number(value).toFixed(0)}`, 'Cost']} />
                 <Line type="monotone" dataKey="total_cost" stroke="#1a5a9e" strokeWidth={2} dot={{ r: 3, fill: '#1a5a9e' }} />
@@ -116,8 +116,8 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={mileage_distribution}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
-                <XAxis dataKey="range" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
-                <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
+                <XAxis dataKey="range" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
+                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} />
                 <Bar dataKey="count" fill="#4a90c4" radius={[2, 2, 0, 0]} />
               </BarChart>
@@ -168,8 +168,8 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
-                <XAxis dataKey="month" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
-                <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }}
+                <XAxis dataKey="month" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
+                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }}
                   tickFormatter={(v) => `${v} mpg`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [value != null ? `${value} mpg` : 'N/A', 'Avg MPG']} />
                 <Line type="monotone" dataKey="avg_mpg" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} connectNulls />

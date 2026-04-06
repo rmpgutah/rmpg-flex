@@ -1,11 +1,11 @@
 // ============================================================
 // RMPG Flex — Mobile Header Bar
 // Compact 48px header: Hamburger | Logo | Title | PANIC | Avatar
-// Spillman Flex blue theme
+// Retro CAD aesthetic with crimson accent
 // ============================================================
 
 import React from 'react';
-import { Menu, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Menu, ChevronDown } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import PanicButton from '../PanicButton';
 
@@ -22,10 +22,6 @@ interface MobileHeaderProps {
   onProfileTap: () => void;
   gpsLatitude?: number | null;
   gpsLongitude?: number | null;
-  canGoBack?: boolean;
-  canGoForward?: boolean;
-  onNavBack?: () => void;
-  onNavForward?: () => void;
 }
 
 export default function MobileHeader({
@@ -35,10 +31,6 @@ export default function MobileHeader({
   onProfileTap,
   gpsLatitude,
   gpsLongitude,
-  canGoBack,
-  canGoForward,
-  onNavBack,
-  onNavForward,
 }: MobileHeaderProps) {
   const initials = user
     ? `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}`.toUpperCase()
@@ -48,20 +40,19 @@ export default function MobileHeader({
     <div
       className="flex items-center justify-between relative"
       style={{
-        minHeight: 48,
-        paddingTop: 'env(safe-area-inset-top)',
+        height: 48,
         paddingLeft: 8,
         paddingRight: 8,
-        background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+        background: 'linear-gradient(180deg, #182840 0%, #141e2b 100%)',
         borderBottom: '1px solid #1e3048',
         flexShrink: 0,
       }}
     >
-      {/* Blue accent at very top */}
+      {/* Crimson accent at very top */}
       <div
         className="absolute top-0 left-0 right-0 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)',
+          background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e, #0e3a6e)',
           zIndex: 1,
         }}
       />
@@ -72,30 +63,10 @@ export default function MobileHeader({
         <button
           onClick={onMenuOpen}
           className="flex items-center justify-center w-10 h-10"
-          style={{ color: '#b0bcc8' }}
+          style={{ color: '#c8c8c8' }}
           aria-label="Open navigation"
         >
           <Menu style={{ width: 22, height: 22 }} />
-        </button>
-
-        {/* Back / Forward */}
-        <button
-          onClick={onNavBack}
-          disabled={!canGoBack}
-          className="flex items-center justify-center w-8 h-8"
-          style={{ color: canGoBack ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
-          aria-label="Go back"
-        >
-          <ChevronLeft style={{ width: 18, height: 18 }} />
-        </button>
-        <button
-          onClick={onNavForward}
-          disabled={!canGoForward}
-          className="flex items-center justify-center w-8 h-8"
-          style={{ color: canGoForward ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
-          aria-label="Go forward"
-        >
-          <ChevronRight style={{ width: 18, height: 18 }} />
         </button>
 
         {/* Logo */}
@@ -125,15 +96,15 @@ export default function MobileHeader({
               src={user.profile_image}
               alt={user.first_name}
               className="w-8 h-8 object-cover"
-              style={{ border: '2px solid #3a5070' }}
+              style={{ border: '2px solid #484848' }}
             />
           ) : (
             <div
               className="w-8 h-8 flex items-center justify-center text-[10px] font-bold"
               style={{
-                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                background: 'linear-gradient(135deg, #144a7e, #1a5a9e)',
                 color: '#fff',
-                border: '2px solid #3b8ad4',
+                border: '2px solid #d93030',
               }}
             >
               {initials}

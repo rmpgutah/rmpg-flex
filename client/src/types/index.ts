@@ -270,6 +270,7 @@ export interface CallForService {
   closed_at?: string;
   archived_at?: string;
   previous_status?: CallStatus;
+  risk_score?: number | null;
   created_by: string;
   updated_at: string;
 }
@@ -401,8 +402,6 @@ export interface Person {
   known_associates?: string;
   emergency_contact_relationship?: string;
   caution_flags?: string;
-  watchlist_match?: string | null;
-  watchlist_checked_at?: string | null;
   flags: string[];
   notes?: string;
   incident_ids: string[];
@@ -590,25 +589,8 @@ export interface TimeEntry {
   total_hours?: number;
   status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   notes?: string;
-  edit_reason?: string;
-  edited_by?: number;
-  edited_by_name?: string;
-  edited_at?: string;
-  edit_count?: number;
   created_at: string;
   updated_at: string;
-}
-
-export interface TimeEntryEdit {
-  id: number;
-  time_entry_id: number;
-  edited_by: number;
-  edited_by_name: string;
-  edit_type: 'clock_in_changed' | 'clock_out_changed' | 'deleted' | 'notes_changed' | 'break_adjusted';
-  old_value: string | null;
-  new_value: string | null;
-  reason: string | null;
-  created_at: string;
 }
 
 export interface Credential {
@@ -686,6 +668,12 @@ export interface BodyCamera {
   officer_name?: string;
 }
 
+export type BwcInteractionType =
+  | 'traffic_stop' | 'arrest' | 'use_of_force' | 'search_warrant'
+  | 'domestic_violence' | 'welfare_check' | 'community_contact'
+  | 'foot_pursuit' | 'vehicle_pursuit' | 'interview'
+  | 'evidence_collection' | 'field_training' | 'other';
+
 export interface BodyCamVideo {
   id: number;
   camera_id: number;
@@ -697,6 +685,7 @@ export interface BodyCamVideo {
   mime_type: string;
   recorded_at: string;
   case_number: string;
+  interaction_type: BwcInteractionType | null;
   classification: VideoClassification;
   retention_status: VideoRetention;
   notes: string;
@@ -707,143 +696,79 @@ export interface BodyCamVideo {
   camera_serial?: string;
 }
 
-// --- Dash Camera ---
+// --- Dash Camera / GPS Telemetry (Traccar) ---
 
-export type DashCameraStatus = 'available' | 'installed' | 'maintenance' | 'damaged' | 'lost';
-
-export interface DashCamera {
+export interface DashcamEvent {
   id: number;
-  vehicle_id: number;
-  camera_id: string;
-  make: string;
-  model: string;
-  firmware_version: string;
-  storage_capacity_gb: number;
-  channel_count: number;
-  status: DashCameraStatus;
-  condition: string;
-  installed_at: string;
-  removed_at: string;
-  notes: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  vehicle_number?: string;
-  vehicle_make?: string;
-  vehicle_model?: string;
-  vehicle_year?: number;
-}
-
-export interface DashCamVideo {
-  id: number;
-  camera_id: number;
-  vehicle_id: number;
-  title: string;
-  file_path: string;
-  file_size: number;
-  duration_seconds: number;
-  mime_type: string;
-  recorded_at: string;
-  case_number: string;
-  classification: VideoClassification;
-  retention_status: string;
-  gps_lat: number | null;
-  gps_lon: number | null;
-  notes: string;
-  uploaded_by: string;
-  created_at: string;
-  updated_at: string;
-  camera_serial?: string;
-  vehicle_number?: string;
-}
-
-// --- ClearPathGPS ---
-
-export interface CpgpsVehicle {
-  id: number;
-  cpgps_id: string;
-  vehicle_id: number | null;
-  name: string;
-  vin: string;
-  make: string;
-  model: string;
-  year: number;
-  license_plate: string;
-  device_serial: string;
-  last_lat: number | null;
-  last_lon: number | null;
-  last_speed: number | null;
-  last_heading: number | null;
-  last_reported_at: string;
-  odometer: number | null;
-  engine_hours: number | null;
-  synced_at: string;
-  created_at: string;
-  fleet_vehicle_number?: string;
-  fleet_make?: string;
-  fleet_model?: string;
-  fleet_year?: number;
-}
-
-export interface CpgpsTrip {
-  id: number;
-  cpgps_vehicle_id: string;
-  vehicle_id: number | null;
-  trip_start: string;
-  trip_end: string;
-  start_lat: number | null;
-  start_lon: number | null;
-  end_lat: number | null;
-  end_lon: number | null;
-  start_address: string;
-  end_address: string;
-  distance_miles: number | null;
-  max_speed: number | null;
-  avg_speed: number | null;
-  idle_duration_seconds: number | null;
-  drive_duration_seconds: number | null;
-  synced_at: string;
-  created_at: string;
-}
-
-export interface CpgpsLocation {
-  id: number;
-  cpgps_vehicle_id: string;
-  vehicle_id: number | null;
-  lat: number | null;
-  lon: number | null;
-  speed: number | null;
+  cpg_device_id: string;
+  unit_id: number;
+  dashcam_id: string | null;
+  event_type: string;
+  event_timestamp: string;
+  latitude: number | null;
+  longitude: number | null;
   heading: number | null;
-  reported_at: string;
-  address: string;
-  ignition_on: number | null;
-}
-
-export interface CpgpsAlert {
-  id: number;
-  cpgps_vehicle_id: string;
-  vehicle_id: number | null;
-  alert_type: string;
-  severity: string;
-  message: string;
-  triggered_at: string;
-  lat: number | null;
-  lon: number | null;
-  synced_at: string;
+  speed_mph: number | null;
+  address: string | null;
+  status_code: string | null;
+  status_code_text: string | null;
+  video_available: boolean;
+  notes: string | null;
   created_at: string;
+  call_sign?: string;
+  officer_name?: string;
+  device_name?: string;
 }
 
-export interface CpgpsSyncLog {
+export interface CpgDeviceMapping {
   id: number;
-  sync_type: string;
-  status: string;
-  records_fetched: number;
-  records_stored: number;
-  oldest_record: string;
-  newest_record: string;
-  error_message: string;
-  started_at: string;
-  completed_at: string;
+  cpg_device_id: string;
+  cpg_display_name: string;
+  cpg_serial_number: string | null;
+  traccar_device_id?: number;
+  unit_id: number;
+  is_active: boolean;
+  last_synced_at: string | null;
+  call_sign?: string;
+  unit_status?: string;
+  officer_name?: string;
+  officer_id?: number;
+}
+
+// --- Dash Camera Videos ---
+
+export type DashcamVideoSource = 'manual' | 'cpg_sync' | 'cpg_proxy';
+
+export interface DashcamVideo {
+  id: number;
+  source: DashcamVideoSource;
+  cpg_event_id: number | null;
+  cpg_video_url: string | null;
+  officer_id: number | null;
+  unit_id: number | null;
+  cpg_device_id: string | null;
+  title: string;
+  file_path: string | null;
+  file_size: number;
+  duration_seconds: number | null;
+  mime_type: string;
+  recorded_at: string | null;
+  event_type: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  heading: number | null;
+  speed_mph: number | null;
+  address: string | null;
+  case_number: string | null;
+  classification: VideoClassification;
+  retention_status: VideoRetention;
+  notes: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+  updated_at: string;
+  officer_name?: string;
+  call_sign?: string;
+  device_name?: string;
 }
 
 // --- Equipment ---
@@ -1814,219 +1739,6 @@ export interface CaseNote {
   created_at: string;
 }
 
-// --- Forensics Lab ---
-
-export type ForensicCaseStatus = 'received' | 'in_progress' | 'analysis_complete' | 'report_drafted' | 'reviewed' | 'released' | 'cancelled';
-export type ForensicCaseType = 'general' | 'homicide' | 'sexual_assault' | 'narcotics' | 'arson' | 'fraud' | 'burglary' | 'robbery' | 'digital' | 'traffic' | 'cold_case' | 'other';
-export type ForensicPriority = 'routine' | 'normal' | 'rush' | 'urgent';
-export type ExhibitType = 'biological' | 'chemical' | 'digital' | 'document' | 'drug' | 'explosive' | 'fingerprint' | 'firearm' | 'trace' | 'clothing' | 'dna_sample' | 'tool_mark' | 'glass' | 'paint' | 'fiber' | 'soil' | 'impression' | 'other';
-export type ExhibitDisposition = 'in_lab' | 'returned' | 'destroyed' | 'transferred' | 'in_storage';
-export type AnalysisType = 'dna' | 'fingerprint' | 'drug_analysis' | 'toxicology' | 'ballistics' | 'digital_forensics' | 'document_exam' | 'trace_evidence' | 'serology' | 'arson_analysis' | 'tool_mark' | 'glass_analysis' | 'paint_analysis' | 'fiber_analysis' | 'blood_spatter' | 'gunshot_residue' | 'other';
-export type AnalysisStatus = 'pending' | 'in_progress' | 'completed' | 'inconclusive' | 'cancelled';
-
-export interface ForensicCase {
-  id: number;
-  lab_number: string;
-  case_type: ForensicCaseType;
-  status: ForensicCaseStatus;
-  priority: ForensicPriority;
-  title: string;
-  description?: string;
-  requesting_agency: string;
-  requesting_officer?: string;
-  lead_examiner_id?: number;
-  lead_examiner_name?: string;
-  linked_incident_id?: number;
-  linked_case_id?: number;
-  linked_incident_number?: string;
-  linked_case_number?: string;
-  received_date: string;
-  due_date?: string;
-  completed_date?: string;
-  released_date?: string;
-  notes?: string;
-  created_by?: number;
-  created_by_name?: string;
-  exhibit_count?: number;
-  analysis_count?: number;
-  completed_analysis_count?: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ForensicExhibit {
-  id: number;
-  forensic_case_id: number;
-  exhibit_number: string;
-  exhibit_type: ExhibitType;
-  description: string;
-  quantity: number;
-  condition_received?: string;
-  storage_location?: string;
-  storage_temp?: string;
-  collected_by?: string;
-  collected_date?: string;
-  collection_method?: string;
-  hash_md5?: string;
-  hash_sha256?: string;
-  chain_of_custody: string;
-  disposition: ExhibitDisposition;
-  disposition_date?: string;
-  disposition_notes?: string;
-  photos: string;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ForensicAnalysis {
-  id: number;
-  forensic_case_id: number;
-  exhibit_id?: number;
-  exhibit_number?: string;
-  analysis_type: AnalysisType;
-  methodology?: string;
-  equipment_used?: string;
-  examiner_id?: number;
-  examiner_name?: string;
-  status: AnalysisStatus;
-  started_at?: string;
-  completed_at?: string;
-  results?: string;
-  conclusion?: string;
-  limitations?: string;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ForensicActivityLog {
-  id: number;
-  forensic_case_id: number;
-  exhibit_id?: number;
-  action: string;
-  details: string;
-  performed_by?: number;
-  performed_by_name?: string;
-  performed_at: string;
-}
-
-// --- IPED Digital Forensics Integration ---
-
-export type IpedImportType = 'case_link' | 'findings' | 'timeline' | 'report' | 'bookmarks' | 'items';
-
-export interface IpedCase {
-  id: string;
-  name: string;
-  path?: string;
-  totalItems?: number;
-  processedItems?: number;
-  categories?: Record<string, number>;
-}
-
-export interface IpedItem {
-  id: string;
-  name: string;
-  path?: string;
-  category?: string;
-  type?: string;
-  size?: number;
-  hash?: string;
-  md5?: string;
-  sha256?: string;
-  content_preview?: string;
-  metadata?: Record<string, any>;
-  bookmarked?: boolean;
-  created?: string;
-  modified?: string;
-  accessed?: string;
-}
-
-export interface IpedBookmark {
-  id: string;
-  name: string;
-  comment?: string;
-  itemIds?: string[];
-  itemCount?: number;
-}
-
-export interface IpedFinding {
-  id: string;
-  name: string;
-  path?: string;
-  category: string;
-  type?: string;
-  size?: number;
-  hash?: string;
-  content_preview?: string;
-  metadata?: Record<string, any>;
-  bookmarked?: boolean;
-}
-
-export interface IpedTimelineEvent {
-  timestamp: string;
-  type?: string;
-  description?: string;
-  name?: string;
-  path?: string;
-  source?: string;
-}
-
-export interface IpedImport {
-  id: number;
-  forensic_case_id: number;
-  import_type: IpedImportType;
-  iped_case_id: string;
-  iped_case_name?: string;
-  source_query?: string;
-  item_count: number;
-  imported_data: string;
-  summary?: string;
-  imported_by?: number;
-  imported_by_name?: string;
-  created_at: string;
-  // Joined fields
-  lab_number?: string;
-  case_title?: string;
-}
-
-export interface IpedConnectionStatus {
-  configured: boolean;
-  enabled: boolean;
-  baseUrl: string | null;
-  hasApiKey: boolean;
-}
-
-// --- Forensic Hash Sets ---
-
-export type HashSetType = 'nsrl' | 'projectvic' | 'custom' | 'known_good' | 'known_bad';
-
-export interface ForensicHashSet {
-  id: number;
-  name: string;
-  set_type: HashSetType;
-  description?: string;
-  hash_count: number;
-  source_file?: string;
-  version?: string;
-  imported_by?: number;
-  imported_by_name?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface HashCheckResult {
-  hash_value: string;
-  matches: {
-    set_id: number;
-    set_name: string;
-    set_type: HashSetType;
-    hash_type: string;
-    file_name?: string;
-    category?: string;
-  }[];
-}
-
 // --- Code Enforcement ---
 
 export type ViolationType = 'noise' | 'property_maintenance' | 'zoning' | 'signage' | 'health' | 'fire' | 'nuisance' | 'other';
@@ -2221,36 +1933,4 @@ export interface CompanyDocument {
   file_name?: string;
   file_size?: number;
   mime_type?: string;
-}
-
-// ─── Integration Hub ─────────────────────────────────────────
-
-export type IntegrationId = 'clearpathgps' | 'servemanager' | 'microbilt' | 'iped';
-
-export type IntegrationHealth = 'healthy' | 'degraded' | 'error' | 'unconfigured';
-
-export interface IntegrationStatus {
-  id: IntegrationId;
-  name: string;
-  description: string;
-  configured: boolean;
-  connected: boolean;
-  lastSync: string | null;
-  lastError: string | null;
-  lastHealthCheck: string | null;
-  health: IntegrationHealth;
-  syncing: boolean;
-  syncProgress: number | null;
-  uptimePercent: number | null;
-  stats: Record<string, number>;
-}
-
-export interface IntegrationHealthAlert {
-  integrationId: IntegrationId;
-  integrationName: string;
-  previousHealth: IntegrationHealth;
-  currentHealth: IntegrationHealth;
-  error: string | null;
-  timestamp: string;
-  consecutiveFailures: number;
 }

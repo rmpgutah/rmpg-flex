@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { playRadioTone } from '../utils/radioTones';
-import { useToast } from './ToastProvider';
 
 // ─── Panic Alarm — loops the unified panicWarble tone ────────────
 // Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
@@ -79,7 +78,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
   const { user } = useAuth();
   const { subscribe } = useWebSocket();
   const panicAudio = usePanicAudio();
-  const { addToast } = useToast();
   const [sending, setSending] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [incomingAlert, setIncomingAlert] = useState<PanicAlert | null>(null);
@@ -94,20 +92,10 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
   const volumeUpPressTimesRef = useRef<number[]>([]);
   const volumeUpHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeUpHeldRef = useRef(false);
-  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sendingRef = useRef(false); // synchronous guard — React state is async and races
 
   const triggerHardwarePanic = useCallback(async () => {
-    // Synchronous ref guard prevents double-fire from hold + rapid press race
-    if (sendingRef.current || sending) return;
-    sendingRef.current = true;
-    // Clear both trigger mechanisms so only one fires
-    if (volumeUpHoldTimerRef.current) {
-      clearTimeout(volumeUpHoldTimerRef.current);
-      volumeUpHoldTimerRef.current = null;
-    }
-    volumeUpPressTimesRef.current = [];
-    volumeUpHeldRef.current = false;
+    // Skip if already sending or confirm visible
+    if (sending) return;
     // Directly trigger panic (no confirmation needed for hardware trigger)
     setSending(true);
     try {
@@ -123,12 +111,10 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       panicAudio.startBroadcast();
     } catch (err) {
       console.error('Failed to send hardware panic alert:', err);
-      addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
     } finally {
       setSending(false);
-      sendingRef.current = false;
     }
-  }, [sending, latitude, longitude, panicAudio, addToast]);
+  }, [sending, latitude, longitude, panicAudio]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -136,12 +122,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp' || e.code === 'AudioVolumeUp') {
         // Prevent default volume change in the app
         e.preventDefault();
-
-        // Skip repeated keydown events (key held down fires keydown repeatedly)
-        if (e.repeat) return;
-
-        // Already sending — ignore further triggers
-        if (sendingRef.current) return;
 
         // Method 1: Long press (3 seconds)
         if (!volumeUpHeldRef.current) {
@@ -205,17 +185,13 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       }
       // Play alarm
       alarmRef.current = playPanicAlarm(8000);
-      // Auto-dismiss after 30 seconds (tracked for cleanup)
-      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-      autoDismissTimerRef.current = setTimeout(() => {
+      // Auto-dismiss after 30 seconds
+      setTimeout(() => {
         setIncomingAlert(null);
         alarmRef.current?.stop();
       }, 30000);
     });
-    return () => {
-      unsub();
-      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-    };
+    return unsub;
   }, [subscribe, user?.id, panicAudio]);
 
   const dismissAlert = useCallback(() => {
@@ -248,7 +224,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       panicAudio.startBroadcast();
     } catch (err) {
       console.error('Failed to send panic alert:', err);
-      addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
     } finally {
       setSending(false);
     }
@@ -276,7 +251,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             <button
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#1e3048', border: '1px solid #2a3e58', color: '#8a9aaa' }}
+              style={{ background: '#1e3048', border: '1px solid #484848', color: '#a0a0a0' }}
             >
               Cancel
             </button>
@@ -317,7 +292,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3"
-              style={{ background: 'linear-gradient(180deg, #991b1b, #7f1d1d)' }}
+              style={{ background: 'linear-gradient(180deg, #144a7e, #0e3a6e)' }}
             >
               <AlertTriangle className="animate-emergency-blink" style={{ width: 20, height: 20, color: '#ffffff' }} />
               <span className="text-sm font-bold uppercase tracking-widest text-white">
@@ -332,12 +307,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: '#0d1520', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: '#141e2b', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
                 </div>
-                <div className="text-xs font-mono" style={{ color: '#8a9aaa' }}>
+                <div className="text-xs font-mono" style={{ color: '#a0a0a0' }}>
                   {incomingAlert.badge_number && `Badge: ${incomingAlert.badge_number} | `}
                   {incomingAlert.role?.toUpperCase()}
                   {incomingAlert.unit_call_sign && ` | Unit: ${incomingAlert.unit_call_sign}`}
@@ -346,7 +321,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
 
               {/* Auto-created dispatch card info */}
               {incomingAlert.call_number && (
-                <div className="text-center p-2" style={{ background: '#0d1520', border: '1px solid #dc2626' }}>
+                <div className="text-center p-2" style={{ background: '#111', border: '1px solid #dc2626' }}>
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider animate-emergency-blink"
@@ -371,14 +346,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div className="text-xs text-center text-white p-2" style={{ background: '#111', border: '1px solid #2a3e58' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#111', border: '1px solid #2a3e58' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
@@ -386,13 +361,13 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
 
               {/* Raw GPS coordinates */}
               {(incomingAlert.latitude && incomingAlert.longitude) && (
-                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#5a6e80' }}>
+                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#707070' }}>
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}
                 </div>
               )}
 
-              <div className="text-center text-[10px] font-mono" style={{ color: '#3a5070' }}>
+              <div className="text-center text-[10px] font-mono" style={{ color: '#505050' }}>
                 {new Date(incomingAlert.triggered_at).toLocaleTimeString('en-US', { hour12: false })}
               </div>
 
