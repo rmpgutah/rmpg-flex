@@ -121,7 +121,7 @@ router.put('/config/:id', requireRole('admin', 'manager'), (req: Request, res: R
     }
 
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update config error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

@@ -129,7 +129,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
       req.user!.userId, req.params.id, `Updated unit: ${(updated as any)?.call_sign || req.params.id}`, req.ip || 'unknown');
 
     broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -230,7 +230,7 @@ router.put('/units/:id/status', requireRole('admin', 'manager', 'supervisor', 'd
 
     broadcastUnitUpdate({ action: 'unit_status_changed', unit: updated });
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unit status update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

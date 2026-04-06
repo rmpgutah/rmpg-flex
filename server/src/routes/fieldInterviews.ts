@@ -56,6 +56,7 @@ router.get('/', (req: Request, res: Response) => {
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM field_interviews fi ${where}`).get(...params) as any;
+    const total = countRow?.total ?? 0;
     const rows = db.prepare(`
       SELECT fi.*, u.full_name as officer_display_name,
         p.first_name as linked_person_first, p.last_name as linked_person_last
@@ -67,10 +68,9 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, perPage, offset);
 
-    const total = countRow?.total ?? 0;
     res.json({
       data: rows,
-      pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
+      pagination: { page: pageNum, per_page: perPage, total, totalPages: perPage > 0 ? Math.ceil(total / perPage) : 0 },
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -232,7 +232,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       location: updated.location,
       status: updated.status,
     });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
   }

@@ -492,7 +492,7 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
       WHERE b.id = ?
     `).get(req.params.id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -539,7 +539,7 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
       req.user!.userId, bolo.id, `Archived BOLO: ${bolo.title}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -561,7 +561,7 @@ router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor'
       req.user!.userId, bolo.id, `Unarchived BOLO: ${bolo.title}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

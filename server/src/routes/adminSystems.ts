@@ -615,7 +615,7 @@ router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request,
     db.prepare(`UPDATE system_announcements SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update announcement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -700,7 +700,7 @@ router.put('/retention/:id', requireRole('admin', 'manager'), (req: Request, res
     db.prepare(`UPDATE retention_policies SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update retention policy error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -979,7 +979,7 @@ router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, r
       WHERE d.id = ?
     `).get(req.params.id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
       res.status(409).json({ error: 'A department with this name or code already exists' });
@@ -1154,7 +1154,7 @@ router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Req
       WHERE nr.id = ?
     `).get(req.params.id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update notification rule error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

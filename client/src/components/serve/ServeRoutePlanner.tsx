@@ -102,8 +102,9 @@ function chainClusters(clusters: StopItem[][]): StopItem[][] {
   if (clusters.length <= 1) return clusters;
 
   const clusterCenters = clusters.map(c => {
-    const avgLat = c.reduce((s, st) => s + st.job.recipient_lat!, 0) / c.length;
-    const avgLng = c.reduce((s, st) => s + st.job.recipient_lng!, 0) / c.length;
+    const len = c.length || 1;
+    const avgLat = c.reduce((s, st) => s + st.job.recipient_lat!, 0) / len;
+    const avgLng = c.reduce((s, st) => s + st.job.recipient_lng!, 0) / len;
     return { lat: avgLat, lng: avgLng };
   });
 

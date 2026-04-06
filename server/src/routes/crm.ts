@@ -166,7 +166,7 @@ router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (r
     const updates: string[] = [];
     const params: any[] = [];
 
-    if (title !== undefined) { updates.push('title = ?'); params.push(title.trim()); }
+    if (title !== undefined) { updates.push('title = ?'); params.push(typeof title === 'string' ? title.trim() : title); }
     if (description !== undefined) { updates.push('description = ?'); params.push(description); }
     if (task_type !== undefined) { updates.push('task_type = ?'); params.push(task_type); }
     if (priority !== undefined) { updates.push('priority = ?'); params.push(priority); }
@@ -279,7 +279,7 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     const params: any[] = [];
 
     if (search) {
-      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)";
+      sql += " AND ((p.first_name || ' ' || p.last_name) LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)";
       const q = `%${search}%`;
       params.push(q, q, q);
     }

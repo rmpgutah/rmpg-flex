@@ -887,7 +887,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // Search persons (external contacts)
     const persons = db.prepare(`
       SELECT first_name, last_name, email FROM persons
-      WHERE (first_name || ' ' || last_name LIKE ? OR email LIKE ?)
+      WHERE ((first_name || ' ' || last_name) LIKE ? OR email LIKE ?)
         AND email IS NOT NULL AND email != ''
         AND archived_at IS NULL
       ORDER BY last_name, first_name LIMIT 10

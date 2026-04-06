@@ -55,6 +55,7 @@ router.get('/', (req: Request, res: Response) => {
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM trespass_orders t ${where}`).get(...params) as any;
+    const total = countRow?.total ?? 0;
     const rows = db.prepare(`
       SELECT t.*, u.full_name as issued_by_display,
         p.first_name as linked_person_first, p.last_name as linked_person_last,
@@ -68,10 +69,9 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, perPage, offset);
 
-    const total = countRow?.total ?? 0;
     res.json({
       data: rows,
-      pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
+      pagination: { page: pageNum, per_page: perPage, total, totalPages: perPage > 0 ? Math.ceil(total / perPage) : 0 },
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -273,7 +273,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -294,7 +294,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -313,7 +313,7 @@ router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Req
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -332,7 +332,7 @@ router.put('/:id/violate', requireRole('admin', 'manager', 'supervisor', 'office
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
   }

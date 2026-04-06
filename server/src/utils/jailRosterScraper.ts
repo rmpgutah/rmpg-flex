@@ -690,12 +690,13 @@ async function fetchSaltLakeRoster(): Promise<string> {
   const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
   const allHtml: string[] = [];
   const seen = new Set<string>(); // Deduplicate by booking number
+  const MAX_TOTAL_ROWS = 50_000; // Safety cap to prevent unbounded memory growth
 
   for (const letter of letters) {
     let start = 1;
     let hasMore = true;
 
-    while (hasMore) {
+    while (hasMore && allHtml.length < MAX_TOTAL_ROWS) {
       const body = new URLSearchParams({
         flow_action: 'searchbyname',
         quantity: '500',
@@ -775,7 +776,8 @@ async function fetchDavisRoster(): Promise<string> {
 
   // Extract total pages from "Page 1 of 29"
   const pagesMatch = page1.match(/Page\s+\d+\s+of\s+(\d+)/i);
-  const totalPages = pagesMatch ? parseInt(pagesMatch[1], 10) : 1;
+  const MAX_PAGES = 500; // Safety cap to prevent unbounded pagination
+  const totalPages = Math.min(pagesMatch ? parseInt(pagesMatch[1], 10) : 1, MAX_PAGES);
 
   console.log(`[Jail Roster] Davis County: ${totalPages} pages to fetch`);
 

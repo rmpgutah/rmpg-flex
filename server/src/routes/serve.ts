@@ -119,7 +119,7 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
         notes ?? null, now, existing.id,
       );
       const updated = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(existing.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } else {
       const id = crypto.randomUUID();
       db.prepare(`
@@ -397,7 +397,7 @@ router.put('/:id', requireRole(...WRITE_ROLES), (req: Request, res: Response) =>
     auditLog(req, 'UPDATE', 'serve_queue', String(req.params.id), `Updated serve job: ${setClauses.map(c => c.split(' =')[0]).join(', ')}`);
     broadcast('serve', 'serve_updated', updated);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (err: any) {
     console.error('[SERVE] Update error:', err);
     res.status(500).json({ error: 'Failed to update serve job' });

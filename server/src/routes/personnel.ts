@@ -389,7 +389,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       FROM users WHERE id = ?
     `).get(req.params.id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -457,7 +457,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
       FROM users WHERE id = ?
     `).get(user.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -482,7 +482,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
       FROM users WHERE id = ?
     `).get(user.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -996,7 +996,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         WHERE t.id = ?
       `).get(req.params.id);
 
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Edit time entry error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1143,7 +1143,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const now = localNow();
       db.prepare('UPDATE credentials SET archived_at = ? WHERE id = ?').run(now, cred.id);
       const updated = db.prepare('SELECT * FROM credentials WHERE id = ?').get(cred.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Archive credential error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1159,7 +1159,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (!cred.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
       db.prepare('UPDATE credentials SET archived_at = NULL WHERE id = ?').run(cred.id);
       const updated = db.prepare('SELECT * FROM credentials WHERE id = ?').get(cred.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Unarchive credential error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1257,7 +1257,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const now = localNow();
       db.prepare('UPDATE schedules SET archived_at = ? WHERE id = ?').run(now, schedule.id);
       const updated = db.prepare('SELECT * FROM schedules WHERE id = ?').get(schedule.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Archive schedule error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1273,7 +1273,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (!schedule.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
       db.prepare('UPDATE schedules SET archived_at = NULL WHERE id = ?').run(schedule.id);
       const updated = db.prepare('SELECT * FROM schedules WHERE id = ?').get(schedule.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Unarchive schedule error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1523,7 +1523,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const now = localNow();
       db.prepare('UPDATE training_records SET archived_at = ? WHERE id = ?').run(now, record.id);
       const updated = db.prepare('SELECT * FROM training_records WHERE id = ?').get(record.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Archive training record error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1539,7 +1539,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
       db.prepare('UPDATE training_records SET archived_at = NULL WHERE id = ?').run(record.id);
       const updated = db.prepare('SELECT * FROM training_records WHERE id = ?').get(record.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Unarchive training record error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1711,7 +1711,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN properties p ON d.property_id = p.id LEFT JOIN clients c ON p.client_id = c.id
         WHERE d.id = ?
       `).get(dep.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Archive deployment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
@@ -1732,7 +1732,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN properties p ON d.property_id = p.id LEFT JOIN clients c ON p.client_id = c.id
         WHERE d.id = ?
       `).get(dep.id);
-      res.json(updated);
+      res.json(updated ?? null);
     } catch (error: any) {
       console.error('Unarchive deployment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });

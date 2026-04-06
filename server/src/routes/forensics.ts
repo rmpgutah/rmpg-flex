@@ -290,7 +290,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       `Forensic case ${existing.lab_case_number} updated${status && status !== existing.status ? ` (status: ${existing.status} → ${status})` : ''}`);
 
     const updated = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update forensic case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -391,7 +391,7 @@ router.put('/:caseId/exhibits/:exhibitId', requireRole('admin', 'manager', 'supe
     );
 
     const updated = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(req.params.exhibitId);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -486,7 +486,7 @@ router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'sup
     }
 
     const updated = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(req.params.analysisId);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -778,7 +778,7 @@ router.put('/:id/hashes/:hashId', requireRole('admin', 'manager', 'supervisor', 
     }
 
     const updated = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(req.params.hashId);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update hash error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
