@@ -1,3 +1,4 @@
+function sanitizePdfText(s: string): string { return String(s || "").replace(/[\x00-\x1F]/g, ""); }
 // ============================================================
 // RMPG Flex — Process Server PDF Generator
 // Affidavit of Service, Affidavit of Non-Service, Service Log
@@ -22,7 +23,7 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
-  sanitizePdfText,
+
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,

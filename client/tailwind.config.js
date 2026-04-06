@@ -1,6 +1,15 @@
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
+  content: [
+    resolve(__dirname, 'index.html'),
+    resolve(__dirname, 'src/**/*.{js,ts,jsx,tsx}'),
+  ],
   theme: {
     borderRadius: {
       none: '0',
@@ -12,6 +21,15 @@ export default {
       '2xl': '2px',
       '3xl': '2px',
       full: '2px',
+    },
+    screens: {
+      'xs': '475px',
+      'sm': '640px',
+      'md': '768px',
+      'lg': '1024px',
+      'xl': '1280px',
+      '2xl': '1536px',
+      '3xl': '1920px',
     },
     extend: {
       fontFamily: {
@@ -39,22 +57,23 @@ export default {
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Spillman Flex / Motorola Solutions CAD aesthetic
-        //   Brand blue (Motorola primary):      #1a5a9e
-        //   Steel-blue surfaces:                #141e2b / #1a2636
-        //   Gold accent:                        #d4a017
+        // Spillman Flex / Motorola Solutions blue theme
+        //   Primary blue (toolbar / accents):   #1a5a9e
+        //   Logo charcoal (body / base):        #303030
+        //   Logo gold (field labels / accents):  #d4a017
+        //   Logo light grey (text):              #d0d0d0
 
         brand: {
-          50:  '#e8f0fa',    // Lightest tint
-          100: '#c4d9f0',
-          200: '#8db8e0',
-          300: '#5a94cc',
-          400: '#2570b5',    // Lighter accent
-          500: '#1a5a9e',    // Primary — Motorola blue
-          600: '#164d88',    // Slightly deeper
-          700: '#144a7e',    // Deep blue
-          800: '#0e3a6e',    // Very deep
-          900: '#0a2a52',    // Darkest navy
+          50:  '#f5f5f5',
+          100: '#e0e0e0',
+          200: '#c0c0c0',
+          300: '#aaaaaa',
+          400: '#999999',    // Lighter accent
+          500: '#888888',    // Primary — neutral gray
+          600: '#666666',
+          700: '#444444',
+          800: '#333333',
+          900: '#222222',
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -66,26 +85,26 @@ export default {
           700: '#936c0a',
         },
 
-        // Steel-blue greys — Spillman Flex console tones
+        // Neutral steel-blue greys — Spillman Flex dark theme
         rmpg: {
-          50:  '#d0d8e0',    // Light steel
-          100: '#b0bcc8',    // Light grey-blue
-          200: '#8a9ab0',    // Medium light
-          300: '#6a7e96',    // Medium steel-blue
-          400: '#4a6278',    // Grey-blue
-          500: '#3a5068',    // Mid-dark steel
-          600: '#2a3e58',    // Dark steel-blue
-          700: '#1e3048',    // Deep steel
-          800: '#162236',    // Deeper navy
-          900: '#0d1520',    // Near black-navy
-          950: '#060c14',    // App background
+          50:  '#e0e0e0',
+          100: '#cccccc',
+          200: '#aaaaaa',
+          300: '#888888',
+          400: '#666666',
+          500: '#444444',
+          600: '#333333',
+          700: '#222222',
+          800: '#181818',
+          900: '#0e0e0e',
+          950: '#050505',
         },
 
         dispatch: {
-          emergency: '#dc2626',    // Red (emergencies only)
-          urgent:    '#d4a017',    // Brand gold
-          routine:   '#4a90c4',    // Muted steel blue
-          scheduled: '#6b7280',
+          emergency: '#dc2626',
+          urgent:    '#d4a017',
+          routine:   '#888888',
+          scheduled: '#666666',
         },
         success: {
           400: '#34d399',
@@ -97,11 +116,25 @@ export default {
         },
         status: {
           available:  '#22c55e',
-          dispatched: '#d4a017',   // Brand gold
-          enroute:    '#4a90c4',   // Steel blue
+          dispatched: '#d4a017',
+          enroute:    '#888888',
           onscene:    '#a855f7',
-          busy:       '#ef4444',   // Red
-          offduty:    '#6b7280',
+          busy:       '#dc2626',
+          offduty:    '#666666',
+        },
+        // Override Tailwind default blue to gray (kills ALL text-blue-*, bg-blue-*, border-blue-*)
+        blue: {
+          50:  '#f5f5f5',
+          100: '#e0e0e0',
+          200: '#c0c0c0',
+          300: '#aaaaaa',
+          400: '#999999',
+          500: '#888888',
+          600: '#666666',
+          700: '#444444',
+          800: '#333333',
+          900: '#222222',
+          950: '#111111',
         },
       },
     },
