@@ -142,7 +142,7 @@ export function addConfidentialWatermark(doc: jsPDF) {
   doc.saveGraphicsState();
   // @ts-expect-error jsPDF GState — more visible watermark (0.08 opacity)
   doc.setGState(new doc.GState({ opacity: 0.08 }));
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(...COLOR.WATERMARK);
 
   const cx = pageWidth / 2;
@@ -156,13 +156,22 @@ export function addConfidentialWatermark(doc: jsPDF) {
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 }
 
+/** Enforce strict police-report typography defaults across all PDF generators. */
+export function applyPoliceReportFormatting(doc: jsPDF): void {
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  // Tighter character spacing for dense, typewriter-style report output.
+  doc.setCharSpace(-0.1);
+}
+
 export function addClassificationBar(doc: jsPDF, priority: string, yStart: number): number {
   const cw = getContentWidth(doc);
   const prio = PRIORITY_COLORS[priority?.toLowerCase()] || PRIORITY_COLORS['routine'];
 
   doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, yStart, cw, LAYOUT.CLASSIF_BAR_H, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_CLASSIF_BAR);
   doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
   doc.text(prio.label, doc.internal.pageSize.getWidth() / 2, yStart + 4.2, { align: 'center' });
@@ -228,13 +237,13 @@ export function addReportHeader(
   }
 
   // ── Line 1: Agency name ────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
   doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 6.5);
 
   // ── Line 2: Subheader ──────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(subheaderColor[0], subheaderColor[1], subheaderColor[2]);
   doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 11);
@@ -247,7 +256,7 @@ export function addReportHeader(
   metaParts.push(FORM_REVISION);
   metaParts.push(reportDate);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(headerMetaColor[0], headerMetaColor[1], headerMetaColor[2]);
   doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
@@ -266,7 +275,7 @@ export function addReportHeader(
     const prioLabelText = prioShortNames[prioKey]
       || (pKey === 'P1' ? 'P1 - Emergency' : pKey === 'P2' ? 'P2 - Urgent'
         : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(5);
     const prioW = doc.getTextWidth(prioLabelText) + 4;
     const prioX = textStartX;
@@ -291,7 +300,7 @@ export function addReportHeader(
 
   // Label
   doc.setFontSize(FONT.SIZE_SMALL_META);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(...caseTextColor);
   doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
 
@@ -306,7 +315,7 @@ export function addReportHeader(
   doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw, LAYOUT.ACCENT_STRIP_H, 'F');
 
   // ── Reset drawing state ────────────────────────────────
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
@@ -332,7 +341,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H);
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   // Vertically centered in header bar: baseline ≈ midpoint + half ascent
@@ -341,7 +350,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
 
   // Reset text color to primary (black) — prevents white text leaking into content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
 
   // Content starts after header bar + content padding (not tight against bar)
   return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y, sectionPage: doc.getNumberOfPages() };
@@ -423,7 +432,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const maxLines = 4;        // Cap at 4 lines
 
   // Floating label above the box
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x + innerPad, y + 2);
@@ -491,7 +500,7 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
     doc.rect(x, y - 1.5, boxSize, boxSize);
   }
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_CHECKBOX_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label, x + boxSize + 1.5, y);
@@ -544,7 +553,7 @@ export function addFlagBadges(
   };
   const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(fontSize);
 
   let curX = x;
@@ -584,7 +593,7 @@ export function addFlagBadges(
 
   // Reset
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   return curY + pillH + 1.5;
 }
 
@@ -626,7 +635,7 @@ export function addCautionBlock(
   doc.rect(x, y, width, boxH);
 
   // Label
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(180, 60, 0);
   doc.text('⚠ CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
@@ -701,7 +710,7 @@ export function addSignatureBlock(
   // ── Role label header bar (dark background, white text) ──
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(x, y, width, roleBarH, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   const roleTextY = y + roleBarH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
@@ -729,14 +738,14 @@ export function addSignatureBlock(
   doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
 
   if (!sigData?.signatureImage) {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_SIGNATURE_X);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 2);
   }
 
   // "SIGNATURE" label below the line (centered under line)
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   const sigLabelW = doc.getTextWidth('SIGNATURE');
@@ -756,7 +765,7 @@ export function addSignatureBlock(
   doc.line(x + colW * 2, row2Y, x + colW * 2, row2Y + infoRowH);
 
   // Cell labels (top of each cell — consistent 2.5mm from cell top)
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   const labelY = row2Y + 2.8;
@@ -850,7 +859,7 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   }
 
   // Center: INTERNAL USE ONLY
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.text('INTERNAL USE ONLY', pageWidth / 2, textY, { align: 'center' });
 
   // Right: Page X of Y
@@ -1116,7 +1125,7 @@ export function addImageToPage(
     doc.setDrawColor(...COLOR.BORDER_FIELD);
     doc.setLineWidth(BORDER.FIELD);
     doc.rect(x, y, renderW, renderH);
-    doc.setFont('helvetica', 'italic');
+    doc.setFont('courier', 'italic');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text('[Image unavailable]', x + renderW / 2, y + renderH / 2, { align: 'center' });
@@ -1155,7 +1164,7 @@ export function addImageGrid(
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(x, y, w, h);
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
@@ -1168,7 +1177,7 @@ export function addImageGrid(
   }
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   return y;
 }
 
@@ -1214,7 +1223,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
     // Text vertically centered in continuation header
     const contTextY = contY + contH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text(`${activeBranding.report_header_text} \u2014 CONTINUED`, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
@@ -1228,7 +1237,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
@@ -1280,7 +1289,7 @@ export function addTableWithShading(
 
     // Text vertically centered: baseline = top + half height + half cap-height
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     const capH = FONT.SIZE_TABLE_HEADER * 0.35;  // approximate cap-height in mm
     const textY = atY + (headerRowH + capH) / 2;
@@ -1916,7 +1925,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.CASE_BOX);
   doc.rect(LAYOUT.PAGE_MARGIN + 1.5, y + 1.2, cw - 3, 7.6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('WARNING — TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
@@ -1958,7 +1967,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
 
   // Warning Text
   { const sec = openAutoSection(doc, 'Notice', y); y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     const warningText = 'You are hereby notified that you are PROHIBITED from entering, remaining upon, or returning to the above-described property. Any violation of this warning may result in your arrest for Criminal Trespass pursuant to applicable state law. This warning is effective for the period indicated above.';
     y = addWrappedText(doc, warningText, lx, y, ffw, 9);
@@ -2242,7 +2251,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.BANNER);
   doc.rect(LAYOUT.PAGE_MARGIN + 1, y + 1, cw - 2, 6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER_SMALL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('MANDATORY REPORT \u2014 MUST BE COMPLETED WITHIN 24 HOURS OF INCIDENT', pageWidth / 2, y + 5.5, { align: 'center' });
@@ -2367,7 +2376,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + 5, LAYOUT.PAGE_MARGIN + cw - 1, y + 5);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text('TIME', lx, y + 2);
@@ -2377,7 +2386,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     y += 7;
 
     const tableTopY = y;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
     for (let i = 0; i < 6; i++) {
       if (i % 2 === 0) {
@@ -2570,7 +2579,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Miranda Advisement', y); y = sec.contentY;
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.text('You have the right to remain silent. Anything you say can and will be used against you in a court of law.', lx, y);
     y += 4;
     doc.text('You have the right to an attorney. If you cannot afford an attorney, one will be appointed for you.', lx, y);
@@ -2774,6 +2783,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
 export function generatePdfReport(reportType: PdfReportType, data: IncidentData): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPoliceReportFormatting(doc);
 
   setActiveFormKey(reportType);
   setActiveCaseNumber(data.incident_number);

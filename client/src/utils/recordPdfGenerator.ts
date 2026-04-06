@@ -32,6 +32,7 @@ import {
   setActiveCaseNumber,
   addAttachmentsSection,
   addImageToPage,
+  applyPoliceReportFormatting,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import {
@@ -2755,6 +2756,7 @@ export function generateRecordPdf<T extends RecordPdfType>(
   data: RecordDataMap[T],
 ): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPoliceReportFormatting(doc);
 
   // Set form key for footer form numbers
   setActiveFormKey(recordType);

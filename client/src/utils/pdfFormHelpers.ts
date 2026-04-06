@@ -93,7 +93,7 @@ export function drawFormCell(
 
   // Label (tiny, Helvetica, gray — inside cell top-left)
   if (cell.label) {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text(cell.label.toUpperCase(), x + pad, y + pad + 1.5);
@@ -226,7 +226,7 @@ export function drawSideTab(
   const maxTextLen = height - 4;
   let fontSize: number = FONT.SIZE_SIDEBAR_TAB;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(fontSize);
   let textW = doc.getTextWidth(upperLabel);
 
@@ -291,7 +291,7 @@ export function drawCheckboxGrid(
       ? `${items[i].code} = ${items[i].label}`
       : items[i].label;
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(labelText, cbX + cbSize + 0.8, cbY + cbSize - 0.2, {
@@ -331,7 +331,7 @@ export function drawCodeReferenceTable(
   // Title bar
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, y, totalW, 4, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text(title.toUpperCase(), x + 1.5, y + 2.8);
@@ -355,7 +355,7 @@ export function drawCodeReferenceTable(
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(codes[i].code || '', cellX + 1, curY + 2.3);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(`= ${codes[i].description || ''}`, cellX + 5.5, curY + 2.3, {
@@ -466,20 +466,20 @@ export function drawNibrsHeader(
   }
 
   // Agency name (centered in header bar)
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text((config.agencyName || '').toUpperCase(), pageW / 2, y + 8, { align: 'center' });
 
   // State identifier (small, above agency name if present)
   if (config.stateIdentifier) {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_SUBHEADER);
     doc.text(config.stateIdentifier.toUpperCase(), pageW / 2, y + 4, { align: 'center' });
   }
 
   // Form title (below agency name)
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_REPORT_TYPE);
   doc.text((config.formTitle || '').toUpperCase(), pageW / 2, y + 13, { align: 'center' });
 
@@ -497,7 +497,7 @@ export function drawNibrsHeader(
     doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH, 'FD');
 
     // "CASE NUMBER" label
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text('CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3, { align: 'center' });
@@ -519,7 +519,7 @@ export function drawNibrsHeader(
   // Sub-header row: Form number (left) + Report date (right)
   y += 1;
   if (config.formNumber || config.reportDate) {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_SMALL_META);
     doc.setTextColor(...COLOR.TEXT_MUTED);
     if (config.formNumber) {
