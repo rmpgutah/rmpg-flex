@@ -88,6 +88,7 @@ interface Warrant {
   notes: string | null;
   archived_at: string | null;
   source?: string | null;
+  service_attempt_count: number;
   created_at: string;
   updated_at: string;
   activity?: ActivityEntry[];
@@ -475,6 +476,7 @@ export default function WarrantsPage() {
   const [priorityWarrants, setPriorityWarrants] = useState<PriorityWarrant[]>([]);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [dashSearch, setDashSearch] = useState('');
+  const [expiringCount, setExpiringCount] = useState<number | null>(null);
   const [summaryReportOpen, setSummaryReportOpen] = useState(false);
   const [summaryFrom, setSummaryFrom] = useState('');
   const [summaryTo, setSummaryTo] = useState('');
@@ -490,6 +492,7 @@ export default function WarrantsPage() {
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [filterSource, setFilterSource] = useState<string>('');
+  const [filterCourt, setFilterCourt] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -662,6 +665,7 @@ export default function WarrantsPage() {
     if (activeTab !== 'dashboard') return;
     fetchDashStats();
     fetchPriority();
+    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => setExpiringCount(r.count)).catch(() => {});
     const interval = setInterval(fetchDashStats, 30_000);
     return () => clearInterval(interval);
   }, [activeTab, fetchDashStats, fetchPriority]);
@@ -683,6 +687,7 @@ export default function WarrantsPage() {
       if (filterStatus) params.set('status', filterStatus);
       if (filterType) params.set('type', filterType);
       if (filterSource) params.set('source', filterSource);
+      if (filterCourt) params.set('court', filterCourt);
       if (filterSeverity) params.set('severity', filterSeverity);
       if (filterPersonId) params.set('person_id', filterPersonId);
       if (searchQuery) params.set('subject_name', searchQuery);
@@ -701,7 +706,7 @@ export default function WarrantsPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
@@ -1401,6 +1406,13 @@ export default function WarrantsPage() {
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
               </div>
+              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors" onClick={() => { setActiveTab('warrants'); }}>
+                <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
+                  {expiringCount ?? '\u2014'}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Expiring Soon</div>
+                <div className="text-[9px] text-rmpg-500 mt-0.5">within 30 days</div>
+              </div>
             </div>
 
             {/* Main content: Feed (left) + Priority (right) */}
@@ -1601,6 +1613,27 @@ export default function WarrantsPage() {
                     <option key={l.value} value={l.value}>{l.label}</option>
                   ))}
                 </select>
+                {/* Court filter */}
+                <input
+                  type="text"
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                  placeholder="Court..."
+                  value={filterCourt}
+                  onChange={(e) => { setFilterCourt(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                />
+                {/* Source filter */}
+                <select
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                  value={filterSource}
+                  onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                >
+                  <option value="">All Sources</option>
+                  <option value="manual">Local</option>
+                  <option value="utah_api">Utah API</option>
+                  <option value="scraper">Scraped</option>
+                </select>
               </div>
             </div>
 
@@ -1705,6 +1738,7 @@ export default function WarrantsPage() {
                       <th style={{ width: 80 }}>Severity</th>
                       <th style={{ width: 90 }}>Court</th>
                       <th style={{ width: 80 }}>Bail</th>
+                      <th style={{ width: 60 }}>Attempts</th>
                       <th style={{ width: 95 }}>Date</th>
                     </tr>
                   </thead>
@@ -1724,6 +1758,12 @@ export default function WarrantsPage() {
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
                           </span>
+                          {w.expires_at && w.status === 'active' && (() => {
+                            const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            if (daysLeft < 0) return <span className="ml-1 text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1 py-0.5 rounded-sm font-bold">EXPIRED</span>;
+                            if (daysLeft <= 7) return <span className="ml-1 text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1 py-0.5 rounded-sm font-bold">{daysLeft}d</span>;
+                            return null;
+                          })()}
                         </td>
                         <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
                         <td className="text-xs">
@@ -1758,6 +1798,13 @@ export default function WarrantsPage() {
                         </td>
                         <td className="text-[10px] text-rmpg-400 truncate">{w.issuing_court || '-'}</td>
                         <td className="text-xs text-rmpg-400 font-mono">{w.bail_amount ? formatCurrency(w.bail_amount) : '-'}</td>
+                        <td className="text-center">
+                          {w.service_attempt_count > 0 ? (
+                            <span className="text-amber-400 font-mono">{w.service_attempt_count}</span>
+                          ) : (
+                            <span className="text-rmpg-500">&mdash;</span>
+                          )}
+                        </td>
                         <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
                       </tr>
                     ))}
