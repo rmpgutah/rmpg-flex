@@ -367,7 +367,7 @@ export function addOfflineTileLayer(map: google.maps.Map): () => void {
   });
   map.overlayMapTypes.push(offlineTiles);
   return () => {
-    const idx = map.overlayMapTypes.indexOf(offlineTiles as any);
+    const idx = (map.overlayMapTypes as any).indexOf(offlineTiles);
     if (idx >= 0) map.overlayMapTypes.removeAt(idx);
   };
 }

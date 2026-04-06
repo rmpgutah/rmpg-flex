@@ -99,8 +99,8 @@ export default React.memo(function ServeJobCard({
     .filter(Boolean)
     .join(', ');
 
-  const TimeIcon = TIME_WINDOW_CONFIG[job.time_window]?.icon ?? Clock;
-  const timeLabel = TIME_WINDOW_CONFIG[job.time_window]?.label ?? job.time_window;
+  const TimeIcon = TIME_WINDOW_CONFIG[job.time_window as string]?.icon ?? Clock;
+  const timeLabel = TIME_WINDOW_CONFIG[job.time_window as string]?.label ?? job.time_window;
 
   return (
     <div
@@ -124,7 +124,7 @@ export default React.memo(function ServeJobCard({
             <span className="text-sm font-bold text-white truncate">{job.recipient_name}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <AttemptDots count={job.attempt_count} max={job.max_attempts} />
+            <AttemptDots count={job.attempt_count ?? 0} max={job.max_attempts ?? 3} />
             {isExpanded ? (
               <ChevronUp className="w-3.5 h-3.5 text-rmpg-400" />
             ) : (
@@ -149,8 +149,8 @@ export default React.memo(function ServeJobCard({
           </span>
 
           {/* Priority */}
-          <span className={`text-[9px] font-bold font-mono border px-1 py-0 ${PRIORITY_STYLES[job.priority] || PRIORITY_STYLES.normal}`}>
-            {job.priority.toUpperCase()}
+          <span className={`text-[9px] font-bold font-mono border px-1 py-0 ${PRIORITY_STYLES[job.priority as string] || PRIORITY_STYLES.normal}`}>
+            {(job.priority || 'normal').toUpperCase()}
           </span>
 
           {/* Time window */}

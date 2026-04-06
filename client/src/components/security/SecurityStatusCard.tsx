@@ -52,12 +52,12 @@ export default function SecurityStatusCard() {
     {
       icon: <Key className="w-3.5 h-3.5" />,
       label: 'Backup Codes',
-      value: `${status.backupCodesRemaining} remaining`,
-      led: status.backupCodesRemaining >= 5 ? 'led-green'
-        : status.backupCodesRemaining >= 2 ? 'led-amber'
-        : status.backupCodesRemaining > 0 ? 'led-red'
+      value: `${status.backupCodesRemaining ?? 0} remaining`,
+      led: (status.backupCodesRemaining ?? 0) >= 5 ? 'led-green'
+        : (status.backupCodesRemaining ?? 0) >= 2 ? 'led-amber'
+        : (status.backupCodesRemaining ?? 0) > 0 ? 'led-red'
         : 'led-off',
-      detail: status.backupCodesRemaining <= 2 ? 'Regenerate soon' : undefined,
+      detail: (status.backupCodesRemaining ?? 0) <= 2 ? 'Regenerate soon' : undefined,
     },
     {
       icon: <Monitor className="w-3.5 h-3.5" />,
@@ -181,10 +181,10 @@ function computeScore(s: SecurityStatus): { label: string; led: string; color: s
   if (s.backupCodesRemaining === 0) {
     return { label: 'Warning', led: 'led-amber', color: '#f59e0b', warning: 'No backup codes remaining. Regenerate them now.' };
   }
-  if (s.passwordExpiringSoon || s.backupCodesRemaining <= 2) {
+  if (s.passwordExpiringSoon || (s.backupCodesRemaining ?? 0) <= 2) {
     return { label: 'Attention', led: 'led-amber', color: '#f59e0b' };
   }
-  if (s.totpEnabled && s.backupCodesRemaining >= 5) {
+  if (s.totpEnabled && (s.backupCodesRemaining ?? 0) >= 5) {
     return { label: 'Secure', led: 'led-green', color: '#22c55e' };
   }
   return { label: 'Good', led: 'led-green', color: '#22c55e' };
