@@ -18,6 +18,8 @@ import {
   CreditCard,
   Archive,
   RotateCcw,
+  GitMerge,
+  User,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
@@ -26,6 +28,7 @@ import { openRecordWindow } from '../../utils/windowManager';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
+import { useToast } from '../../components/ToastProvider';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CriminalHistorySection from '../../components/CriminalHistorySection';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
@@ -220,6 +223,7 @@ export interface PersonsTabState {
   setDeleteTarget: PersonsTabProps['setDeleteTarget'];
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
+  fetchPersons: () => Promise<void>;
 }
 
 // ════════════════════════════════════════════════════
@@ -405,6 +409,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     filteredPersons, handleArchive, handleUnarchive,
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
+    fetchPersons,
   };
 }
 
@@ -621,8 +626,32 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
     selectedPerson, personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
-    linkRefreshKey, openLinkModal,
+    linkRefreshKey, openLinkModal, fetchPersons,
   } = state;
+  const { user } = useAuth();
+  const { addToast } = useToast();
+
+  // Merge state
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState('');
+  const [mergeResults, setMergeResults] = useState<Person[]>([]);
+
+  // Search for merge candidates with debounce
+  useEffect(() => {
+    if (!mergeSearch || mergeSearch.length < 2) { setMergeResults([]); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(mergeSearch)}`);
+        setMergeResults(Array.isArray(res) ? res : []);
+      } catch { setMergeResults([]); }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [mergeSearch]);
+
+  // Reset merge state when modal closes
+  useEffect(() => {
+    if (!mergeModalOpen) { setMergeSearch(''); setMergeResults([]); }
+  }, [mergeModalOpen]);
 
   if (!selectedPerson) return null;
 
@@ -659,6 +688,16 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}{(() => { const b = new Date(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
           {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
           {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
+          {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor') && (
+            <button
+              type="button"
+              onClick={() => setMergeModalOpen(true)}
+              className="ml-auto px-2 py-0.5 text-[9px] flex items-center gap-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-brand-400 transition-colors border border-rmpg-700 rounded-sm"
+              title="Merge duplicate person records"
+            >
+              <GitMerge className="w-3 h-3" /> Merge
+            </button>
+          )}
         </div>
       </div>
 
@@ -859,6 +898,53 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           <FileAttachments entityType="person" entityId={selectedPerson.id} />
         </div>
       </div>
+
+      {/* ── Merge Persons Modal ─────────────────── */}
+      {mergeModalOpen && selectedPerson && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="panel-beveled w-[500px] max-h-[80vh] overflow-auto bg-surface-base p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-white">Merge Person Records</h2>
+              <button type="button" onClick={() => setMergeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-rmpg-300 mb-3">Merge a duplicate into <strong className="text-white">{selectedPerson.first_name} {selectedPerson.last_name}</strong> (the keeper). All linked records will transfer to the keeper.</p>
+            <div className="mb-3">
+              <label className="text-[10px] text-rmpg-400 uppercase tracking-wide">Search for duplicate to merge</label>
+              <input
+                type="text"
+                className="input-dark w-full text-xs mt-1"
+                placeholder="Search by name..."
+                value={mergeSearch}
+                onChange={(e) => setMergeSearch(e.target.value)}
+              />
+            </div>
+            {mergeResults.length > 0 && (
+              <div className="space-y-1 max-h-40 overflow-auto mb-3">
+                {mergeResults.filter(p => p.id !== selectedPerson.id).map(p => (
+                  <button key={p.id} type="button" className="w-full text-left px-3 py-2 text-xs hover:bg-surface-raised rounded-sm flex items-center gap-2 border border-rmpg-700 transition-colors"
+                    onClick={async () => {
+                      if (!confirm(`Merge "${p.first_name} ${p.last_name}" INTO "${selectedPerson.first_name} ${selectedPerson.last_name}"? This cannot be undone.`)) return;
+                      try {
+                        await apiFetch('/records/persons/merge', { method: 'POST', body: JSON.stringify({ keep_id: selectedPerson.id, merge_id: p.id }) });
+                        addToast('Persons merged successfully', 'success');
+                        setMergeModalOpen(false);
+                        fetchPersons();
+                      } catch (err: any) { addToast(err?.message || 'Merge failed', 'error'); }
+                    }}
+                  >
+                    <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <span className="text-white">{p.first_name} {p.last_name}</span>
+                    {p.date_of_birth && <span className="text-rmpg-400 ml-auto text-[10px]">{p.date_of_birth}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {mergeSearch.length >= 2 && mergeResults.filter(p => p.id !== selectedPerson.id).length === 0 && (
+              <p className="text-xs text-rmpg-500 text-center py-2">No matching persons found</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
