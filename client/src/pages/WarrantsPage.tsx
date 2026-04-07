@@ -813,6 +813,7 @@ export default function WarrantsPage() {
       uniSearchCharge, uniSearchDateFrom, uniSearchDateTo]);
 
   // ── Typeahead for unified search name fields ──
+  const [nameFieldFocused, setNameFieldFocused] = useState(false);
   useEffect(() => {
     if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
     const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
@@ -820,8 +821,8 @@ export default function WarrantsPage() {
     typeaheadTimer.current = setTimeout(async () => {
       setNameTypeaheadLoading(true);
       try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(query)}&limit=8`);
-        setNameTypeahead(res.data || []);
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
+        setNameTypeahead(Array.isArray(res) ? res.slice(0, 8) : []);
       } finally { setNameTypeaheadLoading(false); }
     }, 300);
     return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
@@ -2110,6 +2111,8 @@ export default function WarrantsPage() {
                       placeholder="First name..."
                       value={uniSearchFirst}
                       onChange={(e) => setUniSearchFirst(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
                       autoComplete="off"
                       autoFocus
                     />
@@ -2122,6 +2125,8 @@ export default function WarrantsPage() {
                       placeholder="Last name..."
                       value={uniSearchLast}
                       onChange={(e) => setUniSearchLast(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
                       autoComplete="off"
                     />
                   </div>
@@ -2134,8 +2139,8 @@ export default function WarrantsPage() {
                       onChange={(e) => setUniSearchDob(e.target.value)}
                     />
                   </div>
-                  {/* Typeahead dropdown */}
-                  {nameTypeahead.length > 0 && (
+                  {/* Typeahead dropdown — only visible when name fields are focused */}
+                  {nameTypeahead.length > 0 && nameFieldFocused && (
                     <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-[var(--border-strong)] shadow-lg max-h-48 overflow-auto">
                       {nameTypeaheadLoading && (
                         <div className="p-2 text-[10px] text-rmpg-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
