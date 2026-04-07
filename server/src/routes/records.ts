@@ -462,6 +462,44 @@ router.post('/persons', (req: Request, res: Response) => {
       VALUES (?, 'person_created', 'person', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created person record: ${first_name} ${last_name}`, req.ip || 'unknown');
 
+    // Update with enhanced person fields (65 new columns)
+    const personBooleanFields = new Set([
+      'interpreter_needed', 'wheelchair_dependent', 'hearing_impaired', 'gps_monitor',
+      'homeless_status', 'va_benefits_active', 'fingerprint_on_file', 'dna_on_file', 'dental_records_on_file',
+    ]);
+    const personIntFields = new Set(['tattoo_count', 'prior_booking_count']);
+    const personEnhancedKeys = [
+      'preferred_name', 'alias_dob', 'tribal_affiliation', 'immigration_status', 'country_of_origin',
+      'ethnicity_detail', 'religion', 'gender_identity', 'interpreter_needed', 'literacy_level',
+      'primary_language', 'secondary_language', 'nickname_street_name', 'maiden_name', 'suffix',
+      'tattoo_locations', 'tattoo_descriptions', 'tattoo_count', 'piercing_locations', 'prosthetics',
+      'wheelchair_dependent', 'hearing_impaired', 'vision_impaired', 'speech_impediment', 'dominant_hand',
+      'body_odor_notable', 'gait_description', 'driver_license_status', 'last_law_enforcement_contact',
+      'known_contact_method', 'mental_health_flags', 'medication_alerts', 'suicide_risk', 'violent_history',
+      'escape_risk', 'restraining_orders', 'curfew_restrictions', 'gps_monitor', 'gang_rank', 'gang_set',
+      'gang_territory', 'gang_rivals', 'homeless_status', 'homeless_location', 'frequented_locations',
+      'known_vehicles', 'modus_operandi', 'military_branch', 'military_discharge_type', 'military_rank',
+      'military_service_dates', 'va_benefits_active', 'employer_address', 'employer_phone',
+      'employer_supervisor', 'employment_schedule', 'next_of_kin_name', 'next_of_kin_phone',
+      'next_of_kin_relationship', 'next_of_kin_address', 'fingerprint_on_file', 'dna_on_file',
+      'dental_records_on_file', 'photo_date_taken', 'prior_booking_count',
+    ];
+    const personEnhanced: [string, any][] = [];
+    for (const key of personEnhancedKeys) {
+      if (req.body[key] !== undefined) {
+        let val: any;
+        if (personBooleanFields.has(key)) val = req.body[key] ? 1 : 0;
+        else if (personIntFields.has(key)) val = parseInt(req.body[key], 10) || null;
+        else val = req.body[key] ?? null;
+        personEnhanced.push([key, val]);
+      }
+    }
+    if (personEnhanced.length > 0) {
+      const setClauses = personEnhanced.map(([k]) => `${k} = ?`).join(', ');
+      const setValues = personEnhanced.map(([, v]) => v);
+      db.prepare(`UPDATE persons SET ${setClauses} WHERE id = ?`).run(...setValues, result.lastInsertRowid);
+    }
+
     // Auto-screen against OFAC sanctions BEFORE returning response
     screenPersonOfac(Number(result.lastInsertRowid), first_name, last_name);
 
@@ -536,6 +574,40 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       known_associates: v => v ?? null,
       emergency_contact_relationship: v => v ?? null, caution_flags: v => v ?? null,
       photo_url: v => v ?? null, notes: v => v ?? null,
+      // ── Enhanced person fields (65 new columns) ──
+      preferred_name: v => v ?? null, alias_dob: v => v ?? null,
+      tribal_affiliation: v => v ?? null, immigration_status: v => v ?? null,
+      country_of_origin: v => v ?? null, ethnicity_detail: v => v ?? null,
+      religion: v => v ?? null, gender_identity: v => v ?? null,
+      interpreter_needed: v => v ? 1 : 0, literacy_level: v => v ?? null,
+      primary_language: v => v ?? null, secondary_language: v => v ?? null,
+      nickname_street_name: v => v ?? null, maiden_name: v => v ?? null, suffix: v => v ?? null,
+      tattoo_locations: v => v ?? null, tattoo_descriptions: v => v ?? null,
+      tattoo_count: v => parseInt(v, 10) || null,
+      piercing_locations: v => v ?? null, prosthetics: v => v ?? null,
+      wheelchair_dependent: v => v ? 1 : 0, hearing_impaired: v => v ? 1 : 0,
+      vision_impaired: v => v ?? null, speech_impediment: v => v ?? null,
+      dominant_hand: v => v ?? null, body_odor_notable: v => v ?? null,
+      gait_description: v => v ?? null, driver_license_status: v => v ?? null,
+      last_law_enforcement_contact: v => v ?? null, known_contact_method: v => v ?? null,
+      mental_health_flags: v => v ?? null, medication_alerts: v => v ?? null,
+      suicide_risk: v => v ?? null, violent_history: v => v ?? null,
+      escape_risk: v => v ?? null, restraining_orders: v => v ?? null,
+      curfew_restrictions: v => v ?? null, gps_monitor: v => v ? 1 : 0,
+      gang_rank: v => v ?? null, gang_set: v => v ?? null,
+      gang_territory: v => v ?? null, gang_rivals: v => v ?? null,
+      homeless_status: v => v ? 1 : 0, homeless_location: v => v ?? null,
+      frequented_locations: v => v ?? null, known_vehicles: v => v ?? null,
+      modus_operandi: v => v ?? null, military_branch: v => v ?? null,
+      military_discharge_type: v => v ?? null, military_rank: v => v ?? null,
+      military_service_dates: v => v ?? null, va_benefits_active: v => v ? 1 : 0,
+      employer_address: v => v ?? null, employer_phone: v => v ?? null,
+      employer_supervisor: v => v ?? null, employment_schedule: v => v ?? null,
+      next_of_kin_name: v => v ?? null, next_of_kin_phone: v => v ?? null,
+      next_of_kin_relationship: v => v ?? null, next_of_kin_address: v => v ?? null,
+      fingerprint_on_file: v => v ? 1 : 0, dna_on_file: v => v ? 1 : 0,
+      dental_records_on_file: v => v ? 1 : 0, photo_date_taken: v => v ?? null,
+      prior_booking_count: v => parseInt(v, 10) || null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -850,6 +922,48 @@ router.post('/vehicles', (req: Request, res: Response) => {
       JSON.stringify(flags || []), notes || null,
     );
 
+    // Update with enhanced vehicle fields (72 new columns)
+    const vehBooleanFields = new Set([
+      'sunroof', 'roof_rack', 'trailer_hitch', 'aftermarket_exhaust', 'lowered',
+      'aftermarket_stereo', 'dash_camera_installed', 'cb_radio_installed',
+      'child_seat_present', 'handicap_placard', 'sr22_required',
+    ]);
+    const vehNumericFields = new Set(['mileage_last_recorded', 'tow_fee', 'storage_fee_daily', 'lien_balance']);
+    const vehEnhancedKeys = [
+      'registration_status', 'registered_owner_name', 'registered_owner_address',
+      'registered_owner_phone', 'registered_owner_dob', 'registration_state',
+      'title_status', 'title_number', 'temporary_plate_expiry', 'fleet_number',
+      'vehicle_alert_code', 'repossession_status', 'repossession_company', 'repossession_date',
+      'last_seen_location', 'last_seen_date', 'impound_status', 'impound_lot',
+      'impound_case_number', 'impound_date', 'bumper_stickers_decals', 'window_tint_level',
+      'sunroof', 'roof_rack', 'trailer_hitch', 'aftermarket_wheels', 'aftermarket_exhaust',
+      'lift_kit', 'lowered', 'wrap_or_paint_custom', 'antenna_type', 'license_plate_frame',
+      'front_bumper_damage', 'rear_bumper_damage', 'rust_locations', 'interior_color',
+      'seat_material', 'aftermarket_stereo', 'dash_camera_installed', 'cb_radio_installed',
+      'child_seat_present', 'handicap_placard', 'rideshare_sticker', 'equipment_violations',
+      'airbag_status', 'mileage_last_recorded', 'mileage_date_recorded', 'emissions_status',
+      'emissions_test_date', 'catalytic_converter_status', 'tire_condition', 'brake_condition',
+      'headlight_type', 'insurance_agent_name', 'insurance_agent_phone', 'insurance_policy_number',
+      'insurance_coverage_type', 'insurance_verified_date', 'sr22_required', 'tow_fee',
+      'tow_driver_name', 'tow_company_phone', 'storage_fee_daily', 'lien_holder_address',
+      'lien_balance',
+    ];
+    const vehEnhanced: [string, any][] = [];
+    for (const key of vehEnhancedKeys) {
+      if (req.body[key] !== undefined) {
+        let val: any;
+        if (vehBooleanFields.has(key)) val = req.body[key] ? 1 : 0;
+        else if (vehNumericFields.has(key)) val = parseFloat(req.body[key]) || null;
+        else val = req.body[key] ?? null;
+        vehEnhanced.push([key, val]);
+      }
+    }
+    if (vehEnhanced.length > 0) {
+      const setClauses = vehEnhanced.map(([k]) => `${k} = ?`).join(', ');
+      const setValues = vehEnhanced.map(([, v]) => v);
+      db.prepare(`UPDATE vehicles_records SET ${setClauses} WHERE id = ?`).run(...setValues, result.lastInsertRowid);
+    }
+
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
@@ -909,6 +1023,42 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       owner_phone: v => v ?? null, lien_holder: v => v ?? null,
       stolen_status: v => v ?? null, stolen_date: v => v ?? null,
       recovery_date: v => v ?? null, notes: v => v ?? null,
+      // ── Enhanced vehicle fields (72 new columns) ──
+      registration_status: v => v ?? null, registered_owner_name: v => v ?? null,
+      registered_owner_address: v => v ?? null, registered_owner_phone: v => v ?? null,
+      registered_owner_dob: v => v ?? null, registration_state: v => v ?? null,
+      title_status: v => v ?? null, title_number: v => v ?? null,
+      temporary_plate_expiry: v => v ?? null, fleet_number: v => v ?? null,
+      vehicle_alert_code: v => v ?? null, repossession_status: v => v ?? null,
+      repossession_company: v => v ?? null, repossession_date: v => v ?? null,
+      last_seen_location: v => v ?? null, last_seen_date: v => v ?? null,
+      impound_status: v => v ?? null, impound_lot: v => v ?? null,
+      impound_case_number: v => v ?? null, impound_date: v => v ?? null,
+      bumper_stickers_decals: v => v ?? null, window_tint_level: v => v ?? null,
+      sunroof: v => v ? 1 : 0, roof_rack: v => v ? 1 : 0,
+      trailer_hitch: v => v ? 1 : 0, aftermarket_wheels: v => v ?? null,
+      aftermarket_exhaust: v => v ? 1 : 0, lift_kit: v => v ?? null,
+      lowered: v => v ? 1 : 0, wrap_or_paint_custom: v => v ?? null,
+      antenna_type: v => v ?? null, license_plate_frame: v => v ?? null,
+      front_bumper_damage: v => v ?? null, rear_bumper_damage: v => v ?? null,
+      rust_locations: v => v ?? null, interior_color: v => v ?? null,
+      seat_material: v => v ?? null, aftermarket_stereo: v => v ? 1 : 0,
+      dash_camera_installed: v => v ? 1 : 0, cb_radio_installed: v => v ? 1 : 0,
+      child_seat_present: v => v ? 1 : 0, handicap_placard: v => v ? 1 : 0,
+      rideshare_sticker: v => v ?? null, equipment_violations: v => v ?? null,
+      airbag_status: v => v ?? null, mileage_last_recorded: v => parseInt(v, 10) || null,
+      mileage_date_recorded: v => v ?? null, emissions_status: v => v ?? null,
+      emissions_test_date: v => v ?? null, catalytic_converter_status: v => v ?? null,
+      tire_condition: v => v ?? null, brake_condition: v => v ?? null,
+      headlight_type: v => v ?? null, insurance_agent_name: v => v ?? null,
+      insurance_agent_phone: v => v ?? null, insurance_policy_number: v => v ?? null,
+      insurance_coverage_type: v => v ?? null, insurance_verified_date: v => v ?? null,
+      sr22_required: v => v ? 1 : 0,
+      tow_fee: v => parseFloat(v) || null,
+      tow_driver_name: v => v ?? null, tow_company_phone: v => v ?? null,
+      storage_fee_daily: v => parseFloat(v) || null,
+      lien_holder_address: v => v ?? null,
+      lien_balance: v => parseFloat(v) || null,
     };
 
     for (const [key, transform] of Object.entries(vFieldMap)) {
@@ -1124,6 +1274,57 @@ router.post('/properties', (req: Request, res: Response) => {
       emergency_contact || null, post_orders || null, hazard_notes || null,
       access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
     );
+
+    // Update with enhanced property fields (73 new columns)
+    const propBooleanFields = new Set([
+      'cctv_ptz_capable', 'cctv_remote_viewable', 'cctv_audio_recording',
+      'basement_present', 'ada_accessible', 'parking_lot_gated', 'backup_generator',
+    ]);
+    const propIntFields = new Set([
+      'cctv_camera_count', 'cctv_retention_days', 'building_floors', 'building_square_footage',
+      'building_year_built', 'elevator_count', 'stairwell_count', 'occupancy_capacity',
+      'entry_points_count', 'parking_lot_spaces', 'loading_dock_count', 'tenant_count',
+      'security_zones_count',
+    ]);
+    const propEnhancedKeys = [
+      'security_company', 'security_company_phone', 'security_company_account',
+      'security_system_type', 'security_panel_location', 'security_code_day',
+      'security_code_night', 'duress_code', 'security_zones_count', 'security_last_tested',
+      'key_holder_name', 'key_holder_phone', 'key_holder_secondary_name',
+      'key_holder_secondary_phone', 'key_location', 'key_box_code', 'key_type',
+      'access_card_system', 'cctv_camera_count', 'cctv_retention_days', 'cctv_vendor',
+      'cctv_access_credentials', 'cctv_recording_location', 'cctv_ptz_capable',
+      'cctv_remote_viewable', 'cctv_audio_recording', 'building_floors',
+      'building_square_footage', 'building_material', 'building_year_built',
+      'roof_type', 'roof_access', 'basement_present', 'basement_access',
+      'elevator_count', 'stairwell_count', 'occupancy_capacity', 'ada_accessible',
+      'officer_caution_notes', 'lighting_description', 'lighting_timer',
+      'entry_points_count', 'entry_points_notes', 'sensitive_areas',
+      'restricted_access_areas', 'fire_panel_location', 'fire_sprinkler_system',
+      'utility_shutoff_locations', 'hazmat_on_site', 'weapons_on_premises',
+      'patrol_priority', 'patrol_frequency', 'last_patrol_date', 'problem_type_tags',
+      'after_hours_contact_name', 'after_hours_contact_phone', 'parking_lot_spaces',
+      'parking_lot_gated', 'loading_dock_count', 'dumpster_locations', 'tenant_count',
+      'tenant_list', 'property_manager_name', 'property_manager_phone',
+      'property_manager_email', 'owner_name', 'owner_phone', 'lease_expiry',
+      'internet_provider', 'phone_system_type', 'backup_generator',
+      'water_source', 'septic_or_sewer',
+    ];
+    const propEnhanced: [string, any][] = [];
+    for (const key of propEnhancedKeys) {
+      if (req.body[key] !== undefined) {
+        let val: any;
+        if (propBooleanFields.has(key)) val = req.body[key] ? 1 : 0;
+        else if (propIntFields.has(key)) val = parseInt(req.body[key], 10) || null;
+        else val = req.body[key] ?? null;
+        propEnhanced.push([key, val]);
+      }
+    }
+    if (propEnhanced.length > 0) {
+      const setClauses = propEnhanced.map(([k]) => `${k} = ?`).join(', ');
+      const setValues = propEnhanced.map(([, v]) => v);
+      db.prepare(`UPDATE properties SET ${setClauses} WHERE id = ?`).run(...setValues, result.lastInsertRowid);
+    }
 
     // Activity log
     db.prepare(`
@@ -1996,6 +2197,54 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       access_instructions: v => v ?? null,
       is_active: v => v ? 1 : 0,
       client_id: v => v || null,
+      // ── Enhanced property fields (73 new columns) ──
+      security_company: v => v ?? null, security_company_phone: v => v ?? null,
+      security_company_account: v => v ?? null, security_system_type: v => v ?? null,
+      security_panel_location: v => v ?? null, security_code_day: v => v ?? null,
+      security_code_night: v => v ?? null, duress_code: v => v ?? null,
+      security_zones_count: v => parseInt(v, 10) || null,
+      security_last_tested: v => v ?? null,
+      key_holder_name: v => v ?? null, key_holder_phone: v => v ?? null,
+      key_holder_secondary_name: v => v ?? null, key_holder_secondary_phone: v => v ?? null,
+      key_location: v => v ?? null, key_box_code: v => v ?? null, key_type: v => v ?? null,
+      access_card_system: v => v ?? null,
+      cctv_camera_count: v => parseInt(v, 10) || null,
+      cctv_retention_days: v => parseInt(v, 10) || null,
+      cctv_vendor: v => v ?? null, cctv_access_credentials: v => v ?? null,
+      cctv_recording_location: v => v ?? null,
+      cctv_ptz_capable: v => v ? 1 : 0, cctv_remote_viewable: v => v ? 1 : 0,
+      cctv_audio_recording: v => v ? 1 : 0,
+      building_floors: v => parseInt(v, 10) || null,
+      building_square_footage: v => parseInt(v, 10) || null,
+      building_material: v => v ?? null,
+      building_year_built: v => parseInt(v, 10) || null,
+      roof_type: v => v ?? null, roof_access: v => v ?? null,
+      basement_present: v => v ? 1 : 0, basement_access: v => v ?? null,
+      elevator_count: v => parseInt(v, 10) || null,
+      stairwell_count: v => parseInt(v, 10) || null,
+      occupancy_capacity: v => parseInt(v, 10) || null,
+      ada_accessible: v => v ? 1 : 0,
+      officer_caution_notes: v => v ?? null, lighting_description: v => v ?? null,
+      lighting_timer: v => v ?? null,
+      entry_points_count: v => parseInt(v, 10) || null,
+      entry_points_notes: v => v ?? null, sensitive_areas: v => v ?? null,
+      restricted_access_areas: v => v ?? null, fire_panel_location: v => v ?? null,
+      fire_sprinkler_system: v => v ?? null, utility_shutoff_locations: v => v ?? null,
+      hazmat_on_site: v => v ?? null, weapons_on_premises: v => v ?? null,
+      patrol_priority: v => v ?? null, patrol_frequency: v => v ?? null,
+      last_patrol_date: v => v ?? null, problem_type_tags: v => v ?? null,
+      after_hours_contact_name: v => v ?? null, after_hours_contact_phone: v => v ?? null,
+      parking_lot_spaces: v => parseInt(v, 10) || null,
+      parking_lot_gated: v => v ? 1 : 0,
+      loading_dock_count: v => parseInt(v, 10) || null,
+      dumpster_locations: v => v ?? null,
+      tenant_count: v => parseInt(v, 10) || null,
+      tenant_list: v => v ?? null, property_manager_name: v => v ?? null,
+      property_manager_phone: v => v ?? null, property_manager_email: v => v ?? null,
+      owner_name: v => v ?? null, owner_phone: v => v ?? null,
+      lease_expiry: v => v ?? null, internet_provider: v => v ?? null,
+      phone_system_type: v => v ?? null, backup_generator: v => v ? 1 : 0,
+      water_source: v => v ?? null, septic_or_sewer: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {
