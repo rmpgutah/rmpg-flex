@@ -22,6 +22,7 @@ import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
+import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -637,6 +638,14 @@ try {
       console.log('[Arrests] Auto-sync scheduler started');
     } catch (err: any) {
       console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+    }
+
+    // Start multi-state warrant scraper (all 50 states + federal)
+    try {
+      scheduleWarrantScraper();
+      console.log('[Warrant Scraper] Multi-state scraper started');
+    } catch (err: any) {
+      console.warn('[Warrant Scraper] Failed to start:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
