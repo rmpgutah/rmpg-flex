@@ -2110,6 +2110,7 @@ export default function WarrantsPage() {
                       placeholder="First name..."
                       value={uniSearchFirst}
                       onChange={(e) => setUniSearchFirst(e.target.value)}
+                      autoComplete="off"
                       autoFocus
                     />
                   </div>
@@ -2121,6 +2122,7 @@ export default function WarrantsPage() {
                       placeholder="Last name..."
                       value={uniSearchLast}
                       onChange={(e) => setUniSearchLast(e.target.value)}
+                      autoComplete="off"
                     />
                   </div>
                   <div className="w-[140px]">
@@ -2134,7 +2136,7 @@ export default function WarrantsPage() {
                   </div>
                   {/* Typeahead dropdown */}
                   {nameTypeahead.length > 0 && (
-                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-surface-border shadow-lg max-h-48 overflow-auto">
+                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-[var(--border-strong)] shadow-lg max-h-48 overflow-auto">
                       {nameTypeaheadLoading && (
                         <div className="p-2 text-[10px] text-rmpg-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
                       )}

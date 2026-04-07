@@ -634,6 +634,20 @@ body.fx-noise::after {
     50% { border-left-color: #f59e0b; box-shadow: -4px 0 10px rgba(245, 158, 11, 0.25); }
   }
 
+  /* --- Panel Surface Classes --- */
+  .panel-base {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+  }
+  .panel-raised {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+  }
+  .panel-sunken {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+  }
+
   /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
   .input-dark {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
