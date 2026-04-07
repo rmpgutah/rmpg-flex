@@ -1045,13 +1045,28 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
     'SELECT id FROM scraped_warrants WHERE source_key = ? AND warrant_id = ?'
   );
 
+  // Only insert warrants for persons who exist in our database.
+  // Match by first_name + last_name (case-insensitive).
+  // If DOB is available, require it to match for higher confidence.
+  const matchPersonStmt = db.prepare(`
+    SELECT id FROM persons
+    WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+    LIMIT 1
+  `);
+  const matchPersonDobStmt = db.prepare(`
+    SELECT id FROM persons
+    WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND dob = ?
+    LIMIT 1
+  `);
+
   const insertStmt = db.prepare(`
     INSERT INTO scraped_warrants
       (source_key, warrant_id, full_name, first_name, last_name, middle_name,
        date_of_birth, age, gender, race, city, state, warrant_type,
        case_number, court_name, issue_date, charge_description, bail_amount,
-       offense_level, photo_url, detail_url, status, first_seen_at, last_seen_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+       offense_level, photo_url, detail_url, status, first_seen_at, last_seen_at,
+       person_id, dob_verified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
   `);
 
   const updateStmt = db.prepare(`
@@ -1066,6 +1081,7 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
 
   const txn = db.transaction(() => {
     for (const entry of entries) {
+      // Check if this warrant already exists (always update existing records)
       const existing = checkStmt.get(sourceKey, entry.warrant_id);
       if (existing) {
         updateStmt.run(
@@ -1077,12 +1093,32 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
         );
         updated++;
       } else {
+        // Only INSERT new warrants if the person exists in our database
+        let personId: number | null = null;
+        let dobVerified = 0;
+
+        if (entry.first_name && entry.last_name) {
+          // Try DOB match first (higher confidence)
+          if (entry.date_of_birth) {
+            const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
+            if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+          }
+          // Fall back to name-only match
+          if (!personId) {
+            const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
+            if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
+          }
+        }
+
+        // Skip warrants for people NOT in our system
+        if (!personId) continue;
+
         insertStmt.run(
           sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
           entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
           entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
           entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
-          entry.photo_url, entry.detail_url, now, now
+          entry.photo_url, entry.detail_url, now, now, personId, dobVerified
         );
         inserted++;
       }
