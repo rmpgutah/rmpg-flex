@@ -9,7 +9,7 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 - **Service**: `systemd` unit `rmpg-flex` (HTTPS on 443, HTTP redirect on 80)
 - **Database**: SQLite via `better-sqlite3` at `server/data/rmpg-flex.db`
 - **Timezone**: America/Denver (Mountain Time)
-- **Version**: 5.5.0
+- **Version**: 5.7.0
 
 ## Tech Stack
 
@@ -135,6 +135,8 @@ LED indicators: Green/red/amber dots with box-shadow glow
 Fonts:         System sans-serif for UI, JetBrains Mono for data/readouts
 CSS variables: --surface-base, --surface-raised, --brand-blue (now gray), --border-default
 Tailwind blue palette: Overridden to grayscale (text-blue-500 renders gray)
+CSS utility classes: .panel-base, .panel-raised, .panel-sunken (map to CSS vars)
+Input classes: .input-dark, .select-dark, .textarea-dark (blocky Motorola-style)
 ```
 
 ### WebSocket Broadcasts
@@ -147,7 +149,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 - Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
 - GeoJSON layers: beat.geojson (719 features), county, municipality, highway, state_boundary, place
-- Service Worker (sw.js v145) pre-caches tiles for Utah operational area
+- Service Worker (sw.js v150) pre-caches tiles for Utah operational area
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
 ## Development
@@ -157,7 +159,7 @@ npm run dev              # Start both client (Vite :5173) and server (tsx :3001)
 npm run build            # Build client only (Vite → client/dist/)
 cd client && npx vite build       # Build client (used by deploy)
 cd server && npx vitest run       # Run server tests (43 tests)
-cd client && npx tsc --noEmit     # Strict typecheck (deploy gate — ~120 pre-existing errors)
+cd client && npx tsc --noEmit     # TypeScript typecheck (should pass with 0 errors)
 
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
@@ -168,7 +170,7 @@ bash deploy/deploy.sh             # Code only to VPS (runs typecheck + tests + b
 bash deploy/deploy.sh --all       # Code + desktop installers to VPS
 ```
 
-**Known issue**: Strict `tsc --noEmit` has ~120 pre-existing type errors (CRM types, fleet types, dispatch property access). Vite build succeeds (less strict). Deploy script blocks on typecheck — manual deploy via `rsync` bypasses this when needed.
+**Note**: TypeScript strict check passes with 0 errors as of v5.7.0. Vite build is the deploy gate.
 
 ### Google Maps API Key
 Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
@@ -260,6 +262,11 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - Route optimization for serve attempts
 - Files: `server/src/routes/serve.ts`, `server/src/routes/serveIntake.ts`
 
+### CI / GitHub Actions
+- Self-hosted runner on VPS (194.113.64.90) — systemd service `actions.runner.*.rmpg-vps`
+- Workflow: `.github/workflows/codeql.yml` — TypeScript check + npm audit + Vite build
+- Requires GitHub Team plan ($4/mo) for private repo Actions — currently blocked on Free plan
+
 ### Integration Hub
 - Integration health monitoring with WebSocket alerts
 - ClearPathGPS v3 API, weather auto-fill, body/dash cameras
@@ -286,7 +293,6 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 17. **Tailwind override pattern** — global Spillman enforcement at end of `index.css` uses `!important` to override utility classes (e.g., `.rounded-lg { border-radius: 2px !important; }`)
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
 19. **Worktree file paths** — when operating in a worktree, ALL edits must use the worktree path (`.claude/worktrees/<name>/`), not the main repo path. Edits to the main repo path are invisible to the worktree and will be lost
-20. **Multi-branch merges create duplicates** — when merging many branches, audit for duplicate `router.get/post/put/delete` handlers in server route files and duplicate `addCol()` calls in `database.ts`. Express only uses the first matching handler; duplicates are dead code
-21. **database.ts is the most critical shared file** — every feature branch adds migrations here. After merging multiple branches, compare line counts across worktrees to find the most complete version. The longest version typically has the most migrations
-22. **Blue is dead** — Tailwind's entire `blue` palette is overridden to grayscale in `tailwind.config.js`. Any `text-blue-*`, `bg-blue-*`, `border-blue-*` renders gray. Use CSS variables (`var(--brand-blue)`) or the custom `rmpg-*` / `brand-*` Tailwind classes instead
-23. **Merge conflict resolution** — in `git merge origin/<branch>`, `--ours` = current HEAD (main), `--theirs` = the branch being merged. For feature branch merges, `--theirs` keeps the branch's new work
+20. **Blue is dead** — Tailwind's entire `blue` palette is overridden to grayscale in `tailwind.config.js`. Any `text-blue-*`, `bg-blue-*`, `border-blue-*` renders gray. Use CSS variables (`var(--brand-blue)`) or the custom `rmpg-*` / `brand-*` Tailwind classes instead
+21. **Multer must stay on 1.x** — multer 2.0 has an incompatible API (removes `diskStorage()`, `memoryStorage()`, `upload.single()` pattern). 8 route files use 1.x API. Dependabot multer alerts cannot be auto-fixed
+22. **Panel CSS classes** — use `.panel-raised`, `.panel-sunken`, `.panel-base` for surface backgrounds. These are defined in `index.css` and map to CSS variables. Without them, elements render with no background (white)
