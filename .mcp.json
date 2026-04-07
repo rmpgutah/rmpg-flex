@@ -8,6 +8,14 @@
         "--db-path",
         "server/data/rmpg-flex.db"
       ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-github"]
     }
   }
 }

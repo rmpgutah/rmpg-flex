@@ -149,7 +149,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 - Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
 - GeoJSON layers: beat.geojson (719 features), county, municipality, highway, state_boundary, place
-- Service Worker (sw.js v150) pre-caches tiles for Utah operational area
+- Service Worker (sw.js v151) pre-caches tiles for Utah operational area
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
 ## Development
@@ -159,7 +159,7 @@ npm run dev              # Start both client (Vite :5173) and server (tsx :3001)
 npm run build            # Build client only (Vite → client/dist/)
 cd client && npx vite build       # Build client (used by deploy)
 cd server && npx vitest run       # Run server tests (43 tests)
-cd client && npx tsc --noEmit     # TypeScript typecheck (should pass with 0 errors)
+cd client && npx tsc --noEmit     # Strict typecheck (deploy gate)
 
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
@@ -168,6 +168,11 @@ node desktop/scripts/copyToDownloads.cjs  # Copy to server/downloads/
 # Deploy
 bash deploy/deploy.sh             # Code only to VPS (runs typecheck + tests + build + rsync)
 bash deploy/deploy.sh --all       # Code + desktop installers to VPS
+
+# Manual deploy (bypasses typecheck when needed)
+cd client && npx vite build && cd ..
+rsync -avz --delete --exclude='server/data' --exclude='server/certs' --exclude='server/.env' --exclude='server/uploads' --exclude='.git' --exclude='node_modules' --exclude='.claude' . root@194.113.64.90:/opt/rmpg-flex/
+ssh root@194.113.64.90 "cd /opt/rmpg-flex/server && npm install --legacy-peer-deps && systemctl restart rmpg-flex"
 ```
 
 **Note**: TypeScript strict check passes with 0 errors as of v5.7.0. Vite build is the deploy gate.
@@ -250,7 +255,9 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 
 ### National Warrant Search
 - 50-state warrant source coverage (FBI API + state/county sheriff pages)
-- 5 custom parsers: FBI JSON API, Washoe NV, Pima AZ, Denver CO, Flathead MT
+- 16 custom parsers (FBI API, LAPD, Cook County IL, NYPD, Philly, Houston, etc.)
+- 135 sources across all 50 states + 6 federal agencies on production DB
+- Only stores warrants matching persons in local database
 - Generic HTML fallback parser for unknown sources
 - Circuit breaker with exponential backoff (1h → 24h)
 - Page: `NationalWarrantSearchPage.tsx` with US coverage map
@@ -296,3 +303,6 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 20. **Blue is dead** — Tailwind's entire `blue` palette is overridden to grayscale in `tailwind.config.js`. Any `text-blue-*`, `bg-blue-*`, `border-blue-*` renders gray. Use CSS variables (`var(--brand-blue)`) or the custom `rmpg-*` / `brand-*` Tailwind classes instead
 21. **Multer must stay on 1.x** — multer 2.0 has an incompatible API (removes `diskStorage()`, `memoryStorage()`, `upload.single()` pattern). 8 route files use 1.x API. Dependabot multer alerts cannot be auto-fixed
 22. **Panel CSS classes** — use `.panel-raised`, `.panel-sunken`, `.panel-base` for surface backgrounds. These are defined in `index.css` and map to CSS variables. Without them, elements render with no background (white)
+23. **Force-refresh URL** — `https://rmpgutah.us/force-refresh` clears service worker cache and reloads. Use after deploys when users report stale UI
+24. **path-to-regexp pinning** — `server/package.json` overrides must pin `path-to-regexp` to `0.1.12`. Version >=8.x breaks Express 4 (`pathRegexp is not a function`). Never allow npm to upgrade this
+25. **Scraper person filtering** — warrant scraper only stores warrants for persons in the local `persons` table. Unmatched warrants are skipped on insert (not deleted after)
