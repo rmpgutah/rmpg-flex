@@ -237,6 +237,9 @@ export default function ArrestRecordsPage() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ArrestRecord | null>(null);
 
+  // Warrant linkage
+  const [warrantCounts, setWarrantCounts] = useState<Record<number, number>>({});
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [countyFilter, setCountyFilter] = useState('');
@@ -320,6 +323,26 @@ export default function ArrestRecordsPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchRecords(recordsPage); }, [fetchRecords, recordsPage]);
   useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
+
+  // ── Warrant check for linked persons ───────────────────
+  useEffect(() => {
+    const personIds = records.filter(r => r.person_id).map(r => r.person_id as number);
+    if (personIds.length === 0) { setWarrantCounts({}); return; }
+    const uniqueIds = [...new Set(personIds)];
+    const counts: Record<number, number> = {};
+    let cancelled = false;
+    (async () => {
+      for (const pid of uniqueIds) {
+        if (cancelled) break;
+        try {
+          const res = await apiFetch<{ count: number }>(`/warrants/check/${pid}`);
+          if (res.count > 0) counts[pid] = res.count;
+        } catch { /* ignore — warrant endpoint may not exist */ }
+      }
+      if (!cancelled) setWarrantCounts(counts);
+    })();
+    return () => { cancelled = true; };
+  }, [records]);
 
   // ── WebSocket live sync ─────────────────────────────────
 
@@ -662,6 +685,11 @@ export default function ArrestRecordsPage() {
                       {rec.entry_source === 'manual' && (
                         <span className="text-[7px] px-1 py-px bg-brand-900/40 text-brand-400 font-bold uppercase rounded-sm">M</span>
                       )}
+                      {rec.person_id && warrantCounts[rec.person_id] > 0 && (
+                        <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold ml-0.5 shrink-0" title={`${warrantCounts[rec.person_id]} active warrant(s)`}>
+                          {warrantCounts[rec.person_id]} WARRANT{warrantCounts[rec.person_id] > 1 ? 'S' : ''}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
                       <span className={COUNTY_ACCENTS[rec.source_id] || ''}>{rec.county || rec.source_id || '—'}</span>
@@ -722,7 +750,14 @@ export default function ArrestRecordsPage() {
         <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
+                {rec.person_id && warrantCounts[rec.person_id] > 0 && (
+                  <span className="text-[9px] bg-red-900/50 text-red-400 border border-red-700/50 px-2 py-0.5 rounded-sm font-bold animate-pulse" title={`${warrantCounts[rec.person_id]} active warrant(s)`}>
+                    {warrantCounts[rec.person_id]} ACTIVE WARRANT{warrantCounts[rec.person_id] > 1 ? 'S' : ''}
+                  </span>
+                )}
+              </div>
               {rec.booking_number && (
                 <span className="text-[9px] font-mono text-rmpg-400">Booking #{rec.booking_number}</span>
               )}

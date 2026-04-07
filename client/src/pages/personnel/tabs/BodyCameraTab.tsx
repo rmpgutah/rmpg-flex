@@ -73,6 +73,8 @@ export default function BodyCameraTab({
   const [statusFilter, setStatusFilter] = useState<CameraStatus | 'all'>('all');
   const [classFilter, setClassFilter] = useState<VideoClassification | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [videoDateFrom, setVideoDateFrom] = useState('');
+  const [videoDateTo, setVideoDateTo] = useState('');
 
   // ── Bulk selection state ──────────────────────────────────
   const [selectedCameraIds, setSelectedCameraIds] = useState<Set<number>>(new Set());
@@ -119,11 +121,15 @@ export default function BodyCameraTab({
         v.title?.toLowerCase().includes(q) ||
         v.officer_name?.toLowerCase().includes(q) ||
         v.camera_serial?.toLowerCase().includes(q) ||
-        v.case_number?.toLowerCase().includes(q)
+        v.case_number?.toLowerCase().includes(q) ||
+        (v as any).filename?.toLowerCase().includes(q) ||
+        v.notes?.toLowerCase().includes(q)
       );
     }
+    if (videoDateFrom) list = list.filter(v => v.recorded_at >= videoDateFrom);
+    if (videoDateTo) list = list.filter(v => v.recorded_at <= videoDateTo + 'T23:59:59');
     return list;
-  }, [videos, classFilter, search]);
+  }, [videos, classFilter, search, videoDateFrom, videoDateTo]);
 
   // ── Helpers ──────────────────────────────────────────────
 
@@ -322,17 +328,51 @@ export default function BodyCameraTab({
             </button>
           ))
         ) : (
-          VIDEO_CLASS_FILTERS.map(f => (
-            <button type="button"
-              key={f.value}
-              onClick={() => setClassFilter(f.value)}
-              className={`text-[10px] px-2.5 py-1 ${
-                classFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))
+          <>
+            {VIDEO_CLASS_FILTERS.map(f => (
+              <button type="button"
+                key={f.value}
+                onClick={() => setClassFilter(f.value)}
+                className={`text-[10px] px-2.5 py-1 ${
+                  classFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+            <div className="h-4 w-px bg-rmpg-700" />
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3 h-3 text-rmpg-500" />
+              <input
+                type="date"
+                className="input-dark text-[10px] py-1 px-2 w-[120px] min-h-[28px]"
+                value={videoDateFrom}
+                onChange={(e) => setVideoDateFrom(e.target.value)}
+                aria-label="Date from"
+                title="Filter from date"
+              />
+              <span className="text-[9px] text-rmpg-500">to</span>
+              <input
+                type="date"
+                className="input-dark text-[10px] py-1 px-2 w-[120px] min-h-[28px]"
+                value={videoDateTo}
+                onChange={(e) => setVideoDateTo(e.target.value)}
+                aria-label="Date to"
+                title="Filter to date"
+              />
+              {(videoDateFrom || videoDateTo) && (
+                <button
+                  type="button"
+                  onClick={() => { setVideoDateFrom(''); setVideoDateTo(''); }}
+                  className="toolbar-btn text-[9px] px-1.5 py-0.5 text-rmpg-400 hover:text-red-400"
+                  title="Clear date filter"
+                  aria-label="Clear date filter"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
 
