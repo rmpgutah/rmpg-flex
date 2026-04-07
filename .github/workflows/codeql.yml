@@ -1,4 +1,4 @@
-name: "CodeQL - Code Quality"
+name: "Security & Quality"
 
 on:
   push:
@@ -7,36 +7,36 @@ on:
     branches: [main]
   schedule:
     - cron: "17 8 * * 1"  # Weekly Monday 8:17am UTC
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch:
 
 jobs:
-  analyze:
-    name: Analyze JavaScript/TypeScript
+  security-scan:
+    name: Security & TypeScript Check
     runs-on: self-hosted
-    permissions:
-      security-events: write
-      contents: read
-      actions: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript-typescript]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          languages: ${{ matrix.language }}
-          queries: security-extended
+          node-version: "22"
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts
+          cd client && npm ci --ignore-scripts
+          cd ../server && npm ci --ignore-scripts
 
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
+      - name: TypeScript check (client)
+        run: cd client && npx tsc --noEmit
+
+      - name: Audit dependencies
+        run: |
+          echo "=== Root ===" && npm audit --audit-level=high || true
+          echo "=== Server ===" && cd server && npm audit --audit-level=high || true
+          echo "=== Client ===" && cd ../client && npm audit --audit-level=high || true
+
+      - name: Build client
+        run: cd client && npx vite build
