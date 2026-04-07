@@ -31,6 +31,7 @@ import {
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
+import { createNotification, createNotificationForRoles } from './notifications';
 
 const router = Router();
 router.use(authenticateToken);
@@ -210,6 +211,36 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
 
     // Run cross-linking for the new record
     try { crossLinkArrests(); } catch { /* non-critical */ }
+
+    // Check for active warrants matching this person by name
+    try {
+      const personName = fullName;
+      const activeWarrants = db.prepare(`
+        SELECT COUNT(*) as cnt FROM warrants w
+        JOIN persons p ON w.subject_person_id = p.id
+        WHERE w.status = 'active'
+          AND LOWER(TRIM(p.first_name || ' ' || p.last_name)) = LOWER(TRIM(?))
+      `).get(personName) as { cnt: number } | undefined;
+
+      if (activeWarrants && activeWarrants.cnt > 0) {
+        // Notify the arresting officer
+        createNotification(
+          user.userId, 'warrant',
+          `Warrant Hit: ${personName}`,
+          `Person has ${activeWarrants.cnt} active warrant(s). Verify and coordinate with court.`,
+          'warrant', 0, 'high'
+        );
+        // Notify supervisors and admins
+        createNotificationForRoles(
+          ['admin', 'manager', 'supervisor'],
+          'warrant',
+          `Warrant Hit on Arrest: ${personName}`,
+          `Arrested person has ${activeWarrants.cnt} active warrant(s).`,
+          'warrant', 0, 'high',
+          'warrant.hit_on_arrest', user.userId
+        );
+      }
+    } catch { /* non-critical — don't block arrest creation */ }
 
     res.status(201).json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
