@@ -197,14 +197,14 @@ export default function SafetyAlertModal({
           width: 420,
           maxWidth: '95vw',
           maxHeight: '90vh',
-          border: '1px solid #1e2a3a',
+          border: '1px solid #222222',
           borderTop: `3px solid ${selectedType ? (ALERT_TYPES.find(a => a.type === selectedType)?.color ?? '#ef4444') : '#ef4444'}`,
         }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 shrink-0"
-          style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+          style={{ background: '#050505', borderBottom: '1px solid #222222' }}
         >
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-red-500" />
@@ -272,7 +272,7 @@ export default function SafetyAlertModal({
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
                   style={{
                     background: '#050505',
-                    border: '1px solid #1e2a3a',
+                    border: '1px solid #222222',
                   }}
                   placeholder="40.7608"
                 />
@@ -290,7 +290,7 @@ export default function SafetyAlertModal({
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
                   style={{
                     background: '#050505',
-                    border: '1px solid #1e2a3a',
+                    border: '1px solid #222222',
                   }}
                   placeholder="-111.891"
                 />
@@ -311,7 +311,7 @@ export default function SafetyAlertModal({
               className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 resize-none"
               style={{
                 background: '#050505',
-                border: '1px solid #1e2a3a',
+                border: '1px solid #222222',
               }}
               placeholder="Describe the situation..."
             />
@@ -352,7 +352,7 @@ export default function SafetyAlertModal({
         {/* Footer */}
         <div
           className="flex items-center justify-end gap-2 px-4 py-3 shrink-0"
-          style={{ borderTop: '1px solid #1e2a3a', background: '#050505' }}
+          style={{ borderTop: '1px solid #222222', background: '#050505' }}
         >
           <button type="button"
             onClick={onClose}

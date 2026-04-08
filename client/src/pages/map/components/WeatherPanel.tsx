@@ -126,7 +126,7 @@ export default function WeatherPanel({
       style={{
         width: 320,
         background: '#0a0a0a',
-        border: '1px solid #1e2a3a',
+        border: '1px solid #222222',
         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       }}
       role="complementary"
@@ -135,7 +135,7 @@ export default function WeatherPanel({
       {/* ── Header ──────────────────────────────────────── */}
       <div
         className="flex items-center gap-2 px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
       >
         <HeaderIcon size={14} className="text-white/60" />
         <span className="text-[10px] font-semibold tracking-widest text-white/80 uppercase flex-1">
@@ -166,11 +166,11 @@ export default function WeatherPanel({
 
       <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ maxHeight: 480 }}>
         {/* ── Section 1: Lighting ───────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #1e2a3a' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #222222' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Lighting Conditions
           </div>
-          <div className="flex items-center gap-3 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #1e2a3a' }}>
+          <div className="flex items-center gap-3 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #222222' }}>
             <div className={`p-2 rounded-sm ${lc.bg}`}>
               <lc.Icon size={20} className={`${lc.color} transition-all duration-200`} />
             </div>
@@ -207,7 +207,7 @@ export default function WeatherPanel({
         </div>
 
         {/* ── Section 2: Weather ────────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #1e2a3a' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #222222' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Weather
           </div>
@@ -251,12 +251,12 @@ export default function WeatherPanel({
         </div>
 
         {/* ── Section 3: Wind ───────────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #1e2a3a' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #222222' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Wind
           </div>
           {windCondition ? (
-            <div className="flex items-center gap-4 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #1e2a3a', borderLeft: '2px solid #22d3ee' }}>
+            <div className="flex items-center gap-4 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #222222', borderLeft: '2px solid #22d3ee' }}>
               <div className="flex items-baseline gap-1">
                 <span className="text-[20px] font-bold font-mono tabular-nums text-white/90">
                   {Math.round(windCondition.speed)}
@@ -300,7 +300,7 @@ export default function WeatherPanel({
         </div>
 
         {/* ── Section 4: Visibility ─────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #1e2a3a' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #222222' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Visibility
           </div>

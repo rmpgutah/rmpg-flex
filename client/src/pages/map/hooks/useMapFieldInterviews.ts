@@ -77,7 +77,7 @@ function buildFIInfoContent(fi: FIRecord): HTMLDivElement {
   const color = getReasonColor(fi.contact_reason);
 
   const container = document.createElement('div');
-  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a';
+  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
 
   const heading = document.createElement('div');
   heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
@@ -91,7 +91,7 @@ function buildFIInfoContent(fi: FIRecord): HTMLDivElement {
     if (value == null || value === '') return;
     const tr = document.createElement('tr');
     const tdLabel = document.createElement('td');
-    tdLabel.style.cssText = 'color:#6b7b8d;padding:1px 6px 1px 0';
+    tdLabel.style.cssText = 'color:#888888;padding:1px 6px 1px 0';
     tdLabel.textContent = lbl;
     const tdValue = document.createElement('td');
     tdValue.style.cssText = 'color:#e0e0e0';

@@ -2524,7 +2524,7 @@ body.fx-noise::after {
   [style*="background: #141414"],
   [style*="background: #050505"],
   [style*="background: #030303"],
-  [style*="background: #060c14"],
+  [style*="background: #050505"],
   [style*="background: linear-gradient"] {
     background: white !important;
   }
@@ -4053,8 +4053,8 @@ html, body {
   .data-panel-inset {
     background: var(--surface-sunken);
     border: 1px solid #030303;
-    border-top-color: #060c14;
-    border-left-color: #060c14;
+    border-top-color: #050505;
+    border-left-color: #050505;
     border-bottom-color: var(--border-default);
     border-right-color: var(--border-default);
     padding: 8px 10px;

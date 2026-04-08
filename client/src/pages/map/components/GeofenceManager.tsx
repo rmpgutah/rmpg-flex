@@ -137,7 +137,7 @@ export default function GeofenceManager({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -214,7 +214,7 @@ export default function GeofenceManager({
               className="rounded-sm hover:bg-[#141414]/50 transition-colors duration-100 cursor-pointer"
               style={{
                 background: '#050505',
-                border: '1px solid #1e2a3a',
+                border: '1px solid #222222',
                 borderLeft: `2px solid ${fence.color || typeStyle.text}`,
                 opacity: isActive ? 1 : 0.5,
               }}
@@ -257,7 +257,7 @@ export default function GeofenceManager({
 
               {/* Expanded details */}
               {expanded && (
-                <div className="px-2 pb-2 pt-0.5 space-y-1.5" style={{ borderTop: '1px solid #1e2a3a' }}>
+                <div className="px-2 pb-2 pt-0.5 space-y-1.5" style={{ borderTop: '1px solid #222222' }}>
                   {/* Meta row */}
                   <div className="flex items-center gap-3 text-[10px] text-rmpg-500 font-mono">
                     <span className="flex items-center gap-1">
@@ -337,7 +337,7 @@ export default function GeofenceManager({
       {geofences.length > 0 && (
         <div
           className="px-3 py-1.5 text-[9px] text-rmpg-600 font-mono"
-          style={{ borderTop: '1px solid #1e2a3a' }}
+          style={{ borderTop: '1px solid #222222' }}
         >
           {geofences.filter((f) => f.is_active).length} active of {geofences.length} zone{geofences.length !== 1 ? 's' : ''}
         </div>

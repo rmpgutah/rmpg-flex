@@ -338,7 +338,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // ── Auth error (config problem, not connectivity) ──
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060c14' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
@@ -401,7 +401,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#060c14',
+          background: '#050505',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>

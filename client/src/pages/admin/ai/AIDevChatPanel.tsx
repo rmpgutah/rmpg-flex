@@ -485,7 +485,7 @@ export default function AIDevChatPanel() {
         <div className="p-3 border-b border-[#222222]">
           <button
             onClick={createNewSession}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1a6abe] text-white text-xs font-medium rounded transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#666666] text-white text-xs font-medium rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
@@ -647,7 +647,7 @@ export default function AIDevChatPanel() {
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0a0f18] rounded p-3 border border-[#1a2a3a] shadow-inner transition-all duration-300 ${
+                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#050505] rounded p-3 border border-[#222222] shadow-inner transition-all duration-300 ${
                         streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
                       }`}
                         style={{ scrollBehavior: 'smooth' }}

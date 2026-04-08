@@ -201,7 +201,7 @@ function parseNodeFlags(node: any): { hasWarrant: boolean; hasBolo: boolean; has
 function GraphLegend({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
-    <div className="absolute bottom-2 left-2 z-10 bg-[#060c14]/92 backdrop-blur-sm border border-rmpg-700 rounded-sm p-2.5 max-w-[210px] select-none">
+    <div className="absolute bottom-2 left-2 z-10 bg-[#050505]/92 backdrop-blur-sm border border-rmpg-700 rounded-sm p-2.5 max-w-[210px] select-none">
       <div className="text-[8px] text-rmpg-400 uppercase tracking-wider mb-1.5 font-semibold">Entity Types</div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-2">
         {ALL_TYPES.map(t => (

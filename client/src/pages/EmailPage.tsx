@@ -649,7 +649,7 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
       return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
         body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #050505; margin: 16px; line-height: 1.6; word-wrap: break-word; }
         a { color: #888888; text-decoration: underline; } a:hover { color: #999999; } img { max-width: 100%; height: auto; display: inline-block; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #222222; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #222222; margin: 8px 0; padding: 4px 12px; color: #999999; }
         pre { background: #0a0a0a; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #222222; margin: 16px 0; }
       </style></head><body>${sanitized}</body></html>`;
     }, [bodyHtml]);
