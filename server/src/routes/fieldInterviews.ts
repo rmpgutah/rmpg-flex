@@ -342,59 +342,6 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
-// GET /api/field-interviews/map — Field interviews with coordinates for map display
-router.get('/map', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
-
-    const interviews = db.prepare(`
-      SELECT fi.id, fi.location, fi.latitude, fi.longitude, fi.date_time,
-        fi.reason, fi.disposition, fi.officer_id,
-        p.first_name as subject_first_name, p.last_name as subject_last_name,
-        u.full_name as officer_name
-      FROM field_interviews fi
-      LEFT JOIN persons p ON fi.person_id = p.id
-      LEFT JOIN users u ON fi.officer_id = u.id
-      WHERE fi.latitude IS NOT NULL AND fi.longitude IS NOT NULL
-        AND fi.date_time >= datetime('now','localtime','-${days} days')
-      ORDER BY fi.date_time DESC
-      LIMIT 500
-    `).all();
-
-    res.json(interviews);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to retrieve map interviews', code: 'MAP_FI_ERROR' });
-  }
-});
-
-// GET /api/field-interviews/repeat-check — Check for repeated contacts with same person
-router.get('/repeat-check', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { person_id } = req.query;
-    if (!person_id) { res.status(400).json({ error: 'person_id required', code: 'PERSONID_REQUIRED' }); return; }
-
-    const contacts = db.prepare(`
-      SELECT fi.*, u.full_name as officer_name
-      FROM field_interviews fi
-      LEFT JOIN users u ON fi.officer_id = u.id
-      WHERE fi.person_id = ?
-      ORDER BY fi.date_time DESC
-      LIMIT 100
-    `).all(person_id);
-
-    res.json({
-      person_id: Number(person_id),
-      total_contacts: contacts.length,
-      is_repeat: contacts.length > 1,
-      contacts,
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to check repeated contacts', code: 'REPEAT_CONTACT_ERROR' });
-  }
-});
-
 // ════════════════════════════════════════════════════════════
 // UPGRADE 27: Gang Affiliation Tracking Field
 // ════════════════════════════════════════════════════════════

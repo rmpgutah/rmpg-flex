@@ -451,7 +451,6 @@ export default function WarrantsPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
-  const navigate = useNavigate();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
 
@@ -606,34 +605,6 @@ export default function WarrantsPage() {
   const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
   const [addingToLocal, setAddingToLocal] = useState(false);
   const [addedToLocal, setAddedToLocal] = useState(false);
-
-  // Utah warrant detail modal
-  const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
-  const [addingToLocal, setAddingToLocal] = useState(false);
-  const [addedToLocal, setAddedToLocal] = useState(false);
-
-  // ============================================================
-  // UNIFIED SEARCH TAB STATE
-  // ============================================================
-  const [uniSearchFirst, setUniSearchFirst] = useState('');
-  const [uniSearchLast, setUniSearchLast] = useState('');
-  const [uniSearchDob, setUniSearchDob] = useState('');
-  const [uniSearchWarrantNum, setUniSearchWarrantNum] = useState('');
-  const [uniSearchCourt, setUniSearchCourt] = useState('');
-  const [uniSearchSource, setUniSearchSource] = useState('');
-  const [uniSearchOffenseLevel, setUniSearchOffenseLevel] = useState('');
-  const [uniSearchStatus, setUniSearchStatus] = useState('');
-  const [uniSearchType, setUniSearchType] = useState('');
-  const [uniSearchCharge, setUniSearchCharge] = useState('');
-  const [uniSearchDateFrom, setUniSearchDateFrom] = useState('');
-  const [uniSearchDateTo, setUniSearchDateTo] = useState('');
-  const [uniSearching, setUniSearching] = useState(false);
-  const [uniResults, setUniResults] = useState<UnifiedSearchResults | null>(null);
-  const [uniAdvancedOpen, setUniAdvancedOpen] = useState(false);
-  const [uniSearchHistory, setUniSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
-  const [nameTypeahead, setNameTypeahead] = useState<Person[]>([]);
-  const [nameTypeaheadLoading, setNameTypeaheadLoading] = useState(false);
-  const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ============================================================
   // WATCH LIST TAB STATE
@@ -944,144 +915,7 @@ export default function WarrantsPage() {
     setTimeout(() => runUnifiedSearch(), 100);
   }, [utahDetailWarrant, runUnifiedSearch]);
 
-  // ── Unified Search ──
-  const runUnifiedSearch = useCallback(async () => {
-    if (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim()) return;
-    setUniSearching(true);
-    try {
-      const body: Record<string, string> = {};
-      if (uniSearchFirst.trim()) body.firstName = uniSearchFirst.trim();
-      if (uniSearchLast.trim()) body.lastName = uniSearchLast.trim();
-      if (uniSearchDob.trim()) body.dob = uniSearchDob.trim();
-      if (uniSearchWarrantNum.trim()) body.warrantNumber = uniSearchWarrantNum.trim();
-      if (uniSearchCourt.trim()) body.court = uniSearchCourt.trim();
-      if (uniSearchSource) body.source = uniSearchSource;
-      if (uniSearchOffenseLevel) body.offenseLevel = uniSearchOffenseLevel;
-      if (uniSearchStatus) body.status = uniSearchStatus;
-      if (uniSearchType) body.type = uniSearchType;
-      if (uniSearchCharge.trim()) body.chargeKeyword = uniSearchCharge.trim();
-      if (uniSearchDateFrom) body.dateFrom = uniSearchDateFrom;
-      if (uniSearchDateTo) body.dateTo = uniSearchDateTo;
-
-      const res = await apiFetch<UnifiedSearchResults>('/warrants/search-all', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-      setUniResults(res);
-      if (uniSearchFirst.trim() && uniSearchLast.trim()) {
-        setUniSearchHistory(prev => [
-          { first: uniSearchFirst.trim(), last: uniSearchLast.trim(), hits: res.meta.totalHits, at: new Date().toISOString() },
-          ...prev.filter(h => !(h.first === uniSearchFirst.trim() && h.last === uniSearchLast.trim())),
-        ].slice(0, 10));
-      }
-    } finally { setUniSearching(false); }
-  }, [uniSearchFirst, uniSearchLast, uniSearchDob, uniSearchWarrantNum, uniSearchCourt,
-      uniSearchSource, uniSearchOffenseLevel, uniSearchStatus, uniSearchType,
-      uniSearchCharge, uniSearchDateFrom, uniSearchDateTo]);
-
-  // ── Typeahead for unified search name fields ──
-  useEffect(() => {
-    if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
-    const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
-    if (query.length < 2) { setNameTypeahead([]); return; }
-    typeaheadTimer.current = setTimeout(async () => {
-      setNameTypeaheadLoading(true);
-      try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(query)}&limit=8`);
-        setNameTypeahead(res.data || []);
-      } finally { setNameTypeaheadLoading(false); }
-    }, 300);
-    return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
-  }, [uniSearchFirst, uniSearchLast]);
-
-  // ── Utah Warrant Detail Modal Handlers ──
-
-  const openUtahDetail = useCallback((w: UtahWarrantResult, source: 'utah' | 'local' | 'scraped') => {
-    setUtahDetailWarrant({ ...w, _source: source });
-    setAddedToLocal(false);
-  }, []);
-
-  const handleUtahPrint = useCallback(async () => {
-    if (!utahDetailWarrant) return;
-    const w = utahDetailWarrant;
-    const pdfData: WarrantPdfData = {
-      warrant_number: w.case_id || w.warrant_id || w.utah_warrant_id || 'UTAH-SEARCH',
-      type: w.warrant_type || 'arrest',
-      status: w.status || 'active',
-      offense_level: w.offense_level || '',
-      charge_description: w.charges || w.charge_description || '',
-      subject_first_name: w.first_name || '',
-      subject_last_name: w.last_name || '',
-      subject_dob: '',
-      subject_gender: '',
-      subject_race: '',
-      subject_height: '',
-      subject_weight: '',
-      subject_hair_color: '',
-      subject_eye_color: '',
-      subject_address: w.city || '',
-      issuing_court: w.court_name || '',
-      issuing_judge: '',
-      bail_amount: w.bail_amount ?? undefined,
-      expires_at: '',
-      entered_by_name: '',
-      created_at: w.issue_date || new Date().toISOString(),
-      notes: `Source: ${w._source === 'utah' ? 'Utah State Warrants API' : w._source === 'scraped' ? `Multi-Source (${w.source_key || 'scraped'})` : 'Local System'}\nSearch Date: ${new Date().toLocaleString()}`,
-      // Extended fields for source/verification
-      county: w.city || '',
-      case_number: w.case_id || '',
-      filing_date: w.issue_date || '',
-      data_source: w._source === 'utah' ? 'Utah State Warrants API (warrants.utah.gov)' : w._source === 'scraped' ? `Multi-Source Database (${w.source_key || 'scraped'})` : 'RMPG Local System',
-      search_date: new Date().toLocaleString(),
-    };
-    try {
-      await downloadRecordPdf('warrant', pdfData, pdfData.warrant_number);
-    } catch (err) {
-      console.error('Warrant PDF failed:', err);
-    }
-  }, [utahDetailWarrant]);
-
-  const handleAddToLocal = useCallback(async () => {
-    if (!utahDetailWarrant || addingToLocal) return;
-    setAddingToLocal(true);
-    try {
-      const w = utahDetailWarrant;
-      await apiFetch('/warrants/ingest-utah', {
-        method: 'POST',
-        body: JSON.stringify({
-          warrants: [{
-            utah_warrant_id: w.utah_warrant_id || w.warrant_id || `manual-${Date.now()}`,
-            charges: w.charges || w.charge_description || 'Utah warrant',
-            court_name: w.court_name || null,
-            first_name: w.first_name,
-            last_name: w.last_name,
-            bail_amount: w.bail_amount,
-            offense_level: w.offense_level,
-            case_id: w.case_id,
-            issue_date: w.issue_date,
-          }],
-        }),
-      });
-      setAddedToLocal(true);
-      // Refresh warrants list if on warrants tab
-      fetchWarrants({ silent: true });
-    } catch (err: any) {
-      setError(err?.message || 'Failed to add to local records');
-    } finally {
-      setAddingToLocal(false);
-    }
-  }, [utahDetailWarrant, addingToLocal, fetchWarrants]);
-
-  const handleCheckPerson = useCallback(() => {
-    if (!utahDetailWarrant) return;
-    // Switch to unified search with this person's name
-    setUniSearchFirst(utahDetailWarrant.first_name);
-    setUniSearchLast(utahDetailWarrant.last_name);
-    setUtahDetailWarrant(null);
-    setActiveTab('search-all');
-    setTimeout(() => runUnifiedSearch(), 100);
-  }, [utahDetailWarrant, runUnifiedSearch]);
-
+  // ── Auto-Poll Status ──
   // ── Auto-Poll Status ──
   const fetchAutoPollStatus = useCallback(async () => {
     setAutoPollLoading(true);
