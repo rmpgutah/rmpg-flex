@@ -569,7 +569,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   for (const [label, value] of metaLines) {
     doc.setFont('helvetica', 'bold');
     doc.text(label, margin + 4, yPos);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.text(value, margin + 44, yPos);
     yPos += 5;
   }
@@ -586,13 +586,13 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     doc.rect(margin + 2, yPos, contentW - 2, 6, 'F');
     doc.setTextColor(...CLR.TEXT);
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge: ${trail.badge_number || 'N/A'})`, margin + 5, yPos + 4.2);
     yPos += 8;
 
     doc.setTextColor(...CLR.TEXT_SEC);
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     const s = trail.stats;
     const items = [
       `Distance: ${s.total_distance_miles} mi`, `Duration: ${s.duration_minutes} min`,
@@ -631,6 +631,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     drawBcHeaders();
 
     doc.setFontSize(5.5);
+    doc.setFont('courier', 'normal');
     const sampleRate = trail.points.length > 300 ? Math.ceil(trail.points.length / 300) : 1;
 
     for (let i = 0; i < trail.points.length; i += sampleRate) {
@@ -688,6 +689,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       drawColumnHeaders(rCols);
 
       doc.setFontSize(6);
+      doc.setFont('courier', 'normal');
       for (let si = 0; si < trail.response_segments.length; si++) {
         const seg = trail.response_segments[si];
         ensureSpace(5);
@@ -727,6 +729,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       drawColumnHeaders(zCols);
 
       doc.setFontSize(6);
+      doc.setFont('courier', 'normal');
       const sorted = Object.entries(zc).sort(([, a], [, b]) => b.time_seconds - a.time_seconds);
       for (let zi = 0; zi < sorted.length; zi++) {
         ensureSpace(5);
