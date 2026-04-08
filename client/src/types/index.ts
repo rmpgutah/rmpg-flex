@@ -636,6 +636,11 @@ export interface Evidence {
   estimated_value?: number;
   category?: string;
   notes?: string;
+  condition?: string;
+  quantity?: number;
+  is_biological?: boolean;
+  narcotics_flag?: boolean;
+  temperature_sensitive?: boolean;
   created_at: string;
   updated_at: string;
 }

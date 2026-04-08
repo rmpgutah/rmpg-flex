@@ -3382,7 +3382,7 @@ router.post(
     if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
 
     try {
-      const pdfParse = (await import('pdf-parse')).default;
+      const pdfParse = (await import('pdf-parse') as any).default;
       const buffer = fs.readFileSync(req.file.path);
       const parsed = await pdfParse(buffer);
       const content = parsed.text || '';
@@ -3497,7 +3497,7 @@ router.post(
       // For PDF URLs, use pdf-parse for proper text extraction
       if (isPdf) {
         try {
-          const pdfParse = (await import('pdf-parse')).default;
+          const pdfParse = (await import('pdf-parse') as any).default;
           const pdfRes = await fetch(url.trim(), { signal: AbortSignal.timeout(30_000) });
           if (pdfRes.ok) {
             const buffer = Buffer.from(await pdfRes.arrayBuffer());
@@ -6197,7 +6197,7 @@ router.post(
     const format = ['markdown', 'json', 'text'].includes(output_format || '') ? output_format! : 'markdown';
 
     try {
-      const pdfParse = (await import('pdf-parse')).default;
+      const pdfParse = (await import('pdf-parse') as any).default;
       const buffer = fs.readFileSync(req.file.path);
       const parsed = await pdfParse(buffer);
       const rawText = parsed.text || '';
@@ -7841,7 +7841,7 @@ router.post(
     const filteredOps = (Array.isArray(ops) ? ops : []).filter((o: string) => validOps.includes(o));
 
     try {
-      const pdfParse = (await import('pdf-parse')).default;
+      const pdfParse = (await import('pdf-parse') as any).default;
       const buffer = fs.readFileSync(req.file.path);
       const parsed = await pdfParse(buffer);
       const md = parsed.text || '';
@@ -7910,7 +7910,7 @@ router.post(
       const isPdf = url.trim().toLowerCase().endsWith('.pdf') || url.includes('/pdf') || url.includes('application/pdf');
       if (isPdf) {
         try {
-          const pdfParse = (await import('pdf-parse')).default;
+          const pdfParse = (await import('pdf-parse') as any).default;
           const pdfRes = await fetch(url.trim(), { signal: AbortSignal.timeout(30_000) });
           if (pdfRes.ok) {
             const buffer = Buffer.from(await pdfRes.arrayBuffer());
@@ -8825,7 +8825,7 @@ router.get('/observers', requireRole('admin', 'manager'), (req: Request, res: Re
     const db = getDb();
     const rows = db.prepare('SELECT * FROM firecrawl_observers ORDER BY created_at DESC').all();
     res.json(parseJsonRows(rows as any[], ['diff_sections', 'key_sections']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list observers'); }
+  } catch (e: any) { handleFirecrawlError(e, res); }
 });
 
 // GET /enrichments → alias for /enrich/history
@@ -8835,7 +8835,7 @@ router.get('/enrichments', requireRole('admin', 'manager'), (req: Request, res: 
     const db = getDb();
     const rows = db.prepare('SELECT * FROM firecrawl_enrichments ORDER BY created_at DESC LIMIT 100').all();
     res.json(parseJsonRows(rows as any[], ['input_data', 'result_data']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list enrichments'); }
+  } catch (e: any) { handleFirecrawlError(e, res); }
 });
 
 // GET /research → list research sessions (POST /research starts a new one)
@@ -8845,7 +8845,7 @@ router.get('/research', requireRole('admin', 'manager'), (req: Request, res: Res
     const db = getDb();
     const rows = db.prepare('SELECT * FROM firecrawl_research_sessions ORDER BY created_at DESC LIMIT 50').all();
     res.json(parseJsonRows(rows as any[], ['questions', 'findings', 'sources']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list research'); }
+  } catch (e: any) { handleFirecrawlError(e, res); }
 });
 
 // GET /chatbots → alias for /chatbot (plural)
@@ -8855,7 +8855,7 @@ router.get('/chatbots', requireRole('admin', 'manager'), (req: Request, res: Res
     const db = getDb();
     const rows = db.prepare('SELECT * FROM firecrawl_chatbots ORDER BY created_at DESC').all();
     res.json(parseJsonRows(rows as any[], ['source_urls', 'indexed_pages']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list chatbots'); }
+  } catch (e: any) { handleFirecrawlError(e, res); }
 });
 
 // GET /deep-searches → alias for /deep-search/history
@@ -8865,7 +8865,7 @@ router.get('/deep-searches', requireRole('admin', 'manager'), (req: Request, res
     const db = getDb();
     const rows = db.prepare('SELECT * FROM firecrawl_deep_searches ORDER BY created_at DESC LIMIT 50').all();
     res.json(parseJsonRows(rows as any[], ['sub_queries', 'findings', 'sources']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list deep searches'); }
+  } catch (e: any) { handleFirecrawlError(e, res); }
 });
 
 // GET /llmstxt → list llmstxt generations
@@ -8875,7 +8875,7 @@ router.get('/llmstxt', requireRole('admin', 'manager'), (req: Request, res: Resp
     const db = getDb();
     const rows = db.prepare('SELECT * FROM firecrawl_llmstxt ORDER BY created_at DESC LIMIT 50').all();
     res.json(rows);
-  } catch (e: any) { handleFirecrawlError(res, e, 'list llmstxt'); }
+  } catch (e: any) { handleFirecrawlError(e, res); }
 });
 
 // GET /trends → list trend scans
@@ -8885,7 +8885,7 @@ router.get('/trends', requireRole('admin', 'manager'), (req: Request, res: Respo
     const db = getDb();
     const rows = db.prepare('SELECT * FROM firecrawl_trend_scans ORDER BY created_at DESC LIMIT 50').all();
     res.json(parseJsonRows(rows as any[], ['trending_topics', 'sources']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list trends'); }
+  } catch (e: any) { handleFirecrawlError(e, res); }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -8935,7 +8935,7 @@ for (const alias of aliasRoutes) {
       const rows = db.prepare(`SELECT * FROM "${alias.table}" ORDER BY created_at DESC LIMIT 100`).all();
       res.json(alias.jsonFields ? parseJsonRows(rows as any[], alias.jsonFields) : rows);
     } catch (e: any) {
-      handleFirecrawlError(res, e, `list ${alias.path}`);
+      handleFirecrawlError(e, res);
     }
   });
 }

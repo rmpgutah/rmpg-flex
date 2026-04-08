@@ -4,6 +4,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 interface PropertyFormModalProps {
   isOpen: boolean;
@@ -54,6 +55,12 @@ export interface PropertyFormData {
   roof_access: string;
   utility_shutoffs: string;
   known_hazards: string;
+  contact_email: string;
+  secondary_contact_name: string;
+  secondary_contact_phone: string;
+  patrol_frequency: string;
+  opening_hours: string;
+  closing_hours: string;
 }
 
 const EMPTY_FORM: PropertyFormData = {
@@ -95,6 +102,12 @@ const EMPTY_FORM: PropertyFormData = {
   roof_access: '',
   utility_shutoffs: '',
   known_hazards: '',
+  contact_email: '',
+  secondary_contact_name: '',
+  secondary_contact_phone: '',
+  patrol_frequency: '',
+  opening_hours: '',
+  closing_hours: '',
 };
 
 const US_STATES = [
@@ -115,6 +128,7 @@ const SECURITY_FEATURES_OPTIONS = ['None', 'Cameras', 'Alarm System', 'Guard Ser
 const INSPECTION_STATUS_OPTIONS = ['Current', 'Expired', 'Pending', 'Failed', 'Not Required', 'Unknown'];
 const CAMERA_SYSTEM_OPTIONS = ['None', 'Analog CCTV', 'IP/Network', 'Cloud-Based', 'Ring/Doorbell', 'Body Worn', 'Unknown'];
 const ROOF_ACCESS_OPTIONS = ['None', 'Ladder', 'Stairwell', 'Hatch', 'Fire Escape', 'Elevator', 'Unknown'];
+const PATROL_FREQUENCY_OPTIONS = ['Every 15 min', 'Every 30 min', 'Every Hour', 'Every 2 Hours', 'Every 4 Hours', 'Twice Per Shift', 'Once Per Shift', 'As Needed', 'Continuous', 'Other'];
 
 export default function PropertyFormModal({
   isOpen,
@@ -170,6 +184,12 @@ export default function PropertyFormModal({
           roof_access: (editingProperty as any).roof_access || '',
           utility_shutoffs: (editingProperty as any).utility_shutoffs || '',
           known_hazards: (editingProperty as any).known_hazards || '',
+          contact_email: (editingProperty as any).contact_email || '',
+          secondary_contact_name: (editingProperty as any).secondary_contact_name || '',
+          secondary_contact_phone: (editingProperty as any).secondary_contact_phone || '',
+          patrol_frequency: (editingProperty as any).patrol_frequency || '',
+          opening_hours: (editingProperty as any).opening_hours || '',
+          closing_hours: (editingProperty as any).closing_hours || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -521,7 +541,7 @@ export default function PropertyFormModal({
             className="input-dark w-full text-xs"
             placeholder="(801) 555-0100"
             value={form.key_holder_phone}
-            onChange={handleChange}
+            onChange={(e) => setForm(prev => ({ ...prev, key_holder_phone: formatPhoneInput(e.target.value) }))}
           />
         </div>
         <div>
@@ -536,6 +556,44 @@ export default function PropertyFormModal({
           />
         </div>
       </div>
+
+      {/* Secondary Contact */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Secondary Contact Name</label>
+          <input
+            name="secondary_contact_name"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="Backup contact name"
+            value={form.secondary_contact_name}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Secondary Contact Phone</label>
+          <input
+            name="secondary_contact_phone"
+            type="tel"
+            className="input-dark w-full text-xs"
+            placeholder="(801) 555-0200"
+            value={form.secondary_contact_phone}
+            onChange={(e) => setForm(prev => ({ ...prev, secondary_contact_phone: formatPhoneInput(e.target.value) }))}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Contact Email</label>
+          <input
+            name="contact_email"
+            type="email"
+            className="input-dark w-full text-xs"
+            placeholder="Primary contact email"
+            value={form.contact_email}
+            onChange={handleChange}
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Owner Name</label>
@@ -556,6 +614,42 @@ export default function PropertyFormModal({
             className="input-dark w-full text-xs"
             placeholder="(801) 555-0100"
             value={form.owner_phone}
+            onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))}
+          />
+        </div>
+      </div>
+
+      {/* ── Patrol Operations ── */}
+      <div className="mt-3 pt-3 border-t border-rmpg-700">
+        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Patrol Operations</div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Patrol Frequency</label>
+          <select name="patrol_frequency" className="select-dark w-full text-xs" value={form.patrol_frequency} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {PATROL_FREQUENCY_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Opening Hours</label>
+          <input
+            name="opening_hours"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="e.g. 08:00"
+            value={form.opening_hours}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Closing Hours</label>
+          <input
+            name="closing_hours"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="e.g. 22:00"
+            value={form.closing_hours}
             onChange={handleChange}
           />
         </div>

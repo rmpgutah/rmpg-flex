@@ -1032,7 +1032,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const tid = parseInt(req.params.templateId, 10);
+    const tid = parseInt(req.params.templateId as string, 10);
     if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
     res.json({ success: true });
@@ -1309,7 +1309,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const tid = parseInt(req.params.templateId, 10);
+    const tid = parseInt(req.params.templateId as string, 10);
     if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
     res.json({ success: true });
@@ -1586,7 +1586,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const tid = parseInt(req.params.templateId, 10);
+    const tid = parseInt(req.params.templateId as string, 10);
     if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
     res.json({ success: true });
@@ -1863,7 +1863,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const tid = parseInt(req.params.templateId, 10);
+    const tid = parseInt(req.params.templateId as string, 10);
     if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
     res.json({ success: true });
@@ -2140,7 +2140,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const tid = parseInt(req.params.templateId, 10);
+    const tid = parseInt(req.params.templateId as string, 10);
     if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
     res.json({ success: true });
@@ -2417,7 +2417,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const tid = parseInt(req.params.templateId, 10);
+    const tid = parseInt(req.params.templateId as string, 10);
     if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
     res.json({ success: true });

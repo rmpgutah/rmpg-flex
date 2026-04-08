@@ -174,7 +174,7 @@ router.get('/unread-count', (req: Request, res: Response) => {
 router.put('/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
 
     // Verify the notification belongs to the current user
@@ -224,7 +224,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
 
     // Verify the notification belongs to the current user
@@ -270,7 +270,7 @@ router.get('/categories', (req: Request, res: Response) => {
 router.put('/:id/snooze', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
 
     const { snooze_until } = req.body;

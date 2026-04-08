@@ -53,7 +53,7 @@ router.post('/geography/areas', requireRole('admin', 'manager'), (req: Request, 
       INSERT INTO dispatch_areas (area_code, area_name, color, description, commander, notes, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(area_code, area_name, color || '#6366f1', description, commander, notes, sort_order || 0);
-    auditLog(req, 'CREATE', 'dispatch_areas', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'dispatch_areas', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Area code already exists' }); return; }
@@ -64,7 +64,7 @@ router.post('/geography/areas', requireRole('admin', 'manager'), (req: Request, 
 router.put('/geography/areas/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const old = db.prepare('SELECT * FROM dispatch_areas WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Area not found' }); return; }
     const fields = ['area_code', 'area_name', 'color', 'description', 'commander', 'notes', 'sort_order', 'active'];
@@ -77,7 +77,7 @@ router.put('/geography/areas/:id', requireRole('admin', 'manager'), (req: Reques
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
     db.prepare(`UPDATE dispatch_areas SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'dispatch_areas', id, old, req.body);
+    auditLog(req, 'UPDATE', 'dispatch_areas', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update area' });
@@ -87,10 +87,10 @@ router.put('/geography/areas/:id', requireRole('admin', 'manager'), (req: Reques
 router.delete('/geography/areas/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     db.prepare('UPDATE dispatch_sections SET area_id = NULL WHERE area_id = ?').run(id);
     db.prepare('DELETE FROM dispatch_areas WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'dispatch_areas', id, null, null);
+    auditLog(req, 'DELETE', 'dispatch_areas', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete area' }); }
 });
@@ -131,7 +131,7 @@ router.post('/geography/sections', requireRole('admin', 'manager'), (req: Reques
       INSERT INTO dispatch_sections (section_code, section_name, area_id, color, description, supervisor, radio_channel, notes, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(section_code, section_name, area_id || null, color || '#3b82f6', description, supervisor, radio_channel, notes, sort_order || 0);
-    auditLog(req, 'CREATE', 'dispatch_sections', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'dispatch_sections', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Section code already exists' }); return; }
@@ -142,7 +142,7 @@ router.post('/geography/sections', requireRole('admin', 'manager'), (req: Reques
 router.put('/geography/sections/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const old = db.prepare('SELECT * FROM dispatch_sections WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Section not found' }); return; }
     const fields = ['section_code', 'section_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
@@ -155,7 +155,7 @@ router.put('/geography/sections/:id', requireRole('admin', 'manager'), (req: Req
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
     db.prepare(`UPDATE dispatch_sections SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'dispatch_sections', id, old, req.body);
+    auditLog(req, 'UPDATE', 'dispatch_sections', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to update section' }); }
 });
@@ -163,10 +163,10 @@ router.put('/geography/sections/:id', requireRole('admin', 'manager'), (req: Req
 router.delete('/geography/sections/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     db.prepare('UPDATE dispatch_zones SET section_id = NULL WHERE section_id = ?').run(id);
     db.prepare('DELETE FROM dispatch_sections WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'dispatch_sections', id, null, null);
+    auditLog(req, 'DELETE', 'dispatch_sections', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete section' }); }
 });
@@ -208,7 +208,7 @@ router.post('/geography/zones', requireRole('admin', 'manager'), (req: Request, 
       INSERT INTO dispatch_zones (zone_code, zone_name, section_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(zone_code, zone_name, section_id || null, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order || 0);
-    auditLog(req, 'CREATE', 'dispatch_zones', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'dispatch_zones', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Zone code already exists' }); return; }
@@ -219,7 +219,7 @@ router.post('/geography/zones', requireRole('admin', 'manager'), (req: Request, 
 router.put('/geography/zones/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const old = db.prepare('SELECT * FROM dispatch_zones WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Zone not found' }); return; }
     const fields = ['zone_code', 'zone_name', 'section_id', 'color', 'description', 'primary_unit', 'backup_unit', 'radio_channel', 'hazard_notes', 'notes', 'population_estimate', 'sq_miles', 'sort_order', 'active'];
@@ -232,7 +232,7 @@ router.put('/geography/zones/:id', requireRole('admin', 'manager'), (req: Reques
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
     db.prepare(`UPDATE dispatch_zones SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'dispatch_zones', id, old, req.body);
+    auditLog(req, 'UPDATE', 'dispatch_zones', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to update zone' }); }
 });
@@ -240,10 +240,10 @@ router.put('/geography/zones/:id', requireRole('admin', 'manager'), (req: Reques
 router.delete('/geography/zones/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     db.prepare('UPDATE dispatch_beats SET zone_id = NULL WHERE zone_id = ?').run(id);
     db.prepare('DELETE FROM dispatch_zones WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'dispatch_zones', id, null, null);
+    auditLog(req, 'DELETE', 'dispatch_zones', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete zone' }); }
 });
@@ -293,7 +293,7 @@ router.post('/geography/beats', requireRole('admin', 'manager'), (req: Request, 
       INSERT INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(beat_code, beat_name, beat_descriptor, zone_id || null, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, patrol_frequency || 'normal', priority_modifier || 0, population_estimate, sq_miles, notes, sort_order || 0);
-    auditLog(req, 'CREATE', 'dispatch_beats', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'dispatch_beats', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Beat code already exists' }); return; }
@@ -304,7 +304,7 @@ router.post('/geography/beats', requireRole('admin', 'manager'), (req: Request, 
 router.put('/geography/beats/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const old = db.prepare('SELECT * FROM dispatch_beats WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Beat not found' }); return; }
     const fields = ['beat_code', 'beat_name', 'beat_descriptor', 'zone_id', 'dispatch_code', 'color', 'assigned_unit', 'backup_unit', 'hazard_notes', 'premise_alerts', 'patrol_frequency', 'priority_modifier', 'population_estimate', 'sq_miles', 'notes', 'sort_order', 'active'];
@@ -317,7 +317,7 @@ router.put('/geography/beats/:id', requireRole('admin', 'manager'), (req: Reques
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
     db.prepare(`UPDATE dispatch_beats SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'dispatch_beats', id, old, req.body);
+    auditLog(req, 'UPDATE', 'dispatch_beats', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to update beat' }); }
 });
@@ -325,9 +325,9 @@ router.put('/geography/beats/:id', requireRole('admin', 'manager'), (req: Reques
 router.delete('/geography/beats/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     db.prepare('DELETE FROM dispatch_beats WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'dispatch_beats', id, null, null);
+    auditLog(req, 'DELETE', 'dispatch_beats', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete beat' }); }
 });
@@ -378,7 +378,7 @@ router.post('/geography/codes', requireRole('admin', 'manager'), (req: Request, 
       INSERT INTO dispatch_codes (code, description, category, priority, color, requires_backup, officer_safety, ems_needed, fire_needed, notes, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(code, description, category || 'general', priority || 'P3', color || '#6b7280', requires_backup ? 1 : 0, officer_safety ? 1 : 0, ems_needed ? 1 : 0, fire_needed ? 1 : 0, notes, sort_order || 0);
-    auditLog(req, 'CREATE', 'dispatch_codes', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'dispatch_codes', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Dispatch code already exists' }); return; }
@@ -389,7 +389,7 @@ router.post('/geography/codes', requireRole('admin', 'manager'), (req: Request, 
 router.put('/geography/codes/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const old = db.prepare('SELECT * FROM dispatch_codes WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Dispatch code not found' }); return; }
     const fields = ['code', 'description', 'category', 'priority', 'color', 'requires_backup', 'officer_safety', 'ems_needed', 'fire_needed', 'notes', 'sort_order', 'active'];
@@ -402,7 +402,7 @@ router.put('/geography/codes/:id', requireRole('admin', 'manager'), (req: Reques
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
     db.prepare(`UPDATE dispatch_codes SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'dispatch_codes', id, old, req.body);
+    auditLog(req, 'UPDATE', 'dispatch_codes', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to update dispatch code' }); }
 });
@@ -410,9 +410,9 @@ router.put('/geography/codes/:id', requireRole('admin', 'manager'), (req: Reques
 router.delete('/geography/codes/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     db.prepare('DELETE FROM dispatch_codes WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'dispatch_codes', id, null, null);
+    auditLog(req, 'DELETE', 'dispatch_codes', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete dispatch code' }); }
 });
@@ -464,7 +464,7 @@ router.post('/geography/premise-alerts', requireRole('admin', 'manager', 'superv
       INSERT INTO premise_alerts (address, latitude, longitude, alert_type, alert_level, title, description, flags, expires_at, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(address, latitude, longitude, alert_type || 'caution', alert_level || 'info', title, description, JSON.stringify(flags || []), expires_at, userId);
-    auditLog(req, 'CREATE', 'premise_alerts', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'premise_alerts', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch { res.status(500).json({ error: 'Failed to create premise alert' }); }
 });
@@ -472,7 +472,7 @@ router.post('/geography/premise-alerts', requireRole('admin', 'manager', 'superv
 router.put('/geography/premise-alerts/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const old = db.prepare('SELECT * FROM premise_alerts WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Premise alert not found' }); return; }
     const fields = ['address', 'latitude', 'longitude', 'alert_type', 'alert_level', 'title', 'description', 'flags', 'expires_at', 'active'];
@@ -488,7 +488,7 @@ router.put('/geography/premise-alerts/:id', requireRole('admin', 'manager', 'sup
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
     db.prepare(`UPDATE premise_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'premise_alerts', id, old, req.body);
+    auditLog(req, 'UPDATE', 'premise_alerts', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to update premise alert' }); }
 });
@@ -496,9 +496,9 @@ router.put('/geography/premise-alerts/:id', requireRole('admin', 'manager', 'sup
 router.delete('/geography/premise-alerts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     db.prepare('DELETE FROM premise_alerts WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'premise_alerts', id, null, null);
+    auditLog(req, 'DELETE', 'premise_alerts', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete premise alert' }); }
 });
