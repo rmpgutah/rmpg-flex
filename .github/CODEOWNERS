@@ -1,0 +1,20 @@
+# Default owner for everything
+* @rmpgutah
+
+# Server-side changes (routes, middleware, database)
+/server/ @rmpgutah
+
+# Dispatch subsystem — critical path
+/server/src/routes/dispatch/ @rmpgutah
+/client/src/pages/dispatch/ @rmpgutah
+
+# Auth and security
+/server/src/middleware/auth* @rmpgutah
+/server/src/utils/totp* @rmpgutah
+
+# Deploy and CI
+/deploy/ @rmpgutah
+/.github/ @rmpgutah
+
+# Database migrations
+/server/src/models/database.ts @rmpgutah

@@ -35,7 +35,7 @@ const dlUpload = multer({
       cb(null, `dl-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024, files: 2, fields: 10, parts: 15, fieldSize: 1024 * 1024 }, // 10MB
   fileFilter: (_req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'];
     const ext = path.extname(file.originalname).toLowerCase();

@@ -62,7 +62,7 @@ function destinationPoint(
   distanceKm: number,
 ): { lat: number; lng: number } {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceKm)) return { lat, lng };
-  const R = 6371; // Earth radius km
+  const R = 3958.8; // Earth radius mi
   const d = distanceKm / R;
   const brng = (headingDeg * Math.PI) / 180;
   const lat1 = (lat * Math.PI) / 180;
@@ -274,7 +274,7 @@ export function useMapCorridor(
 
       clearEscapeRoutes();
 
-      const DISTANCE_KM = 1.5;
+      const DISTANCE_MI = 0.93;
       const directions = [
         { heading: 0, label: 'N' },
         { heading: 90, label: 'E' },
@@ -283,7 +283,7 @@ export function useMapCorridor(
       ];
 
       directions.forEach((dir) => {
-        const endpoint = destinationPoint(lat, lng, dir.heading, DISTANCE_KM);
+        const endpoint = destinationPoint(lat, lng, dir.heading, DISTANCE_MI);
         const line = new google.maps.Polyline({
           path: [{ lat, lng }, endpoint],
           strokeColor: '#a855f7',

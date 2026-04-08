@@ -22,6 +22,7 @@ import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
+import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -438,6 +439,26 @@ app.use(express.static(clientDistPath, {
   maxAge: '5m',
 }));
 
+// Force-refresh page — clears SW cache and reloads the app
+app.get('/force-refresh', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.send(`<!DOCTYPE html><html><head><title>RMPG Flex — Refreshing...</title>
+<style>body{background:#0a0a0a;color:#d4a017;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column}
+h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head><body>
+<h1>Clearing cache...</h1><p>Please wait — the app will reload automatically.</p>
+<script>
+(async()=>{
+  if('serviceWorker' in navigator){
+    const regs=await navigator.serviceWorker.getRegistrations();
+    for(const r of regs) await r.unregister();
+  }
+  const keys=await caches.keys();
+  for(const k of keys) await caches.delete(k);
+  setTimeout(()=>{ window.location.href='/'; },1500);
+})();
+</script></body></html>`);
+});
+
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
@@ -460,8 +481,32 @@ app.get('*', (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  // Log with request context for debugging
   const requestId = req.headers['x-request-id'] || 'unknown';
+
+  // Handle multer errors with appropriate status codes
+  if (err?.name === 'MulterError') {
+    const multerStatus: Record<string, number> = {
+      LIMIT_FILE_SIZE: 413, LIMIT_FILE_COUNT: 400, LIMIT_FIELD_KEY: 400,
+      LIMIT_FIELD_VALUE: 400, LIMIT_FIELD_COUNT: 400, LIMIT_UNEXPECTED_FILE: 400,
+      LIMIT_PART_COUNT: 400,
+    };
+    const status = multerStatus[err.code] || 400;
+    console.warn(`Multer rejection [${requestId}] ${req.method} ${req.path}: ${err.code} — ${err.message}`);
+    if (!res.headersSent) {
+      return res.status(status).json({ error: `Upload rejected: ${err.message}` });
+    }
+    return;
+  }
+
+  // Handle multer fileFilter errors (thrown as generic Error)
+  if (err?.message && /file type|not allowed|only.*files/i.test(err.message)) {
+    console.warn(`Upload filter [${requestId}] ${req.method} ${req.path}: ${err.message}`);
+    if (!res.headersSent) {
+      return res.status(415).json({ error: err.message });
+    }
+    return;
+  }
+
   console.error(`Unhandled Express error [${requestId}] ${req.method} ${req.path}:`, err?.message || err, err?.stack || '');
   if (!res.headersSent) {
     const status = err?.status || err?.statusCode || 500;
@@ -592,16 +637,32 @@ try {
     console.log('');
 
     // Start patrol monitor for missed scan alerts
-    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    try {
+      startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    } catch (err: any) {
+      console.warn('[Patrol Monitor] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start midnight daily patrol report scheduler
-    startDailyReportScheduler();
+    try {
+      startDailyReportScheduler();
+    } catch (err: any) {
+      console.warn('[Daily Report] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    scheduleOfacSync();
+    try {
+      scheduleOfacSync();
+    } catch (err: any) {
+      console.warn('[OFAC Sync] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
-    startHealthChecker();
+    try {
+      startHealthChecker();
+    } catch (err: any) {
+      console.warn('[Health Checker] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {
@@ -616,6 +677,13 @@ try {
       console.log('[Arrests] Auto-sync scheduler started');
     } catch (err: any) {
       console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+    }
+
+    // Start multi-state warrant scraper (polls configured sources on schedule)
+    try {
+      scheduleWarrantScraper();
+    } catch (err: any) {
+      console.warn('[Warrant Scraper] Failed to start scheduler:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s

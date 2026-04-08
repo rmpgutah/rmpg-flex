@@ -146,12 +146,12 @@ export function composeProximityNarrative(alerts: ProximityAlert[]): string {
 
 // ─── Nearest Available Units ────────────────────────────────
 
-const AVERAGE_URBAN_SPEED_KMH = 40;
+const AVERAGE_URBAN_SPEED_MPH = 25;
 const GPS_STALE_MINUTES = 10;
 
 /**
  * Find available units with recent GPS sorted by distance from a call location.
- * ETA calculated assuming 40 km/h average urban speed.
+ * ETA calculated assuming 25 mph average urban speed.
  */
 export function findNearestUnits(callLat: number, callLng: number, limit: number = 5): NearestUnit[] {
   const db = getDb();
@@ -181,7 +181,7 @@ export function findNearestUnits(callLat: number, callLng: number, limit: number
 
     const units: NearestUnit[] = rows.map((row) => {
       const dist = haversineDistance(callLat, callLng, row.latitude, row.longitude);
-      const etaMinutes = (dist / 1000) / AVERAGE_URBAN_SPEED_KMH * 60;
+      const etaMinutes = (dist / 1609.34) / AVERAGE_URBAN_SPEED_MPH * 60;
       return {
         callSign: row.call_sign,
         distance: Math.round(dist),
@@ -211,7 +211,7 @@ export function composeNearestUnitsNarrative(units: NearestUnit[]): string {
 
   const top = units.slice(0, 3);
   const parts = top.map((unit, i) => {
-    const distKm = (unit.distance / 1000).toFixed(1);
+    const distMi = (unit.distance / 1609.34).toFixed(1);
     const eta = unit.etaMinutes < 1
       ? 'under 1 minute'
       : unit.etaMinutes === 1
@@ -219,9 +219,9 @@ export function composeNearestUnitsNarrative(units: NearestUnit[]): string {
         : `${Math.round(unit.etaMinutes)} minutes`;
 
     if (i === 0) {
-      return `Nearest unit: ${unit.callSign}, ${distKm} kilometers, ETA ${eta}.`;
+      return `Nearest unit: ${unit.callSign}, ${distMi} miles, ETA ${eta}.`;
     }
-    return `${unit.callSign}, ${distKm} kilometers, ETA ${eta}.`;
+    return `${unit.callSign}, ${distMi} miles, ETA ${eta}.`;
   });
 
   return parts.join(' ');

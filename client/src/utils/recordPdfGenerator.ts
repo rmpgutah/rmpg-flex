@@ -37,6 +37,7 @@ import {
   displayStatus,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
+import { convertToGrayscale } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
@@ -434,6 +435,8 @@ export interface WarrantPdfData {
   subject_hair_color?: string;
   subject_eye_color?: string;
   subject_address?: string;
+  subject_photo_url?: string;
+  service_attempts?: { attempted_at: string; location: string; method: string; result: string; notes: string }[];
   // Court
   issuing_court?: string;
   issuing_judge?: string;
@@ -3119,4 +3122,390 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     console.error('Record PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${recordType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
+}
+
+// ── BOLO (Be On The Lookout) Packet PDF ────────────────────
+
+export interface BoloSubject {
+  first_name: string;
+  last_name: string;
+  dob?: string;
+  gender?: string;
+  race?: string;
+  height?: string;
+  weight?: string;
+  hair_color?: string;
+  eye_color?: string;
+  address?: string;
+  photo_url?: string | null;
+  warrants: { warrant_number: string; type: string; charge_description: string; offense_level: string | null; issuing_court: string | null; bail_amount: number | null }[];
+}
+
+/** Generate a multi-page BOLO (Be On The Lookout) packet PDF */
+export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const contentW = pageW - 2 * margin;
+
+  setActiveFormKey('warrant');
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  // Sort by severity: felony first
+  const severityOrder: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
+  const sorted = [...subjects].sort((a, b) => {
+    const aSev = Math.min(...a.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
+    const bSev = Math.min(...b.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
+    return aSev - bSev;
+  });
+
+  // Watermark on first page
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState -- safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'BE ON THE LOOKOUT (BOLO) PACKET',
+    formNumber: 'FORM PS-204B',
+    reportDate: fmtDate(new Date().toISOString()),
+  });
+
+  y += 2;
+
+  // Subtitle with count
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(`${sorted.length} SUBJECT${sorted.length !== 1 ? 'S' : ''} WITH ACTIVE WARRANTS`, margin, y);
+  y += 5;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const subj = sorted[i];
+
+    // Check if we need a new page
+    if (y > 240) {
+      doc.addPage();
+      addConfidentialWatermark(doc);
+      // @ts-expect-error jsPDF GState
+      doc.setGState(new doc.GState({ opacity: 1.0 }));
+      y = LAYOUT.PAGE_MARGIN + 5;
+    }
+
+    const sectionStartY = y;
+
+    // Subject header bar
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(margin, y, contentW, 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(`${subj.last_name || '?'}, ${subj.first_name || '?'}`.toUpperCase(), margin + 2, y + 5);
+
+    // Severity badge on right
+    const topSev = subj.warrants.reduce((best, w) => {
+      const o = severityOrder[w.offense_level || ''] ?? 4;
+      return o < best.o ? { o, label: w.offense_level || '' } : best;
+    }, { o: 4, label: '' });
+    if (topSev.label) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      const sevColor: [number, number, number] = topSev.label === 'felony' ? [220, 50, 50] : topSev.label === 'misdemeanor' ? [220, 160, 40] : [120, 120, 120];
+      doc.setTextColor(...sevColor);
+      doc.text(topSev.label.toUpperCase(), margin + contentW - 2, y + 5, { align: 'right' });
+    }
+
+    y += 9;
+
+    // Physical description row
+    const descParts: string[] = [];
+    if (subj.dob) descParts.push(`DOB: ${fmtDate(subj.dob)}`);
+    if (subj.gender) descParts.push(`${subj.gender}`);
+    if (subj.race) descParts.push(`${subj.race}`);
+    if (subj.height) descParts.push(`Ht: ${subj.height}`);
+    if (subj.weight) descParts.push(`Wt: ${subj.weight}`);
+    if (subj.hair_color) descParts.push(`Hair: ${subj.hair_color}`);
+    if (subj.eye_color) descParts.push(`Eyes: ${subj.eye_color}`);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(descParts.join('  |  '), margin + 2, y + 3);
+    y += 5;
+
+    if (subj.address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
+      y += 5;
+    }
+
+    // Photo (if available)
+    if (subj.photo_url) {
+      try {
+        const photoW = 20;
+        const photoH = 24;
+        const photoX = margin + contentW - photoW - 2;
+        const photoY = sectionStartY + 9;
+        doc.addImage(subj.photo_url, 'JPEG', photoX, photoY, photoW, photoH);
+        doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+        doc.setLineWidth(BORDER.FORM_CELL);
+        doc.rect(photoX, photoY, photoW, photoH, 'S');
+      } catch {
+        // Photo URL invalid -- skip
+      }
+    }
+
+    // Warrants table
+    if (subj.warrants.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      // Table header
+      doc.setFillColor(30, 40, 55);
+      doc.rect(margin + 2, y, contentW - 4, 5, 'F');
+      doc.text('WARRANT #', margin + 4, y + 3.5);
+      doc.text('TYPE', margin + 40, y + 3.5);
+      doc.text('CHARGE', margin + 60, y + 3.5);
+      doc.text('COURT', margin + 130, y + 3.5);
+      doc.text('BAIL', margin + contentW - 8, y + 3.5, { align: 'right' });
+      y += 6;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+      for (const w of subj.warrants) {
+        if (y > 260) {
+          doc.addPage();
+          addConfidentialWatermark(doc);
+          // @ts-expect-error jsPDF GState
+          doc.setGState(new doc.GState({ opacity: 1.0 }));
+          y = LAYOUT.PAGE_MARGIN + 5;
+        }
+        doc.text(w.warrant_number || '', margin + 4, y + 3);
+        doc.text((w.type || '').toUpperCase(), margin + 40, y + 3);
+        // Truncate charge if too long
+        const charge = (w.charge_description || '').substring(0, 50);
+        doc.text(charge, margin + 60, y + 3);
+        doc.text((w.issuing_court || '').substring(0, 25), margin + 130, y + 3);
+        doc.text(fmtCurrency(w.bail_amount), margin + contentW - 8, y + 3, { align: 'right' });
+        y += 5;
+      }
+    }
+
+    y += 3;
+
+    // Separator line between subjects
+    if (i < sorted.length - 1) {
+      doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+      doc.setLineWidth(0.2);
+      doc.line(margin, y, margin + contentW, y);
+      y += 3;
+    }
+  }
+
+  // Add page footers and watermarks to all pages
+  const totalPages = doc.getNumberOfPages();
+  for (let pg = 1; pg <= totalPages; pg++) {
+    doc.setPage(pg);
+    addPageFooter(doc, pg, totalPages);
+    if (pg > 1) {
+      addConfidentialWatermark(doc);
+    }
+  }
+
+  return doc;
+}
+
+// ── Warrant Summary Report PDF ──────────────────────────────
+
+export interface WarrantSummaryData {
+  period: { from: string | null; to: string | null };
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  bySeverity: Record<string, number>;
+  bySource: Record<string, number>;
+  topCourts: { issuing_court: string; count: number }[];
+  newThisPeriod: number | null;
+  clearedThisPeriod: number | null;
+  scanActivity: { totalScans: number; totalFound: number; totalCleared: number };
+}
+
+/** Generate a single-page Warrant Activity Summary Report */
+export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const contentW = pageW - 2 * margin;
+  const halfW = (contentW - 4) / 2;
+
+  setActiveFormKey('warrant');
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'WARRANT ACTIVITY SUMMARY REPORT',
+    formNumber: 'FORM PS-204S',
+    reportDate: fmtDate(new Date().toISOString()),
+  });
+
+  y += 2;
+
+  // Period display
+  const periodFrom = data.period.from ? fmtDate(data.period.from) : 'All Time';
+  const periodTo = data.period.to ? fmtDate(data.period.to) : 'Present';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(`REPORTING PERIOD: ${periodFrom} -- ${periodTo}`, margin, y + 3);
+  y += 7;
+
+  // Summary stats
+  const statusEntries = Object.entries(data.byStatus);
+  const totalWarrants = statusEntries.reduce((s, [, n]) => s + n, 0);
+
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SUMMARY' },
+    topBanner: true,
+    rows: [
+      { cells: [
+        { label: 'TOTAL WARRANTS', value: String(totalWarrants), ratio: 1, valueBold: true, align: 'center' },
+        { label: 'NEW THIS PERIOD', value: data.newThisPeriod != null ? String(data.newThisPeriod) : 'N/A', ratio: 1, align: 'center' },
+        { label: 'CLEARED THIS PERIOD', value: data.clearedThisPeriod != null ? String(data.clearedThisPeriod) : 'N/A', ratio: 1, align: 'center' },
+      ]},
+      { cells: statusEntries.map(([status, count]) => ({
+        label: status.toUpperCase(),
+        value: String(count),
+        ratio: 1,
+        align: 'center' as const,
+        valueBold: status === 'active',
+      }))},
+    ],
+    y,
+  });
+
+  y += 2;
+
+  // Helper to draw a simple breakdown table
+  function drawBreakdownTable(title: string, entries: [string, number][], startY: number, x: number, w: number): number {
+    let ty = startY;
+    // Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(title, x, ty + 3);
+    ty += 5;
+
+    // Header row
+    doc.setFillColor(30, 40, 55);
+    doc.rect(x, ty, w, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text('CATEGORY', x + 2, ty + 3.5);
+    doc.text('COUNT', x + w - 2, ty + 3.5, { align: 'right' });
+    ty += 6;
+
+    // Data rows
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    for (const [label, count] of entries) {
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text(titleCase(label.replace(/_/g, ' ')), x + 2, ty + 3);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(String(count), x + w - 2, ty + 3, { align: 'right' });
+      ty += 5;
+    }
+
+    return ty + 2;
+  }
+
+  // Two-column layout for breakdown tables
+  const leftX = margin;
+  const rightX = margin + halfW + 4;
+
+  const typeEntries = Object.entries(data.byType);
+  const sevEntries = Object.entries(data.bySeverity);
+  const sourceEntries = Object.entries(data.bySource);
+
+  const y1 = drawBreakdownTable('BY TYPE', typeEntries, y, leftX, halfW);
+  const y2 = drawBreakdownTable('BY SEVERITY', sevEntries, y, rightX, halfW);
+  y = Math.max(y1, y2);
+
+  y += 2;
+
+  // Source breakdown (full width)
+  if (sourceEntries.length > 0) {
+    y = drawBreakdownTable('BY SOURCE', sourceEntries, y, leftX, contentW);
+  }
+
+  // Top Courts table
+  if (data.topCourts.length > 0) {
+    y += 2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('TOP ISSUING COURTS', margin, y + 3);
+    y += 5;
+
+    doc.setFillColor(30, 40, 55);
+    doc.rect(margin, y, contentW, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text('COURT', margin + 2, y + 3.5);
+    doc.text('WARRANTS', margin + contentW - 2, y + 3.5, { align: 'right' });
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    for (const court of data.topCourts) {
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text(court.issuing_court || 'Unknown', margin + 2, y + 3);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(String(court.count), margin + contentW - 2, y + 3, { align: 'right' });
+      y += 5;
+    }
+    y += 2;
+  }
+
+  // Scan Activity
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SCAN ACTIVITY' },
+    topBanner: true,
+    rows: [
+      { cells: [
+        { label: 'TOTAL SCANS', value: String(data.scanActivity.totalScans), ratio: 1, align: 'center' },
+        { label: 'WARRANTS FOUND', value: String(data.scanActivity.totalFound), ratio: 1, align: 'center', valueBold: true },
+        { label: 'WARRANTS CLEARED', value: String(data.scanActivity.totalCleared), ratio: 1, align: 'center' },
+      ]},
+    ],
+    y,
+  });
+
+  // Footer + watermark
+  const summaryTotalPages = doc.getNumberOfPages();
+  for (let pg = 1; pg <= summaryTotalPages; pg++) {
+    doc.setPage(pg);
+    addPageFooter(doc, pg, summaryTotalPages);
+    if (pg > 1) {
+      addConfidentialWatermark(doc);
+    }
+  }
+
+  return doc;
 }

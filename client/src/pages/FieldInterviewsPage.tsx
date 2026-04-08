@@ -336,7 +336,7 @@ export default function FieldInterviewsPage() {
           )}
         </div>
         <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
-          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by contact reason">
             <option value="">All Reasons</option>
             {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>

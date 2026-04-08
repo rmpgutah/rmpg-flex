@@ -56,6 +56,7 @@ const bodycamStorage = multer.diskStorage({
 
 const bodycamUpload = multer({
   storage: bodycamStorage,
+  limits: { fileSize: 10 * 1024 * 1024 * 1024, files: 1, fields: 20, parts: 25, fieldSize: 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
@@ -136,7 +137,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
-    const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
+    const subPaths = ['schedules', 'time', 'credentials', 'expiring-credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
     if (subPaths.includes(String(req.params.id))) {
       return next('route');
     }
@@ -1707,6 +1708,33 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     } catch (error: any) {
       console.error('Get all credentials error:', error);
       res.status(500).json({ error: 'Failed to get all credentials', code: 'GET_ALL_CREDENTIALS_ERROR' });
+    }
+  });
+
+  // GET /api/personnel/expiring-credentials — Find credentials expiring within N days
+  parentRouter.get('/personnel/expiring-credentials', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const days = parseInt(req.query.days as string, 10) || 30;
+      const clampedDays = Math.max(1, Math.min(days, 365));
+      const expiring = db.prepare(`
+        SELECT c.*, u.full_name as officer_name, u.badge_number, u.id as officer_id
+        FROM credentials c
+        JOIN users u ON c.officer_id = u.id
+        WHERE c.expiry_date IS NOT NULL
+          AND c.expiry_date <= date('now', '+' || ? || ' days')
+          AND c.expiry_date >= date('now')
+          AND c.status != 'expired'
+          AND u.status = 'active'
+          AND u.archived_at IS NULL
+        ORDER BY c.expiry_date ASC
+        LIMIT 200
+      `).all(clampedDays);
+      res.json({ data: expiring, count: expiring.length, days_window: clampedDays });
+    } catch (error: any) {
+      console.error('Get expiring credentials error:', error);
+      // Table might not exist or schema mismatch — return empty gracefully
+      res.json({ data: [], count: 0, days_window: 30 });
     }
   });
 

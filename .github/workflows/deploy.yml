@@ -1,0 +1,53 @@
+name: "Deploy to Production"
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_installers:
+        description: "Include desktop installers (--all flag)"
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: self-hosted
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install and build
+        run: |
+          (cd client && npm install && npx vite build)
+          (cd server && npm install)
+
+      - name: TypeScript check
+        working-directory: client
+        run: npx tsc --noEmit || true
+
+      - name: Run server tests
+        working-directory: server
+        run: npx vitest run
+
+      - name: Deploy code to VPS
+        run: |
+          if [ "$INCLUDE_INSTALLERS" = "true" ]; then
+            bash deploy/deploy.sh --all
+          else
+            bash deploy/deploy.sh
+          fi
+        env:
+          INCLUDE_INSTALLERS: "${{ github.event.inputs.include_installers }}"
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -sf https://rmpgutah.us/api/health || (echo "Health check failed!" && exit 1)

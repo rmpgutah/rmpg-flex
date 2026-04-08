@@ -224,6 +224,15 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
       return;
     }
 
+    // Reject off-duty or out-of-service units
+    if (['off_duty', 'out_of_service'].includes(unit.status)) {
+      res.status(409).json({
+        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`,
+        code: 'UNIT_UNAVAILABLE',
+      });
+      return;
+    }
+
     // Allow multi-dispatch: units can be assigned to multiple calls at the same location
     // Only block if the other call is at a DIFFERENT location (safety check)
     if (unit.current_call_id && unit.current_call_id !== call.id) {
@@ -558,6 +567,13 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     // Transaction: update call + free units + activity log atomically
     let freedUnitIds: number[] = [];
     const statusTx = db.transaction(() => {
+      // Re-read status inside transaction to prevent concurrent update race
+      const freshCall = db.prepare('SELECT status FROM calls_for_service WHERE id = ?').get(call.id) as any;
+      if (freshCall.status !== call.status) {
+        // Status changed between read and write — abort
+        throw new Error('STALE_STATUS');
+      }
+
       db.prepare(updateQuery).run(...updateParams);
 
       // ── PSO 72-hour deadline: set precise deadline when PSO call is cleared/closed ──
@@ -610,7 +626,15 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         VALUES (?, 'status_change', 'call', ?, ?, ?)
       `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
     });
-    statusTx();
+    try {
+      statusTx();
+    } catch (err: any) {
+      if (err.message === 'STALE_STATUS') {
+        res.status(409).json({ error: 'Call status changed by another user. Please refresh.', code: 'STALE_STATUS' });
+        return;
+      }
+      throw err;
+    }
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     if (!updated) {
@@ -618,6 +642,23 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       return;
     }
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
+
+    // Notify assigned officers of status changes
+    try {
+      let unitIds: number[] = [];
+      try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+      for (const uid of unitIds) {
+        const unitRow = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(uid) as any;
+        if (unitRow?.officer_id && unitRow.officer_id !== req.user!.userId) {
+          createNotification(
+            unitRow.officer_id, 'dispatch',
+            `Call ${call.call_number}: ${status.replace(/_/g, ' ')}`,
+            `${call.incident_type} — status changed to ${status}`,
+            'call', call.id, status === 'cancelled' ? 'high' : 'normal',
+          );
+        }
+      }
+    } catch { /* non-critical */ }
 
     // Start welfare monitoring for high-priority calls when going onscene
     if (status === 'onscene') {

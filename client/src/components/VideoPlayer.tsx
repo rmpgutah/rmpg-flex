@@ -16,11 +16,12 @@ import VideoHudOverlay from './VideoHudOverlay';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  video: BodyCamVideo | null;
+  video: BodyCamVideo | any | null;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
-  onEditVideo?: (video: BodyCamVideo) => void;
-  onClassify?: (videoId: number, classification: VideoClassification) => void;
+  onEditVideo?: (video: any) => void;
+  onClassify?: (videoId: any, classification: any) => void;
+  streamEndpoint?: string;
 }
 
 export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {

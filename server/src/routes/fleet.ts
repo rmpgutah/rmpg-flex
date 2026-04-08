@@ -57,6 +57,7 @@ const dashcamStorage = multer.diskStorage({
 
 const dashcamUpload = multer({
   storage: dashcamStorage,
+  limits: { fileSize: 10 * 1024 * 1024 * 1024, files: 1, fields: 20, parts: 25, fieldSize: 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);

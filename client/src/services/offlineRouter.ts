@@ -13,6 +13,13 @@ import {
   type CallForService,
   type Unit,
   type Incident,
+  type Citation,
+  type FieldInterview,
+  type Evidence,
+  type CriminalHistory,
+  type PatrolScan,
+  type TrespassOrder,
+  type Warrant,
 } from './offlineDb';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -91,6 +98,65 @@ export async function handle(
     if (method === 'POST' && (path === '/api/personnel/time/clock-in' || path === '/api/personnel/time-entries')) {
       return handleClockIn(body);
     }
+    if (method === 'POST' && path === '/api/personnel/time/clock-out') {
+      return handleClockOut(body);
+    }
+
+    // ─── Citations ──────────────────────────────────────
+    if (method === 'GET' && path === '/api/citations') {
+      return handleGetCitations(query);
+    }
+    if (method === 'POST' && path === '/api/citations') {
+      return handleCreateCitation(body);
+    }
+
+    // ─── Field Interviews ───────────────────────────────
+    if (method === 'GET' && path === '/api/field-interviews') {
+      return handleGetFieldInterviews(query);
+    }
+    if (method === 'POST' && path === '/api/field-interviews') {
+      return handleCreateFieldInterview(body);
+    }
+
+    // ─── Evidence ───────────────────────────────────────
+    if (method === 'GET' && path === '/api/evidence') {
+      return handleGetEvidence(query);
+    }
+    if (method === 'POST' && path === '/api/evidence') {
+      return handleCreateEvidence(body);
+    }
+
+    // ─── Arrests (criminal_history) ─────────────────────
+    if (method === 'GET' && path === '/api/arrests') {
+      return handleGetArrests(query);
+    }
+    if (method === 'POST' && path === '/api/arrests') {
+      return handleCreateArrest(body);
+    }
+
+    // ─── Patrol Checkpoints / Scans ─────────────────────
+    if (method === 'GET' && path === '/api/patrol/checkpoints') {
+      return handleGetPatrolCheckpoints(query);
+    }
+    if (method === 'POST' && path === '/api/patrol/checkpoints') {
+      return handleCreatePatrolScan(body);
+    }
+
+    // ─── Trespass Orders ────────────────────────────────
+    if (method === 'GET' && path === '/api/trespass-orders') {
+      return handleGetTrespassOrders(query);
+    }
+    if (method === 'POST' && path === '/api/trespass-orders') {
+      return handleCreateTrespassOrder(body);
+    }
+
+    // ─── Warrants (read-only cache) ─────────────────────
+    if (method === 'GET' && path === '/api/warrants') {
+      return handleGetWarrants(query);
+    }
+    if (method === 'GET' && /^\/api\/warrants\/check\/\d+$/.test(path)) {
+      return handleCheckWarrants(path.split('/').pop()!);
+    }
 
     return { status: 503, error: 'Endpoint not available offline' };
   } catch (err: any) {
@@ -112,6 +178,13 @@ export function isOfflineCapableEndpoint(method: string, url: string): boolean {
     '/api/incidents',
     '/api/records/persons',
     '/api/records/vehicles',
+    '/api/citations',
+    '/api/field-interviews',
+    '/api/evidence',
+    '/api/arrests',
+    '/api/patrol/checkpoints',
+    '/api/trespass-orders',
+    '/api/warrants',
   ];
 
   const writeRoutes = [
@@ -120,12 +193,20 @@ export function isOfflineCapableEndpoint(method: string, url: string): boolean {
     '/api/incidents',
     '/api/personnel/time/clock-in',
     '/api/personnel/time-entries',
+    '/api/personnel/time/clock-out',
+    '/api/citations',
+    '/api/field-interviews',
+    '/api/evidence',
+    '/api/arrests',
+    '/api/patrol/checkpoints',
+    '/api/trespass-orders',
   ];
 
   // GET requests — check read routes and parameterized routes
   if (method === 'GET') {
     if (readRoutes.some(r => path === r || path.startsWith(r + '/'))) return true;
     if (/^\/api\/dispatch\/calls\/\d+$/.test(path)) return true;
+    if (/^\/api\/warrants\/check\/\d+$/.test(path)) return true;
     return false;
   }
 
@@ -541,6 +622,509 @@ async function handleClockIn(body: any): Promise<OfflineResponse> {
   await enqueue('POST', '/api/personnel/time/clock-in', body, localId, 'time_entries');
 
   return { status: 201, data: newEntry };
+}
+
+// ─── Handler: POST /api/personnel/time/clock-out ───────────
+
+async function handleClockOut(body: any): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  // Find the active time entry for this officer
+  const allEntries = await db.getAll('time_entries');
+  const active = allEntries.find(
+    e => e.officer_id === body.officer_id && e.status === 'active'
+  );
+
+  if (!active) return { status: 404, error: 'No active time entry found' };
+
+  const now = new Date().toISOString();
+  const updated: any = {
+    ...active,
+    clock_out: body.clock_out || now,
+    clock_out_latitude: body.latitude || null,
+    clock_out_longitude: body.longitude || null,
+    status: 'completed',
+    is_dirty: 1,
+    synced_at: null,
+  };
+
+  // Calculate total hours
+  const inTime = new Date(active.clock_in).getTime();
+  const outTime = new Date(updated.clock_out).getTime();
+  updated.total_hours = Math.round(((outTime - inTime) / 3600000) * 100) / 100;
+
+  await db.put('time_entries', updated);
+  await enqueue('POST', '/api/personnel/time/clock-out', body, active.local_id, 'time_entries');
+
+  return { status: 200, data: updated };
+}
+
+// ─── Handler: GET /api/citations ────────────────────────────
+
+async function handleGetCitations(query: Record<string, string>): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  let rows = await db.getAll('citations');
+
+  if (query.status) {
+    const statuses = query.status.split(',');
+    rows = rows.filter(r => statuses.includes(r.status));
+  }
+  if (query.type) {
+    rows = rows.filter(r => r.type === query.type);
+  }
+
+  rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const limit = parseInt(query.limit, 10) || 100;
+  rows = rows.slice(0, limit);
+
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: POST /api/citations ───────────────────────────
+
+async function handleCreateCitation(body: any): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const citationNumber = `CIT-LOCAL-${Date.now().toString(36).toUpperCase()}`;
+  const now = new Date().toISOString();
+
+  const row: any = {
+    local_id: localId,
+    server_id: null,
+    citation_number: citationNumber,
+    type: body.type || 'traffic',
+    status: body.status || 'issued',
+    person_id: body.person_id || null,
+    person_name: body.person_name || null,
+    person_dob: body.person_dob || null,
+    person_dl: body.person_dl || null,
+    person_address: body.person_address || null,
+    vehicle_description: body.vehicle_description || null,
+    vehicle_plate: body.vehicle_plate || null,
+    vehicle_state: body.vehicle_state || null,
+    statute_id: body.statute_id || null,
+    statute_citation: body.statute_citation || null,
+    violation_description: body.violation_description || null,
+    offense_level: body.offense_level || null,
+    fine_amount: body.fine_amount || null,
+    violation_date: body.violation_date || now,
+    violation_time: body.violation_time || null,
+    location: body.location || null,
+    incident_id: body.incident_id || null,
+    call_id: body.call_id || null,
+    issuing_officer_id: body.issuing_officer_id || null,
+    issuing_officer_name: body.issuing_officer_name || null,
+    badge_number: body.badge_number || null,
+    court_date: body.court_date || null,
+    court_name: body.court_name || null,
+    court_address: body.court_address || null,
+    notes: body.notes || null,
+    created_at: now,
+    updated_at: now,
+    is_dirty: 1,
+    synced_at: null,
+  };
+
+  const id = await db.add('citations', row);
+  row.id = id;
+
+  await enqueue('POST', '/api/citations', body, localId, 'citations');
+
+  return { status: 201, data: row };
+}
+
+// ─── Handler: GET /api/field-interviews ─────────────────────
+
+async function handleGetFieldInterviews(query: Record<string, string>): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  let rows = await db.getAll('field_interviews');
+
+  if (query.status) {
+    rows = rows.filter(r => r.status === query.status);
+  }
+
+  const searchTerm = query.search || query.q;
+  if (searchTerm) {
+    const term = searchTerm.toLowerCase();
+    rows = rows.filter(r =>
+      (r.subject_first_name || '').toLowerCase().includes(term) ||
+      (r.subject_last_name || '').toLowerCase().includes(term) ||
+      (r.location || '').toLowerCase().includes(term)
+    );
+  }
+
+  rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const limit = parseInt(query.limit, 10) || 100;
+  rows = rows.slice(0, limit);
+
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: POST /api/field-interviews ────────────────────
+
+async function handleCreateFieldInterview(body: any): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  const row: any = {
+    local_id: localId,
+    server_id: null,
+    fi_number: null, // Server will assign
+    person_id: body.person_id || null,
+    subject_first_name: body.subject_first_name || null,
+    subject_last_name: body.subject_last_name || null,
+    subject_dob: body.subject_dob || null,
+    subject_gender: body.subject_gender || null,
+    subject_race: body.subject_race || null,
+    subject_height: body.subject_height || null,
+    subject_weight: body.subject_weight || null,
+    subject_hair: body.subject_hair || null,
+    subject_eye: body.subject_eye || null,
+    subject_clothing: body.subject_clothing || null,
+    subject_description: body.subject_description || null,
+    location: body.location,
+    latitude: body.latitude || null,
+    longitude: body.longitude || null,
+    property_id: body.property_id || null,
+    contact_reason: body.contact_reason || 'other',
+    contact_type: body.contact_type || 'field',
+    action_taken: body.action_taken || 'none',
+    narrative: body.narrative || null,
+    vehicle_plate: body.vehicle_plate || null,
+    vehicle_description: body.vehicle_description || null,
+    vehicle_id: body.vehicle_id || null,
+    associated_call_id: body.associated_call_id || null,
+    associated_incident_id: body.associated_incident_id || null,
+    officer_id: body.officer_id,
+    officer_name: body.officer_name || null,
+    status: 'active',
+    created_at: now,
+    archived_at: null,
+    is_dirty: 1,
+    synced_at: null,
+  };
+
+  const id = await db.add('field_interviews', row);
+  row.id = id;
+
+  await enqueue('POST', '/api/field-interviews', body, localId, 'field_interviews');
+
+  return { status: 201, data: row };
+}
+
+// ─── Handler: GET /api/evidence ─────────────────────────────
+
+async function handleGetEvidence(query: Record<string, string>): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  let rows = await db.getAll('evidence');
+
+  if (query.status) {
+    rows = rows.filter(r => r.status === query.status);
+  }
+  if (query.incident_id) {
+    const incId = parseInt(query.incident_id, 10);
+    rows = rows.filter(r => r.incident_id === incId);
+  }
+
+  rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const limit = parseInt(query.limit, 10) || 100;
+  rows = rows.slice(0, limit);
+
+  return {
+    status: 200,
+    data: rows.map(r => ({
+      ...r,
+      chain_of_custody: safeJsonParse(r.chain_of_custody, []),
+    })),
+  };
+}
+
+// ─── Handler: POST /api/evidence ────────────────────────────
+
+async function handleCreateEvidence(body: any): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const evidenceNumber = `EV-LOCAL-${Date.now().toString(36).toUpperCase()}`;
+  const now = new Date().toISOString();
+
+  const row: any = {
+    local_id: localId,
+    server_id: null,
+    evidence_number: evidenceNumber,
+    incident_id: body.incident_id || null,
+    description: body.description || null,
+    evidence_type: body.evidence_type || null,
+    category: body.category || null,
+    storage_location: body.storage_location || null,
+    collected_by: body.collected_by || null,
+    status: body.status || 'received',
+    chain_of_custody: JSON.stringify(body.chain_of_custody || []),
+    location_found: body.location_found || null,
+    condition: body.condition || null,
+    quantity: body.quantity || 1,
+    collected_date: body.collected_date || now,
+    notes: body.notes || null,
+    created_at: now,
+    updated_at: now,
+    is_dirty: 1,
+    synced_at: null,
+  };
+
+  const id = await db.add('evidence', row);
+  row.id = id;
+
+  await enqueue('POST', '/api/evidence', body, localId, 'evidence');
+
+  return { status: 201, data: { ...row, chain_of_custody: safeJsonParse(row.chain_of_custody, []) } };
+}
+
+// ─── Handler: GET /api/arrests ──────────────────────────────
+
+async function handleGetArrests(query: Record<string, string>): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  let rows = await db.getAll('criminal_history');
+
+  // Filter to arrest records by default
+  rows = rows.filter(r => r.record_type === 'arrest');
+
+  if (query.person_id) {
+    const pid = parseInt(query.person_id, 10);
+    rows = rows.filter(r => r.person_id === pid);
+  }
+
+  rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const limit = parseInt(query.limit, 10) || 100;
+  rows = rows.slice(0, limit);
+
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: POST /api/arrests ─────────────────────────────
+
+async function handleCreateArrest(body: any): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  const row: any = {
+    local_id: localId,
+    server_id: null,
+    person_id: body.person_id,
+    record_type: 'arrest',
+    offense: body.offense,
+    offense_level: body.offense_level || null,
+    statute: body.statute || null,
+    case_number: body.case_number || null,
+    agency: body.agency || 'RMPG',
+    jurisdiction: body.jurisdiction || null,
+    offense_date: body.offense_date || now,
+    disposition: body.disposition || null,
+    disposition_date: body.disposition_date || null,
+    sentence: body.sentence || null,
+    source: body.source || 'field',
+    notes: body.notes || null,
+    created_by: body.created_by,
+    created_at: now,
+    updated_at: now,
+    is_dirty: 1,
+    synced_at: null,
+  };
+
+  const id = await db.add('criminal_history', row);
+  row.id = id;
+
+  await enqueue('POST', '/api/arrests', body, localId, 'criminal_history');
+
+  return { status: 201, data: row };
+}
+
+// ─── Handler: GET /api/patrol/checkpoints ───────────────────
+
+async function handleGetPatrolCheckpoints(query: Record<string, string>): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  let rows = await db.getAll('patrol_checkpoints');
+
+  if (query.property_id) {
+    const pid = parseInt(query.property_id, 10);
+    rows = rows.filter(r => r.property_id === pid);
+  }
+
+  // Only active checkpoints by default
+  if (!query.include_inactive) {
+    rows = rows.filter(r => r.is_active === 1);
+  }
+
+  rows.sort((a, b) => (a.sequence_order || 0) - (b.sequence_order || 0));
+
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: POST /api/patrol/checkpoints (scan) ───────────
+
+async function handleCreatePatrolScan(body: any): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  const row: any = {
+    local_id: localId,
+    server_id: null,
+    checkpoint_id: body.checkpoint_id,
+    officer_id: body.officer_id,
+    scanned_at: body.scanned_at || now,
+    latitude: body.latitude || null,
+    longitude: body.longitude || null,
+    notes: body.notes || null,
+    status: body.status || 'on_time',
+    is_dirty: 1,
+    synced_at: null,
+  };
+
+  const id = await db.add('patrol_scans', row);
+  row.id = id;
+
+  await enqueue('POST', '/api/patrol/checkpoints', body, localId, 'patrol_scans');
+
+  return { status: 201, data: row };
+}
+
+// ─── Handler: GET /api/trespass-orders ──────────────────────
+
+async function handleGetTrespassOrders(query: Record<string, string>): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  let rows = await db.getAll('trespass_orders');
+
+  if (query.status) {
+    rows = rows.filter(r => r.status === query.status);
+  }
+  if (query.property_id) {
+    const pid = parseInt(query.property_id, 10);
+    rows = rows.filter(r => r.property_id === pid);
+  }
+
+  const searchTerm = query.search || query.q;
+  if (searchTerm) {
+    const term = searchTerm.toLowerCase();
+    rows = rows.filter(r =>
+      (r.subject_first_name || '').toLowerCase().includes(term) ||
+      (r.subject_last_name || '').toLowerCase().includes(term) ||
+      (r.order_number || '').toLowerCase().includes(term)
+    );
+  }
+
+  rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const limit = parseInt(query.limit, 10) || 100;
+  rows = rows.slice(0, limit);
+
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: POST /api/trespass-orders ─────────────────────
+
+async function handleCreateTrespassOrder(body: any): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  const row: any = {
+    local_id: localId,
+    server_id: null,
+    order_number: null, // Server will assign
+    person_id: body.person_id || null,
+    subject_first_name: body.subject_first_name,
+    subject_last_name: body.subject_last_name,
+    subject_dob: body.subject_dob || null,
+    subject_description: body.subject_description || null,
+    property_id: body.property_id || null,
+    property_name: body.property_name || null,
+    location: body.location,
+    order_type: body.order_type || 'trespass_warning',
+    status: 'active',
+    reason: body.reason || null,
+    conditions: body.conditions || null,
+    duration_days: body.duration_days || null,
+    effective_date: body.effective_date || now,
+    expiration_date: body.expiration_date || null,
+    served_at: body.served_at || null,
+    served_by: body.served_by || null,
+    originating_call_id: body.originating_call_id || null,
+    originating_incident_id: body.originating_incident_id || null,
+    issued_by: body.issued_by,
+    issued_by_name: body.issued_by_name || null,
+    authorized_by: body.authorized_by || null,
+    notes: body.notes || null,
+    archived_at: null,
+    created_at: now,
+    updated_at: now,
+    is_dirty: 1,
+    synced_at: null,
+  };
+
+  const id = await db.add('trespass_orders', row);
+  row.id = id;
+
+  await enqueue('POST', '/api/trespass-orders', body, localId, 'trespass_orders');
+
+  return { status: 201, data: row };
+}
+
+// ─── Handler: GET /api/warrants (read-only cache) ───────────
+
+async function handleGetWarrants(query: Record<string, string>): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  let rows = await db.getAll('warrants');
+
+  if (query.status) {
+    const statuses = query.status.split(',');
+    rows = rows.filter(r => statuses.includes(r.status));
+  } else {
+    // Default to active warrants only
+    rows = rows.filter(r => r.status === 'active');
+  }
+
+  const searchTerm = query.search || query.q;
+  if (searchTerm) {
+    const term = searchTerm.toLowerCase();
+    rows = rows.filter(r =>
+      (r.warrant_number || '').toLowerCase().includes(term) ||
+      (r.charge_description || '').toLowerCase().includes(term)
+    );
+  }
+
+  rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const limit = parseInt(query.limit, 10) || 100;
+  rows = rows.slice(0, limit);
+
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: GET /api/warrants/check/:personId ─────────────
+
+async function handleCheckWarrants(personId: string): Promise<OfflineResponse> {
+  const db = getOfflineDb();
+  const pid = parseInt(personId, 10);
+
+  const allWarrants = await db.getAll('warrants');
+  const matching = allWarrants.filter(
+    w => w.subject_person_id === pid && w.status === 'active'
+  );
+
+  return {
+    status: 200,
+    data: {
+      person_id: pid,
+      has_warrants: matching.length > 0,
+      warrants: matching,
+      count: matching.length,
+      source: 'offline_cache',
+    },
+  };
 }
 
 // ─── Utility ────────────────────────────────────────────────
