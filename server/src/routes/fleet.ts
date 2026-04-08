@@ -805,7 +805,7 @@ router.get('/:id', (req: Request, res: Response) => {
     }
 
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id) || id < 1) {
       res.status(400).json({ error: 'Invalid vehicle ID', code: 'INVALID_VEHICLE_ID' });
       return;
@@ -1003,7 +1003,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     // God Mode: admin can override odometer readings (including lowering)
     if (req.user?.role === 'admin' && current_mileage !== undefined && existing.current_mileage && current_mileage < existing.current_mileage) {
-      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', parseInt(id), `Admin God Mode: overriding odometer on ${existing.vehicle_number} (${existing.current_mileage} → ${current_mileage})`);
+      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', parseInt(id as string), `Admin God Mode: overriding odometer on ${existing.vehicle_number} (${existing.current_mileage} → ${current_mileage})`);
     }
 
     if (fFields.length > 0) {

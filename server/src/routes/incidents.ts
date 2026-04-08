@@ -274,7 +274,7 @@ router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Reque
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const incidentId = parseInt(req.params.id, 10);
+    const incidentId = parseInt(req.params.id as string, 10);
     if (isNaN(incidentId)) {
       res.status(400).json({ error: 'Invalid incident ID', code: 'INVALID_INCIDENT_ID' });
       return;
@@ -1745,7 +1745,7 @@ router.put('/:id/link-call', requireRole('admin', 'manager', 'supervisor', 'offi
   try {
     const db = getDb();
     const { call_id } = req.body;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid incident ID' }); return; }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
@@ -1840,7 +1840,7 @@ router.post('/:id(\\d+)/offenses', requireRole('admin', 'manager', 'supervisor',
     `).run(req.params.id, offense_code, statute_id || null, description, offense_date, offense_level || 'misdemeanor',
       ucr_code, nibrs_code, attempted_completed || 'completed', suspect_person_id || null, victim_person_id || null,
       location_type, weapon_force, criminal_activity, bias_motivation, counts || 1, notes, userId);
-    auditLog(req, 'CREATE', 'incident_offenses', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'incident_offenses', result.lastInsertRowid as number, JSON.stringify(req.body));
     const offense = db.prepare('SELECT * FROM incident_offenses WHERE id = ?').get(result.lastInsertRowid);
     res.json(offense);
   } catch (err: any) {
@@ -1912,7 +1912,7 @@ router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor',
       FROM incident_officers io JOIN users u ON u.id = io.officer_id
       WHERE io.id = ?
     `).get(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'incident_officers', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'incident_officers', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json(officer);
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Officer already added to this incident' }); return; }
@@ -2097,7 +2097,7 @@ router.post('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'o
       INSERT INTO incident_links (incident_id, linked_type, linked_id, link_reason, added_by)
       VALUES (?, ?, ?, ?, ?)
     `).run(req.params.id, linked_type, linked_id, link_reason, userId);
-    auditLog(req, 'CREATE', 'incident_links', result.lastInsertRowid as number, null, req.body);
+    auditLog(req, 'CREATE', 'incident_links', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Link already exists' }); return; }

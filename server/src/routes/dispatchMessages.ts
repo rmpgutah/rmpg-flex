@@ -83,7 +83,7 @@ router.get('/unread-count', (req: Request, res: Response) => {
 router.get('/by-call/:callId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const callId = parseInt(req.params.callId, 10);
+    const callId = parseInt(req.params.callId as string, 10);
     if (isNaN(callId)) {
       res.status(400).json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' });
       return;
@@ -160,7 +160,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const userId = req.user!.userId;
 
     if (isNaN(id)) {
@@ -211,7 +211,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const userId = req.user!.userId;
     const role = req.user!.role;
 

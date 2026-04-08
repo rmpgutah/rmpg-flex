@@ -515,7 +515,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 router.post('/bodycam-videos/:videoId/reprocess', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const videoId = parseInt(req.params.videoId, 10);
+    const videoId = parseInt(req.params.videoId as string, 10);
     if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     db.prepare("UPDATE body_camera_recordings SET overlay_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(videoId);
     res.json({ success: true, message: 'Reprocessing queued' });
@@ -3292,7 +3292,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.post('/personnel/bodycam-videos/:videoId/assign-review', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const videoId = parseInt(req.params.videoId, 10);
+      const videoId = parseInt(req.params.videoId as string, 10);
       if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
 
       const { reviewer_id, priority, notes } = req.body;
@@ -3354,7 +3354,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.post('/personnel/bodycam-videos/:videoId/redaction-request', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const videoId = parseInt(req.params.videoId, 10);
+      const videoId = parseInt(req.params.videoId as string, 10);
       if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
 
       const { reason, start_time_seconds, end_time_seconds, redaction_type } = req.body;
@@ -3414,7 +3414,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.put('/personnel/bodycam-videos/redaction-requests/:requestId/approve', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const reqId = parseInt(req.params.requestId, 10);
+      const reqId = parseInt(req.params.requestId as string, 10);
       if (isNaN(reqId)) { res.status(400).json({ error: 'Invalid request ID' }); return; }
       const now = localNow();
       const { status, notes } = req.body;
@@ -4146,7 +4146,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.put('/training/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       const { course_name, category, provider, completed_date, expiry_date, score, hours, certificate_number, status, notes, training_type, officer_id } = req.body;
       const now = localNow();
@@ -4164,7 +4164,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.delete('/training/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       db.prepare('UPDATE training_records SET archived_at = ? WHERE id = ?').run(localNow(), id);
       res.json({ success: true });
@@ -4207,7 +4207,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.put('/training-requirements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       const { course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description } = req.body;
       db.prepare(`
@@ -4224,7 +4224,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.delete('/training-requirements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       db.prepare('UPDATE training_requirements SET is_active = 0 WHERE id = ?').run(id);
       res.json({ success: true });

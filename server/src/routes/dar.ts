@@ -72,7 +72,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
@@ -276,7 +276,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -310,7 +310,7 @@ router.put('/:id', (req: Request, res: Response) => {
 router.put('/:id/submit', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -340,8 +340,8 @@ router.put('/:id/approve', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'approve', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    broadcastRecordUpdate({ type: 'dar_approved', id: parseInt(req.params.id) });
-    res.json({ data: { id: parseInt(req.params.id), status: 'approved' } });
+    broadcastRecordUpdate({ type: 'dar_approved', id: parseInt(req.params.id as string) });
+    res.json({ data: { id: parseInt(req.params.id as string), status: 'approved' } });
   } catch (error: any) { console.error('Approve DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_APPROVE_ERROR' }); }
 });
 
@@ -358,8 +358,8 @@ router.put('/:id/return', (req: Request, res: Response) => {
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
-    broadcastRecordUpdate({ type: 'dar_returned', id: parseInt(req.params.id) });
-    res.json({ data: { id: parseInt(req.params.id), status: 'returned' } });
+    broadcastRecordUpdate({ type: 'dar_returned', id: parseInt(req.params.id as string) });
+    res.json({ data: { id: parseInt(req.params.id as string), status: 'returned' } });
   } catch (error: any) { console.error('Return DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_RETURN_ERROR' }); }
 });
 
@@ -369,7 +369,7 @@ router.put('/:id/return', (req: Request, res: Response) => {
 router.get('/:id/completeness', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
 
     const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
@@ -419,7 +419,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 router.put('/:id/review', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -507,7 +507,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const templateId = parseInt(req.params.templateId, 10);
+    const templateId = parseInt(req.params.templateId as string, 10);
     if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
     res.json({ success: true });
@@ -569,7 +569,7 @@ router.get('/stats/summary', (req: Request, res: Response) => {
 router.get('/:id/completeness', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
 
     const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
@@ -619,7 +619,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 router.put('/:id/review', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -707,7 +707,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const templateId = parseInt(req.params.templateId, 10);
+    const templateId = parseInt(req.params.templateId as string, 10);
     if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
     res.json({ success: true });
@@ -769,7 +769,7 @@ router.get('/stats/summary', (req: Request, res: Response) => {
 router.get('/:id/completeness', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
 
     const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
@@ -819,7 +819,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 router.put('/:id/review', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -907,7 +907,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const templateId = parseInt(req.params.templateId, 10);
+    const templateId = parseInt(req.params.templateId as string, 10);
     if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
     res.json({ success: true });
@@ -1000,7 +1000,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
 router.get('/:id/completeness', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
 
     const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
@@ -1050,7 +1050,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 router.put('/:id/review', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -1138,7 +1138,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const templateId = parseInt(req.params.templateId, 10);
+    const templateId = parseInt(req.params.templateId as string, 10);
     if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
     res.json({ success: true });
@@ -1200,7 +1200,7 @@ router.get('/stats/summary', (req: Request, res: Response) => {
 router.get('/:id/completeness', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
 
     const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
@@ -1250,7 +1250,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 router.put('/:id/review', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -1338,7 +1338,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const templateId = parseInt(req.params.templateId, 10);
+    const templateId = parseInt(req.params.templateId as string, 10);
     if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
     res.json({ success: true });
@@ -1400,7 +1400,7 @@ router.get('/stats/summary', (req: Request, res: Response) => {
 router.get('/:id/completeness', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
 
     const dar = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id) as any;
@@ -1450,7 +1450,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 router.put('/:id/review', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
@@ -1535,7 +1535,7 @@ router.post('/templates', (req: Request, res: Response) => {
 router.delete('/templates/:templateId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const templateId = parseInt(req.params.templateId, 10);
+    const templateId = parseInt(req.params.templateId as string, 10);
     if (isNaN(templateId)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
     try { db.prepare('DELETE FROM dar_templates WHERE id = ?').run(templateId); } catch { /* ok */ }
     res.json({ success: true });

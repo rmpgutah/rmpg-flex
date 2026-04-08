@@ -187,7 +187,7 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
             // Also try "LAST, FIRST" format
             const commaName = lines.find((l: string) => /^[A-Z][A-Z'-]+,\s*[A-Z]/.test(l.toUpperCase()));
             if (commaName && !finalFirst) {
-              const [last, rest] = commaName.split(',').map(s => s.trim());
+              const [last, rest] = commaName.split(',').map((s: string) => s.trim());
               finalLast = last;
               const restParts = (rest || '').split(/\s+/);
               finalFirst = restParts[0] || '';

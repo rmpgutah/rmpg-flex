@@ -1552,7 +1552,7 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
 router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.unitId);
+    const unitId = parseInt(req.params.unitId as string);
     const hours = parseInt(req.query.hours as string) || 8;
 
     const rows = db.prepare(`

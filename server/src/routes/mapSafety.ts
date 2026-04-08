@@ -185,8 +185,8 @@ router.get(
     const startMs = Date.now();
     try {
       const db = getDb();
-      const lat = parseFloat(req.params.lat);
-      const lng = parseFloat(req.params.lng);
+      const lat = parseFloat(req.params.lat as string);
+      const lng = parseFloat(req.params.lng as string);
       // Fix 23: Full coordinate validation
       const coordErr = validateLatLng(lat, lng);
       if (isNaN(lat) || isNaN(lng) || coordErr) {
@@ -367,8 +367,8 @@ router.get(
     const startMs = Date.now();
     try {
       const db = getDb();
-      const lat = parseFloat(req.params.lat);
-      const lng = parseFloat(req.params.lng);
+      const lat = parseFloat(req.params.lat as string);
+      const lng = parseFloat(req.params.lng as string);
       // Fix 23: Full coordinate validation
       const coordErr = validateLatLng(lat, lng);
       if (isNaN(lat) || isNaN(lng) || coordErr) {
@@ -603,7 +603,7 @@ router.get(
       const db = getDb();
       const callSign = req.params.callSign;
       // Fix 24: Validate callSign format
-      if (!isValidCallSign(callSign)) {
+      if (!isValidCallSign(callSign as string)) {
         safetyError(res, 400, 'Invalid call sign format (alphanumeric, hyphens, underscores, 1-50 chars)', 'INVALID_CALL_SIGN');
         return;
       }
@@ -725,8 +725,8 @@ router.get(
     const startMs = Date.now();
     try {
       const db = getDb();
-      const lat = parseFloat(req.params.lat);
-      const lng = parseFloat(req.params.lng);
+      const lat = parseFloat(req.params.lat as string);
+      const lng = parseFloat(req.params.lng as string);
       // Fix 23: Full coordinate validation
       const coordErr = validateLatLng(lat, lng);
       if (isNaN(lat) || isNaN(lng) || coordErr) {
@@ -1001,7 +1001,7 @@ router.delete(
   (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id)) {
         safetyError(res, 400, 'Invalid alert ID', 'INVALID_ALERT_ID');
         return;

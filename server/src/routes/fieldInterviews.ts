@@ -146,7 +146,7 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/by-person/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.personId, 10);
+    const personId = parseInt(req.params.personId as string, 10);
     if (isNaN(personId)) {
       res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
       return;
@@ -260,7 +260,7 @@ router.get('/by-location', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' });
       return;
@@ -385,7 +385,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' });
       return;
@@ -467,7 +467,7 @@ router.put('/:id', (req: Request, res: Response) => {
 router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' });
       return;

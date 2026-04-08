@@ -247,7 +247,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 's
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'update', 'sex_offender_registry', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id, `Updated SOR record #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id as string, `Updated SOR record #${req.params.id}`);
 
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
@@ -301,7 +301,7 @@ router.put('/:id/verify', validateParamIdMiddleware, requireRole('admin', 'manag
       JSON.stringify({ status: status || 'verified', next_due: nextDueStr }), now,
     );
 
-    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id, `Verified SOR record #${req.params.id}, next due: ${nextDueStr}`);
+    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id as string, `Verified SOR record #${req.params.id}, next due: ${nextDueStr}`);
 
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {

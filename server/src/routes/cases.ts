@@ -125,7 +125,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_ID' }); return; }
     const row = db.prepare(`
       SELECT c.*, u.full_name as lead_investigator_name
@@ -195,7 +195,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' }); return; }
     const now = localNow();
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(id) as any;
@@ -241,7 +241,7 @@ router.put('/:id/submit-review', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const reviewId = parseInt(req.params.id, 10);
+    const reviewId = parseInt(req.params.id as string, 10);
     if (isNaN(reviewId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(reviewId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
@@ -266,8 +266,8 @@ router.put('/:id/submit-review', (req: Request, res: Response) => {
       VALUES (?, 'submit_review', 'case', ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ case_number: existing.case_number }), now);
 
-    broadcastRecordUpdate({ type: 'case_submitted_review', id: parseInt(req.params.id) });
-    res.json({ data: { id: parseInt(req.params.id), approval_status: 'pending_review' } });
+    broadcastRecordUpdate({ type: 'case_submitted_review', id: parseInt(req.params.id as string) });
+    res.json({ data: { id: parseInt(req.params.id as string), approval_status: 'pending_review' } });
   } catch (error: any) {
     console.error('Submit case for review error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'SUBMIT_REVIEW_ERROR' });
@@ -286,7 +286,7 @@ router.put('/:id/approve', (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Only supervisors can approve cases', code: 'ONLY_SUPERVISORS_CAN_APPROVE' });
     }
 
-    const approveId = parseInt(req.params.id, 10);
+    const approveId = parseInt(req.params.id as string, 10);
     if (isNaN(approveId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(approveId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
@@ -306,8 +306,8 @@ router.put('/:id/approve', (req: Request, res: Response) => {
       req.user!.userId, action === 'approve' ? 'approve_case' : 'return_case', req.params.id,
       JSON.stringify({ case_number: existing.case_number, action, return_reason }), now);
 
-    broadcastRecordUpdate({ type: 'case_approval_updated', id: parseInt(req.params.id), approval_status: action === 'approve' ? 'approved' : 'returned' });
-    res.json({ data: { id: parseInt(req.params.id), approval_status: action === 'approve' ? 'approved' : 'returned' } });
+    broadcastRecordUpdate({ type: 'case_approval_updated', id: parseInt(req.params.id as string), approval_status: action === 'approve' ? 'approved' : 'returned' });
+    res.json({ data: { id: parseInt(req.params.id as string), approval_status: action === 'approve' ? 'approved' : 'returned' } });
   } catch (error: any) {
     console.error('Approve case error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'APPROVAL_ERROR' });
@@ -323,7 +323,7 @@ router.put('/:id/status', (req: Request, res: Response) => {
     const validStatuses = ['open', 'assigned', 'active', 'suspended', 'under_review', 'closed_cleared', 'closed_unfounded', 'closed_exception'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status', code: 'INVALID_STATUS' });
 
-    const statusId = parseInt(req.params.id, 10);
+    const statusId = parseInt(req.params.id as string, 10);
     if (isNaN(statusId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(statusId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
@@ -344,8 +344,8 @@ router.put('/:id/status', (req: Request, res: Response) => {
       VALUES (?, 'status_change', 'case', ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), now);
 
-    broadcastRecordUpdate({ type: 'case_status_changed', id: parseInt(req.params.id), status });
-    res.json({ data: { id: parseInt(req.params.id), status } });
+    broadcastRecordUpdate({ type: 'case_status_changed', id: parseInt(req.params.id as string), status });
+    res.json({ data: { id: parseInt(req.params.id as string), status } });
   } catch (error: any) {
     console.error('Update case status error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'STATUS_UPDATE_ERROR' });
@@ -356,7 +356,7 @@ router.put('/:id/status', (req: Request, res: Response) => {
 router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const delId = parseInt(req.params.id, 10);
+    const delId = parseInt(req.params.id as string, 10);
     if (isNaN(delId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(delId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
@@ -392,7 +392,7 @@ router.post('/:id/notes', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const notesCaseId = parseInt(req.params.id, 10);
+    const notesCaseId = parseInt(req.params.id as string, 10);
     if (isNaN(notesCaseId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const { content, note_type = 'general' } = req.body;
     if (!content || (typeof content === 'string' && content.trim().length === 0)) return res.status(400).json({ error: 'Content is required', code: 'MISSING_CONTENT' });
@@ -436,7 +436,7 @@ router.post('/:id/calculate-solvability', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const solvId = parseInt(req.params.id, 10);
+    const solvId = parseInt(req.params.id as string, 10);
     if (isNaN(solvId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const { factors } = req.body; // { witness_available, physical_evidence, suspect_named, ... }
 
@@ -723,7 +723,7 @@ router.post('/:id/persons', (req: Request, res: Response) => {
     const result = db.prepare('INSERT INTO case_persons (case_id, person_id, person_name, role, notes, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.params.id, person_id || null, name, role, notes || null, req.user!.userId, now);
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, 'add_case_person', 'case', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ person_name: name, role }), now);
-    broadcastRecordUpdate({ type: 'case_person_added', case_id: parseInt(req.params.id), role });
+    broadcastRecordUpdate({ type: 'case_person_added', case_id: parseInt(req.params.id as string), role });
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) { console.error('Add case person error:', error); res.status(500).json({ error: 'Failed to add person to case', code: 'ADD_CASE_PERSON_ERROR' }); }
 });
