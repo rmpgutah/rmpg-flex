@@ -25,9 +25,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install --ignore-scripts
-          (cd client && npm install --ignore-scripts)
-          (cd server && npm install --ignore-scripts)
+          npm install --ignore-scripts --legacy-peer-deps
+          (cd client && npm install --ignore-scripts --legacy-peer-deps)
+          (cd server && npm install --ignore-scripts --legacy-peer-deps)
 
       - name: TypeScript check (client)
         working-directory: client

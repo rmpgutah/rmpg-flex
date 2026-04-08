@@ -24,6 +24,16 @@ updates:
     labels:
       - "dependencies"
       - "client"
+    ignore:
+      # Tailwind 4.x is a full rewrite — requires planned migration
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      # lucide-react 1.x renames/removes icons — needs manual migration
+      - dependency-name: "lucide-react"
+        update-types: ["version-update:semver-major"]
+      # jsdom 29.x — major version, dev dep
+      - dependency-name: "jsdom"
+        update-types: ["version-update:semver-major"]
 
   # Server (Express + SQLite)
   - package-ecosystem: "npm"
@@ -38,6 +48,9 @@ updates:
     ignore:
       - dependency-name: "multer"
         update-types: ["version-update:semver-major"]
+      # TypeScript 6.x — major version, needs planned migration
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Desktop (Electron)
   - package-ecosystem: "npm"
@@ -49,6 +62,13 @@ updates:
     labels:
       - "dependencies"
       - "desktop"
+    ignore:
+      # Electron major versions need planned migration (API changes)
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
+      # better-sqlite3 major versions may change native binding API
+      - dependency-name: "better-sqlite3"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
