@@ -23,7 +23,7 @@
     "@capacitor/ios": "^8.1.0",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
-    "@simplewebauthn/browser": "^13.2.2",
+    "@simplewebauthn/browser": "^13.3.0",
     "d3-cloud": "^1.2.7",
     "idb": "^8.0.3",
     "jspdf": "^4.2.1",
