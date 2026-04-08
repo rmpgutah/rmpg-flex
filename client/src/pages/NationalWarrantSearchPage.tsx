@@ -15,28 +15,25 @@ interface NationalCoverageState {
   stateName: string;
   available: boolean;
   message?: string;
-  [key: string]: unknown;
 }
 
 interface NationalCoverageResponse {
   states: NationalCoverageState[];
   updatedAt?: string;
-  [key: string]: unknown;
-}
-
-interface NationalWarrantSearchResultItem {
-  id?: string | number;
-  [key: string]: unknown;
+  sources?: number;
+  states_covered?: number;
+  active_warrants?: number;
+  state_status?: Record<string, CoverageStatus>;
+  state_sources?: Record<string, number>;
+  state_warrants?: Record<string, number>;
 }
 
 interface NationalWarrantSearchResults {
-  results?: NationalWarrantSearchResultItem[];
   total?: number;
   search_time_ms?: number;
   by_state?: Record<string, Warrant[]>;
   local?: Warrant[];
   error?: string;
-  [key: string]: unknown;
 }
 
 interface Warrant {
