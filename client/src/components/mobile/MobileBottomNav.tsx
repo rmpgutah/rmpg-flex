@@ -1,17 +1,17 @@
 // ============================================================
 // Mobile Bottom Navigation Bar
-// 4 primary tabs + More drawer trigger
+// 5 primary tabs: Dashboard, Map, Dispatch, Radio, More
 // Designed for one-handed use with 48dp+ touch targets
 // ============================================================
 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Map, Radio, Bell, Menu, LayoutList } from 'lucide-react';
+import { LayoutDashboard, Map, Radio, Bell, Menu, LayoutList } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { id: 'map',      path: '/map',      icon: Map,        label: 'Map' },
-  { id: 'calls',    path: '/dispatch',  icon: LayoutList, label: 'Calls' },
-  { id: 'radio',    path: '/radio',     icon: Radio,      label: 'Radio' },
-  { id: 'alerts',   path: '/notifications', icon: Bell,   label: 'Alerts' },
+  { id: 'home',     path: '/',          icon: LayoutDashboard, label: 'Home' },
+  { id: 'calls',    path: '/dispatch',  icon: LayoutList,      label: 'Dispatch' },
+  { id: 'map',      path: '/map',       icon: Map,             label: 'Map' },
+  { id: 'alerts',   path: '/notifications', icon: Bell,        label: 'Alerts' },
 ] as const;
 
 interface MobileBottomNavProps {
@@ -25,20 +25,19 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
 
   const isActive = (path: string) => location.pathname === path;
 
-  // Check if current page is one of the 4 primary pages
+  // Check if current page is one of the primary pages
   const isPrimaryPage = NAV_ITEMS.some(item => location.pathname === item.path);
 
   return (
     <nav
       style={{
-        height: 56,
-        background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)',
-        borderTop: '1px solid #2b313a',
+        height: 68,
+        background: 'var(--surface-raised)',
+        borderTop: '1px solid var(--border-default)',
         display: 'flex',
         alignItems: 'stretch',
         zIndex: 50,
         flexShrink: 0,
-        // Safe area inset for phones with gesture nav bars
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         WebkitTransform: 'translateZ(0)',
       }}
@@ -56,32 +55,31 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 2,
-              background: active ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
+              gap: 4,
+              background: active ? 'rgba(212, 160, 23, 0.1)' : 'transparent',
               border: 'none',
-              borderTop: active ? '2px solid #888888' : '2px solid transparent',
+              borderTop: active ? '2px solid var(--brand-gold)' : '2px solid transparent',
               cursor: 'pointer',
               position: 'relative',
               padding: 0,
               minWidth: 0,
-              // Minimum 48dp touch target
-              minHeight: 48,
+              minHeight: 56,
             }}
           >
             <Icon
-              size={22}
+              size={24}
               style={{
-                color: active ? '#999999' : '#666666',
+                color: active ? 'var(--brand-gold)' : '#666666',
                 transition: 'color 0.15s',
               }}
             />
             <span
               style={{
-                fontSize: 10,
-                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: 11,
+                fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: active ? '#999999' : '#666666',
+                letterSpacing: '0.04em',
+                color: active ? 'var(--brand-gold)' : '#666666',
                 transition: 'color 0.15s',
               }}
             >
@@ -92,20 +90,20 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
               <span
                 style={{
                   position: 'absolute',
-                  top: 6,
+                  top: 8,
                   right: '50%',
-                  marginRight: -16,
+                  marginRight: -18,
                   background: '#ef4444',
                   color: '#fff',
-                  fontSize: 9,
+                  fontSize: 10,
                   fontWeight: 700,
-                  borderRadius: 8,
-                  minWidth: 16,
-                  height: 16,
+                  borderRadius: 10,
+                  minWidth: 18,
+                  height: 18,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '0 4px',
+                  padding: '0 5px',
                 }}
               >
                 {unreadAlerts > 99 ? '99+' : unreadAlerts}
@@ -124,30 +122,30 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 2,
-          background: !isPrimaryPage ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
+          gap: 4,
+          background: !isPrimaryPage ? 'rgba(212, 160, 23, 0.1)' : 'transparent',
           border: 'none',
-          borderTop: !isPrimaryPage ? '2px solid #888888' : '2px solid transparent',
+          borderTop: !isPrimaryPage ? '2px solid var(--brand-gold)' : '2px solid transparent',
           cursor: 'pointer',
           padding: 0,
           minWidth: 0,
-          minHeight: 48,
+          minHeight: 56,
         }}
       >
         <Menu
-          size={22}
+          size={24}
           style={{
-            color: !isPrimaryPage ? '#999999' : '#666666',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : '#666666',
             transition: 'color 0.15s',
           }}
         />
         <span
           style={{
-            fontSize: 10,
-            fontFamily: 'var(--font-mono, monospace)',
+            fontSize: 11,
+            fontWeight: 700,
             textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            color: !isPrimaryPage ? '#999999' : '#666666',
+            letterSpacing: '0.04em',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : '#666666',
             transition: 'color 0.15s',
           }}
         >
