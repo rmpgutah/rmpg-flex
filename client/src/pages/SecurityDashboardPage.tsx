@@ -44,13 +44,13 @@ export default function SecurityDashboardPage() {
     setError('');
     try {
       const [s, lh, t, bi, pc, sa, et] = await Promise.all([
-        safe<SecurityStatus>('/security-dashboard/status'),
-        safe<{ data: LoginEntry[] }>('/security-dashboard/login-history?limit=50'),
-        isAdmin ? safe<{ data: ThreatEntry[] }>('/security-dashboard/recent-threats') : null,
-        isAdmin ? safe<{ data: any[] }>('/security-dashboard/blocked-ips') : null,
-        isAdmin ? safe<any>('/security-dashboard/password-compliance') : null,
-        isAdmin ? safe<any>('/security-dashboard/session-analytics') : null,
-        isAdmin ? safe<{ data: any[] }>('/security-dashboard/event-timeline?limit=100') : null,
+        safe<SecurityStatus>('/auth/security/status'),
+        safe<{ data: LoginEntry[] }>('/auth/security/login-history?limit=50'),
+        isAdmin ? safe<{ data: ThreatEntry[] }>('/auth/security/recent-threats') : null,
+        isAdmin ? safe<{ data: any[] }>('/auth/security/blocked-ips') : null,
+        isAdmin ? safe<any>('/auth/security/password-compliance') : null,
+        isAdmin ? safe<any>('/auth/security/session-analytics') : null,
+        isAdmin ? safe<{ data: any[] }>('/auth/security/event-timeline?limit=100') : null,
       ]);
       if (s) setStatus(s);
       if (lh) setLoginHistory(lh.data || []);
@@ -68,7 +68,7 @@ export default function SecurityDashboardPage() {
 
   const handleUnblockIp = async (ip: string) => {
     try {
-      await apiFetch('/security-dashboard/unblock-ip', { method: 'POST', body: JSON.stringify({ ip }) });
+      await apiFetch('/auth/security/unblock-ip', { method: 'POST', body: JSON.stringify({ ip }) });
       setBlockedIps(prev => prev.filter(b => b.ip !== ip));
     } catch (err: any) { setError(err?.message || 'Failed to unblock IP'); }
   };
