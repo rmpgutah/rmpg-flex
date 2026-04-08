@@ -33,7 +33,7 @@
     "react-dom": "^18.3.1",
     "react-force-graph-2d": "^1.29.1",
     "react-router-dom": "^6.28.0",
-    "recharts": "^2.14.1",
+    "recharts": "^3.8.1",
     "source-map": "^0.7.6"
   },
   "overrides": {
