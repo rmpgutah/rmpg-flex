@@ -149,7 +149,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 - Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
 - GeoJSON layers: beat.geojson (719 features), county, municipality, highway, state_boundary, place
-- Service Worker (sw.js v150) pre-caches tiles for Utah operational area
+- Service Worker (sw.js v151) pre-caches tiles for Utah operational area
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
 ## Development
@@ -159,7 +159,7 @@ npm run dev              # Start both client (Vite :5173) and server (tsx :3001)
 npm run build            # Build client only (Vite → client/dist/)
 cd client && npx vite build       # Build client (used by deploy)
 cd server && npx vitest run       # Run server tests (43 tests)
-cd client && npx tsc --noEmit     # TypeScript typecheck (should pass with 0 errors)
+cd client && npx tsc --noEmit     # TypeScript typecheck (0 errors as of v5.7.0)
 
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
@@ -170,7 +170,7 @@ bash deploy/deploy.sh             # Code only to VPS (runs typecheck + tests + b
 bash deploy/deploy.sh --all       # Code + desktop installers to VPS
 ```
 
-**Note**: TypeScript strict check passes with 0 errors as of v5.7.0. Vite build is the deploy gate.
+**Note**: Vite build is the deploy gate. TypeScript strict check passes with 0 errors as of v5.7.0.
 
 ### Google Maps API Key
 Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
@@ -265,7 +265,7 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 ### CI / GitHub Actions
 - Self-hosted runner on VPS (194.113.64.90) — systemd service `actions.runner.*.rmpg-vps`
 - Workflow: `.github/workflows/codeql.yml` — TypeScript check + npm audit + Vite build
-- Requires GitHub Team plan ($4/mo) for private repo Actions — currently blocked on Free plan
+- GitHub Enterprise plan — CI runs on every push to main and on PRs
 
 ### Integration Hub
 - Integration health monitoring with WebSocket alerts
@@ -277,7 +277,7 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption
 2. **rsync --delete** in deploy — production-only dirs are excluded, don't remove those excludes
 3. **Electron desktop app** is in `desktop/` with its own `package.json` and `node_modules`
-4. **Large files** — DispatchPage.tsx (~6,400 lines), MapPage.tsx (~5,500 lines), dispatch calls.ts (~2,200 lines)
+4. **Large files** — DispatchPage.tsx (~5,600 lines), MapPage.tsx (~5,500 lines), dispatch calls.ts (~2,200 lines)
 5. **Service Worker versioning** — bump `CACHE_NAME` in `sw.js` when changing client assets
 6. **Electron cache** — users must quit + clear `~/Library/Application Support/rmpg-flex-desktop/Cache` or press Cmd+Shift+R
 7. **Auth middleware name** — it's `authenticateToken` not `authenticate`
@@ -296,3 +296,4 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 20. **Blue is dead** — Tailwind's entire `blue` palette is overridden to grayscale in `tailwind.config.js`. Any `text-blue-*`, `bg-blue-*`, `border-blue-*` renders gray. Use CSS variables (`var(--brand-blue)`) or the custom `rmpg-*` / `brand-*` Tailwind classes instead
 21. **Multer must stay on 1.x** — multer 2.0 has an incompatible API (removes `diskStorage()`, `memoryStorage()`, `upload.single()` pattern). 8 route files use 1.x API. Dependabot multer alerts cannot be auto-fixed
 22. **Panel CSS classes** — use `.panel-raised`, `.panel-sunken`, `.panel-base` for surface backgrounds. These are defined in `index.css` and map to CSS variables. Without them, elements render with no background (white)
+23. **CI `npm ci` fragility** — the self-hosted runner uses `npm ci` which requires exact lockfile match. If lockfile drifts, CI fails on install step. Fix: regenerate lockfiles locally (`npm install`) and commit them
