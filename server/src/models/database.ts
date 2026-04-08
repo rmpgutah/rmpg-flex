@@ -4569,6 +4569,32 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'status_changed_at', 'TEXT');
   addCol('calls_for_service', 'onscene_duration_seconds', 'REAL');
 
+  // ── PSO redispatch + deadline columns ──
+  addCol('calls_for_service', 'pso_attempt_number', 'INTEGER DEFAULT 1');
+  addCol('calls_for_service', 'parent_call_id', 'INTEGER');
+  addCol('calls_for_service', 'pso_service_windows', 'TEXT');
+  addCol('calls_for_service', 'received_at', 'TEXT');
+  addCol('calls_for_service', 'pso_72hr_deadline', 'TEXT');
+  addCol('calls_for_service', 'pso_72hr_notified', 'TEXT');
+  addCol('calls_for_service', 'responding_vehicle_id', 'INTEGER');
+  // ── PSO requestor fields ──
+  addCol('calls_for_service', 'pso_requestor_name', 'TEXT');
+  addCol('calls_for_service', 'pso_requestor_phone', 'TEXT');
+  addCol('calls_for_service', 'pso_requestor_email', 'TEXT');
+  addCol('calls_for_service', 'pso_service_type', 'TEXT');
+  addCol('calls_for_service', 'pso_billing_code', 'TEXT');
+  addCol('calls_for_service', 'pso_authorization', 'TEXT');
+  // ── Tactical / safety flag columns ──
+  addCol('calls_for_service', 'mental_health_crisis', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'juvenile_involved', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'felony_in_progress', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'officer_safety_caution', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'gang_related', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'k9_requested', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'ems_requested', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'fire_requested', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'hazmat', 'INTEGER DEFAULT 0');
+
   // ── Feature 5: Shift handoff notes ──
   // Stored in system_config table with config_key='shift_handoff_notes'
 
@@ -4596,221 +4622,6 @@ function migrateSchema(): void {
   addCol('vehicles_records', 'tow_release_date', 'TEXT');
   addCol('vehicles_records', 'tow_release_to', 'TEXT');
   addCol('vehicles_records', 'tow_reason', 'TEXT');
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ── Enhanced Record Fields (207 columns) ─────────────────────────────
-  // ══════════════════════════════════════════════════════════════════════
-
-  // ── Person Enhanced Fields (65 columns) ──
-  addCol('persons', 'preferred_name', 'TEXT');
-  addCol('persons', 'alias_dob', 'TEXT');
-  addCol('persons', 'tribal_affiliation', 'TEXT');
-  addCol('persons', 'immigration_status', 'TEXT');
-  addCol('persons', 'country_of_origin', 'TEXT');
-  addCol('persons', 'ethnicity_detail', 'TEXT');
-  addCol('persons', 'religion', 'TEXT');
-  addCol('persons', 'gender_identity', 'TEXT');
-  addCol('persons', 'interpreter_needed', 'INTEGER DEFAULT 0');
-  addCol('persons', 'literacy_level', 'TEXT');
-  addCol('persons', 'primary_language', 'TEXT');
-  addCol('persons', 'secondary_language', 'TEXT');
-  addCol('persons', 'nickname_street_name', 'TEXT');
-  addCol('persons', 'maiden_name', 'TEXT');
-  addCol('persons', 'suffix', 'TEXT');
-  addCol('persons', 'tattoo_locations', 'TEXT');
-  addCol('persons', 'tattoo_descriptions', 'TEXT');
-  addCol('persons', 'tattoo_count', 'INTEGER');
-  addCol('persons', 'piercing_locations', 'TEXT');
-  addCol('persons', 'prosthetics', 'TEXT');
-  addCol('persons', 'wheelchair_dependent', 'INTEGER DEFAULT 0');
-  addCol('persons', 'hearing_impaired', 'INTEGER DEFAULT 0');
-  addCol('persons', 'vision_impaired', 'TEXT');
-  addCol('persons', 'speech_impediment', 'TEXT');
-  addCol('persons', 'dominant_hand', 'TEXT');
-  addCol('persons', 'body_odor_notable', 'TEXT');
-  addCol('persons', 'gait_description', 'TEXT');
-  addCol('persons', 'driver_license_status', 'TEXT');
-  addCol('persons', 'last_law_enforcement_contact', 'TEXT');
-  addCol('persons', 'known_contact_method', 'TEXT');
-  addCol('persons', 'mental_health_flags', 'TEXT');
-  addCol('persons', 'medication_alerts', 'TEXT');
-  addCol('persons', 'suicide_risk', 'TEXT');
-  addCol('persons', 'violent_history', 'TEXT');
-  addCol('persons', 'escape_risk', 'TEXT');
-  addCol('persons', 'restraining_orders', 'TEXT');
-  addCol('persons', 'curfew_restrictions', 'TEXT');
-  addCol('persons', 'gps_monitor', 'INTEGER DEFAULT 0');
-  addCol('persons', 'gang_rank', 'TEXT');
-  addCol('persons', 'gang_set', 'TEXT');
-  addCol('persons', 'gang_territory', 'TEXT');
-  addCol('persons', 'gang_rivals', 'TEXT');
-  addCol('persons', 'homeless_status', 'INTEGER DEFAULT 0');
-  addCol('persons', 'homeless_location', 'TEXT');
-  addCol('persons', 'frequented_locations', 'TEXT');
-  addCol('persons', 'known_vehicles', 'TEXT');
-  addCol('persons', 'modus_operandi', 'TEXT');
-  addCol('persons', 'military_branch', 'TEXT');
-  addCol('persons', 'military_discharge_type', 'TEXT');
-  addCol('persons', 'military_rank', 'TEXT');
-  addCol('persons', 'military_service_dates', 'TEXT');
-  addCol('persons', 'va_benefits_active', 'INTEGER DEFAULT 0');
-  addCol('persons', 'employer_address', 'TEXT');
-  addCol('persons', 'employer_phone', 'TEXT');
-  addCol('persons', 'employer_supervisor', 'TEXT');
-  addCol('persons', 'employment_schedule', 'TEXT');
-  addCol('persons', 'next_of_kin_name', 'TEXT');
-  addCol('persons', 'next_of_kin_phone', 'TEXT');
-  addCol('persons', 'next_of_kin_relationship', 'TEXT');
-  addCol('persons', 'next_of_kin_address', 'TEXT');
-  addCol('persons', 'fingerprint_on_file', 'INTEGER DEFAULT 0');
-  addCol('persons', 'dna_on_file', 'INTEGER DEFAULT 0');
-  addCol('persons', 'dental_records_on_file', 'INTEGER DEFAULT 0');
-  addCol('persons', 'photo_date_taken', 'TEXT');
-  addCol('persons', 'prior_booking_count', 'INTEGER DEFAULT 0');
-
-  // ── Vehicle Enhanced Fields (72 columns) ──
-  addCol('vehicles_records', 'registration_status', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_name', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_address', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_phone', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_dob', 'TEXT');
-  addCol('vehicles_records', 'registration_state', 'TEXT');
-  addCol('vehicles_records', 'title_status', 'TEXT');
-  addCol('vehicles_records', 'title_number', 'TEXT');
-  addCol('vehicles_records', 'temporary_plate_expiry', 'TEXT');
-  addCol('vehicles_records', 'fleet_number', 'TEXT');
-  addCol('vehicles_records', 'vehicle_alert_code', 'TEXT');
-  addCol('vehicles_records', 'repossession_status', 'TEXT');
-  addCol('vehicles_records', 'repossession_company', 'TEXT');
-  addCol('vehicles_records', 'repossession_date', 'TEXT');
-  addCol('vehicles_records', 'last_seen_location', 'TEXT');
-  addCol('vehicles_records', 'last_seen_date', 'TEXT');
-  addCol('vehicles_records', 'impound_status', 'TEXT');
-  addCol('vehicles_records', 'impound_lot', 'TEXT');
-  addCol('vehicles_records', 'impound_case_number', 'TEXT');
-  addCol('vehicles_records', 'impound_date', 'TEXT');
-  addCol('vehicles_records', 'bumper_stickers_decals', 'TEXT');
-  addCol('vehicles_records', 'window_tint_level', 'TEXT');
-  addCol('vehicles_records', 'sunroof', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'roof_rack', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'trailer_hitch', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'aftermarket_wheels', 'TEXT');
-  addCol('vehicles_records', 'aftermarket_exhaust', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'lift_kit', 'TEXT');
-  addCol('vehicles_records', 'lowered', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'wrap_or_paint_custom', 'TEXT');
-  addCol('vehicles_records', 'antenna_type', 'TEXT');
-  addCol('vehicles_records', 'license_plate_frame', 'TEXT');
-  addCol('vehicles_records', 'front_bumper_damage', 'TEXT');
-  addCol('vehicles_records', 'rear_bumper_damage', 'TEXT');
-  addCol('vehicles_records', 'rust_locations', 'TEXT');
-  addCol('vehicles_records', 'interior_color', 'TEXT');
-  addCol('vehicles_records', 'seat_material', 'TEXT');
-  addCol('vehicles_records', 'aftermarket_stereo', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'dash_camera_installed', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'cb_radio_installed', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'child_seat_present', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'handicap_placard', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'rideshare_sticker', 'TEXT');
-  addCol('vehicles_records', 'equipment_violations', 'TEXT');
-  addCol('vehicles_records', 'airbag_status', 'TEXT');
-  addCol('vehicles_records', 'mileage_last_recorded', 'INTEGER');
-  addCol('vehicles_records', 'mileage_date_recorded', 'TEXT');
-  addCol('vehicles_records', 'emissions_status', 'TEXT');
-  addCol('vehicles_records', 'emissions_test_date', 'TEXT');
-  addCol('vehicles_records', 'catalytic_converter_status', 'TEXT');
-  addCol('vehicles_records', 'tire_condition', 'TEXT');
-  addCol('vehicles_records', 'brake_condition', 'TEXT');
-  addCol('vehicles_records', 'headlight_type', 'TEXT');
-  addCol('vehicles_records', 'insurance_agent_name', 'TEXT');
-  addCol('vehicles_records', 'insurance_agent_phone', 'TEXT');
-  addCol('vehicles_records', 'insurance_policy_number', 'TEXT');
-  addCol('vehicles_records', 'insurance_coverage_type', 'TEXT');
-  addCol('vehicles_records', 'insurance_verified_date', 'TEXT');
-  addCol('vehicles_records', 'sr22_required', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'tow_fee', 'REAL');
-  addCol('vehicles_records', 'tow_driver_name', 'TEXT');
-  addCol('vehicles_records', 'tow_company_phone', 'TEXT');
-  addCol('vehicles_records', 'storage_fee_daily', 'REAL');
-  addCol('vehicles_records', 'lien_holder_address', 'TEXT');
-  addCol('vehicles_records', 'lien_balance', 'REAL');
-
-  // ── Property Enhanced Fields (73 columns) ──
-  addCol('properties', 'security_company', 'TEXT');
-  addCol('properties', 'security_company_phone', 'TEXT');
-  addCol('properties', 'security_company_account', 'TEXT');
-  addCol('properties', 'security_system_type', 'TEXT');
-  addCol('properties', 'security_panel_location', 'TEXT');
-  addCol('properties', 'security_code_day', 'TEXT');
-  addCol('properties', 'security_code_night', 'TEXT');
-  addCol('properties', 'duress_code', 'TEXT');
-  addCol('properties', 'security_zones_count', 'INTEGER');
-  addCol('properties', 'security_last_tested', 'TEXT');
-  addCol('properties', 'key_holder_name', 'TEXT');
-  addCol('properties', 'key_holder_phone', 'TEXT');
-  addCol('properties', 'key_holder_secondary_name', 'TEXT');
-  addCol('properties', 'key_holder_secondary_phone', 'TEXT');
-  addCol('properties', 'key_location', 'TEXT');
-  addCol('properties', 'key_box_code', 'TEXT');
-  addCol('properties', 'key_type', 'TEXT');
-  addCol('properties', 'access_card_system', 'TEXT');
-  addCol('properties', 'cctv_camera_count', 'INTEGER');
-  addCol('properties', 'cctv_retention_days', 'INTEGER');
-  addCol('properties', 'cctv_vendor', 'TEXT');
-  addCol('properties', 'cctv_access_credentials', 'TEXT');
-  addCol('properties', 'cctv_recording_location', 'TEXT');
-  addCol('properties', 'cctv_ptz_capable', 'INTEGER DEFAULT 0');
-  addCol('properties', 'cctv_remote_viewable', 'INTEGER DEFAULT 0');
-  addCol('properties', 'cctv_audio_recording', 'INTEGER DEFAULT 0');
-  addCol('properties', 'building_floors', 'INTEGER');
-  addCol('properties', 'building_square_footage', 'INTEGER');
-  addCol('properties', 'building_material', 'TEXT');
-  addCol('properties', 'building_year_built', 'INTEGER');
-  addCol('properties', 'roof_type', 'TEXT');
-  addCol('properties', 'roof_access', 'TEXT');
-  addCol('properties', 'basement_present', 'INTEGER DEFAULT 0');
-  addCol('properties', 'basement_access', 'TEXT');
-  addCol('properties', 'elevator_count', 'INTEGER');
-  addCol('properties', 'stairwell_count', 'INTEGER');
-  addCol('properties', 'occupancy_capacity', 'INTEGER');
-  addCol('properties', 'ada_accessible', 'INTEGER DEFAULT 0');
-  addCol('properties', 'officer_caution_notes', 'TEXT');
-  addCol('properties', 'lighting_description', 'TEXT');
-  addCol('properties', 'lighting_timer', 'TEXT');
-  addCol('properties', 'entry_points_count', 'INTEGER');
-  addCol('properties', 'entry_points_notes', 'TEXT');
-  addCol('properties', 'sensitive_areas', 'TEXT');
-  addCol('properties', 'restricted_access_areas', 'TEXT');
-  addCol('properties', 'fire_panel_location', 'TEXT');
-  addCol('properties', 'fire_sprinkler_system', 'TEXT');
-  addCol('properties', 'utility_shutoff_locations', 'TEXT');
-  addCol('properties', 'hazmat_on_site', 'TEXT');
-  addCol('properties', 'weapons_on_premises', 'TEXT');
-  addCol('properties', 'patrol_priority', 'TEXT');
-  addCol('properties', 'patrol_frequency', 'TEXT');
-  addCol('properties', 'last_patrol_date', 'TEXT');
-  addCol('properties', 'problem_type_tags', 'TEXT');
-  addCol('properties', 'after_hours_contact_name', 'TEXT');
-  addCol('properties', 'after_hours_contact_phone', 'TEXT');
-  addCol('properties', 'parking_lot_spaces', 'INTEGER');
-  addCol('properties', 'parking_lot_gated', 'INTEGER DEFAULT 0');
-  addCol('properties', 'loading_dock_count', 'INTEGER');
-  addCol('properties', 'dumpster_locations', 'TEXT');
-  addCol('properties', 'tenant_count', 'INTEGER');
-  addCol('properties', 'tenant_list', 'TEXT');
-  addCol('properties', 'property_manager_name', 'TEXT');
-  addCol('properties', 'property_manager_phone', 'TEXT');
-  addCol('properties', 'property_manager_email', 'TEXT');
-  addCol('properties', 'owner_name', 'TEXT');
-  addCol('properties', 'owner_phone', 'TEXT');
-  addCol('properties', 'lease_expiry', 'TEXT');
-  addCol('properties', 'internet_provider', 'TEXT');
-  addCol('properties', 'phone_system_type', 'TEXT');
-  addCol('properties', 'backup_generator', 'INTEGER DEFAULT 0');
-  addCol('properties', 'water_source', 'TEXT');
-  addCol('properties', 'septic_or_sewer', 'TEXT');
-
-  // ══════════════════════════════════════════════════════════════════════
 
   // ── Feature 8: Evidence temperature tracking ──
   addCol('evidence', 'storage_temperature', 'REAL');
@@ -5039,48 +4850,141 @@ function migrateSchema(): void {
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
   addCol('warrant_scraper_config', 'display_name', 'TEXT');
-  addCol('warrant_scraper_config', 'source_type', "TEXT DEFAULT 'html'");
+  addCol('warrant_scraper_config', 'source_type', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
 
-  // ── Seed new warrant scraper sources ──
-  // Uses INSERT OR IGNORE to avoid duplicates on existing databases
-  const seedWarrantSource = db.prepare(`
-    INSERT OR IGNORE INTO warrant_scraper_config
-      (source_key, state, county, source_url, display_name, source_type, scrape_interval_minutes, enabled)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  // ── scraped_warrants missing columns ──
+  addCol('scraped_warrants', 'middle_name', 'TEXT');
+  addCol('scraped_warrants', 'age', 'INTEGER');
+  addCol('scraped_warrants', 'gender', 'TEXT');
+  addCol('scraped_warrants', 'race', 'TEXT');
+  addCol('scraped_warrants', 'city', 'TEXT');
+  addCol('scraped_warrants', 'state', 'TEXT');
+  addCol('scraped_warrants', 'photo_url', 'TEXT');
+  addCol('scraped_warrants', 'detail_url', 'TEXT');
+  addCol('scraped_warrants', 'first_seen_at', 'TEXT');
+  addCol('scraped_warrants', 'last_seen_at', 'TEXT');
+  addCol('scraped_warrants', 'cleared_at', 'TEXT');
+  addCol('scraped_warrants', 'dob_verified', 'INTEGER DEFAULT 0');
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_offense ON scraped_warrants(offense_level)'); } catch (e) { /* */ }
 
-  // Federal sources
-  seedWarrantSource.run('federal_fbi_wanted', 'US', '', 'https://api.fbi.gov/wanted/v1/list', 'FBI Most Wanted', 'api', 360, 1);
-  seedWarrantSource.run('federal_usmarshals_mostwanted', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/15-most-wanted-fugitive', 'US Marshals 15 Most Wanted', 'html', 1440, 0);
-
-  // Colorado (additional)
-  seedWarrantSource.run('co_denver_warrants', 'CO', 'Denver', 'https://www.metrodenvercrimestoppers.com/', 'Metro Denver Crime Stoppers', 'html', 720, 1);
-  seedWarrantSource.run('co_jefferson_warrants', 'CO', 'Jefferson', 'https://crimewatch.net/us/co/jefferson/warrants', 'Jefferson County CRIMEWATCH', 'html', 720, 0);
-  seedWarrantSource.run('co_adams_warrants', 'CO', 'Adams', 'https://adamscosheriff.net/portal/MostWanted', 'Adams County Most Wanted', 'html', 720, 0);
-  seedWarrantSource.run('co_arapahoe_warrants', 'CO', 'Arapahoe', 'https://court.auroragov.org/warrant', 'Arapahoe/Aurora Warrant Search', 'search_form', 720, 0);
-
-  // Wyoming
-  seedWarrantSource.run('wy_laramie_warrants', 'WY', 'Laramie', 'https://www.laramiecountywy.gov/County-Government/Elected-Officials/Laramie-County-Sheriffs-Office/Most-Wanted', 'Laramie County Most Wanted', 'html', 720, 0);
-  seedWarrantSource.run('wy_natrona_warrants', 'WY', 'Natrona', 'https://warrants.natronacounty-wy.gov/', 'Natrona County Warrant Search', 'search_form', 720, 0);
-
-  // Idaho
-  seedWarrantSource.run('id_ada_warrants', 'ID', 'Ada', 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx', 'Ada County Warrant Search', 'search_form', 720, 0);
-  seedWarrantSource.run('id_bannock_warrants', 'ID', 'Bannock', 'https://www.pocatello.us/DocumentCenter/View/565/Most-Wanted-List-PDF', 'Bannock County Most Wanted (PDF)', 'pdf', 1440, 0);
-
-  // Montana
-  seedWarrantSource.run('mt_flathead_warrants', 'MT', 'Flathead', 'https://apps.flathead.mt.gov/warrants/warrants_list.php', 'Flathead County Warrants', 'html', 720, 1);
-  seedWarrantSource.run('mt_yellowstone_warrants', 'MT', 'Yellowstone', 'https://www.yellowstonecountymt.gov/justicecourt/JCWarrants.asp', 'Yellowstone County Warrants', 'html', 720, 0);
-
-  // Nevada (additional)
-  seedWarrantSource.run('nv_washoe_warrants', 'NV', 'Washoe', 'https://secretwitness.com/current-cases/current-fugitive-cases/', 'Washoe County / Secret Witness', 'html', 720, 1);
-
-  // Arizona (additional)
-  seedWarrantSource.run('az_pima_warrants', 'AZ', 'Pima', 'https://88crime.org/category/wanted-fugitives/', 'Pima County / 88-CRIME', 'html', 720, 1);
-
-  // New Mexico
-  seedWarrantSource.run('nm_bernalillo_warrants', 'NM', 'Bernalillo', 'https://bcapp.bernco.gov/BCSO_WarrantInterWITS/', 'Bernalillo County WITS', 'search_form', 720, 0);
+  // ── Seed warrant scraper sources — All 50 US States + Federal ──
+  {
+    const s = db.prepare('INSERT OR IGNORE INTO warrant_scraper_config (source_key, state, county, source_url, source_name, source_type, scrape_interval_minutes, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    // Federal
+    s.run('federal_fbi_wanted', 'US', '', 'https://api.fbi.gov/wanted/v1/list', 'FBI Most Wanted', 'api', 360, 1);
+    s.run('federal_usmarshals', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/15-most-wanted-fugitive', 'US Marshals Most Wanted', 'html', 1440, 0);
+    // Alabama
+    s.run('al_jefferson_warrants', 'AL', 'Jefferson', 'https://www.jeffcosheriffal.com/most-wanted', 'Jefferson County AL', 'html', 720, 0);
+    // Alaska
+    s.run('ak_anchorage_warrants', 'AK', 'Anchorage', 'https://www.muni.org/departments/prior/APD/Pages/MostWanted.aspx', 'Anchorage PD', 'html', 720, 0);
+    // Arizona
+    s.run('az_maricopa_warrants', 'AZ', 'Maricopa', 'https://www.mcso.org/Most-Wanted', 'Maricopa County SO', 'html', 720, 1);
+    s.run('az_pima_warrants', 'AZ', 'Pima', 'https://88crime.org/category/wanted-fugitives/', 'Pima County 88-CRIME', 'html', 720, 1);
+    // Arkansas
+    s.run('ar_pulaski_warrants', 'AR', 'Pulaski', 'https://www.littlerock.gov/city-administration/city-departments/police/most-wanted/', 'Little Rock PD', 'html', 720, 0);
+    // California
+    s.run('ca_los_angeles_warrants', 'CA', 'Los Angeles', 'https://www.lapdonline.org/most-wanted/', 'LAPD Most Wanted', 'html', 720, 1);
+    s.run('ca_san_diego_warrants', 'CA', 'San Diego', 'https://www.sdcda.org/helping/fugitives.html', 'San Diego DA Fugitives', 'html', 720, 0);
+    // Colorado
+    s.run('co_el_paso_warrants', 'CO', 'El Paso', 'https://www.epcsheriffsoffice.com/active-warrants', 'El Paso County SO', 'html', 720, 1);
+    s.run('co_denver_warrants', 'CO', 'Denver', 'https://www.metrodenvercrimestoppers.com/', 'Metro Denver Crime Stoppers', 'html', 720, 1);
+    s.run('co_adams_warrants', 'CO', 'Adams', 'https://adamscosheriff.net/portal/MostWanted', 'Adams County SO', 'html', 720, 0);
+    // Connecticut
+    s.run('ct_hartford_warrants', 'CT', 'Hartford', 'https://www.manchesterct.gov/Police-Department/Most-Wanted', 'Hartford Area', 'html', 720, 0);
+    // Delaware
+    s.run('de_new_castle_warrants', 'DE', 'New Castle', 'https://www.tipsubmit.com/WebTips.aspx?AgencyID=256', 'Delaware Crime Stoppers', 'html', 720, 0);
+    // Florida
+    s.run('fl_miami_warrants', 'FL', 'Miami-Dade', 'https://www.crimestoppersmiami.com/mostwanted', 'Miami-Dade Crime Stoppers', 'html', 720, 1);
+    s.run('fl_hillsborough_warrants', 'FL', 'Hillsborough', 'https://www.hcso.tampa.fl.us/Community/Most-Wanted', 'Hillsborough County SO', 'html', 720, 0);
+    // Georgia
+    s.run('ga_fulton_warrants', 'GA', 'Fulton', 'https://www.fultoncountyga.gov/services/sheriff-s-office/most-wanted', 'Fulton County GA', 'html', 720, 0);
+    // Hawaii
+    s.run('hi_honolulu_warrants', 'HI', 'Honolulu', 'https://www.crimestoppershonolulu.org/', 'Honolulu Crime Stoppers', 'html', 1440, 0);
+    // Idaho
+    s.run('id_ada_warrants', 'ID', 'Ada', 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx', 'Ada County', 'search_form', 720, 0);
+    // Illinois
+    s.run('il_cook_warrants', 'IL', 'Cook', 'https://www.cookcountysheriff.org/most-wanted/', 'Cook County SO', 'html', 720, 1);
+    // Indiana
+    s.run('in_marion_warrants', 'IN', 'Marion', 'https://www.indycrimestoppers.org/', 'Indianapolis Crime Stoppers', 'html', 720, 0);
+    // Iowa
+    s.run('ia_polk_warrants', 'IA', 'Polk', 'https://www.polkcountyiowa.gov/county-sheriff/most-wanted/', 'Polk County IA', 'html', 720, 0);
+    // Kansas
+    s.run('ks_sedgwick_warrants', 'KS', 'Sedgwick', 'https://www.sedgwickcounty.org/sheriff/most-wanted/', 'Sedgwick County KS', 'html', 720, 0);
+    // Kentucky
+    s.run('ky_jefferson_warrants', 'KY', 'Jefferson', 'https://www.lmpd.org/wanted.html', 'Louisville Metro PD', 'html', 720, 0);
+    // Louisiana
+    s.run('la_orleans_warrants', 'LA', 'Orleans', 'https://www.crimestoppersgno.org/mostwanted', 'New Orleans Crime Stoppers', 'html', 720, 0);
+    // Maine
+    s.run('me_cumberland_warrants', 'ME', 'Cumberland', 'https://www.maine.gov/dps/msp/wanted-missing', 'Maine State Police', 'html', 720, 0);
+    // Maryland
+    s.run('md_baltimore_warrants', 'MD', 'Baltimore', 'https://www.baltimorepolice.org/most-wanted', 'Baltimore PD', 'html', 720, 0);
+    // Massachusetts
+    s.run('ma_suffolk_warrants', 'MA', 'Suffolk', 'https://www.mass.gov/most-wanted', 'Massachusetts Most Wanted', 'html', 720, 1);
+    // Michigan
+    s.run('mi_wayne_warrants', 'MI', 'Wayne', 'https://www.crimestoppers.com/', 'Detroit Crime Stoppers', 'html', 720, 0);
+    // Minnesota
+    s.run('mn_hennepin_warrants', 'MN', 'Hennepin', 'https://www.hennepinsheriff.org/jail-warrants/warrants', 'Hennepin County', 'html', 720, 0);
+    // Mississippi
+    s.run('ms_hinds_warrants', 'MS', 'Hinds', 'https://www.mscrimestoppers.com/mostwanted', 'Mississippi Crime Stoppers', 'html', 720, 0);
+    // Missouri
+    s.run('mo_jackson_warrants', 'MO', 'Jackson', 'https://www.kcpd.org/crime/most-wanted/', 'Kansas City PD', 'html', 720, 0);
+    // Montana
+    s.run('mt_flathead_warrants', 'MT', 'Flathead', 'https://apps.flathead.mt.gov/warrants/warrants_list.php', 'Flathead County', 'html', 720, 1);
+    // Nebraska
+    s.run('ne_douglas_warrants', 'NE', 'Douglas', 'https://www.omahacrimestoppers.org/mostwanted', 'Omaha Crime Stoppers', 'html', 720, 0);
+    // Nevada
+    s.run('nv_clark_warrants', 'NV', 'Clark', 'https://www.lvmpd.com/en-us/Pages/MostWanted.aspx', 'LVMPD Most Wanted', 'html', 720, 1);
+    s.run('nv_washoe_warrants', 'NV', 'Washoe', 'https://secretwitness.com/current-cases/current-fugitive-cases/', 'Washoe County Secret Witness', 'html', 720, 1);
+    // New Hampshire
+    s.run('nh_hillsborough_warrants', 'NH', 'Hillsborough', 'https://www.manchesternh.gov/Departments/Police/Most-Wanted', 'Manchester NH PD', 'html', 720, 0);
+    // New Jersey
+    s.run('nj_essex_warrants', 'NJ', 'Essex', 'https://www.njsp.org/wanted/index.shtml', 'NJ State Police', 'html', 720, 1);
+    // New Mexico
+    s.run('nm_bernalillo_warrants', 'NM', 'Bernalillo', 'https://bcapp.bernco.gov/BCSO_WarrantInterWITS/', 'Bernalillo County WITS', 'search_form', 720, 0);
+    // New York
+    s.run('ny_new_york_warrants', 'NY', 'New York', 'https://www.nyc.gov/nypd/most-wanted', 'NYPD Most Wanted', 'html', 720, 1);
+    // North Carolina
+    s.run('nc_mecklenburg_warrants', 'NC', 'Mecklenburg', 'https://www.crimestoppersofcharlotte.org/', 'Charlotte Crime Stoppers', 'html', 720, 0);
+    // North Dakota
+    s.run('nd_cass_warrants', 'ND', 'Cass', 'https://www.fargond.gov/city-government/departments/police/most-wanted', 'Fargo PD', 'html', 720, 0);
+    // Ohio
+    s.run('oh_cuyahoga_warrants', 'OH', 'Cuyahoga', 'https://www.cuyahogacounty.gov/sheriff/most-wanted', 'Cuyahoga County', 'html', 720, 0);
+    // Oklahoma
+    s.run('ok_oklahoma_warrants', 'OK', 'Oklahoma', 'https://www.okcpd.org/about-us/most-wanted/', 'Oklahoma City PD', 'html', 720, 0);
+    // Oregon
+    s.run('or_multnomah_warrants', 'OR', 'Multnomah', 'https://www.mcso.us/warrants/', 'Multnomah County', 'html', 720, 0);
+    // Pennsylvania
+    s.run('pa_philadelphia_warrants', 'PA', 'Philadelphia', 'https://www.phillypolice.com/forms/most-wanted/', 'Philadelphia PD', 'html', 720, 1);
+    // Rhode Island
+    s.run('ri_providence_warrants', 'RI', 'Providence', 'https://www.riag.ri.gov/most-wanted', 'Rhode Island AG', 'html', 720, 0);
+    // South Carolina
+    s.run('sc_richland_warrants', 'SC', 'Richland', 'https://www.rcsd.net/most-wanted', 'Richland County SC', 'html', 720, 0);
+    // South Dakota
+    s.run('sd_minnehaha_warrants', 'SD', 'Minnehaha', 'https://www.siouxfallspolice.com/resources/most-wanted', 'Sioux Falls PD', 'html', 720, 0);
+    // Tennessee
+    s.run('tn_davidson_warrants', 'TN', 'Davidson', 'https://www.nashville.gov/departments/police/most-wanted', 'Nashville PD', 'html', 720, 0);
+    // Texas
+    s.run('tx_harris_warrants', 'TX', 'Harris', 'https://www.crime-stoppers.org/mostwanted', 'Houston Crime Stoppers', 'html', 720, 1);
+    s.run('tx_dallas_warrants', 'TX', 'Dallas', 'https://www.ntcrimestoppers.com/fugitives', 'North Texas Crime Stoppers', 'html', 720, 0);
+    // Utah (statewide API handled by utahWarrantScraper.ts)
+    s.run('ut_statewide', 'UT', '', 'https://warrants.utah.gov/api/v1', 'Utah State Warrants API', 'api', 360, 1);
+    // Vermont
+    s.run('vt_chittenden_warrants', 'VT', 'Chittenden', 'https://www.burlingtonvt.gov/Police/Most-Wanted', 'Burlington VT PD', 'html', 1440, 0);
+    // Virginia
+    s.run('va_fairfax_warrants', 'VA', 'Fairfax', 'https://www.fairfaxcounty.gov/police/wanted', 'Fairfax County PD', 'html', 720, 0);
+    // Washington
+    s.run('wa_king_warrants', 'WA', 'King', 'https://www.kingcounty.gov/en/dept/dajd/courts-jails-legal/warrants', 'King County WA', 'html', 720, 0);
+    // West Virginia
+    s.run('wv_kanawha_warrants', 'WV', 'Kanawha', 'https://www.wvsp.gov/pages/Most-Wanted.aspx', 'WV State Police', 'html', 720, 0);
+    // Wisconsin
+    s.run('wi_milwaukee_warrants', 'WI', 'Milwaukee', 'https://www.milwaukeecountywi.gov/county-departments/sheriff/most-wanted/', 'Milwaukee County', 'html', 720, 0);
+    // Wyoming
+    s.run('wy_laramie_warrants', 'WY', 'Laramie', 'https://www.laramiecountywy.gov/County-Government/Elected-Officials/Laramie-County-Sheriffs-Office/Most-Wanted', 'Laramie County', 'html', 720, 0);
+  }
 
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`

@@ -5,7 +5,6 @@ import aiManager from '../utils/aiManager';
 import { checkSystemHealth, getHealthSummary } from '../utils/aiSystemHealth';
 import { runDataCleanupScan, autoFixStaleCall, autoFixOrphanedUnit } from '../utils/aiDataCleanup';
 import { getDb } from '../models/database';
-import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -47,7 +46,6 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     }
 
     const saved = aiManager.saveConfig(updates);
-    try { auditLog(req, 'AI_CONFIG_UPDATE' as any, 'system_config' as any, 0, `AI configuration updated`); } catch { /* non-critical */ }
     // Return masked version
     const masked = JSON.parse(JSON.stringify(saved));
     if (masked.providers.groq.apiKey) masked.providers.groq.apiKey = maskKey(masked.providers.groq.apiKey);
@@ -87,7 +85,6 @@ router.post('/analyze', requireRole('admin', 'manager', 'supervisor', 'dispatche
     }
 
     const result = await analyzeCall({ incident_type, description, notes, location_address, existing_flags });
-    try { auditLog(req, 'AI_ANALYSIS' as any, 'call' as any, req.body.call_id || 0, `AI analysis requested for incident_type=${incident_type}`); } catch { /* non-critical */ }
     res.json({ available: isAIAvailable(), result });
   } catch (err: any) {
     console.error('[AI] /analyze error:', err?.message || err);
@@ -106,7 +103,6 @@ router.post('/narrative', requireRole('admin', 'manager', 'supervisor', 'dispatc
     }
 
     const narrative = await generateNarrative({ notes, incident_type, location_address });
-    try { auditLog(req, 'AI_NARRATIVE' as any, 'call' as any, req.body.call_id || 0, `AI narrative generated for incident_type=${incident_type || 'unknown'}`); } catch { /* non-critical */ }
     res.json({ available: isAIAvailable(), narrative });
   } catch (err: any) {
     console.error('[AI] /narrative error:', err?.message || err);
@@ -330,7 +326,7 @@ router.post('/presets', requireRole('admin'), (req: Request, res: Response) => {
   const result = database.prepare(
     'INSERT INTO ai_model_presets (name, temperature, max_tokens, top_p, repeat_penalty) VALUES (?, ?, ?, ?, ?)'
   ).run(name, temperature ?? 0.3, max_tokens ?? 500, top_p ?? 0.9, repeat_penalty ?? 1.1);
-  res.status(201).json({ success: true, id: result.lastInsertRowid });
+  res.json({ success: true, id: result.lastInsertRowid });
 });
 
 router.delete('/presets/:id', requireRole('admin'), (req: Request, res: Response) => {
@@ -353,7 +349,7 @@ router.post('/templates', requireRole('admin'), (req: Request, res: Response) =>
   const result = database.prepare(
     'INSERT INTO ai_prompt_templates (name, category, system_prompt, user_prompt_template, variables) VALUES (?, ?, ?, ?, ?)'
   ).run(name, category, system_prompt, user_prompt_template || '', JSON.stringify(variables || []));
-  res.status(201).json({ success: true, id: result.lastInsertRowid });
+  res.json({ success: true, id: result.lastInsertRowid });
 });
 
 router.put('/templates/:id', requireRole('admin'), (req: Request, res: Response) => {

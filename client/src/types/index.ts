@@ -173,7 +173,6 @@ export interface Property {
   hazard_notes?: string;
   access_instructions?: string;
   is_active: boolean;
-  // Enhanced property fields - Building
   building_year_built?: number;
   building_square_footage?: number;
   building_floors?: number;
@@ -189,7 +188,6 @@ export interface Property {
   entry_points_notes?: string;
   occupancy_capacity?: number;
   ada_accessible?: number;
-  // Security
   security_system_type?: string;
   security_company?: string;
   security_company_phone?: string;
@@ -203,7 +201,6 @@ export interface Property {
   fire_panel_location?: string;
   fire_sprinkler_system?: number;
   backup_generator?: number;
-  // CCTV
   cctv_camera_count?: number;
   cctv_recording_location?: string;
   cctv_retention_days?: number;
@@ -212,7 +209,6 @@ export interface Property {
   cctv_access_credentials?: string;
   cctv_ptz_capable?: number;
   cctv_audio_recording?: number;
-  // Access & Keys
   key_type?: string;
   key_location?: string;
   key_box_code?: string;
@@ -222,7 +218,6 @@ export interface Property {
   key_holder_secondary_phone?: string;
   access_card_system?: string;
   restricted_access_areas?: string;
-  // Management
   owner_name?: string;
   owner_phone?: string;
   property_manager_name?: string;
@@ -233,14 +228,12 @@ export interface Property {
   lease_expiry?: string;
   after_hours_contact_name?: string;
   after_hours_contact_phone?: string;
-  // Utilities
   water_source?: string;
   septic_or_sewer?: string;
   internet_provider?: string;
   phone_system_type?: string;
   utility_shutoff_locations?: string;
   dumpster_locations?: string;
-  // Patrol & Safety
   patrol_frequency?: string;
   patrol_priority?: string;
   last_patrol_date?: string;
@@ -582,7 +575,6 @@ export interface Person {
   caution_flags?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
-  // Enhanced person fields
   preferred_name?: string;
   suffix?: string;
   nickname_street_name?: string;
@@ -670,7 +662,6 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
-  // Enhanced vehicle fields
   interior_color?: string;
   wrap_or_paint_custom?: string;
   license_plate_frame?: string;

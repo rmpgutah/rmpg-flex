@@ -59,7 +59,7 @@ interface UseGpsTrackingOptions {
   highAccuracy?: boolean;
   /** Maximum accuracy in meters — points above this are discarded (default: 100) */
   maxAccuracyMeters?: number;
-  /** Maximum plausible speed in m/s for jump detection (default: 100 = ~224 mph) */
+  /** Maximum plausible speed in m/s for jump detection (default: 100 = ~360 km/h) */
   maxSpeedMs?: number;
 }
 

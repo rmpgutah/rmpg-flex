@@ -716,7 +716,7 @@ router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, 
       for (const call of callsNearby) {
         let distance_mi: number | null = null;
         if (video.latitude && video.longitude && call.latitude && call.longitude) {
-          const R = 3958.8; // Earth radius in miles
+          const R = 3958.8;
           const dLat = (call.latitude - video.latitude) * Math.PI / 180;
           const dLng = (call.longitude - video.longitude) * Math.PI / 180;
           const a = Math.sin(dLat / 2) ** 2 + Math.cos(video.latitude * Math.PI / 180) * Math.cos(call.latitude * Math.PI / 180) * Math.sin(dLng / 2) ** 2;

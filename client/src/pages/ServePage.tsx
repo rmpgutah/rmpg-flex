@@ -772,7 +772,7 @@ export default function ServePage() {
                 </div>
               ) : filteredJobs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-center">
-                  <div className="w-12 h-12 rounded-full bg-[#0d1520] flex items-center justify-center mb-3">
+                  <div className="w-12 h-12 rounded-full bg-[#050505] flex items-center justify-center mb-3">
                     <Briefcase size={20} className="text-rmpg-500" />
                   </div>
                   <p className="text-sm text-rmpg-400 font-medium">
@@ -829,9 +829,9 @@ export default function ServePage() {
               return (
                 <>
                   {/* Stats bar */}
-                  <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#0d1520] border border-[#1e3048] rounded-[2px]" role="status" aria-label="Route statistics">
+                  <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#050505] border border-[#222222] rounded-[2px]" role="status" aria-label="Route statistics">
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-blue-400" />
+                      <MapPin size={12} className="text-gray-400" />
                       <span className="font-mono tabular-nums text-white">{totalStops}</span> stops
                     </div>
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
@@ -856,7 +856,7 @@ export default function ServePage() {
                   </div>
 
                   {/* Progress bar */}
-                  <div className="w-full h-1.5 bg-[#1a2636] rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-[#141414] rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
@@ -880,14 +880,14 @@ export default function ServePage() {
                               ? 'bg-green-900/10 border-green-800/30 opacity-60'
                               : isFailed
                                 ? 'bg-red-900/10 border-red-800/30 opacity-60'
-                                : 'bg-[#141e2b] border-[#1e3048] hover:border-[#1a5a9e]/30'
+                                : 'bg-[#0a0a0a] border-[#222222] hover:border-[#888888]/30'
                           }`}
                         >
                           {/* Stop number */}
                           <span
                             className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0"
                             style={{
-                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#3b82f6',
+                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#888888',
                             }}
                           >
                             {idx + 1}
@@ -913,9 +913,9 @@ export default function ServePage() {
 
                           {/* Status badge */}
                           <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0" style={{
-                            background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#3b82f620',
-                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#60a5fa',
-                            border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#3b82f630'}`,
+                            background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#88888820',
+                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
+                            border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#88888830'}`,
                           }}>
                             {job.status.replace('_', ' ')}
                           </span>
@@ -928,7 +928,7 @@ export default function ServePage() {
                   <div className="flex items-center gap-2 pt-2">
                     <button type="button"
                       onClick={() => setRoutePlannerOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                       aria-label="Open Route Planner"
                     >
                       <Route size={12} />
@@ -955,13 +955,13 @@ export default function ServePage() {
               );
             })() : (
               <div className="flex flex-col items-center justify-center h-40 text-center">
-                <div className="w-12 h-12 rounded-full bg-[#1a2636] flex items-center justify-center mb-3">
+                <div className="w-12 h-12 rounded-full bg-[#141414] flex items-center justify-center mb-3">
                   <Route size={20} className="text-rmpg-500" />
                 </div>
                 <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
                 <button type="button"
                   onClick={() => setRoutePlannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                   aria-label="Open Route Planner"
                 >
                   <Route size={12} />
@@ -1413,7 +1413,7 @@ export default function ServePage() {
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
               placeholder="Special instructions for service..."
             />
           </div>
@@ -1423,7 +1423,7 @@ export default function ServePage() {
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
               placeholder="Internal notes..."
             />
           </div>

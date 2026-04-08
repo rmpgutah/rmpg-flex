@@ -298,7 +298,7 @@ export default function ServeAttemptModal({
             {gps.loading ? (
               <div className="flex flex-col items-center gap-3 py-8 text-rmpg-400">
                 <div className="relative">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#1a5a9e]" />
+                  <Loader2 className="w-8 h-8 animate-spin text-[#888888]" />
                   <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
                 </div>
                 <span className="text-sm">Acquiring GPS position...</span>
@@ -382,7 +382,7 @@ export default function ServeAttemptModal({
                         ? 'opacity-40 cursor-not-allowed border-rmpg-700 bg-rmpg-800'
                         : attemptType === card.type
                           ? 'border-[#d4a017] bg-[#d4a017]/5 shadow-[0_0_8px_rgba(212,160,23,0.15)]'
-                          : 'border-[#1e3048] bg-[#0d1520] hover:border-[#d4a017] hover:bg-[#141e2b]'
+                          : 'border-[#222222] bg-[#050505] hover:border-[#d4a017] hover:bg-[#0a0a0a]'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -588,7 +588,7 @@ export default function ServeAttemptModal({
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Observations about the location, people present, etc."
                 rows={3}
-                className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
+                className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
               />
             </div>
 

@@ -648,8 +648,6 @@ export function useGeoJsonLayers({
     toggleGeoLayer,
     ensureLayerLoaded,
     configs: GEO_LAYER_CONFIGS,
-    /** Ref to internal Data layer instances keyed by layer id (for advanced operations like beat editing) */
-    dataLayersRef,
   };
 }
 

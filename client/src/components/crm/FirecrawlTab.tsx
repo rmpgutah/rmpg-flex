@@ -77,6 +77,12 @@ import {
   HelpCircle,
   FileType,
   CircleDot,
+  Radio,
+  Wrench,
+  Shield,
+  Mail,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -95,9 +101,49 @@ function safeObj(val: any): Record<string, any> {
   return {};
 }
 
+// ── Result Copy/Export Actions ────────────────────────────────
+// Reusable bar of "Copy JSON" and "Export" buttons for tool result panels
+
+function ResultActions({ result, toolName }: { result: any; toolName: string }) {
+  const { addToast } = useToast();
+  return (
+    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700">
+      <button type="button" onClick={() => {
+        navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+        addToast('Copied to clipboard', 'success');
+      }} className="text-[9px] text-rmpg-400 hover:text-white flex items-center gap-1">
+        <Copy className="w-3 h-3" /> Copy JSON
+      </button>
+      <button type="button" onClick={() => {
+        const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = u; a.download = `${toolName}_result.json`; a.click();
+        URL.revokeObjectURL(u);
+      }} className="text-[9px] text-rmpg-400 hover:text-white flex items-center gap-1">
+        <Download className="w-3 h-3" /> Export
+      </button>
+    </div>
+  );
+}
+
 // ── Shared Types ──────────────────────────────────────────────
 
-type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant' | 'lead-gen';
+type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant' | 'lead-gen' | 'support-bot' | 'trend-cron' | 'site-migrator' | 'code-repo';
+
+// Cross-tool context for chaining between panels
+interface ToolContext {
+  url?: string;
+  name?: string;
+  email?: string;
+  topic?: string;
+  query?: string;
+}
+
+interface PanelChainProps {
+  toolContext: ToolContext;
+  setToolContext: React.Dispatch<React.SetStateAction<ToolContext>>;
+  switchTab: (tab: FirecrawlSubTab) => void;
+}
 
 interface Scout {
   id: number;
@@ -276,67 +322,145 @@ function SmallBtn({
   );
 }
 
+// ── Tool Categories ───────────────────────────────────────────
+
+const TOOL_CATEGORIES = [
+  { id: 'monitoring', label: 'Monitoring', icon: Eye },
+  { id: 'extraction', label: 'Extraction', icon: FileSearch },
+  { id: 'enrichment', label: 'Enrichment', icon: Sparkles },
+  { id: 'research', label: 'Research', icon: Search },
+  { id: 'automation', label: 'Automation', icon: Workflow },
+  { id: 'integration', label: 'Integrations', icon: Plug },
+  { id: 'tools', label: 'Tools', icon: Wrench },
+] as const;
+
+type ToolCategory = typeof TOOL_CATEGORIES[number]['id'];
+
 // ── Tab Definitions ───────────────────────────────────────────
 
-const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = [
-  { id: 'scouts', label: 'Scouts', icon: Radar },
-  { id: 'ai-ready', label: 'AI Ready', icon: BrainCircuit },
-  { id: 'cloner', label: 'Site Cloner', icon: Copy },
-  { id: 'brand', label: 'Brand Monitor', icon: Megaphone },
-  { id: 'compare', label: 'Page Compare', icon: GitCompareArrows },
-  { id: 'workflows', label: 'Workflows', icon: Workflow },
-  { id: 'search-engine', label: 'Search Engine', icon: Sparkles },
-  { id: 'enrich', label: 'Enrich', icon: Building2 },
-  { id: 'researcher', label: 'Researcher', icon: BookOpen },
-  { id: 'chatbot', label: 'Chatbot', icon: MessageSquare },
-  { id: 'observer', label: 'Observer', icon: Eye },
-  { id: 'deep-search', label: 'Deep Search', icon: ShieldCheck },
-  { id: 'llmstxt', label: 'LLMs.txt', icon: FileText },
-  { id: 'pdf-inspect', label: 'PDF Inspect', icon: FileSearch },
-  { id: 'graphs', label: 'Graphs', icon: BarChart3 },
-  { id: 'connectors', label: 'Connectors', icon: Plug },
-  { id: 'rag-eval', label: 'RAG Eval', icon: Target },
-  { id: 'trends', label: 'Trends', icon: TrendingUp },
-  { id: 'gen-ui', label: 'Gen UI', icon: LayoutDashboard },
-  { id: 'qa-cluster', label: 'QA Cluster', icon: Layers },
-  { id: 'extract', label: 'Extract', icon: Database },
-  { id: 'html-to-md', label: 'HTML→MD', icon: FileCode },
-  { id: 'coupons', label: 'Coupons', icon: Ticket },
-  { id: 'brand-extend', label: 'Brand Extend', icon: Palette },
-  { id: 'mcp', label: 'MCP', icon: Server },
-  { id: 'examples', label: 'Examples', icon: FolderOpen },
-  { id: 'llmstxt-v2', label: 'LLMs.txt V2', icon: FileText2 },
-  { id: 'mendable', label: 'Mendable', icon: Bot },
-  { id: 'news', label: 'News', icon: Newspaper },
-  { id: 'drafts', label: 'Drafts', icon: PenTool },
-  { id: 'slack', label: 'Slack', icon: MessageCircle },
-  { id: 'discord', label: 'Discord', icon: Hash },
-  { id: 'agents', label: 'Agents', icon: Cpu },
-  { id: 'doc-extract', label: 'Doc Extract', icon: FileDown },
-  { id: 'job-match', label: 'Job Match', icon: Briefcase },
-  { id: 'mhtml', label: 'MHTML', icon: Archive },
-  { id: 'api-console', label: 'API Console', icon: Terminal },
-  { id: 'cli', label: 'CLI', icon: Code2 },
-  { id: 'grok-enrich', label: 'Grok Enrich', icon: Zap },
-  { id: 'docs', label: 'Docs', icon: BookMarked },
-  { id: 'n8n', label: 'N8N', icon: GitBranch },
-  { id: 'mendable-py', label: 'Mendable Py', icon: Database },
-  { id: 'code-analyze', label: 'Code Analyze', icon: FileCode },
-  { id: 'skill-gen', label: 'Skill Gen', icon: Wand2 },
-  { id: 'sdks', label: 'SDKs', icon: Package },
-  { id: 'pipelines', label: 'Pipelines', icon: Filter },
-  { id: 'theme', label: 'Theme', icon: Palette },
-  { id: 'ai-chat', label: 'AI Chat', icon: MessageSquare },
-  { id: 'pdf-tools', label: 'PDF Tools', icon: FileType },
-  { id: 'assistant', label: 'Assistant', icon: HelpCircle },
-  { id: 'lead-gen', label: 'Lead Gen', icon: Users },
+const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType; category: ToolCategory; description: string }[] = [
+  // Monitoring
+  { id: 'scouts', label: 'Scouts', icon: Radar, category: 'monitoring', description: 'Monitor any website and get alerts when content changes' },
+  { id: 'observer', label: 'Observer', icon: Eye, category: 'monitoring', description: 'Watch specific web pages and detect changes over time' },
+  { id: 'brand', label: 'Brand Monitor', icon: Megaphone, category: 'monitoring', description: 'Track brand mentions across the web' },
+  { id: 'trends', label: 'Trends', icon: TrendingUp, category: 'monitoring', description: 'Track trending topics and keywords over time' },
+  { id: 'trend-cron', label: 'TrendCron', icon: Clock, category: 'monitoring', description: 'Schedule recurring trend checks on a cron schedule' },
+  { id: 'news', label: 'News', icon: Newspaper, category: 'monitoring', description: 'Search and monitor news articles from across the web' },
+
+  // Extraction
+  { id: 'extract', label: 'Extract', icon: Database, category: 'extraction', description: 'Extract structured data from web pages using AI' },
+  { id: 'doc-extract', label: 'Doc Extract', icon: FileDown, category: 'extraction', description: 'Extract text and data from uploaded documents' },
+  { id: 'pdf-inspect', label: 'PDF Inspect', icon: FileSearch, category: 'extraction', description: 'Analyze and extract content from PDF files' },
+  { id: 'pdf-tools', label: 'PDF Tools', icon: FileType, category: 'extraction', description: 'Convert, merge, and manipulate PDF documents' },
+  { id: 'html-to-md', label: 'HTML\u2192MD', icon: FileCode, category: 'extraction', description: 'Convert HTML pages to clean Markdown format' },
+  { id: 'mhtml', label: 'MHTML', icon: Archive, category: 'extraction', description: 'Save and process MHTML web archive files' },
+  { id: 'cloner', label: 'Site Cloner', icon: Copy, category: 'extraction', description: 'Clone website structure and content for analysis' },
+  { id: 'llmstxt', label: 'LLMs.txt', icon: FileText, category: 'extraction', description: 'Generate LLMs.txt files for AI discoverability' },
+  { id: 'llmstxt-v2', label: 'LLMs.txt V2', icon: FileText2, category: 'extraction', description: 'Next-gen LLMs.txt with enhanced metadata' },
+
+  // Enrichment
+  { id: 'enrich', label: 'Enrich', icon: Building2, category: 'enrichment', description: 'Turn an email address into rich company and person data' },
+  { id: 'grok-enrich', label: 'Grok Enrich', icon: Zap, category: 'enrichment', description: 'Enrich contacts using Grok AI for deeper insights' },
+  { id: 'lead-gen', label: 'Lead Gen', icon: Users, category: 'enrichment', description: 'Generate and qualify leads from web sources' },
+  { id: 'job-match', label: 'Job Match', icon: Briefcase, category: 'enrichment', description: 'Match candidates to job requirements using AI' },
+  { id: 'brand-extend', label: 'Brand Extend', icon: Palette, category: 'enrichment', description: 'Extend brand analysis with visual and content insights' },
+  { id: 'coupons', label: 'Coupons', icon: Ticket, category: 'enrichment', description: 'Find and track promotional codes and coupons' },
+
+  // Research
+  { id: 'researcher', label: 'Researcher', icon: BookOpen, category: 'research', description: 'Deep AI-powered research on any topic with citations' },
+  { id: 'deep-search', label: 'Deep Search', icon: ShieldCheck, category: 'research', description: 'Break complex queries into sub-questions for thorough answers' },
+  { id: 'search-engine', label: 'Search Engine', icon: Sparkles, category: 'research', description: 'Full-text web search with AI-powered ranking' },
+  { id: 'compare', label: 'Page Compare', icon: GitCompareArrows, category: 'research', description: 'Compare two web pages side-by-side with diff view' },
+  { id: 'ai-ready', label: 'AI Ready', icon: BrainCircuit, category: 'research', description: 'Score how well a website is optimized for AI consumption' },
+  { id: 'graphs', label: 'Graphs', icon: BarChart3, category: 'research', description: 'Visualize data relationships and knowledge graphs' },
+  { id: 'rag-eval', label: 'RAG Eval', icon: Target, category: 'research', description: 'Evaluate RAG pipeline quality and accuracy' },
+  { id: 'qa-cluster', label: 'QA Cluster', icon: Layers, category: 'research', description: 'Cluster Q&A pairs to find knowledge gaps' },
+  { id: 'code-analyze', label: 'Code Analyze', icon: FileCode, category: 'research', description: 'Analyze code repositories for patterns and insights' },
+  { id: 'code-repo', label: 'Code Repo', icon: Code2, category: 'research', description: 'Browse and analyze code repositories' },
+
+  // Automation
+  { id: 'workflows', label: 'Workflows', icon: Workflow, category: 'automation', description: 'Build multi-step scrape/search/extract workflows' },
+  { id: 'pipelines', label: 'Pipelines', icon: Filter, category: 'automation', description: 'Create data processing pipelines with chained steps' },
+  { id: 'agents', label: 'Agents', icon: Cpu, category: 'automation', description: 'Deploy autonomous web agents for complex tasks' },
+  { id: 'gen-ui', label: 'Gen UI', icon: LayoutDashboard, category: 'automation', description: 'Generate UI components from web page analysis' },
+  { id: 'skill-gen', label: 'Skill Gen', icon: Wand2, category: 'automation', description: 'Generate agent skills from documentation URLs' },
+  { id: 'site-migrator', label: 'Migrator', icon: ArrowRight, category: 'automation', description: 'Migrate website content between platforms' },
+  { id: 'drafts', label: 'Drafts', icon: PenTool, category: 'automation', description: 'Generate content drafts from research data' },
+
+  // Integrations
+  { id: 'connectors', label: 'Connectors', icon: Plug, category: 'integration', description: 'Connect Firecrawl to external services and APIs' },
+  { id: 'slack', label: 'Slack', icon: MessageCircle, category: 'integration', description: 'Send Firecrawl results to Slack channels' },
+  { id: 'discord', label: 'Discord', icon: Hash, category: 'integration', description: 'Push alerts and results to Discord servers' },
+  { id: 'n8n', label: 'N8N', icon: GitBranch, category: 'integration', description: 'Integrate with N8N automation workflows' },
+  { id: 'mcp', label: 'MCP', icon: Server, category: 'integration', description: 'Model Context Protocol server for AI tool use' },
+  { id: 'mendable', label: 'Mendable', icon: Bot, category: 'integration', description: 'Mendable AI search integration' },
+  { id: 'mendable-py', label: 'Mendable Py', icon: Database, category: 'integration', description: 'Python SDK for Mendable integration' },
+
+  // Tools
+  { id: 'chatbot', label: 'Chatbot', icon: MessageSquare, category: 'tools', description: 'Build an AI chatbot trained on scraped content' },
+  { id: 'ai-chat', label: 'AI Chat', icon: MessageSquare, category: 'tools', description: 'Chat with AI about scraped web content' },
+  { id: 'assistant', label: 'Assistant', icon: HelpCircle, category: 'tools', description: 'AI assistant powered by your crawled data' },
+  { id: 'support-bot', label: 'Support Bot', icon: Bot, category: 'tools', description: 'Customer support bot trained on your docs' },
+  { id: 'api-console', label: 'API Console', icon: Terminal, category: 'tools', description: 'Test Firecrawl API endpoints interactively' },
+  { id: 'cli', label: 'CLI', icon: Code2, category: 'tools', description: 'Command-line interface for Firecrawl operations' },
+  { id: 'sdks', label: 'SDKs', icon: Package, category: 'tools', description: 'SDK documentation and code examples' },
+  { id: 'docs', label: 'Docs', icon: BookMarked, category: 'tools', description: 'Firecrawl documentation and guides' },
+  { id: 'examples', label: 'Examples', icon: FolderOpen, category: 'tools', description: 'Example configurations and use cases' },
+  { id: 'theme', label: 'Theme', icon: Palette, category: 'tools', description: 'Customize the Firecrawl panel appearance' },
+];
+
+// ── Workflow Templates ───────────────────────────────────────
+
+const WORKFLOW_TEMPLATES = [
+  {
+    id: 'competitor-intel',
+    name: 'Competitor Intelligence',
+    description: 'Clone a competitor site, extract key data, and monitor for changes',
+    steps: ['cloner', 'extract', 'observer'] as FirecrawlSubTab[],
+    icon: Target,
+  },
+  {
+    id: 'lead-research',
+    name: 'Lead Research Pipeline',
+    description: 'Enrich a lead email, research their company, and generate a report',
+    steps: ['enrich', 'researcher', 'drafts'] as FirecrawlSubTab[],
+    icon: Users,
+  },
+  {
+    id: 'security-scan',
+    name: 'Security & OSINT Scan',
+    description: 'Deep search a person, check news mentions, and scan social profiles',
+    steps: ['deep-search', 'news', 'brand'] as FirecrawlSubTab[],
+    icon: Shield,
+  },
+  {
+    id: 'content-audit',
+    name: 'Website Content Audit',
+    description: 'Analyze AI readiness, generate LLMs.txt, and inspect PDFs',
+    steps: ['ai-ready', 'llmstxt', 'pdf-inspect'] as FirecrawlSubTab[],
+    icon: FileSearch,
+  },
+  {
+    id: 'process-service-intel',
+    name: 'Process Service Intel',
+    description: 'Research a serve target, check property records, and generate a dossier',
+    steps: ['deep-search', 'enrich', 'researcher'] as FirecrawlSubTab[],
+    icon: Briefcase,
+  },
+  {
+    id: 'web-monitoring',
+    name: 'Web Monitoring Setup',
+    description: 'Set up scouts, observers, and brand monitors for ongoing surveillance',
+    steps: ['scouts', 'observer', 'brand', 'trend-cron'] as FirecrawlSubTab[],
+    icon: Radio,
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════
 // ██ SCOUTS PANEL
 // ══════════════════════════════════════════════════════════════
 
-function ScoutsPanel() {
+function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [scouts, setScouts] = useState<Scout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -355,6 +479,12 @@ function ScoutsPanel() {
   const [formKeywords, setFormKeywords] = useState('');
   const [formInterval, setFormInterval] = useState('24');
   const [formEmail, setFormEmail] = useState('');
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.url && !formUrl) setFormUrl(toolContext.url);
+    if (toolContext.name && !formName) setFormName(toolContext.name);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     try {
@@ -480,6 +610,13 @@ function ScoutsPanel() {
       {/* New Scout Form */}
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Scout</span>
+            <button type="button" onClick={() => {
+              setFormName('RMPG Website Monitor'); setFormUrl('https://rmpgutah.us'); setFormQuery('security services');
+              setFormInterval('24'); setFormEmail('');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
@@ -589,6 +726,17 @@ function ScoutsPanel() {
                         <span className="text-rmpg-400">{run.matched} matched</span>
                         {run.error && (
                           <span className="text-red-400 truncate max-w-[300px]">{run.error}</span>
+                        )}
+                        {!run.error && run.matched > 0 && (
+                          <>
+                            <button type="button" onClick={() => {
+                              setToolContext({ query: scouts.find(s => s.id === run.scout_id)?.query || '' });
+                              switchTab('deep-search');
+                            }} className="text-[9px] text-brand-400 hover:text-brand-300 ml-auto">Deep search matches &rarr;</button>
+                            <button type="button" onClick={() => {
+                              switchTab('enrich');
+                            }} className="text-[9px] text-brand-400 hover:text-brand-300">Enrich contacts &rarr;</button>
+                          </>
                         )}
                       </div>
                     ))
@@ -1497,6 +1645,7 @@ function WorkflowsPanel() {
           </div>
 
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Steps</div>
+          <div className="text-[8px] text-rmpg-500 mt-0.5 mb-1">Each step runs in sequence. Choose scrape to fetch a URL, search to find results, or extract to pull structured data.</div>
           <div className="space-y-1.5">
             {formSteps.map((step, idx) => (
               <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
@@ -1582,7 +1731,7 @@ function WorkflowsPanel() {
                                 ? 'bg-amber-500/20 text-amber-400'
                                 : 'bg-emerald-500/20 text-emerald-400'
                           }`}>
-                            {step.type}
+                            {(step.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                           </span>
                           <span className="text-rmpg-300 font-mono truncate">{step.url_or_query}</span>
                         </div>
@@ -1817,7 +1966,7 @@ interface EnrichResult {
   created_at: string;
 }
 
-function EnrichPanel() {
+function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [input, setInput] = useState('');
   const [enriching, setEnriching] = useState(false);
@@ -1829,6 +1978,12 @@ function EnrichPanel() {
   const [bulkInput, setBulkInput] = useState('');
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkResults, setBulkResults] = useState<EnrichResult[]>([]);
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.email && !input) setInput(toolContext.email);
+    else if (toolContext.url && !input) setInput(toolContext.url);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadHistory = useCallback(async () => {
     try {
@@ -1898,17 +2053,22 @@ function EnrichPanel() {
 
       {/* Single Input */}
       {!bulkMode && (
-        <div className="flex items-center gap-2">
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && enrich()}
-            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
-            placeholder="email@company.com or company.com"
-          />
-          <SmallBtn onClick={enrich} loading={enriching} variant="primary">
-            <Building2 className="w-3 h-3" /> Enrich
-          </SmallBtn>
+        <div className="space-y-1">
+          <div className="flex items-center justify-end">
+            <button type="button" onClick={() => setInput('info@rmpgutah.us')} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && enrich()}
+              className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+              placeholder="email@company.com or company.com"
+            />
+            <SmallBtn onClick={enrich} loading={enriching} variant="primary">
+              <Building2 className="w-3 h-3" /> Enrich
+            </SmallBtn>
+          </div>
         </div>
       )}
 
@@ -2009,6 +2169,22 @@ function EnrichPanel() {
               <div className="text-[10px] text-rmpg-300 font-mono whitespace-pre-wrap">{typeof result.contact_info === 'string' ? result.contact_info : JSON.stringify(safeObj(result.contact_info), null, 2)}</div>
             </div>
           )}
+
+          {/* Chain action buttons */}
+          <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
+            <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Next</span>
+            <button type="button" onClick={() => {
+              setToolContext({ topic: result.company_name || result.domain || '' });
+              switchTab('researcher');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300">Research this company &rarr;</button>
+            {result.domain && (
+              <button type="button" onClick={() => {
+                setToolContext({ url: `https://${result.domain}`, name: `${result.company_name || result.domain} Monitor` });
+                switchTab('observer');
+              }} className="text-[9px] text-brand-400 hover:text-brand-300">Monitor for changes &rarr;</button>
+            )}
+          </div>
+          <ResultActions result={result} toolName="enrich" />
         </div>
       )}
 
@@ -2060,7 +2236,7 @@ interface ResearchResult {
   created_at: string;
 }
 
-function ResearcherPanel() {
+function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [topic, setTopic] = useState('');
   const [questions, setQuestions] = useState('');
@@ -2071,6 +2247,11 @@ function ResearcherPanel() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedFinding, setExpandedFinding] = useState<number | null>(null);
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.topic && !topic) setTopic(toolContext.topic);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadHistory = useCallback(async () => {
     try {
@@ -2121,6 +2302,11 @@ function ResearcherPanel() {
 
       {/* Topic Input */}
       <div className="space-y-2">
+        <div className="flex items-center justify-end">
+          <button type="button" onClick={() => {
+            setTopic('Process serving laws and requirements in Utah'); setDepth('thorough');
+          }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+        </div>
         <div className="flex items-center gap-2">
           <input
             value={topic}
@@ -2252,6 +2438,23 @@ function ResearcherPanel() {
               </div>
             </div>
           )}
+
+          {/* Chain action buttons */}
+          <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
+            <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Next</span>
+            <button type="button" onClick={() => {
+              setToolContext({ topic: result.topic });
+              switchTab('drafts');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300">Create draft report &rarr;</button>
+            {safeArr(result.sources).length > 0 && (
+              <button type="button" onClick={() => {
+                const firstSrc = safeArr(result.sources)[0];
+                setToolContext({ url: firstSrc?.url, name: `${result.topic} Sources` });
+                switchTab('observer');
+              }} className="text-[9px] text-brand-400 hover:text-brand-300">Monitor sources &rarr;</button>
+            )}
+          </div>
+          <ResultActions result={result} toolName="researcher" />
         </div>
       )}
 
@@ -2554,7 +2757,7 @@ interface ObserverChange {
   detected_at: string;
 }
 
-function ObserverPanel() {
+function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [watches, setWatches] = useState<ObserverWatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2570,6 +2773,12 @@ function ObserverPanel() {
   const [formName, setFormName] = useState('');
   const [formUrl, setFormUrl] = useState('');
   const [formInterval, setFormInterval] = useState('24');
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.url && !formUrl) setFormUrl(toolContext.url);
+    if (toolContext.name && !formName) setFormName(toolContext.name);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     try {
@@ -2674,6 +2883,12 @@ function ObserverPanel() {
       {/* Create Form */}
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Watch</span>
+            <button type="button" onClick={() => {
+              setFormName('Utah Courts Monitor'); setFormUrl('https://www.utcourts.gov'); setFormInterval('12');
+            }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
@@ -2790,7 +3005,7 @@ interface DeepSearchResult {
   created_at: string;
 }
 
-function DeepSearchPanel() {
+function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
   const { addToast } = useToast();
   const [query, setQuery] = useState('');
   const [validate, setValidate] = useState(true);
@@ -2800,6 +3015,11 @@ function DeepSearchPanel() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedClaim, setExpandedClaim] = useState<number | null>(null);
+
+  // Auto-fill from cross-tool context
+  useEffect(() => {
+    if (toolContext.query && !query) setQuery(toolContext.query);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadHistory = useCallback(async () => {
     try {
@@ -2844,26 +3064,31 @@ function DeepSearchPanel() {
       </PanelTitleBar>
 
       {/* Query Input */}
-      <div className="flex items-center gap-2">
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && search()}
-          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
-          placeholder="Enter a claim or question to verify..."
-        />
-        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
+      <div className="space-y-1">
+        <div className="flex items-center justify-end">
+          <button type="button" onClick={() => setQuery('How do Utah courts issue and serve warrants?')} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
+        </div>
+        <div className="flex items-center gap-2">
           <input
-            type="checkbox"
-            checked={validate}
-            onChange={e => setValidate(e.target.checked)}
-            className="rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/50 w-3 h-3"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && search()}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+            placeholder="Enter a claim or question to verify..."
           />
-          Validate
-        </label>
-        <SmallBtn onClick={search} loading={searching} variant="primary">
-          <ShieldCheck className="w-3 h-3" /> Search
-        </SmallBtn>
+          <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
+            <input
+              type="checkbox"
+              checked={validate}
+              onChange={e => setValidate(e.target.checked)}
+              className="rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/50 w-3 h-3"
+            />
+            Validate
+          </label>
+          <SmallBtn onClick={search} loading={searching} variant="primary">
+            <ShieldCheck className="w-3 h-3" /> Search
+          </SmallBtn>
+        </div>
       </div>
 
       {/* History Dropdown */}
@@ -2905,6 +3130,7 @@ function DeepSearchPanel() {
           {result.duration_ms != null && (
             <span className="text-[9px] text-rmpg-500">{(result.duration_ms / 1000).toFixed(1)}s</span>
           )}
+          <ResultActions result={result} toolName="deep_search" />
         </div>
       )}
 
@@ -3077,6 +3303,7 @@ function PdfInspectPanel() {
   const [history, setHistory] = useState<PdfInspectResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -3101,6 +3328,30 @@ function PdfInspectPanel() {
       loadHistory();
     } catch {
       addToast('PDF inspection failed', 'error');
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    setInspecting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/firecrawl-tools/pdf-inspect/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || 'Upload failed'); }
+      const data = await resp.json();
+      setResult(data);
+      setUrl(data.url || `upload://${file.name}`);
+      addToast('PDF uploaded and inspected', 'success');
+      loadHistory();
+    } catch (err: any) {
+      addToast(err.message || 'Upload failed', 'error');
     } finally {
       setInspecting(false);
     }
@@ -3131,7 +3382,7 @@ function PdfInspectPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* URL Input */}
+      {/* URL Input + File Upload */}
       <div className="flex items-center gap-2">
         <input
           value={url}
@@ -3142,6 +3393,10 @@ function PdfInspectPanel() {
         />
         <SmallBtn onClick={inspect} loading={inspecting} variant="primary">
           <FileSearch className="w-3 h-3" /> Inspect
+        </SmallBtn>
+        <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadFile(e.target.files[0]); e.target.value = ''; }} />
+        <SmallBtn onClick={() => fileInputRef.current?.click()} loading={inspecting}>
+          <Upload className="w-3 h-3" /> Upload
         </SmallBtn>
       </div>
 
@@ -3229,11 +3484,12 @@ function PdfInspectPanel() {
               </div>
             </div>
           )}
+          <ResultActions result={result} toolName="pdf_inspect" />
         </div>
       )}
 
       {!result && !inspecting && (
-        <EmptyState icon={FileSearch} message="Enter a PDF URL to inspect its structure and extract entities." />
+        <EmptyState icon={FileSearch} message="Enter a PDF URL or upload a file to inspect its structure and extract entities." />
       )}
     </div>
   );
@@ -3289,7 +3545,7 @@ function GraphsPanel() {
   useEffect(() => { load(); }, [load]);
 
   const addDataset = () => {
-    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#3b82f6' }]);
+    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#888888' }]);
   };
 
   const removeDataset = (idx: number) => {
@@ -3729,7 +3985,7 @@ function ConnectorsPanel() {
                 </button>
                 <StatusLed status={c.status} />
                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${typeBadgeColor(c.type)}`}>
-                  {c.type}
+                  {(c.type || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}
                 </span>
                 <span className="text-[10px] text-white font-medium truncate flex-1">{c.name}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono shrink-0">every {c.schedule_hours}h</span>
@@ -4550,6 +4806,11 @@ function ExtractPanel() {
   const [history, setHistory] = useState<ExtractResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchUrls, setBatchUrls] = useState('');
+  const [batchExtracting, setBatchExtracting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const [batchResults, setBatchResults] = useState<ExtractResult[]>([]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -4593,30 +4854,91 @@ function ExtractPanel() {
     }
   };
 
+  const batchExtract = async () => {
+    const urls = batchUrls.split('\n').map(u => u.trim()).filter(Boolean);
+    if (urls.length === 0) { addToast('Enter at least one URL', 'warning'); return; }
+    const validFields = fields.filter(f => f.name.trim());
+    if (validFields.length === 0) { addToast('Add at least one field', 'warning'); return; }
+    setBatchExtracting(true);
+    setBatchResults([]);
+    setBatchProgress({ done: 0, total: urls.length });
+
+    const results: ExtractResult[] = [];
+    // Process in parallel batches of 5
+    for (let i = 0; i < urls.length; i += 5) {
+      const batch = urls.slice(i, i + 5);
+      const batchPromises = batch.map(async (u) => {
+        try {
+          return await apiFetch<ExtractResult>('/firecrawl-tools/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: u, schema_fields: validFields }),
+          });
+        } catch { return null; }
+      });
+      const batchRes = await Promise.all(batchPromises);
+      for (const r of batchRes) { if (r) results.push(r); }
+      setBatchProgress({ done: Math.min(i + 5, urls.length), total: urls.length });
+      setBatchResults([...results]);
+    }
+
+    setBatchExtracting(false);
+    addToast(`Extracted ${results.length}/${urls.length} URLs`, results.length === urls.length ? 'success' : 'warning');
+    loadHistory();
+  };
+
+  const downloadBatchResults = () => {
+    const blob = new Blob([JSON.stringify(batchResults, null, 2)], { type: 'application/json' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = u; a.download = 'batch_extract_results.json'; a.click();
+    URL.revokeObjectURL(u);
+  };
+
   const viewHistoryItem = (item: ExtractResult) => {
     setResult(item);
     setUrl(item.url);
     setFields(safeArr(item.schema_fields).length > 0 ? safeArr(item.schema_fields) : [{ name: '', type: 'string', description: '' }]);
     setShowHistory(false);
+    setBatchMode(false);
   };
 
   return (
     <div className="space-y-3">
       <PanelTitleBar title="Structured Extract" icon={Database} statusLed="bg-orange-400">
+        <SmallBtn onClick={() => setBatchMode(!batchMode)} variant={batchMode ? 'primary' : 'default'}>
+          <Layers className="w-3 h-3" /> {batchMode ? 'Single' : 'Batch'}
+        </SmallBtn>
         <SmallBtn onClick={() => setShowHistory(!showHistory)}>
           <Clock className="w-3 h-3" /> History ({history.length})
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* URL Input */}
-      <div className="flex items-center gap-2">
-        <input
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
-          placeholder="https://example.com"
-        />
-      </div>
+      {/* URL Input (single mode) */}
+      {!batchMode && (
+        <div className="flex items-center gap-2">
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="https://example.com"
+          />
+        </div>
+      )}
+
+      {/* Batch URL input */}
+      {batchMode && (
+        <div className="space-y-1">
+          <div className="text-[10px] text-rmpg-400">One URL per line (max 50)</div>
+          <textarea
+            value={batchUrls}
+            onChange={e => setBatchUrls(e.target.value)}
+            className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono resize-none"
+            rows={5}
+            placeholder={"https://example.com/page1\nhttps://example.com/page2\nhttps://example.com/page3"}
+          />
+          <div className="text-[9px] text-rmpg-500">{batchUrls.split('\n').filter(u => u.trim()).length} URLs</div>
+        </div>
+      )}
 
       {/* Schema Builder */}
       <div className="space-y-1.5">
@@ -4624,6 +4946,7 @@ function ExtractPanel() {
           <span className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider">Schema Fields</span>
           <SmallBtn onClick={addField}><Plus className="w-3 h-3" /> Add Field</SmallBtn>
         </div>
+        <div className="text-[8px] text-rmpg-500 -mt-1">{'Define what data to extract. Example: name (string), price (number), description (string).'}</div>
         {fields.map((f, idx) => (
           <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
             <input
@@ -4654,9 +4977,54 @@ function ExtractPanel() {
         ))}
       </div>
 
-      <SmallBtn onClick={extract} loading={extracting} variant="primary">
-        <Database className="w-3 h-3" /> Extract
-      </SmallBtn>
+      {!batchMode ? (
+        <SmallBtn onClick={extract} loading={extracting} variant="primary">
+          <Database className="w-3 h-3" /> Extract
+        </SmallBtn>
+      ) : (
+        <SmallBtn onClick={batchExtract} loading={batchExtracting} variant="primary">
+          <Layers className="w-3 h-3" /> Batch Extract ({batchUrls.split('\n').filter(u => u.trim()).length} URLs)
+        </SmallBtn>
+      )}
+
+      {/* Batch Progress */}
+      {batchExtracting && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Processing {batchProgress.done}/{batchProgress.total}...
+          </div>
+          <div className="w-full h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-orange-500 rounded-full transition-all duration-300"
+              style={{ width: `${batchProgress.total ? (batchProgress.done / batchProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Batch Results */}
+      {batchMode && batchResults.length > 0 && !batchExtracting && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-orange-400">{batchResults.length} results</span>
+            <SmallBtn onClick={downloadBatchResults}>
+              <Download className="w-3 h-3" /> Download All JSON
+            </SmallBtn>
+          </div>
+          <div className="bg-surface-raised border border-rmpg-600 rounded-sm max-h-48 overflow-y-auto scrollbar-dark">
+            {batchResults.map((br, i) => (
+              <button key={i} onClick={() => { setResult(br); setBatchMode(false); setUrl(br.url); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
+              >
+                <Database className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{br.url}</span>
+                <span className="text-[9px] text-orange-400 font-mono shrink-0">{br.fields_found}/{br.fields_found + br.fields_missing}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* History */}
       {showHistory && (
@@ -4724,6 +5092,7 @@ function ExtractPanel() {
               </tbody>
             </table>
           </div>
+          <ResultActions result={result} toolName="extract" />
         </div>
       )}
 
@@ -5589,7 +5958,7 @@ function ExamplesPanel() {
   };
 
   const categoryColors: Record<string, string> = {
-    scraping: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+    scraping: 'bg-gray-500/10 border-gray-500/30 text-gray-400',
     search: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
     extraction: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     monitoring: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
@@ -5683,7 +6052,7 @@ function ExamplesPanel() {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1 truncate">{ex.name}</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${categoryColors[ex.category] || 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
-                  {ex.category}
+                  {(ex.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                 </span>
               </div>
               {ex.description && <div className="text-[10px] text-rmpg-400 leading-relaxed">{ex.description}</div>}
@@ -6276,7 +6645,7 @@ function NewsPanel() {
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1">{article.title}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-blue-500/10 border border-blue-500/30 text-blue-400 shrink-0">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-gray-500/10 border border-gray-500/30 text-gray-400 shrink-0">
                   {article.source}
                 </span>
               </div>
@@ -7104,6 +7473,7 @@ function DocExtractPanel() {
   const [history, setHistory] = useState<DocExtractResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const docExtractFileRef = React.useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -7133,6 +7503,27 @@ function DocExtractPanel() {
     }
   };
 
+  const uploadDocFile = async (file: File) => {
+    setExtracting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('output_format', outputFormat);
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/firecrawl-tools/doc-extract/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || 'Upload failed'); }
+      const data = await resp.json();
+      setResult(data);
+      setUrl(data.url || `upload://${file.name}`);
+      addToast('Document uploaded and extracted', 'success');
+      loadHistory();
+    } catch (err: any) { addToast(err.message || 'Upload failed', 'error'); } finally { setExtracting(false); }
+  };
+
   const viewHistoryItem = (item: DocExtractResult) => {
     setResult(item);
     setUrl(item.url);
@@ -7148,7 +7539,7 @@ function DocExtractPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* Input */}
+      {/* Input + Upload */}
       <div className="flex items-center gap-2">
         <input
           value={url}
@@ -7167,6 +7558,10 @@ function DocExtractPanel() {
         </select>
         <SmallBtn onClick={extract} loading={extracting} variant="primary">
           <FileDown className="w-3 h-3" /> Extract
+        </SmallBtn>
+        <input ref={docExtractFileRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadDocFile(e.target.files[0]); e.target.value = ''; }} />
+        <SmallBtn onClick={() => docExtractFileRef.current?.click()} loading={extracting}>
+          <Upload className="w-3 h-3" /> Upload
         </SmallBtn>
       </div>
 
@@ -7207,7 +7602,7 @@ function DocExtractPanel() {
           <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">
             {result.content_preview || 'No content'}
           </pre>
-          {Object.keys(result.metadata).length > 0 && (
+          {result.metadata && typeof result.metadata === 'object' && Object.keys(result.metadata).length > 0 && (
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Metadata</div>
               <div className="grid grid-cols-2 gap-1">
@@ -7219,11 +7614,12 @@ function DocExtractPanel() {
               </div>
             </div>
           )}
+          <ResultActions result={result} toolName="doc_extract" />
         </div>
       )}
 
       {!result && !extracting && (
-        <EmptyState icon={FileDown} message="Enter a document URL to extract content, tables, and metadata." />
+        <EmptyState icon={FileDown} message="Enter a document URL or upload a file to extract content, tables, and metadata." />
       )}
     </div>
   );
@@ -7601,6 +7997,9 @@ function ApiConsolePanel() {
   const [mapResult, setMapResult] = useState<ConsoleMapResult | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
+  // Scrape result view tab
+  const [scrapeViewTab, setScrapeViewTab] = useState<'preview' | 'raw' | 'markdown'>('preview');
+
   const doScrape = async () => {
     if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
     setLoading(true);
@@ -7761,31 +8160,69 @@ function ApiConsolePanel() {
         </SmallBtn>
       )}
 
-      {/* Scrape Result */}
+      {/* Scrape Result with Tabbed Preview */}
       {mode === 'scrape' && scrapeResult && (
         <div className="space-y-2">
-          {scrapeResult.markdown && (
-            <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">Markdown Output</div>
-              <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">{scrapeResult.markdown}</pre>
+          {/* Result view tabs */}
+          <div className="flex items-center gap-1">
+            {(['preview', 'raw', 'markdown'] as const).map(t => (
+              <button key={t} onClick={() => setScrapeViewTab(t)}
+                className={`px-2 py-0.5 text-[9px] font-medium rounded-sm border transition-colors ${
+                  scrapeViewTab === t ? 'border-orange-500/50 bg-orange-500/10 text-orange-300' : 'border-rmpg-600 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }`}
+              >{t === 'preview' ? 'Preview' : t === 'raw' ? 'Raw JSON' : 'Markdown'}</button>
+            ))}
+          </div>
+
+          {/* Preview tab — metadata card + formatted content */}
+          {scrapeViewTab === 'preview' && (
+            <div className="space-y-2">
+              {((scrapeResult as any).metadata?.title || (scrapeResult as any).metadata?.description || (scrapeResult as any).metadata?.ogImage) && (
+                <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 flex items-start gap-3">
+                  {(scrapeResult as any).metadata?.ogImage && (
+                    <img src={(scrapeResult as any).metadata.ogImage} alt="" className="w-16 h-16 rounded-sm object-cover shrink-0 border border-rmpg-600" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    {(scrapeResult as any).metadata?.title && <div className="text-xs font-medium text-white truncate">{(scrapeResult as any).metadata.title}</div>}
+                    {(scrapeResult as any).metadata?.description && <div className="text-[10px] text-rmpg-300 mt-0.5 line-clamp-2">{(scrapeResult as any).metadata.description}</div>}
+                    {(scrapeResult as any).metadata?.sourceURL && <div className="text-[9px] text-rmpg-500 font-mono mt-1 truncate">{(scrapeResult as any).metadata.sourceURL}</div>}
+                  </div>
+                </div>
+              )}
+              {scrapeResult.markdown && (
+                <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 max-h-64 overflow-auto scrollbar-dark" style={{ maxWidth: 'none' }}>
+                  <pre className="whitespace-pre-wrap font-sans">{scrapeResult.markdown.substring(0, 5000)}</pre>
+                </div>
+              )}
+              {safeArr(scrapeResult.links).length > 0 && (
+                <div>
+                  <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({safeArr(scrapeResult.links).length})</div>
+                  <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 max-h-32 overflow-auto scrollbar-dark space-y-0.5">
+                    {safeArr(scrapeResult.links).slice(0, 20).map((link, i) => (
+                      <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-brand-400 hover:underline font-mono truncate">{link}</a>
+                    ))}
+                    {safeArr(scrapeResult.links).length > 20 && <span className="text-[9px] text-rmpg-500">+{safeArr(scrapeResult.links).length - 20} more</span>}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-          {scrapeResult.html && (
-            <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">HTML Output</div>
-              <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-48 overflow-auto scrollbar-dark whitespace-pre-wrap">{scrapeResult.html}</pre>
-            </div>
+
+          {/* Raw JSON tab */}
+          {scrapeViewTab === 'raw' && (
+            <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-80 overflow-auto scrollbar-dark whitespace-pre-wrap">
+              {JSON.stringify(scrapeResult, null, 2)}
+            </pre>
           )}
-          {safeArr(scrapeResult.links).length > 0 && (
-            <div>
-              <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({safeArr(scrapeResult.links).length})</div>
-              <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 max-h-48 overflow-auto scrollbar-dark space-y-0.5">
-                {safeArr(scrapeResult.links).map((link, i) => (
-                  <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-brand-400 hover:underline font-mono truncate">{link}</a>
-                ))}
-              </div>
-            </div>
+
+          {/* Markdown tab */}
+          {scrapeViewTab === 'markdown' && scrapeResult.markdown && (
+            <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-80 overflow-auto scrollbar-dark whitespace-pre-wrap">
+              {scrapeResult.markdown}
+            </pre>
           )}
+
+          <ResultActions result={scrapeResult} toolName="api_console_scrape" />
         </div>
       )}
 
@@ -8514,7 +8951,7 @@ function N8nPanel() {
                       {runs.map(run => (
                         <div key={run.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800 rounded-sm border border-rmpg-700">
                           <StatusLed status={run.status} />
-                          <span className="text-[10px] text-rmpg-300 flex-1">{run.status}</span>
+                          <span className="text-[10px] text-rmpg-300 flex-1">{(run.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                           {run.error && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error}</span>}
                           <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.started_at)}</span>
                         </div>
@@ -8772,7 +9209,7 @@ function CodeAnalyzePanel() {
   const viewHistoryItem = (item: CodeAnalyzeResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   const langColors: Record<string, string> = {
-    TypeScript: 'bg-blue-400', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
+    TypeScript: 'bg-gray-400', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
     Go: 'bg-cyan-400', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
   };
 
@@ -9216,6 +9653,7 @@ function PipelinesPanel() {
               <label className="text-[10px] text-rmpg-400">Steps</label>
               <SmallBtn onClick={addStep}><Plus className="w-3 h-3" /> Add Step</SmallBtn>
             </div>
+            <div className="text-[8px] text-rmpg-500 mb-1">Ingest fetches data, Transform reshapes it, Filter removes unwanted rows, Enrich adds metadata, Output saves results.</div>
             {formSteps.map((step, idx) => (
               <div key={idx} className="flex items-center gap-2 mb-1">
                 <span className="text-[9px] text-rmpg-500 w-4 text-right">{idx + 1}</span>
@@ -9590,6 +10028,7 @@ function PdfToolsPanel() {
   const [history, setHistory] = useState<PdfToolsResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const pdfToolsFileRef = React.useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -9599,6 +10038,15 @@ function PdfToolsPanel() {
   }, []);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const getSelectedOps = () => {
+    const ops: string[] = [];
+    if (opExtractText) ops.push('extract_text');
+    if (opCountPages) ops.push('count_pages');
+    if (opExtractLinks) ops.push('extract_links');
+    if (opGetMetadata) ops.push('get_metadata');
+    return ops;
+  };
 
   const process = async () => {
     if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
@@ -9618,6 +10066,27 @@ function PdfToolsPanel() {
     } catch { addToast('Processing failed', 'error'); } finally { setProcessing(false); }
   };
 
+  const uploadPdfFile = async (file: File) => {
+    setProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('operations', JSON.stringify(getSelectedOps()));
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/firecrawl-tools/pdf-manipulate/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || 'Upload failed'); }
+      const data = await resp.json();
+      setResult(data);
+      setUrl(data.url || `upload://${file.name}`);
+      addToast('PDF uploaded and processed', 'success');
+      loadHistory();
+    } catch (err: any) { addToast(err.message || 'Upload failed', 'error'); } finally { setProcessing(false); }
+  };
+
   const viewHistoryItem = (item: PdfToolsResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   return (
@@ -9628,7 +10097,7 @@ function PdfToolsPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
-      {/* URL Input */}
+      {/* URL Input + Upload */}
       <div className="flex items-center gap-2">
         <input
           value={url} onChange={e => setUrl(e.target.value)}
@@ -9636,6 +10105,10 @@ function PdfToolsPanel() {
           className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
           placeholder="https://example.com/document.pdf"
         />
+        <input ref={pdfToolsFileRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadPdfFile(e.target.files[0]); e.target.value = ''; }} />
+        <SmallBtn onClick={() => pdfToolsFileRef.current?.click()} loading={processing}>
+          <Upload className="w-3 h-3" /> Upload
+        </SmallBtn>
       </div>
 
       {/* Operation Checkboxes */}
@@ -9730,11 +10203,12 @@ function PdfToolsPanel() {
               </table>
             </div>
           )}
+          <ResultActions result={result} toolName="pdf_tools" />
         </div>
       )}
 
       {!result && !processing && (
-        <EmptyState icon={FileType} message="Enter a PDF URL and select operations to process." />
+        <EmptyState icon={FileType} message="Enter a PDF URL or upload a file and select operations to process." />
       )}
     </div>
   );
@@ -9795,9 +10269,9 @@ function LeadGenPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-3">
-        <Users size={16} className="text-[#1a5a9e]" />
+        <Users size={16} className="text-[#888888]" />
         <h3 className="text-sm font-bold text-white uppercase tracking-wider">Lead Generation</h3>
-        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#1a5a9e]/20 text-[#60a5fa] font-bold uppercase">Firecrawl</span>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#999999] font-bold uppercase">Firecrawl</span>
       </div>
 
       {configured === false && (
@@ -9810,7 +10284,7 @@ function LeadGenPanel() {
         <select
           value={searchType}
           onChange={e => setSearchType(e.target.value as any)}
-          className="px-2 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white"
+          className="px-2 py-2 bg-[#050505] border border-[#1e2d40] rounded-sm text-[11px] text-white"
         >
           <option value="company">Company</option>
           <option value="person">Person</option>
@@ -9823,13 +10297,13 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#1a5a9e]"
+          className="flex-1 px-3 py-2 bg-[#050505] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
         />
         <button
           type="button"
           onClick={handleSearch}
           disabled={loading || !query.trim()}
-          className="px-4 py-2 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
+          className="px-4 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
           Search
@@ -9838,13 +10312,13 @@ function LeadGenPanel() {
 
       {results && (
         <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
-          <div className="px-3 py-2 bg-[#1a2636] border-b border-[#1e2d40] flex items-center justify-between">
+          <div className="px-3 py-2 bg-[#141414] border-b border-[#1e2d40] flex items-center justify-between">
             <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
             <span className="text-[9px] text-[#556677] font-mono">
-              {Array.isArray(results.results) ? results.results.length : typeof results.results === 'object' ? Object.keys(results.results).length : '—'} entries
+              {Array.isArray(results.results) ? results.results.length : (results.results && typeof results.results === 'object') ? Object.keys(results.results).length : '—'} entries
             </span>
           </div>
-          <div className="p-3 bg-[#0d1520] max-h-[500px] overflow-y-auto">
+          <div className="p-3 bg-[#050505] max-h-[500px] overflow-y-auto">
             <pre className="text-[10px] text-[#8899aa] font-mono whitespace-pre-wrap break-words">
               {JSON.stringify(results.results, null, 2)}
             </pre>
@@ -9985,49 +10459,896 @@ function AssistantPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ██ SUPPORT BOT PANEL (ai-customer-support-bot)
+// ══════════════════════════════════════════════════════════════
+
+function SupportBotPanel() {
+  const { addToast } = useToast();
+  const [bots, setBots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formPrompt, setFormPrompt] = useState('');
+  const [formKbUrl, setFormKbUrl] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [activeBotId, setActiveBotId] = useState<number | null>(null);
+  const [chatMsg, setChatMsg] = useState('');
+  const [chatReply, setChatReply] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const loadBots = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/support-bots');
+      setBots(data || []);
+    } catch { addToast('Failed to load support bots', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadBots(); }, [loadBots]);
+
+  const createBot = async () => {
+    if (!formName.trim()) { addToast('Name is required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/support-bots', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formName.trim(), website_url: formUrl.trim() || null, system_prompt: formPrompt.trim() || null, knowledge_base_url: formKbUrl.trim() || null }),
+      });
+      addToast('Support bot created', 'success');
+      setFormName(''); setFormUrl(''); setFormPrompt(''); setFormKbUrl('');
+      loadBots();
+    } catch { addToast('Failed to create support bot', 'error'); }
+    setCreating(false);
+  };
+
+  const deleteBot = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/support-bots/${id}`, { method: 'DELETE' });
+      addToast('Bot deleted', 'success');
+      loadBots();
+    } catch { addToast('Failed to delete bot', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  const sendChat = async () => {
+    if (!activeBotId || !chatMsg.trim()) return;
+    setChatLoading(true); setChatReply('');
+    try {
+      const data = await apiFetch<any>(`/firecrawl-tools/support-bots/${activeBotId}/chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: chatMsg.trim() }),
+      });
+      setChatReply(data.response || 'No response');
+      setChatMsg('');
+    } catch { addToast('Chat failed', 'error'); }
+    setChatLoading(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-gray-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Support Bot</div>
+        <div className="grid grid-cols-2 gap-2">
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Bot name" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formUrl} onChange={e => setFormUrl(e.target.value)} placeholder="Website URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formKbUrl} onChange={e => setFormKbUrl(e.target.value)} placeholder="Knowledge base URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formPrompt} onChange={e => setFormPrompt(e.target.value)} placeholder="System prompt (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+        </div>
+        <SmallBtn onClick={createBot} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Create Bot</SmallBtn>
+      </div>
+
+      {/* Bot List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : bots.length === 0 ? (
+        <EmptyState icon={Bot} message="No support bots yet. Create one to get started." />
+      ) : (
+        <div className="space-y-1">
+          {bots.map(bot => (
+            <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
+              <StatusLed status={bot.status || 'active'} />
+              <Bot className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
+              <span className="text-[10px] text-rmpg-500">{bot.total_conversations || 0} chats</span>
+              <SmallBtn onClick={() => setActiveBotId(activeBotId === bot.id ? null : bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'}>
+                <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Chat'}
+              </SmallBtn>
+              <SmallBtn onClick={() => deleteBot(bot.id)} loading={deletingIds.has(bot.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Chat Area */}
+      {activeBotId && (
+        <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Chat</div>
+          <div className="flex gap-2">
+            <input value={chatMsg} onChange={e => setChatMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendChat()} placeholder="Ask a question..." className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 flex-1" />
+            <SmallBtn onClick={sendChat} loading={chatLoading} variant="primary"><Send className="w-3 h-3" /></SmallBtn>
+          </div>
+          {chatReply && (
+            <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 text-[10px] text-rmpg-300 whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-dark">{chatReply}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ TREND CRON PANEL (trendCron)
+// ══════════════════════════════════════════════════════════════
+
+function TrendCronPanel() {
+  const { addToast } = useToast();
+  const [crons, setCrons] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formQuery, setFormQuery] = useState('');
+  const [formCron, setFormCron] = useState('0 */6 * * *');
+  const [formEmail, setFormEmail] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  const loadCrons = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/trend-crons');
+      setCrons(data || []);
+    } catch { addToast('Failed to load trend crons', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadCrons(); }, [loadCrons]);
+
+  const createCron = async () => {
+    if (!formName.trim() || !formQuery.trim()) { addToast('Name and query are required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/trend-crons', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formName.trim(), query: formQuery.trim(), schedule_cron: formCron.trim(), notify_email: formEmail.trim() || null }),
+      });
+      addToast('Trend cron created', 'success');
+      setFormName(''); setFormQuery(''); setFormCron('0 */6 * * *'); setFormEmail('');
+      loadCrons();
+    } catch { addToast('Failed to create trend cron', 'error'); }
+    setCreating(false);
+  };
+
+  const runCron = async (id: number) => {
+    setRunningIds(prev => new Set([...prev, id]));
+    try {
+      const data = await apiFetch<any>(`/firecrawl-tools/trend-crons/${id}/run`, { method: 'POST' });
+      addToast(data.success ? 'Trend cron ran successfully' : 'Run failed', data.success ? 'success' : 'error');
+      loadCrons();
+    } catch { addToast('Failed to run trend cron', 'error'); }
+    setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  const deleteCron = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/trend-crons/${id}`, { method: 'DELETE' });
+      addToast('Trend cron deleted', 'success');
+      loadCrons();
+    } catch { addToast('Failed to delete trend cron', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="TrendCron — Scheduled Trend Scans" icon={Clock} statusLed="bg-yellow-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Trend Cron</div>
+        <div className="grid grid-cols-2 gap-2">
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Name" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formQuery} onChange={e => setFormQuery(e.target.value)} placeholder="Search query" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formCron} onChange={e => setFormCron(e.target.value)} placeholder="Cron (e.g. 0 */6 * * *)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full font-mono" />
+          <input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="Notify email (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+        </div>
+        <SmallBtn onClick={createCron} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Create Cron</SmallBtn>
+      </div>
+
+      {/* Cron List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : crons.length === 0 ? (
+        <EmptyState icon={Clock} message="No trend crons yet. Schedule a recurring trend scan." />
+      ) : (
+        <div className="space-y-1">
+          {crons.map(c => (
+            <div key={c.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
+              <StatusLed status={c.is_active ? 'active' : 'paused'} />
+              <Clock className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium text-white truncate block">{c.name}</span>
+                <span className="text-[9px] text-rmpg-500 font-mono">{c.schedule_cron} | {c.total_runs || 0} runs</span>
+              </div>
+              <span className="text-[10px] text-rmpg-400 truncate max-w-[150px]">{c.query}</span>
+              <SmallBtn onClick={() => runCron(c.id)} loading={runningIds.has(c.id)} variant="primary"><Play className="w-3 h-3" /> Run</SmallBtn>
+              <SmallBtn onClick={() => deleteCron(c.id)} loading={deletingIds.has(c.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ SITE MIGRATOR PANEL (firecrawl-migrator)
+// ══════════════════════════════════════════════════════════════
+
+function SiteMigratorPanel() {
+  const { addToast } = useToast();
+  const [migrations, setMigrations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formFormat, setFormFormat] = useState('markdown');
+  const [creating, setCreating] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  const loadMigrations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/migrations');
+      setMigrations(data || []);
+    } catch { addToast('Failed to load migrations', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadMigrations(); }, [loadMigrations]);
+
+  const startMigration = async () => {
+    if (!formName.trim() || !formUrl.trim()) { addToast('Name and source URL are required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/migrations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formName.trim(), source_url: formUrl.trim(), target_format: formFormat }),
+      });
+      addToast('Migration started', 'success');
+      setFormName(''); setFormUrl(''); setFormFormat('markdown');
+      loadMigrations();
+    } catch { addToast('Failed to start migration', 'error'); }
+    setCreating(false);
+  };
+
+  const deleteMigration = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/migrations/${id}`, { method: 'DELETE' });
+      addToast('Migration deleted', 'success');
+      loadMigrations();
+    } catch { addToast('Failed to delete migration', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Site Migrator" icon={ArrowRight} statusLed="bg-emerald-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Migration</div>
+        <div className="grid grid-cols-3 gap-2">
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Migration name" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formUrl} onChange={e => setFormUrl(e.target.value)} placeholder="Source URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <select value={formFormat} onChange={e => setFormFormat(e.target.value)} className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white w-full">
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        <SmallBtn onClick={startMigration} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Start Migration</SmallBtn>
+      </div>
+
+      {/* Migration List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : migrations.length === 0 ? (
+        <EmptyState icon={ArrowRight} message="No migrations yet. Start one to migrate a website." />
+      ) : (
+        <div className="space-y-1">
+          {migrations.map(m => (
+            <div key={m.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
+              <StatusLed status={m.status === 'completed' ? 'active' : m.status === 'failed' ? 'error' : 'paused'} />
+              <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium text-white truncate block">{m.name}</span>
+                <span className="text-[9px] text-rmpg-500 font-mono truncate block">{m.source_url}</span>
+              </div>
+              <span className="text-[10px] text-rmpg-400">{m.pages_crawled}/{m.pages_total} pages</span>
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${m.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : m.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
+                {m.status}
+              </span>
+              <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(m.created_at)}</span>
+              <SmallBtn onClick={() => deleteMigration(m.id)} loading={deletingIds.has(m.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ██ CODE REPO PANEL (opencode-firecrawl)
+// ══════════════════════════════════════════════════════════════
+
+function CodeRepoPanel() {
+  const { addToast } = useToast();
+  const [repos, setRepos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [formUrl, setFormUrl] = useState('');
+  const [formName, setFormName] = useState('');
+  const [formType, setFormType] = useState('full');
+  const [formLang, setFormLang] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const loadRepos = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/firecrawl-tools/code-repos');
+      setRepos(data || []);
+    } catch { addToast('Failed to load code repos', 'error'); }
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadRepos(); }, [loadRepos]);
+
+  const analyzeRepo = async () => {
+    if (!formUrl.trim()) { addToast('Repository URL is required', 'warning'); return; }
+    setCreating(true);
+    try {
+      await apiFetch('/firecrawl-tools/code-repos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_url: formUrl.trim(), repo_name: formName.trim() || null, analysis_type: formType, language: formLang.trim() || null }),
+      });
+      addToast('Code analysis started', 'success');
+      setFormUrl(''); setFormName(''); setFormType('full'); setFormLang('');
+      loadRepos();
+    } catch { addToast('Failed to analyze repo', 'error'); }
+    setCreating(false);
+  };
+
+  const deleteRepo = async (id: number) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    try {
+      await apiFetch(`/firecrawl-tools/code-repos/${id}`, { method: 'DELETE' });
+      addToast('Analysis deleted', 'success');
+      loadRepos();
+    } catch { addToast('Failed to delete analysis', 'error'); }
+    setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  return (
+    <div className="space-y-3">
+      <PanelTitleBar title="Code Analyzer" icon={Code2} statusLed="bg-purple-400" />
+
+      {/* Create Form */}
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+        <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Analyze Repository</div>
+        <div className="grid grid-cols-2 gap-2">
+          <input value={formUrl} onChange={e => setFormUrl(e.target.value)} placeholder="Repository URL" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Repo name (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+          <select value={formType} onChange={e => setFormType(e.target.value)} className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white w-full">
+            <option value="full">Full Analysis</option>
+            <option value="security">Security Audit</option>
+            <option value="performance">Performance Review</option>
+            <option value="dependencies">Dependency Check</option>
+          </select>
+          <input value={formLang} onChange={e => setFormLang(e.target.value)} placeholder="Language (optional)" className="bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-500 w-full" />
+        </div>
+        <SmallBtn onClick={analyzeRepo} loading={creating} variant="primary"><Plus className="w-3 h-3" /> Analyze</SmallBtn>
+      </div>
+
+      {/* Repo List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+      ) : repos.length === 0 ? (
+        <EmptyState icon={Code2} message="No code analyses yet. Analyze a repository to get started." />
+      ) : (
+        <div className="space-y-1">
+          {repos.map(r => (
+            <div key={r.id} className="bg-surface-raised border border-rmpg-600 rounded-sm">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <StatusLed status={r.status === 'completed' ? 'active' : r.status === 'failed' ? 'error' : 'paused'} />
+                <Code2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <button onClick={() => setExpandedId(expandedId === r.id ? null : r.id)} className="flex items-center gap-1 flex-1 min-w-0 text-left">
+                  {expandedId === r.id ? <ChevronDown className="w-3 h-3 text-rmpg-500 shrink-0" /> : <ChevronRight className="w-3 h-3 text-rmpg-500 shrink-0" />}
+                  <span className="text-xs font-medium text-white truncate">{r.repo_name || r.repo_url}</span>
+                </button>
+                <span className="text-[10px] text-rmpg-400">{r.total_lines || 0} lines</span>
+                <span className="text-[10px] text-rmpg-400">{r.issues_found || 0} issues</span>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${r.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : r.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
+                  {r.status}
+                </span>
+                <SmallBtn onClick={() => deleteRepo(r.id)} loading={deletingIds.has(r.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
+              </div>
+              {expandedId === r.id && (
+                <div className="border-t border-rmpg-700 bg-surface-sunken p-3 space-y-2">
+                  <div className="text-[10px] text-rmpg-400 font-mono truncate">URL: {r.repo_url}</div>
+                  {r.language && <div className="text-[10px] text-rmpg-400">Language: <span className="text-rmpg-300">{r.language}</span></div>}
+                  {r.summary && (
+                    <div className="text-[10px] text-rmpg-300 whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-dark">{r.summary}</div>
+                  )}
+                  {r.analysis_json && typeof r.analysis_json === 'object' && (
+                    <pre className="bg-rmpg-800 border border-rmpg-700 rounded-sm p-2 text-[9px] text-rmpg-400 font-mono max-h-32 overflow-auto scrollbar-dark">
+                      {JSON.stringify(r.analysis_json, null, 2)}
+                    </pre>
+                  )}
+                  <div className="text-[9px] text-rmpg-500">{fmtDate(r.created_at)}{r.completed_at ? ` — completed ${fmtDate(r.completed_at)}` : ''}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // ██ MAIN FIRECRAWL TAB COMPONENT
 // ══════════════════════════════════════════════════════════════
 
-export default function FirecrawlTab() {
-  const [activeTab, setActiveTab] = useState<FirecrawlSubTab>('scouts');
+// ── Quick Action Definitions ─────────────────────────────────
 
+const QUICK_ACTIONS = [
+  { id: 'quick-scrape', label: 'Scrape URL', icon: Globe, placeholder: 'https://example.com', tab: 'extract' as FirecrawlSubTab },
+  { id: 'quick-search', label: 'Search Web', icon: Search, placeholder: 'Search query...', tab: 'search-engine' as FirecrawlSubTab },
+  { id: 'quick-enrich', label: 'Enrich Email', icon: Mail, placeholder: 'name@company.com', tab: 'enrich' as FirecrawlSubTab },
+  { id: 'quick-research', label: 'Research Topic', icon: BookOpen, placeholder: 'Research topic...', tab: 'researcher' as FirecrawlSubTab },
+];
+
+// ── Workflow Step Indicator ──────────────────────────────────
+
+function WorkflowStepIndicator({
+  template,
+  currentStep,
+  onStepClick,
+  onClose,
+}: {
+  template: typeof WORKFLOW_TEMPLATES[number];
+  currentStep: number;
+  onStepClick: (step: number) => void;
+  onClose: () => void;
+}) {
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Sub-tab bar */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark">
-        <span className="text-[10px] font-bold text-orange-400 tracking-wider uppercase mr-3 shrink-0">
-          FIRECRAWL
-        </span>
-        {TABS.map(tab => (
+    <div className="flex items-center gap-2 px-3 py-1 bg-orange-500/10 border-b border-orange-500/30">
+      <Workflow className="w-3 h-3 text-orange-400 shrink-0" />
+      <span className="text-[10px] font-bold text-orange-300 shrink-0">{template.name}</span>
+      <div className="flex items-center gap-1">
+        {template.steps.map((stepId, i) => {
+          const tab = TABS.find(t => t.id === stepId);
+          return (
+            <React.Fragment key={stepId}>
+              {i > 0 && <ArrowRight className="w-2.5 h-2.5 text-rmpg-500" />}
+              <button
+                onClick={() => onStepClick(i)}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-medium transition-colors ${
+                  i === currentStep
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
+                    : i < currentStep
+                      ? 'text-emerald-400 border border-emerald-500/30 bg-emerald-500/10'
+                      : 'text-rmpg-500 border border-rmpg-600'
+                }`}
+              >
+                {i < currentStep && <CheckCircle className="w-2.5 h-2.5" />}
+                {tab?.label || stepId}
+              </button>
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <span className="text-[9px] text-rmpg-500 ml-auto">Step {currentStep + 1}/{template.steps.length}</span>
+      <button onClick={onClose} className="text-rmpg-500 hover:text-white p-0.5"><X className="w-3 h-3" /></button>
+    </div>
+  );
+}
+
+// ── Templates Landing ────────────────────────────────────────
+
+function TemplatesLanding({ onSelect }: { onSelect: (template: typeof WORKFLOW_TEMPLATES[number]) => void }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-white mb-1">Workflow Templates</h2>
+        <p className="text-[10px] text-rmpg-400">Pre-built multi-step workflows for common tasks. Click to start a guided workflow.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {WORKFLOW_TEMPLATES.map(tmpl => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
-                : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
-            }`}
+            key={tmpl.id}
+            onClick={() => onSelect(tmpl)}
+            className="flex flex-col gap-1.5 p-3 rounded-sm border border-rmpg-600 bg-rmpg-800/50 hover:bg-rmpg-700/50 hover:border-orange-500/40 text-left transition-colors group"
           >
-            <tab.icon className="w-3 h-3" />
-            {tab.label}
+            <div className="flex items-center gap-2">
+              <tmpl.icon className="w-4 h-4 text-orange-400 group-hover:text-orange-300" />
+              <span className="text-[11px] font-bold text-white group-hover:text-orange-200">{tmpl.name}</span>
+            </div>
+            <p className="text-[9px] text-rmpg-400 leading-relaxed">{tmpl.description}</p>
+            <div className="flex items-center gap-1 mt-1">
+              {tmpl.steps.map((stepId, i) => {
+                const tab = TABS.find(t => t.id === stepId);
+                return (
+                  <React.Fragment key={stepId}>
+                    {i > 0 && <ArrowRight className="w-2 h-2 text-rmpg-600" />}
+                    <span className="text-[8px] text-rmpg-500 bg-rmpg-700/60 px-1 py-0.5 rounded-sm">{tab?.label || stepId}</span>
+                  </React.Fragment>
+                );
+              })}
+            </div>
           </button>
         ))}
       </div>
 
+      {/* Get started guidance */}
+      <div className="border border-rmpg-600 rounded-sm p-3 bg-rmpg-800/30">
+        <h3 className="text-[11px] font-bold text-white mb-2">Getting Started</h3>
+        <div className="space-y-2 text-[10px] text-rmpg-400">
+          <div className="flex items-start gap-2">
+            <Radar className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Scouts</span> — Monitor any website and get alerts when content changes. Great for tracking competitor pricing or regulatory updates.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Building2 className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Enrich</span> — Turn an email address into rich company and person data. Essential for lead qualification and process service research.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <BookOpen className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Researcher</span> — Deep AI-powered research on any topic with citations. Perfect for background investigations and intel reports.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Deep Search</span> — Break complex queries into sub-questions for thorough answers. Use for OSINT and due diligence.</div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Eye className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+            <div><span className="text-white font-medium">Observer</span> — Watch specific web pages and detect changes over time. Ideal for tracking court records or public filings.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+export default function FirecrawlTab() {
+  const [activeTab, setActiveTab] = useState<FirecrawlSubTab | null>(null);
+  const [toolSearch, setToolSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<ToolCategory | 'all'>('all');
+  const [activeWorkflow, setActiveWorkflow] = useState<typeof WORKFLOW_TEMPLATES[number] | null>(null);
+  const [workflowStep, setWorkflowStep] = useState(0);
+  const [quickAction, setQuickAction] = useState<string | null>(null);
+  const [quickInput, setQuickInput] = useState('');
+  const [toolContext, setToolContext] = useState<ToolContext>({});
+  const [tabBadges, setTabBadges] = useState<Record<string, number>>({});
+
+  // Recently used tools tracking (persisted in localStorage)
+  const [recentTools, setRecentTools] = useState<FirecrawlSubTab[]>(() => {
+    try { return JSON.parse(localStorage.getItem('rmpg_firecrawl_recent') || '[]'); } catch { return []; }
+  });
+
+  // Track tool usage when activeTab changes
+  useEffect(() => {
+    if (activeTab) {
+      setRecentTools(prev => {
+        const updated = [activeTab, ...prev.filter(t => t !== activeTab)].slice(0, 5);
+        localStorage.setItem('rmpg_firecrawl_recent', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  }, [activeTab]);
+
+  // Shared switch function that clears context when navigating without chaining
+  const switchTab = useCallback((tab: FirecrawlSubTab) => {
+    setActiveTab(tab);
+  }, []);
+
+  const chainProps: PanelChainProps = { toolContext, setToolContext, switchTab };
+
+  // Fetch badge counts for active-item tabs
+  useEffect(() => {
+    const fetchCounts = async () => {
+      const counts: Record<string, number> = {};
+      try {
+        const [scouts, observers, chatbots, agents, workflows] = await Promise.allSettled([
+          apiFetch<any[]>('/firecrawl-tools/scouts'),
+          apiFetch<any[]>('/firecrawl-tools/observer/watches'),
+          apiFetch<any[]>('/firecrawl-tools/chatbot'),
+          apiFetch<any[]>('/firecrawl-tools/agents'),
+          apiFetch<any[]>('/firecrawl-tools/workflows'),
+        ]);
+        if (scouts.status === 'fulfilled') counts.scouts = scouts.value.length;
+        if (observers.status === 'fulfilled') counts.observer = observers.value.length;
+        if (chatbots.status === 'fulfilled') counts.chatbot = chatbots.value.length;
+        if (agents.status === 'fulfilled') counts.agents = agents.value.length;
+        if (workflows.status === 'fulfilled') counts.workflows = workflows.value.length;
+      } catch { /* silent */ }
+      setTabBadges(counts);
+    };
+    fetchCounts();
+  }, [activeTab]); // re-fetch when switching tabs (lightweight)
+
+  // Filter tabs by search and category
+  const filteredTabs = TABS.filter(tab => {
+    if (toolSearch) {
+      const q = toolSearch.toLowerCase();
+      return tab.label.toLowerCase().includes(q) || tab.description.toLowerCase().includes(q) || tab.category.includes(q);
+    }
+    if (activeCategory !== 'all') return tab.category === activeCategory;
+    return true;
+  });
+
+  // Group filtered tabs by category for display
+  const groupedTabs = activeCategory === 'all' && !toolSearch
+    ? TOOL_CATEGORIES.map(cat => ({
+        ...cat,
+        tabs: filteredTabs.filter(t => t.category === cat.id),
+      })).filter(g => g.tabs.length > 0)
+    : null;
+
+  function handleWorkflowSelect(template: typeof WORKFLOW_TEMPLATES[number]) {
+    setActiveWorkflow(template);
+    setWorkflowStep(0);
+    setActiveTab(template.steps[0]);
+  }
+
+  function handleWorkflowStepClick(step: number) {
+    if (activeWorkflow) {
+      setWorkflowStep(step);
+      setActiveTab(activeWorkflow.steps[step]);
+    }
+  }
+
+  function handleQuickAction(actionId: string) {
+    if (quickAction === actionId) {
+      setQuickAction(null);
+      setQuickInput('');
+    } else {
+      setQuickAction(actionId);
+      setQuickInput('');
+    }
+  }
+
+  function handleQuickGo(tab: FirecrawlSubTab) {
+    setActiveTab(tab);
+    setQuickAction(null);
+    setQuickInput('');
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Quick Actions toolbar */}
+      <div className="flex items-center gap-1 px-3 py-1 border-b border-rmpg-600 bg-surface-sunken">
+        <span className="text-[9px] font-bold text-rmpg-500 tracking-wider uppercase mr-2 shrink-0">QUICK</span>
+        {QUICK_ACTIONS.map(qa => (
+          <button
+            key={qa.id}
+            onClick={() => handleQuickAction(qa.id)}
+            className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
+              quickAction === qa.id
+                ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                : 'border-rmpg-600 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+            }`}
+          >
+            <qa.icon className="w-2.5 h-2.5" />
+            {qa.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Quick action inline input */}
+      {quickAction && (() => {
+        const qa = QUICK_ACTIONS.find(a => a.id === quickAction);
+        if (!qa) return null;
+        return (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-orange-500/30 bg-orange-500/5">
+            <qa.icon className="w-3 h-3 text-orange-400 shrink-0" />
+            <input
+              type="text"
+              value={quickInput}
+              onChange={e => setQuickInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && quickInput.trim() && handleQuickGo(qa.tab)}
+              placeholder={qa.placeholder}
+              className="flex-1 bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-0.5 text-[10px] text-white placeholder-rmpg-500 focus:outline-none focus:border-orange-500/50"
+              autoFocus
+            />
+            <SmallBtn variant="primary" onClick={() => quickInput.trim() && handleQuickGo(qa.tab)}>
+              <Play className="w-2.5 h-2.5" /> Go
+            </SmallBtn>
+            <button onClick={() => { setQuickAction(null); setQuickInput(''); }} className="text-rmpg-500 hover:text-white">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Workflow step indicator */}
+      {activeWorkflow && (
+        <WorkflowStepIndicator
+          template={activeWorkflow}
+          currentStep={workflowStep}
+          onStepClick={handleWorkflowStepClick}
+          onClose={() => { setActiveWorkflow(null); setWorkflowStep(0); }}
+        />
+      )}
+
+      {/* Search + category bar */}
+      <div className="px-3 py-1.5 border-b border-rmpg-600 bg-surface-sunken space-y-1">
+        {/* Search input */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold text-orange-400 tracking-wider uppercase shrink-0">FIRECRAWL</span>
+          <div className="relative flex-1">
+            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+            <input
+              type="text"
+              value={toolSearch}
+              onChange={e => { setToolSearch(e.target.value); setActiveCategory('all'); }}
+              placeholder="Search 53 tools..."
+              className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm pl-5 pr-2 py-0.5 text-[10px] text-white placeholder-rmpg-500 focus:outline-none focus:border-orange-500/50"
+            />
+            {toolSearch && (
+              <button
+                onClick={() => setToolSearch('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {!activeTab && (
+            <span className="text-[9px] text-rmpg-500 shrink-0">{filteredTabs.length} tools</span>
+          )}
+        </div>
+
+        {/* Recent tools pills */}
+        {recentTools.length > 0 && !activeTab && (
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark">
+            <span className="text-[8px] font-bold text-rmpg-500 tracking-wider uppercase shrink-0 mr-0.5">RECENT</span>
+            {recentTools.map(tid => {
+              const tab = TABS.find(t => t.id === tid);
+              if (!tab) return null;
+              return (
+                <button
+                  key={tid}
+                  onClick={() => setActiveTab(tid)}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border border-brand-500/30 bg-brand-500/5 text-brand-400 hover:bg-brand-500/10 transition-colors shrink-0 whitespace-nowrap"
+                >
+                  <tab.icon className="w-2.5 h-2.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Category pills */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark">
+          <button
+            onClick={() => { setActiveCategory('all'); setToolSearch(''); }}
+            className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
+              activeCategory === 'all' && !toolSearch
+                ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+            }`}
+          >
+            All
+          </button>
+          {TOOL_CATEGORIES.map(cat => {
+            const count = TABS.filter(t => t.category === cat.id).length;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => { setActiveCategory(cat.id); setToolSearch(''); }}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
+                  activeCategory === cat.id
+                    ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                    : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }`}
+              >
+                <cat.icon className="w-2.5 h-2.5" />
+                {cat.label}
+                <span className="text-[8px] text-rmpg-500 ml-0.5">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tool buttons */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark">
+        {groupedTabs ? (
+          // Grouped by category
+          <div className="px-3 py-1">
+            {groupedTabs.map(group => (
+              <div key={group.id} className="mb-1 last:mb-0">
+                <div className="flex items-center gap-1 mb-0.5">
+                  <group.icon className="w-2.5 h-2.5 text-rmpg-500" />
+                  <span className="text-[8px] font-bold text-rmpg-500 tracking-wider uppercase">{group.label}</span>
+                </div>
+                <div className="flex flex-wrap gap-0.5">
+                  {group.tabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      title={tab.description}
+                      className={`relative flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
+                        activeTab === tab.id
+                          ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                          : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                      }`}
+                    >
+                      <tab.icon className="w-2.5 h-2.5" />
+                      {tab.label}
+                      {tabBadges[tab.id] != null && tabBadges[tab.id] > 0 && (
+                        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-green-500 text-[7px] text-white rounded-full flex items-center justify-center font-bold leading-none">{tabBadges[tab.id]}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // Flat filtered list
+          <div className="flex flex-wrap gap-0.5 px-3 py-1">
+            {filteredTabs.length === 0 && (
+              <span className="text-[10px] text-rmpg-500 py-1">No tools match &ldquo;{toolSearch}&rdquo;</span>
+            )}
+            {filteredTabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                title={tab.description}
+                className={`relative flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
+                    : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }`}
+              >
+                <tab.icon className="w-2.5 h-2.5" />
+                {tab.label}
+                {tabBadges[tab.id] != null && tabBadges[tab.id] > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-green-500 text-[7px] text-white rounded-full flex items-center justify-center font-bold leading-none">{tabBadges[tab.id]}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-dark">
-        {activeTab === 'scouts' && <ScoutsPanel />}
+        {!activeTab && <TemplatesLanding onSelect={handleWorkflowSelect} />}
+        {activeTab === 'scouts' && <ScoutsPanel {...chainProps} />}
         {activeTab === 'ai-ready' && <AiReadyPanel />}
         {activeTab === 'cloner' && <ClonerPanel />}
         {activeTab === 'brand' && <BrandMonitorPanel />}
         {activeTab === 'compare' && <PageComparePanel />}
         {activeTab === 'workflows' && <WorkflowsPanel />}
         {activeTab === 'search-engine' && <SearchEnginePanel />}
-        {activeTab === 'enrich' && <EnrichPanel />}
-        {activeTab === 'researcher' && <ResearcherPanel />}
+        {activeTab === 'enrich' && <EnrichPanel {...chainProps} />}
+        {activeTab === 'researcher' && <ResearcherPanel {...chainProps} />}
         {activeTab === 'chatbot' && <ChatbotPanel />}
-        {activeTab === 'observer' && <ObserverPanel />}
-        {activeTab === 'deep-search' && <DeepSearchPanel />}
+        {activeTab === 'observer' && <ObserverPanel {...chainProps} />}
+        {activeTab === 'deep-search' && <DeepSearchPanel {...chainProps} />}
         {activeTab === 'llmstxt' && <LlmsTxtPanel />}
         {activeTab === 'pdf-inspect' && <PdfInspectPanel />}
         {activeTab === 'graphs' && <GraphsPanel />}
@@ -10067,6 +11388,10 @@ export default function FirecrawlTab() {
         {activeTab === 'pdf-tools' && <PdfToolsPanel />}
         {activeTab === 'assistant' && <AssistantPanel />}
         {activeTab === 'lead-gen' && <LeadGenPanel />}
+        {activeTab === 'support-bot' && <SupportBotPanel />}
+        {activeTab === 'trend-cron' && <TrendCronPanel />}
+        {activeTab === 'site-migrator' && <SiteMigratorPanel />}
+        {activeTab === 'code-repo' && <CodeRepoPanel />}
       </div>
     </div>
   );

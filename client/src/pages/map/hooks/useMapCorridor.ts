@@ -59,11 +59,11 @@ function destinationPoint(
   lat: number,
   lng: number,
   headingDeg: number,
-  distanceMi: number,
+  distanceKm: number,
 ): { lat: number; lng: number } {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceMi)) return { lat, lng };
-  const R = 3958.8; // Earth radius in miles
-  const d = distanceMi / R;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceKm)) return { lat, lng };
+  const R = 3958.8; // Earth radius mi
+  const d = distanceKm / R;
   const brng = (headingDeg * Math.PI) / 180;
   const lat1 = (lat * Math.PI) / 180;
   const lng1 = (lng * Math.PI) / 180;

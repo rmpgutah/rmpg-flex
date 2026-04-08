@@ -10,6 +10,9 @@ import * as cheerio from 'cheerio';
 import TurndownService from 'turndown';
 import { convert as htmlToPlainText } from 'html-to-text';
 import robotsParser from 'robots-parser';
+import crypto from 'crypto';
+import { getDb } from '../models/database';
+import config from '../config';
 
 // ── Configuration ────────────────────────────────────────────
 
@@ -17,6 +20,50 @@ const FIRECRAWL_DOCKER_URL = process.env.FIRECRAWL_URL || 'http://localhost:3003
 const FIRECRAWL_CLOUD_URL = 'https://api.firecrawl.dev';
 const TIMEOUT_MS = 30_000;
 const USER_AGENT = 'Mozilla/5.0 (RMPG Flex Overwatch Bot; +https://rmpgutah.us)';
+
+// ── Cloud API key (lazy-loaded from system_config) ───────────
+
+let _apiKey: string | null = null;
+let _apiKeyChecked = false;
+
+function getFirecrawlApiKey(): string | null {
+  if (_apiKeyChecked) return _apiKey;
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'firecrawl_api_key' AND is_active = 1"
+    ).get() as any;
+    if (row?.config_value) {
+      // Try to decrypt (same AES-256-GCM pattern as other API keys)
+      try {
+        const secret = config.jwt?.secret || process.env.JWT_SECRET || '';
+        const key = crypto.createHash('sha256').update(secret).digest();
+        const parts = row.config_value.split(':');
+        if (parts.length === 3) {
+          const iv = Buffer.from(parts[0], 'hex');
+          const authTag = Buffer.from(parts[1], 'hex');
+          const ciphertext = parts[2];
+          const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+          decipher.setAuthTag(authTag);
+          _apiKey = decipher.update(ciphertext, 'hex', 'utf8') + decipher.final('utf8');
+        } else {
+          _apiKey = row.config_value; // Not encrypted, use as-is
+        }
+      } catch {
+        _apiKey = row.config_value; // Decryption failed, try raw value
+      }
+    }
+  } catch { /* DB not ready yet */ }
+  _apiKeyChecked = true;
+  // Reset cache after 5 minutes so config changes take effect
+  setTimeout(() => { _apiKeyChecked = false; }, 5 * 60 * 1000);
+  return _apiKey;
+}
+
+/** Check whether a Firecrawl Cloud API key is configured. */
+export function hasFirecrawlApiKey(): boolean {
+  return !!getFirecrawlApiKey();
+}
 
 // ── Turndown instance ────────────────────────────────────────
 
@@ -191,6 +238,11 @@ let _firecrawlAvailable: boolean | null = null;
 let _firecrawlLastCheck = 0;
 
 async function isFirecrawlAvailable(): Promise<boolean> {
+  // Cloud API key takes priority — always "available" if configured
+  const apiKey = getFirecrawlApiKey();
+  if (apiKey) return true;
+
+  // Fall back to Docker availability check
   if (_firecrawlAvailable !== null && Date.now() - _firecrawlLastCheck < 60_000) {
     return _firecrawlAvailable;
   }
@@ -198,7 +250,7 @@ async function isFirecrawlAvailable(): Promise<boolean> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3_000);
     try {
-      const res = await fetch(`${FIRECRAWL_BASE_URL}/`, { signal: controller.signal });
+      const res = await fetch(`${FIRECRAWL_DOCKER_URL}/`, { signal: controller.signal });
       _firecrawlAvailable = res.ok;
     } finally {
       clearTimeout(timeout);
@@ -431,8 +483,17 @@ export async function firecrawlSearch(
 }
 
 /**
- * Check if the Firecrawl Docker service is reachable.
+ * Check if the Firecrawl service is reachable (Cloud API or Docker).
  */
 export async function firecrawlHealthCheck(): Promise<boolean> {
   return isFirecrawlAvailable();
+}
+
+/**
+ * Returns the current Firecrawl connection mode for status endpoints.
+ */
+export function firecrawlConnectionMode(): 'cloud' | 'docker' | 'fallback' {
+  if (getFirecrawlApiKey()) return 'cloud';
+  if (_firecrawlAvailable === true) return 'docker';
+  return 'fallback';
 }

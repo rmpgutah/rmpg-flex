@@ -23,7 +23,6 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
-  formSectionPageBreak,
   sanitizePdfText,
   addSignatureBlock,
   wordWrapText,
@@ -81,8 +80,8 @@ interface InvoicePdfData {
 }
 
 function fmt(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(Number(n))) return '$0.00';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n));
+  if (n == null) return '$0.00';
+  return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ── PDF Generation ────────────────────────────────────────
@@ -191,8 +190,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         { top: tableStartY, bottom: y, page: tableStartPage },
       ];
 
-      // Data rows — Courier for body text
-      doc.setFont('courier', 'normal');
+      // Data rows
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
         // Page break check — re-draw headers on new page
@@ -205,14 +204,14 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           y = drawItemHeaders(y);
           // Start new segment on new page
           tableSegments.push({ top: y - 8, bottom: y, page: doc.getNumberOfPages() });
-          doc.setFont('courier', 'normal');
+          doc.setFont('helvetica', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
 
         const item = items[i];
 
         // Dynamic row height for multi-line descriptions — use wordWrapText to prevent mid-word breaks
-        doc.setFont('courier', 'normal');
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         const descLines = wordWrapText(doc, sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
@@ -225,10 +224,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(descLines, cols[0].x, y);
-        const safeQty = Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : 0;
-        const safeRate = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : 0;
-        doc.text(String(safeQty), cols[1].x + cols[1].w, y, { align: 'right' });
-        doc.text(fmt(safeRate), cols[2].x + cols[2].w, y, { align: 'right' });
+        doc.text(String(item.quantity ?? 0), cols[1].x + cols[1].w, y, { align: 'right' });
+        doc.text(fmt(item.unit_price ?? 0), cols[2].x + cols[2].w, y, { align: 'right' });
 
         // Unified credit/debit colors from tokens
         const amtColor: [number, number, number] = (item.amount ?? 0) < 0 ? [...COLOR.AMOUNT_CREDIT] : [...COLOR.TEXT_PRIMARY];
@@ -268,7 +265,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const totX = pageWidth - LAYOUT.PAGE_MARGIN - 60;
   const totVX = pageWidth - LAYOUT.PAGE_MARGIN;
   const addTotal = (label: string, value: string, bold = false, color?: readonly [number, number, number]) => {
-    doc.setFont('courier', bold ? 'bold' : 'normal');
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
@@ -278,29 +275,30 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y += bold ? 6 : LAYOUT.LINE_HEIGHT;
   };
 
-  addTotal('Subtotal:', fmt(data.subtotal ?? 0));
-  if ((data.discount_amount ?? 0) > 0) addTotal('Discount:', `-${fmt(data.discount_amount)}`, false, COLOR.AMOUNT_CREDIT);
-  if ((data.late_fee_amount ?? 0) > 0) addTotal('Late Fee:', fmt(data.late_fee_amount), false, COLOR.AMOUNT_DEBIT);
+  addTotal('Subtotal:', fmt(data.subtotal));
+  if (data.discount_amount > 0) addTotal('Discount:', `-${fmt(data.discount_amount)}`, false, COLOR.AMOUNT_CREDIT);
+  if (data.late_fee_amount > 0) addTotal('Late Fee:', fmt(data.late_fee_amount), false, COLOR.AMOUNT_DEBIT);
 
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
   doc.line(totX - 5, y - 1, totVX, y - 1);
   y += SPACING.SM;
 
-  addTotal('TOTAL:', fmt(data.total ?? 0), true);
-  if ((data.amount_paid ?? 0) > 0) addTotal('Amount Paid:', `-${fmt(data.amount_paid)}`, false, COLOR.AMOUNT_CREDIT);
+  addTotal('TOTAL:', fmt(data.total), true);
+  if (data.amount_paid > 0) addTotal('Amount Paid:', `-${fmt(data.amount_paid)}`, false, COLOR.AMOUNT_CREDIT);
 
   // Balance due box
   doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   const balBoxX = totX - 8;
   const balBoxW = totVX - balBoxX + 3;
-  doc.rect(balBoxX, y - 2, balBoxW, 9);
-  doc.setFont('courier', 'bold');
+  const balBoxH = 9; // Balance due box height
+  doc.rect(balBoxX, y - 2, balBoxW, balBoxH);
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });
-  doc.text(fmt(data.balance_due ?? 0), totVX, y + 4, { align: 'right' });
+  doc.text(fmt(data.balance_due), totVX, y + 4, { align: 'right' });
   y += 14;
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);

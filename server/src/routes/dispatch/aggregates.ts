@@ -5,7 +5,7 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '..
 import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
-import { identifyBeat, reloadGeofence } from '../../utils/geofence';
+import { identifyBeat, reloadGeofence, findNearestBeat } from '../../utils/geofence';
 import fs from 'fs';
 import path from 'path';
 import { escapeLike } from '../../middleware/sanitize';
@@ -1163,6 +1163,79 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
   }
 });
 
+// GET /api/dispatch/districts/call-density — Call counts per beat zone
+router.get('/districts/call-density', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const range = req.query.range as string || '24h';
+    const hoursMap: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 };
+    const hours = hoursMap[range] || 24;
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const rows = db.prepare('SELECT zone_beat, COUNT(*) as call_count FROM calls_for_service WHERE zone_beat IS NOT NULL AND zone_beat != ? AND created_at >= ? GROUP BY zone_beat ORDER BY call_count DESC').all('', cutoff) as any[];
+    setCacheHeaders(res, 120);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('[Dispatch] call density error:', error?.message);
+    if (error?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to get call density', code: 'CALL_DENSITY_ERROR' });
+  }
+});
+
+// POST /api/dispatch/districts/reload-geofence — Hot-reload geofence data
+router.post('/districts/reload-geofence', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    reloadGeofence();
+    res.json({ success: true, message: 'Geofence data reloaded' });
+  } catch (error: any) { console.error('[Dispatch] geofence reload error:', error?.message); res.status(500).json({ error: 'Failed to reload geofence', code: 'GEOFENCE_RELOAD_ERROR' }); }
+});
+
+// POST /api/dispatch/districts — Create district row
+router.post('/districts', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
+    if (!section_id?.trim() || !zone_id?.trim() || !beat_id?.trim() || !section_name?.trim() || !zone_name?.trim() || !beat_name?.trim()) {
+      res.status(400).json({ error: 'section_id, zone_id, beat_id, section_name, zone_name, beat_name are required', code: 'MISSING_FIELDS' });
+      return;
+    }
+    const code = dispatch_code?.trim() || `${section_id.trim()}-${zone_id.trim()}/${beat_id.trim()}`;
+    const existing = db.prepare('SELECT id FROM dispatch_districts WHERE dispatch_code = ?').get(code);
+    if (existing) { res.status(409).json({ error: 'Duplicate dispatch code', code: 'DUPLICATE_DISTRICT' }); return; }
+    const result = db.prepare('INSERT INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(section_id.trim(), zone_id.trim(), beat_id.trim(), code, section_name.trim(), zone_name.trim(), beat_name.trim(), beat_descriptor?.trim() || null);
+    auditLog(req, 'CREATE' as any, 'dispatch_district' as any, result.lastInsertRowid as number, `Created district ${code}`);
+    res.status(201).json({ success: true, id: result.lastInsertRowid, dispatch_code: code });
+  } catch (error: any) { console.error('[Dispatch] district create error:', error?.message); res.status(500).json({ error: 'Failed to create district', code: 'DISTRICT_CREATE_ERROR' }); }
+});
+
+// PUT /api/dispatch/districts/:id — Update district row
+router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
+    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
+    db.prepare('UPDATE dispatch_districts SET section_id = COALESCE(?, section_id), zone_id = COALESCE(?, zone_id), beat_id = COALESCE(?, beat_id), dispatch_code = COALESCE(?, dispatch_code), section_name = COALESCE(?, section_name), zone_name = COALESCE(?, zone_name), beat_name = COALESCE(?, beat_name), beat_descriptor = COALESCE(?, beat_descriptor) WHERE id = ?').run(section_id || null, zone_id || null, beat_id || null, dispatch_code || null, section_name || null, zone_name || null, beat_name || null, beat_descriptor ?? null, id);
+    auditLog(req, 'UPDATE' as any, 'dispatch_district' as any, id, `Updated district ${existing.dispatch_code}`);
+    res.json({ success: true });
+  } catch (error: any) { console.error('[Dispatch] district update error:', error?.message); res.status(500).json({ error: 'Failed to update district', code: 'DISTRICT_UPDATE_ERROR' }); }
+});
+
+// DELETE /api/dispatch/districts/:id — Delete district row
+router.delete('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
+    db.prepare('DELETE FROM dispatch_districts WHERE id = ?').run(id);
+    auditLog(req, 'DELETE' as any, 'dispatch_district' as any, id, `Deleted district ${existing.dispatch_code}`);
+    res.json({ success: true });
+  } catch (error: any) { console.error('[Dispatch] district delete error:', error?.message); res.status(500).json({ error: 'Failed to delete district', code: 'DISTRICT_DELETE_ERROR' }); }
+});
+
 // PUT /api/dispatch/districts/beat-geometry/:beatCode — Update beat polygon in GeoJSON file
 router.put('/districts/beat-geometry/:beatCode', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
@@ -1174,8 +1247,10 @@ router.put('/districts/beat-geometry/:beatCode', requireRole('admin', 'manager')
       return;
     }
 
-    // Read beat.geojson, find the feature, update geometry, write back
-    const geojsonPath = path.resolve(__dirname, '../../../client/public/geojson/beat.geojson');
+    // Read beat.geojson — try dist/ first (production), fall back to public/ (dev)
+    const distPath = path.resolve(__dirname, '../../../client/dist/geojson/beat.geojson');
+    const publicPath = path.resolve(__dirname, '../../../client/public/geojson/beat.geojson');
+    const geojsonPath = fs.existsSync(distPath) ? distPath : publicPath;
     if (!fs.existsSync(geojsonPath)) {
       res.status(404).json({ error: 'beat.geojson not found', code: 'GEOJSON_NOT_FOUND' });
       return;
@@ -1189,7 +1264,11 @@ router.put('/districts/beat-geometry/:beatCode', requireRole('admin', 'manager')
     }
 
     feature.geometry = geometry;
-    fs.writeFileSync(geojsonPath, JSON.stringify(raw));
+    const serialized = JSON.stringify(raw);
+    fs.writeFileSync(geojsonPath, serialized);
+    // Also write to the other location so dist and public stay in sync
+    const otherPath = geojsonPath === distPath ? publicPath : distPath;
+    try { if (fs.existsSync(path.dirname(otherPath))) fs.writeFileSync(otherPath, serialized); } catch { /* other path may not exist */ }
 
     // Reload geofence engine so identifyBeat() uses updated polygons
     reloadGeofence();
