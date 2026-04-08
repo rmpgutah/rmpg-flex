@@ -3,13 +3,13 @@
 // ============================================================
 
 import {
-  Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned, BarChart3,
-  User, Activity, Video, Car, CalendarDays,
+  Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned,
+  User, Activity, Video, Car,
 } from 'lucide-react';
 import type React from 'react';
 
 // Main tabs
-export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'calendar' | 'time' | 'credentials' | 'training' | 'equipment' | 'dash_cameras' | 'deployment' | 'analytics';
+export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment';
 
 export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'dash_cameras' | 'deployment' | 'fitness';
 
@@ -35,14 +35,11 @@ export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[
   { id: 'roster', label: 'Roster', icon: Users },
   { id: 'duty_board', label: 'Duty Board', icon: Radio },
   { id: 'schedule', label: 'Schedule', icon: Calendar },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'time', label: 'Time', icon: Clock },
   { id: 'credentials', label: 'Credentials', icon: Award },
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
-  { id: 'dash_cameras', label: 'Dash Cams', icon: Car },
   { id: 'deployment', label: 'Deployment', icon: MapPinned },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 export const DETAIL_TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
