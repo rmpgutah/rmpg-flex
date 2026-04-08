@@ -223,6 +223,7 @@ export default function FieldInterviewsPage() {
       section_id: (fi as any).section_id || '',
       zone_id: (fi as any).zone_id || '',
       beat_id: (fi as any).beat_id || '',
+      gang_affiliation: (fi as any).gang_affiliation || '',
     });
     setFormOpen(true);
   };

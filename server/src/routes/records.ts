@@ -1530,6 +1530,41 @@ router.post('/evidence/:id/custody', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/records/evidence/export — CSV export
+router.get('/evidence/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { archived } = req.query;
+    let whereClause = 'WHERE 1=1';
+    if (archived === 'true') {
+      whereClause += ' AND e.archived_at IS NOT NULL';
+    } else {
+      whereClause += ' AND e.archived_at IS NULL';
+    }
+    const rows = db.prepare(`
+      SELECT e.evidence_number, e.description, e.evidence_type, e.status, e.storage_location,
+             e.collected_by, e.collected_at, e.incident_number, e.case_number, e.notes, e.created_at
+      FROM evidence e
+      ${whereClause}
+      ORDER BY e.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['Evidence #', 'Description', 'Type', 'Status', 'Location', 'Collected By', 'Collected At', 'Incident #', 'Case #', 'Notes', 'Created'];
+    const csvRows = rows.map((r: any) => [
+      r.evidence_number, (r.description || '').replace(/"/g, '""'), r.evidence_type, r.status,
+      r.storage_location, r.collected_by, r.collected_at, r.incident_number, r.case_number,
+      (r.notes || '').replace(/"/g, '""'), r.created_at,
+    ]);
+    const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="evidence_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err: any) {
+    console.error('Evidence export error:', err?.message);
+    res.status(500).json({ error: 'Failed to export evidence', code: 'EXPORT_EVIDENCE_ERROR' });
+  }
+});
+
 // GET /api/records/evidence/stats — Property room aggregate stats
 router.get('/evidence/stats', (req: Request, res: Response) => {
   try {

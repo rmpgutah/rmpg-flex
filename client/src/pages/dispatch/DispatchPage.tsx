@@ -4937,7 +4937,7 @@ export default function DispatchPage() {
                           key={inc.id || inc.incident_number}
                           className="flex items-center gap-3 px-2.5 py-1.5 cursor-pointer transition-all duration-100 rounded-sm"
                           style={{ border: '1px solid transparent' }}
-                          onClick={() => navigate(`/incidents`, { state: { selectIncidentId: inc.id } })}}
+                          onClick={() => navigate(`/incidents`, { state: { selectIncidentId: inc.id } })}
                           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#14141430'; (e.currentTarget as HTMLElement).style.borderColor = '#22222240'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
