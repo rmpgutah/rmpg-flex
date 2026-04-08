@@ -47,7 +47,7 @@ interface UseMapCorridorReturn {
 // ─── Risk color helpers ─────────────────────────────────────
 
 function riskColor(score: number): string {
-  if (!Number.isFinite(score)) return '#6b7280';
+  if (!Number.isFinite(score)) return '#666666';
   if (score <= 3) return '#22c55e';
   if (score <= 6) return '#f59e0b';
   return '#ef4444';
@@ -59,11 +59,11 @@ function destinationPoint(
   lat: number,
   lng: number,
   headingDeg: number,
-  distanceMi: number,
+  distanceKm: number,
 ): { lat: number; lng: number } {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceMi)) return { lat, lng };
-  const R = 3958.8; // Earth radius in miles
-  const d = distanceMi / R;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceKm)) return { lat, lng };
+  const R = 3958.8; // Earth radius mi
+  const d = distanceKm / R;
   const brng = (headingDeg * Math.PI) / 180;
   const lat1 = (lat * Math.PI) / 180;
   const lng1 = (lng * Math.PI) / 180;

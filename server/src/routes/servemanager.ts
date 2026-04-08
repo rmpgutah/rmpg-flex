@@ -420,6 +420,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
     if (!requireApiKey(req, res)) return;
     const now = localNow();
     const result = await smPost('/jobs', { type: 'job', ...req.body });
+    if (!result.data) { res.status(502).json({ error: 'No data returned from ServeManager' }); return; }
     upsertJobFromApi(result.data);
 
     const db = getDb();
@@ -442,6 +443,7 @@ router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, re
     if (!requireApiKey(req, res)) return;
     const now = localNow();
     const result = await smPut(`/jobs/${req.params.id}`, { type: 'job', ...req.body });
+    if (!result.data) { res.status(502).json({ error: 'No data returned from ServeManager' }); return; }
     upsertJobFromApi(result.data);
 
     const db = getDb();
@@ -483,7 +485,7 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Req
     ).run(req.user!.userId, 'sm_job_cancelled', 'sm_job', req.params.id,
       `Cancelled SM job ${req.params.id}`, req.ip || 'unknown', now);
 
-    res.json({ success: true, data: result.data });
+    res.json({ success: true, data: result.data || null });
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
     console.error('SM cancel job error:', error);

@@ -6,7 +6,7 @@ import { formatMilitary } from '../utils/fleetFormatters';
 const FUEL_TYPE_BADGE: Record<FuelType, { bg: string; text: string; border: string }> = {
   regular: { bg: 'bg-rmpg-800', text: 'text-rmpg-300', border: 'border-rmpg-600' },
   premium: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700/40' },
-  diesel: { bg: 'bg-blue-900/30', text: 'text-blue-400', border: 'border-blue-700/40' },
+  diesel: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
 };
 
 function mpgColor(mpg: number | null | undefined): string {
@@ -71,14 +71,14 @@ function MpgSparkline({ logs }: { logs: FleetFuelLog[] }) {
       </div>
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="overflow-visible">
         {/* Area fill */}
-        <polygon points={areaPoints} fill="rgba(26,90,158,0.15)" />
+        <polygon points={areaPoints} fill="rgba(136,136,136,0.15)" />
         {/* Average line */}
         <line x1={padding} y1={avgY} x2={padding + usableW} y2={avgY} stroke="rgba(212,160,23,0.3)" strokeWidth="0.5" strokeDasharray="3,3" />
         {/* Trend line */}
         <polyline
           points={points.join(' ')}
           fill="none"
-          stroke="#1a5a9e"
+          stroke="#888888"
           strokeWidth="1.5"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -141,8 +141,8 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
       {/* Summary Stats — Second Row (efficiency details) */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Route className="w-3.5 h-3.5 mx-auto text-blue-400 mb-1" />
-          <div className="text-sm font-bold font-mono tabular-nums text-blue-400">
+          <Route className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
+          <div className="text-sm font-bold font-mono tabular-nums text-gray-400">
             {summary?.total_distance != null ? summary.total_distance.toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Miles</div>
@@ -193,7 +193,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
       {/* Fuel Log List */}
       {fuelLogs.length === 0 ? (
         <div className="text-center py-12 panel-beveled bg-surface-base">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#050505' }}>
             <Fuel className="w-8 h-8 text-rmpg-600" />
           </div>
           <p className="text-xs text-rmpg-400 font-semibold">No Fuel Logs Recorded</p>
@@ -239,7 +239,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
                     )}
                     {/* Distance */}
                     {dist != null && dist > 0 && (
-                      <span className="text-[9px] font-mono tabular-nums text-blue-400">
+                      <span className="text-[9px] font-mono tabular-nums text-gray-400">
                         {dist.toFixed(1)} mi
                       </span>
                     )}

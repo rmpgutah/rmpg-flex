@@ -106,7 +106,6 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       req.ip || 'unknown',
       localNow()
     );
-    try { auditLog(req, 'CREATE' as any, 'patrol_checkpoint' as any, result.lastInsertRowid as number, `Created checkpoint: ${name}`); } catch { /* non-critical */ }
 
     res.status(201).json(checkpoint);
   } catch (error) {
@@ -158,7 +157,6 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?)
     `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown');
-    try { auditLog(req, 'UPDATE' as any, 'patrol_checkpoint' as any, parseInt(id), `Updated checkpoint: ${existing.name}`); } catch { /* non-critical */ }
 
     const updated = db.prepare(`
       SELECT pc.*, p.name as property_name
@@ -199,7 +197,6 @@ router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'),
       req.ip || 'unknown',
       localNow()
     );
-    try { auditLog(req, 'DELETE' as any, 'patrol_checkpoint' as any, parseInt(id), `Deleted checkpoint: ${existing.name}`); } catch { /* non-critical */ }
 
     res.json({ message: 'Checkpoint deleted successfully' });
   } catch (error) {
@@ -320,7 +317,6 @@ router.post('/scan', (req: Request, res: Response) => {
       req.ip || 'unknown',
       localNow()
     );
-    try { auditLog(req, 'CREATE' as any, 'patrol_scan' as any, result.lastInsertRowid as number, `Scanned checkpoint: ${checkpoint.name} (${status})`); } catch { /* non-critical */ }
 
     broadcastPatrolUpdate({ type: 'patrol_scan', checkpoint_id: checkpoint.id, checkpoint_name: checkpoint.name, status });
     res.status(201).json({ data: { ...(scan as any), checkpoint_name: checkpoint.name, status } });

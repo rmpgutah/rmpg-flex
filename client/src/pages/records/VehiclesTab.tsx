@@ -28,6 +28,7 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
+import { titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType, cleanDisplay } from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -408,7 +409,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[8px] px-1 py-0.5 bg-[#1a2636] text-rmpg-400 rounded-sm">{v.source}</span>
+                      <span className="text-[8px] px-1 py-0.5 bg-[#141414] text-rmpg-400 rounded-sm">{v.source}</span>
                       {onAutoFill && (
                         <button
                           type="button"
@@ -506,9 +507,11 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
-              ${selectedVehicle?.id === v.id
-                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
+              ${v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
+                ? 'bg-red-950/30 border-l-2 border-l-red-500'
+                : selectedVehicle?.id === v.id
+                  ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                  : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
               }
             `}
             aria-selected={selectedVehicle?.id === v.id}
@@ -524,7 +527,13 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
-                  <span className="text-[10px] text-rmpg-400">{v.plate_state}</span>
+                  {v.plate_state && (
+                    <span className={`px-1 py-0 text-[8px] font-bold border rounded-sm ${
+                      v.plate_state === 'UT' ? 'bg-gray-900/40 text-gray-300 border-gray-700/50' :
+                      v.plate_state === 'CA' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
+                      'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
+                    }`}>{v.plate_state}</span>
+                  )}
                   {v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered' && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50 animate-pulse">STOLEN</span>
                   )}
@@ -649,7 +658,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         </div>
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
-          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-blue-900/30 border border-blue-700/50 text-blue-400 hover:bg-blue-900/50">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
           <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
@@ -665,9 +674,9 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         )}
         {/* Feature 41: History Panel */}
         {vehicleHistory && (
-          <div className="mt-1 p-1.5 text-[10px] bg-blue-900/10 border border-blue-700/30">
+          <div className="mt-1 p-1.5 text-[10px] bg-gray-900/10 border border-gray-700/30">
             <div className="flex justify-between">
-              <span className="text-blue-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
+              <span className="text-gray-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
               <button type="button" onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
             </div>
             {vehicleHistory.incidents?.length > 0 && <div className="text-rmpg-400 mt-0.5">{vehicleHistory.incidents.length} incidents</div>}
@@ -700,8 +709,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('State', selectedVehicle.plate_state)}
             {renderInfoRow('Plate Type', selectedVehicle.plate_type)}
             {renderInfoRow('Year', selectedVehicle.year ? String(selectedVehicle.year) : null)}
-            {renderInfoRow('Make', selectedVehicle.make)}
-            {renderInfoRow('Model', selectedVehicle.model)}
+            {renderInfoRow('Make', selectedVehicle.make ? titleCase(selectedVehicle.make) : undefined)}
+            {renderInfoRow('Model', selectedVehicle.model ? titleCase(selectedVehicle.model) : undefined)}
             {renderInfoRow('Trim', selectedVehicle.trim)}
             {renderInfoRow('Color', `${selectedVehicle.color}${selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}`)}
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
@@ -713,7 +722,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           )}
           {(selectedVehicle.commercial_vehicle || selectedVehicle.hazmat) && (
             <div className="flex gap-2 mt-2">
-              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">COMMERCIAL</span>}
+              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">COMMERCIAL</span>}
               {selectedVehicle.hazmat && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">HAZMAT</span>}
             </div>
           )}
@@ -739,8 +748,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
-            {renderInfoRow('Owner Address', selectedVehicle.owner_address, MapPin)}
-            {renderInfoRow('Owner Phone', selectedVehicle.owner_phone, Phone)}
+            {renderInfoRow('Owner Address', selectedVehicle.owner_address ? formatAddressDisplay(selectedVehicle.owner_address) : undefined, MapPin)}
+            {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
           </div>
         </CollapsibleSection>
 
@@ -793,9 +802,9 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
                 <div key={inc.id} className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700">
                   <span className="text-white font-mono font-bold">{inc.incident_number}</span>
                   <span className="px-1 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold">
-                    {(inc.role || '').replace(/_/g, ' ')}
+                    {cleanDisplay(inc.role)}
                   </span>
-                  <span className="text-rmpg-300">{(inc.incident_type || '').replace(/_/g, ' ')}</span>
+                  <span className="text-rmpg-300">{humanizeType(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
                   <span className="text-rmpg-400 ml-auto">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</span>
                 </div>

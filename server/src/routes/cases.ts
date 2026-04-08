@@ -46,6 +46,40 @@ router.get('/stats', (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /migrate-json-to-junctions — Admin only ────────
+router.post('/migrate-json-to-junctions', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const cases = db.prepare('SELECT id, linked_calls, linked_incidents, linked_persons FROM cases').all() as any[];
+    let migrated = 0;
+    const now = localNow();
+    for (const c of cases) {
+      // Migrate linked_calls
+      try {
+        const calls = JSON.parse(c.linked_calls || '[]');
+        for (const callId of calls) {
+          if (typeof callId === 'number') {
+            db.prepare('INSERT OR IGNORE INTO case_calls (case_id, call_id, added_by, created_at) VALUES (?, ?, 1, ?)').run(c.id, callId, now);
+          }
+        }
+      } catch { /* skip invalid JSON */ }
+      // Migrate linked_incidents
+      try {
+        const incidents = JSON.parse(c.linked_incidents || '[]');
+        for (const incId of incidents) {
+          if (typeof incId === 'number') {
+            db.prepare('INSERT OR IGNORE INTO case_incidents (case_id, incident_id, added_by, created_at) VALUES (?, ?, 1, ?)').run(c.id, incId, now);
+          }
+        }
+      } catch { /* skip invalid JSON */ }
+      migrated++;
+    }
+    auditLog(req, 'MIGRATE', 'cases', 0, `Migrated ${migrated} cases from JSON to junction tables`);
+    res.json({ success: true, cases_migrated: migrated });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GET / ───────────────────────────────────────────────
 router.get('/', (req: Request, res: Response) => {
   try {
@@ -332,6 +366,13 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
     // Delete associated records
     db.prepare('DELETE FROM case_notes WHERE case_id = ?').run(delId);
     db.prepare('DELETE FROM case_persons WHERE case_id = ?').run(delId);
+    try { db.prepare('DELETE FROM case_calls WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM case_incidents WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM case_vehicles WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM case_properties WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM case_evidence WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM case_warrants WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM case_citations WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
     db.prepare('DELETE FROM cases WHERE id = ?').run(delId);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
@@ -480,6 +521,181 @@ router.get('/:id/evidence-summary', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════
 try { const db = getDb(); db.prepare(`CREATE TABLE IF NOT EXISTS case_persons (id INTEGER PRIMARY KEY AUTOINCREMENT, case_id INTEGER NOT NULL, person_id INTEGER, person_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'involved', notes TEXT, added_by INTEGER, created_at TEXT NOT NULL)`).run(); } catch { /* already exists */ }
 
+// ── Case Entity Junction Tables ─────────────────────────────
+function initCaseJunctionTables(): void {
+  try {
+    const db = getDb();
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS case_persons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        person_id INTEGER,
+        person_name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'involved',
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS case_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        user_id INTEGER,
+        author_id INTEGER,
+        content TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS case_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        call_id INTEGER NOT NULL,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+        UNIQUE(case_id, call_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_incidents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        incident_id INTEGER NOT NULL,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+        UNIQUE(case_id, incident_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_vehicles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        vehicle_id INTEGER NOT NULL,
+        role TEXT DEFAULT 'involved',
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        UNIQUE(case_id, vehicle_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_properties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        property_id INTEGER NOT NULL,
+        role TEXT DEFAULT 'scene',
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        UNIQUE(case_id, property_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_evidence (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        evidence_id INTEGER NOT NULL,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        UNIQUE(case_id, evidence_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_warrants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        warrant_id INTEGER NOT NULL,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        UNIQUE(case_id, warrant_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_citations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        citation_id INTEGER NOT NULL,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        UNIQUE(case_id, citation_id)
+      );
+    `);
+  } catch { /* Tables will be created on first use */ }
+}
+
+// Initialize on module load (may fail if DB not ready — ensureCaseTables handles retry)
+try { initCaseJunctionTables(); } catch { /* deferred */ }
+
+let _caseTablesReady = false;
+function ensureCaseTables(): void {
+  if (_caseTablesReady) return;
+  try { initCaseJunctionTables(); _caseTablesReady = true; } catch { /* will retry next request */ }
+}
+
+// ── Auto-Cascade Helpers ────────────────────────────────────
+function autoCascadeFromCall(db: any, caseId: number, callId: number, userId: number, processed?: Set<string>): void {
+  ensureCaseTables();
+  const seen = processed || new Set<string>();
+  const key = `call:${callId}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+
+  const now = localNow();
+
+  // Import call_persons → case_persons
+  try {
+    const callPersons = db.prepare('SELECT person_id, role FROM call_persons WHERE call_id = ? AND person_id IS NOT NULL').all(callId) as any[];
+    for (const cp of callPersons) {
+      const person = db.prepare("SELECT first_name || ' ' || last_name as full_name FROM persons WHERE id = ?").get(cp.person_id) as any;
+      if (person) {
+        db.prepare('INSERT OR IGNORE INTO case_persons (case_id, person_id, person_name, role, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(caseId, cp.person_id, person.full_name, cp.role || 'involved', userId, now);
+      }
+    }
+  } catch { /* call_persons may not exist */ }
+
+  // Find incidents linked to this call → case_incidents
+  try {
+    const incidents = db.prepare('SELECT id FROM incidents WHERE call_id = ?').all(callId) as any[];
+    for (const inc of incidents) {
+      db.prepare('INSERT OR IGNORE INTO case_incidents (case_id, incident_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(caseId, inc.id, userId, now);
+      autoCascadeFromIncident(db, caseId, inc.id, userId, seen);
+    }
+  } catch { /* incidents table may not exist */ }
+}
+
+function autoCascadeFromIncident(db: any, caseId: number, incidentId: number, userId: number, processed?: Set<string>): void {
+  const seen = processed || new Set<string>();
+  const key = `incident:${incidentId}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+
+  const now = localNow();
+
+  // Import incident_persons → case_persons
+  try {
+    const incPersons = db.prepare('SELECT person_id, role FROM incident_persons WHERE incident_id = ?').all(incidentId) as any[];
+    for (const ip of incPersons) {
+      const person = db.prepare("SELECT first_name || ' ' || last_name as full_name FROM persons WHERE id = ?").get(ip.person_id) as any;
+      if (person) {
+        db.prepare('INSERT OR IGNORE INTO case_persons (case_id, person_id, person_name, role, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(caseId, ip.person_id, person.full_name, ip.role || 'involved', userId, now);
+      }
+    }
+  } catch { /* incident_persons may not exist */ }
+
+  // Import incident_vehicles → case_vehicles
+  try {
+    const incVehicles = db.prepare('SELECT vehicle_id, role FROM incident_vehicles WHERE incident_id = ?').all(incidentId) as any[];
+    for (const iv of incVehicles) {
+      db.prepare('INSERT OR IGNORE INTO case_vehicles (case_id, vehicle_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)').run(caseId, iv.vehicle_id, iv.role || 'involved', userId, now);
+    }
+  } catch { /* incident_vehicles may not exist */ }
+
+  // If incident has a call_id, auto-link that CFS too
+  try {
+    const incident = db.prepare('SELECT call_id FROM incidents WHERE id = ?').get(incidentId) as any;
+    if (incident?.call_id) {
+      db.prepare('INSERT OR IGNORE INTO case_calls (case_id, call_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(caseId, incident.call_id, userId, now);
+      autoCascadeFromCall(db, caseId, incident.call_id, userId, seen);
+    }
+  } catch { /* incidents table may not exist */ }
+}
+
 router.get('/:id/persons', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -594,6 +810,357 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, 'archive_case', 'case', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ case_number: caseRow.case_number }), now);
     res.json({ success: true });
   } catch (error: any) { console.error('Archive case error:', error); res.status(500).json({ error: 'Failed to archive case', code: 'ARCHIVE_CASE_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// CASE FOLDER — Linked Entity Management
+// ════════════════════════════════════════════════════════════
+
+// ── GET /:id/full — Aggregate Endpoint ──────────────────────
+router.get('/:id/full', (req: Request, res: Response) => {
+  ensureCaseTables();
+  try {
+    const db = getDb();
+    const caseRow = db.prepare(`
+      SELECT c.*, u.full_name as lead_investigator_name
+      FROM cases c LEFT JOIN users u ON c.lead_investigator_id = u.id
+      WHERE c.id = ?
+    `).get(req.params.id) as any;
+    if (!caseRow) { res.status(404).json({ error: 'Case not found' }); return; }
+
+    const calls = db.prepare(`SELECT cc.id as link_id, cfs.* FROM case_calls cc JOIN calls_for_service cfs ON cc.call_id = cfs.id WHERE cc.case_id = ? ORDER BY cfs.created_at DESC`).all(req.params.id);
+    const incidents = db.prepare(`SELECT ci.id as link_id, i.* FROM case_incidents ci JOIN incidents i ON ci.incident_id = i.id WHERE ci.case_id = ? ORDER BY i.created_at DESC`).all(req.params.id);
+    const persons = db.prepare(`SELECT cp.*, p.first_name, p.last_name, p.dob, p.phone, p.address FROM case_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.case_id = ? ORDER BY cp.created_at DESC`).all(req.params.id);
+    const vehicles = db.prepare(`SELECT cv.id as link_id, cv.role, v.* FROM case_vehicles cv JOIN vehicles_records v ON cv.vehicle_id = v.id WHERE cv.case_id = ? ORDER BY cv.created_at DESC`).all(req.params.id);
+    const properties = db.prepare(`SELECT cpr.id as link_id, cpr.role, p.* FROM case_properties cpr JOIN properties p ON cpr.property_id = p.id WHERE cpr.case_id = ? ORDER BY cpr.created_at DESC`).all(req.params.id);
+    const evidence = db.prepare(`SELECT ce.id as link_id, e.* FROM case_evidence ce JOIN evidence e ON ce.evidence_id = e.id WHERE ce.case_id = ? ORDER BY e.created_at DESC`).all(req.params.id);
+    const warrants = db.prepare(`SELECT cw.id as link_id, w.*, sp.first_name || ' ' || sp.last_name as subject_name FROM case_warrants cw JOIN warrants w ON cw.warrant_id = w.id LEFT JOIN persons sp ON w.subject_person_id = sp.id WHERE cw.case_id = ? ORDER BY w.created_at DESC`).all(req.params.id);
+    const citations = db.prepare(`SELECT cc2.id as link_id, ct.* FROM case_citations cc2 JOIN citations ct ON cc2.citation_id = ct.id WHERE cc2.case_id = ? ORDER BY ct.created_at DESC`).all(req.params.id);
+    const notes = db.prepare(`SELECT cn.*, u.full_name as author_name FROM case_notes cn LEFT JOIN users u ON cn.author_id = u.id WHERE cn.case_id = ? ORDER BY cn.created_at DESC`).all(req.params.id);
+
+    res.json({
+      ...caseRow,
+      calls, incidents, persons, vehicles, properties,
+      evidence, warrants, citations, notes,
+      counts: {
+        calls: calls.length, incidents: incidents.length,
+        persons: persons.length, vehicles: vehicles.length,
+        properties: properties.length, evidence: evidence.length,
+        warrants: warrants.length, citations: citations.length,
+        notes: notes.length,
+      },
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Calls ───────────────────────────────────────────────────
+router.get('/:id/calls', (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cc.id as link_id, cc.created_at as linked_at,
+        c.id, c.call_number, c.incident_type, c.status, c.priority,
+        c.location_address, c.created_at, c.disposition,
+        u.full_name as added_by_name
+      FROM case_calls cc
+      JOIN calls_for_service c ON cc.call_id = c.id
+      LEFT JOIN users u ON cc.added_by = u.id
+      WHERE cc.case_id = ?
+      ORDER BY c.created_at DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/calls', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const { call_id } = req.body;
+    if (!call_id) { res.status(400).json({ error: 'call_id required' }); return; }
+    const now = localNow();
+    db.prepare('INSERT OR IGNORE INTO case_calls (case_id, call_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(req.params.id, call_id, req.user!.userId, now);
+    // Also set case_id on the call itself
+    const caseRow = db.prepare('SELECT case_number FROM cases WHERE id = ?').get(req.params.id) as any;
+    if (caseRow) {
+      db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ?, updated_at = ? WHERE id = ?').run(req.params.id, caseRow.case_number, now, call_id);
+    }
+    // Auto-cascade: import persons, incidents, vehicles from this call
+    autoCascadeFromCall(db, Number(req.params.id), call_id, req.user!.userId);
+    auditLog(req, 'LINK', 'case_call', Number(req.params.id), `Linked call #${call_id} to case`);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/calls/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM case_calls WHERE id = ? AND case_id = ?').run(req.params.linkId, req.params.id);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Incidents ───────────────────────────────────────────────
+router.get('/:id/incidents', (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT ci.id as link_id, ci.created_at as linked_at,
+        i.id, i.incident_number, i.incident_type, i.status, i.priority,
+        i.location_address, i.narrative, i.created_at,
+        u.full_name as added_by_name
+      FROM case_incidents ci
+      JOIN incidents i ON ci.incident_id = i.id
+      LEFT JOIN users u ON ci.added_by = u.id
+      WHERE ci.case_id = ?
+      ORDER BY i.created_at DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const { incident_id } = req.body;
+    if (!incident_id) { res.status(400).json({ error: 'incident_id required' }); return; }
+    const now = localNow();
+    db.prepare('INSERT OR IGNORE INTO case_incidents (case_id, incident_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(req.params.id, incident_id, req.user!.userId, now);
+    // Auto-cascade: import persons, vehicles from this incident
+    autoCascadeFromIncident(db, Number(req.params.id), incident_id, req.user!.userId);
+    auditLog(req, 'LINK', 'case_incident', Number(req.params.id), `Linked incident #${incident_id} to case`);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/incidents/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM case_incidents WHERE id = ? AND case_id = ?').run(req.params.linkId, req.params.id);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Vehicles ────────────────────────────────────────────────
+router.get('/:id/vehicles', (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cv.id as link_id, cv.role, cv.notes, cv.created_at as linked_at,
+        v.id, v.plate_number, v.state, v.vin, v.year, v.make, v.model, v.color, v.owner_person_id,
+        u.full_name as added_by_name
+      FROM case_vehicles cv
+      JOIN vehicles_records v ON cv.vehicle_id = v.id
+      LEFT JOIN users u ON cv.added_by = u.id
+      WHERE cv.case_id = ?
+      ORDER BY cv.created_at DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const { vehicle_id, role, notes } = req.body;
+    if (!vehicle_id) { res.status(400).json({ error: 'vehicle_id required' }); return; }
+    const now = localNow();
+    db.prepare('INSERT OR IGNORE INTO case_vehicles (case_id, vehicle_id, role, notes, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(req.params.id, vehicle_id, role || 'involved', notes || null, req.user!.userId, now);
+    auditLog(req, 'LINK', 'case_vehicle', Number(req.params.id), `Linked vehicle #${vehicle_id} to case`);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM case_vehicles WHERE id = ? AND case_id = ?').run(req.params.linkId, req.params.id);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Properties ──────────────────────────────────────────────
+router.get('/:id/properties', (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cpr.id as link_id, cpr.role, cpr.created_at as linked_at,
+        p.id, p.name, p.address, p.city, p.state, p.zip, p.client_id,
+        u.full_name as added_by_name
+      FROM case_properties cpr
+      JOIN properties p ON cpr.property_id = p.id
+      LEFT JOIN users u ON cpr.added_by = u.id
+      WHERE cpr.case_id = ?
+      ORDER BY cpr.created_at DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/properties', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const { property_id, role } = req.body;
+    if (!property_id) { res.status(400).json({ error: 'property_id required' }); return; }
+    const now = localNow();
+    db.prepare('INSERT OR IGNORE INTO case_properties (case_id, property_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)').run(req.params.id, property_id, role || 'scene', req.user!.userId, now);
+    auditLog(req, 'LINK', 'case_property', Number(req.params.id), `Linked property #${property_id} to case`);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/properties/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM case_properties WHERE id = ? AND case_id = ?').run(req.params.linkId, req.params.id);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Evidence ────────────────────────────────────────────────
+router.get('/:id/evidence', (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT ce.id as link_id, ce.created_at as linked_at,
+        e.id, e.evidence_number, e.description, e.evidence_type, e.status,
+        e.collected_by, e.location_found,
+        u.full_name as added_by_name
+      FROM case_evidence ce
+      JOIN evidence e ON ce.evidence_id = e.id
+      LEFT JOIN users u ON ce.added_by = u.id
+      WHERE ce.case_id = ?
+      ORDER BY e.created_at DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const { evidence_id } = req.body;
+    if (!evidence_id) { res.status(400).json({ error: 'evidence_id required' }); return; }
+    const now = localNow();
+    db.prepare('INSERT OR IGNORE INTO case_evidence (case_id, evidence_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(req.params.id, evidence_id, req.user!.userId, now);
+    auditLog(req, 'LINK', 'case_evidence', Number(req.params.id), `Linked evidence #${evidence_id} to case`);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/evidence/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM case_evidence WHERE id = ? AND case_id = ?').run(req.params.linkId, req.params.id);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Warrants ────────────────────────────────────────────────
+router.get('/:id/warrants', (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cw.id as link_id, cw.created_at as linked_at,
+        w.id, w.warrant_number, w.type, w.status,
+        w.charge_description, w.offense_level,
+        sp.first_name || ' ' || sp.last_name as subject_name,
+        u.full_name as added_by_name
+      FROM case_warrants cw
+      JOIN warrants w ON cw.warrant_id = w.id
+      LEFT JOIN persons sp ON w.subject_person_id = sp.id
+      LEFT JOIN users u ON cw.added_by = u.id
+      WHERE cw.case_id = ?
+      ORDER BY w.created_at DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/warrants', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const { warrant_id } = req.body;
+    if (!warrant_id) { res.status(400).json({ error: 'warrant_id required' }); return; }
+    const now = localNow();
+    db.prepare('INSERT OR IGNORE INTO case_warrants (case_id, warrant_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(req.params.id, warrant_id, req.user!.userId, now);
+    auditLog(req, 'LINK', 'case_warrant', Number(req.params.id), `Linked warrant #${warrant_id} to case`);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/warrants/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM case_warrants WHERE id = ? AND case_id = ?').run(req.params.linkId, req.params.id);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Citations ───────────────────────────────────────────────
+router.get('/:id/citations', (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cc2.id as link_id, cc2.created_at as linked_at,
+        ct.id, ct.citation_number, ct.type, ct.status, ct.person_name,
+        ct.violation_description, ct.violation_date,
+        u.full_name as added_by_name
+      FROM case_citations cc2
+      JOIN citations ct ON cc2.citation_id = ct.id
+      LEFT JOIN users u ON cc2.added_by = u.id
+      WHERE cc2.case_id = ?
+      ORDER BY ct.created_at DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/citations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    ensureCaseTables();
+    const db = getDb();
+    const { citation_id } = req.body;
+    if (!citation_id) { res.status(400).json({ error: 'citation_id required' }); return; }
+    const now = localNow();
+    db.prepare('INSERT OR IGNORE INTO case_citations (case_id, citation_id, added_by, created_at) VALUES (?, ?, ?, ?)').run(req.params.id, citation_id, req.user!.userId, now);
+    auditLog(req, 'LINK', 'case_citation', Number(req.params.id), `Linked citation #${citation_id} to case`);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/citations/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM case_citations WHERE id = ? AND case_id = ?').run(req.params.linkId, req.params.id);
+    db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 export default router;

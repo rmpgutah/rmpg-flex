@@ -18,17 +18,17 @@ export const COLOR = {
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
-  // Borders — clean, professional lines
-  BORDER_FIELD:    [113, 128, 150]  as const,  // Field box borders (#718096)
-  BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
-  BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
-  BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
-  BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
+  // Borders — thin, clean lines
+  BORDER_FIELD:    [190, 190, 190]  as const,  // Field box borders (light gray)
+  BORDER_TABLE:    [200, 200, 200]  as const,  // Row separator lines (very light)
+  BORDER_COLUMN:   [200, 200, 200]  as const,  // Vertical column separators
+  BORDER_OUTER:    [180, 180, 180]  as const,  // Table outer border
+  BORDER_SECTION:  [100, 100, 100]  as const,  // Section outline
 
-  // Backgrounds — lighter, modern government-form style
-  BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#2d3748 dark blue-gray)
-  BG_TABLE_HDR:    [70, 75, 88]     as const,  // Table column header (slate)
+  // Backgrounds
+  BG_ZEBRA:        [245, 245, 245]  as const,  // Even-row shading (very light gray)
+  BG_SECTION_HDR:  [60, 60, 60]     as const,  // Section header bar (dark gray)
+  BG_TABLE_HDR:    [100, 100, 100]   as const,  // Table column header (medium gray)
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -36,6 +36,17 @@ export const COLOR = {
 
   // Watermark
   WATERMARK:       [120, 120, 120]  as const,
+
+  // Caution / Warning
+  CAUTION_BG:      [255, 248, 230]  as const,  // Amber background
+  CAUTION_ACCENT:  [200, 80, 10]    as const,  // Amber accent bar
+  CAUTION_TEXT:    [180, 60, 0]     as const,  // Warning text
+  FLAG_ARMED:      [180, 20, 20]    as const,  // ARMED & DANGEROUS
+  FLAG_WARRANT:    [200, 60, 0]     as const,  // Active warrant
+  FLAG_GANG:       [120, 40, 140]   as const,  // Gang affiliation
+  FLAG_MENTAL:     [40, 90, 170]    as const,  // Mental health
+  FLAG_MEDICAL:    [0, 130, 80]     as const,  // Medical condition
+  FLAG_DEFAULT:    [80, 80, 90]     as const,  // Generic flag
 
   // NIBRS Grid Form — sidebar tabs + dense cells
   BG_SIDEBAR_TAB:      [25, 25, 30]     as const,  // Dark sidebar tab background
@@ -51,8 +62,8 @@ export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
   SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
-  SIZE_FIELD_LABEL:       5,     // Helvetica Bold labels above field boxes
-  SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
+  SIZE_FIELD_LABEL:       5.5,   // Helvetica Bold labels above field boxes
+  SIZE_TABLE_HEADER:      8,     // Helvetica column headers (bold, readable)
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
   SIZE_FOOTER_PRIMARY:    6,     // Footer form #, page #
   SIZE_FOOTER_SECONDARY:  5,     // Footer secondary info
@@ -107,9 +118,9 @@ export const SPACING = {
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   3.8,   // Section header bar height (compact)
-  SECTION_GAP:        0.5,   // Gap between sections (minimal)
-  SECTION_CONTENT_PAD: 1.2,  // Gap from header bar to first content (tight)
-  SECTION_BOTTOM_PAD:  0.2,  // Padding inside section before bottom border
+  SECTION_GAP:        0.5,   // Gap between sections
+  SECTION_CONTENT_PAD: 1.5,  // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  0.3,  // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   2.8,   // Value area height (no box, just label+value)
   FIELD_ROW_ADVANCE:  2.8,   // Y-advance after field row (tight)
@@ -203,6 +214,16 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
     x += (r / totalRatio) * availW;
   }
   return positions;
+}
+
+/** Get the line height for a given font size */
+export function getLineHeight(fontSize: number): number {
+  return fontSize * 0.3528 * 1.3;
+}
+
+/** Get the cap height for a given font size */
+export function getCapHeight(fontSize: number): number {
+  return fontSize * 0.3528 * 0.7;
 }
 
 // ── NIBRS Grid Layout Helpers ─────────────────────────────────

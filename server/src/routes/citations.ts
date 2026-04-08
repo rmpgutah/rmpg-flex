@@ -313,20 +313,6 @@ router.post('/', (req: Request, res: Response) => {
       }
     }
 
-    // Validate field lengths
-    if (statute_citation && String(statute_citation).length > 100) {
-      res.status(400).json({ error: 'statute_citation must be 100 characters or less', code: 'STATUTE_TOO_LONG' });
-      return;
-    }
-    if (location && String(location).length > 500) {
-      res.status(400).json({ error: 'location must be 500 characters or less', code: 'LOCATION_TOO_LONG' });
-      return;
-    }
-    if (violation_description && String(violation_description).length > 5000) {
-      res.status(400).json({ error: 'violation_description must be 5000 characters or less', code: 'DESCRIPTION_TOO_LONG' });
-      return;
-    }
-
     // Auto-generate citation number: CIT-YYYY-NNNN
     const year = new Date().getFullYear();
     const lastCit = db.prepare(

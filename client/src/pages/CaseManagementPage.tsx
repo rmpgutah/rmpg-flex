@@ -11,7 +11,7 @@ import {
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
   ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link,
 } from 'lucide-react';
-import type { Case, CaseNote, CaseStatus, CaseType, CasePriority } from '../types';
+import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
@@ -21,9 +21,10 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
-  { value: 'open', label: 'Open', color: 'bg-blue-900/50 text-blue-400 border-blue-700/50' },
+  { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
   { value: 'assigned', label: 'Assigned', color: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50' },
   { value: 'active', label: 'Active', color: 'bg-green-900/50 text-green-400 border-green-700/50' },
   { value: 'suspended', label: 'Suspended', color: 'bg-amber-900/50 text-amber-400 border-amber-700/50' },
@@ -48,7 +49,7 @@ const TYPE_OPTIONS: { value: CaseType; label: string }[] = [
 
 const PRIORITY_OPTIONS: { value: CasePriority; label: string; color: string }[] = [
   { value: 'low', label: 'Low', color: 'text-rmpg-400' },
-  { value: 'normal', label: 'Normal', color: 'text-blue-400' },
+  { value: 'normal', label: 'Normal', color: 'text-gray-400' },
   { value: 'high', label: 'High', color: 'text-amber-400' },
   { value: 'critical', label: 'Critical', color: 'text-red-400' },
 ];
@@ -68,6 +69,158 @@ const EMPTY_FORM = {
   title: '', case_type: 'general' as CaseType, priority: 'normal' as CasePriority,
   summary: '', lead_investigator_id: '',
 };
+
+type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'timeline' | 'notes' | 'solvability';
+
+const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'calls', label: 'Calls', countKey: 'calls' },
+  { id: 'incidents', label: 'Incidents', countKey: 'incidents' },
+  { id: 'persons', label: 'Persons', countKey: 'persons' },
+  { id: 'vehicles', label: 'Vehicles', countKey: 'vehicles' },
+  { id: 'properties', label: 'Properties', countKey: 'properties' },
+  { id: 'evidence', label: 'Evidence', countKey: 'evidence' },
+  { id: 'warrants', label: 'Warrants', countKey: 'warrants' },
+  { id: 'citations', label: 'Citations', countKey: 'citations' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'notes', label: 'Notes', countKey: 'notes' },
+  { id: 'solvability', label: 'Solvability' },
+];
+
+// ── Reusable LinkedEntityPanel for each entity tab ──
+function LinkedEntityPanel({
+  items, columns, entityType, caseId, onRefresh, searchEndpoint, searchFields,
+}: {
+  items: any[];
+  columns: { key: string; label: string; render?: (val: any, row: any) => React.ReactNode }[];
+  entityType: string;
+  caseId: number;
+  onRefresh: () => void;
+  searchEndpoint: string;
+  searchFields: string[];
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const { addToast } = useToast();
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const data = await apiFetch<any>(`${searchEndpoint}?search=${encodeURIComponent(searchQuery)}&limit=20`);
+      setSearchResults(Array.isArray(data) ? data : (data?.data || data?.results || []));
+    } catch { setSearchResults([]); }
+    finally { setSearching(false); }
+  };
+
+  const handleLink = async (entityId: number) => {
+    // Map entity type plural → singular for the POST body key
+    const singularMap: Record<string, string> = {
+      calls: 'call', incidents: 'incident', persons: 'person', vehicles: 'vehicle',
+      properties: 'property', evidence: 'evidence', warrants: 'warrant', citations: 'citation',
+    };
+    const singular = singularMap[entityType] || entityType.replace(/s$/, '');
+    try {
+      await apiFetch(`/cases/${caseId}/${entityType}`, { method: 'POST', body: JSON.stringify({ [`${singular}_id`]: entityId }) });
+      addToast(`${entityType.slice(0, -1)} linked to case`, 'success');
+      setModalOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      onRefresh();
+    } catch (err: any) { addToast(err.message || 'Link failed', 'error'); }
+  };
+
+  const handleUnlink = async (entityId: number) => {
+    try {
+      await apiFetch(`/cases/${caseId}/${entityType}/${entityId}`, { method: 'DELETE' });
+      addToast(`${entityType.slice(0, -1)} unlinked from case`, 'success');
+      onRefresh();
+    } catch (err: any) { addToast(err.message || 'Unlink failed', 'error'); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-mono text-rmpg-500 uppercase">{entityType} ({items.length})</div>
+        <button type="button" onClick={() => setModalOpen(true)} className="toolbar-btn text-[10px]">
+          <Link style={{ width: 10, height: 10 }} /> Link {entityType.slice(0, -1)}
+        </button>
+      </div>
+
+      {items.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="border-b border-rmpg-700">
+                {columns.map(col => (
+                  <th key={col.key} className="text-left text-[9px] font-mono text-rmpg-500 uppercase px-2 py-1.5">{col.label}</th>
+                ))}
+                <th className="text-right text-[9px] font-mono text-rmpg-500 uppercase px-2 py-1.5">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: any, idx: number) => (
+                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                  {columns.map(col => (
+                    <td key={col.key} className="px-2 py-1.5 text-rmpg-300">
+                      {col.render ? col.render(item[col.key], item) : (item[col.key] ?? '—')}
+                    </td>
+                  ))}
+                  <td className="px-2 py-1.5 text-right">
+                    <button type="button" onClick={() => handleUnlink(item.id)} className="text-red-400 hover:text-red-300 text-[9px] font-mono uppercase">
+                      Unlink
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-center py-6 text-rmpg-500 text-xs">No {entityType} linked to this case</div>
+      )}
+
+      {/* Link Search Modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-md mx-4">
+            <PanelTitleBar title={`Link ${entityType.slice(0, -1).replace(/^./, c => c.toUpperCase())}`} icon={Link}>
+              <button type="button" onClick={() => { setModalOpen(false); setSearchResults([]); setSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+            </PanelTitleBar>
+            <div className="p-4 space-y-3">
+              <div className="flex gap-2">
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                  placeholder={`Search ${entityType}...`} aria-label={`Search ${entityType}`}
+                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <button type="button" onClick={handleSearch} disabled={searching} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {searching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
+                  Search
+                </button>
+              </div>
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
+                {searchResults.map((item: any) => (
+                  <button type="button" key={item.id} onClick={() => handleLink(item.id)}
+                    className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
+                    <div className="text-[11px] font-bold text-white">
+                      {searchFields.map(f => item[f]).filter(Boolean).join(' — ')}
+                    </div>
+                    <div className="text-[9px] text-rmpg-500">ID: {item.id}</div>
+                  </button>
+                ))}
+                {searchResults.length === 0 && searchQuery && !searching && (
+                  <div className="text-[10px] text-rmpg-500 text-center py-4">No results found</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Feature 29: Solvability Score Card (server-side analysis) ──
 function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
@@ -93,7 +246,7 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
       <div className="flex items-center gap-4">
         <div className="relative w-16 h-16">
           <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1a2636" strokeWidth="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#141414" strokeWidth="3" />
             <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={ratingColor} strokeWidth="3" strokeDasharray={`${data.score}, 100`} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -140,7 +293,7 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
   if (links.length === 0) return null;
 
   const typeColors: Record<string, string> = {
-    incident: '#3b82f6',
+    incident: '#888888',
     case: '#8b5cf6',
     warrant: '#ef4444',
     person: '#22c55e',
@@ -163,7 +316,7 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
           <Target className="w-3 h-3" /> THIS CASE
         </div>
         {links.map((link: any, idx: number) => {
-          const color = typeColors[link.rel_type] || '#5a6e80';
+          const color = typeColors[link.rel_type] || '#666666';
           return (
             <div key={idx} className="flex items-center gap-1">
               <ArrowRight className="w-3 h-3 text-rmpg-600" />
@@ -238,9 +391,12 @@ export default function CaseManagementPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Detail tab
-  const [detailTab, setDetailTab] = useState<'detail' | 'notes' | 'solvability'>('detail');
+  const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const [newNote, setNewNote] = useState('');
   const [noteSubmitting, setNoteSubmitting] = useState(false);
+
+  // Full case data for entity tabs
+  const [caseFull, setCaseFull] = useState<CaseFull | null>(null);
 
   // Solvability
   const [solvFactors, setSolvFactors] = useState<Record<string, boolean>>({});
@@ -287,6 +443,13 @@ export default function CaseManagementPage() {
     try { const res = await apiFetch<{ data: CaseNote[] }>(`/cases/${caseId}/notes`); setNotes(res.data || []); } catch (e) { console.warn('[Cases] fetch notes failed:', e); }
   }, []);
 
+  const fetchFullCase = useCallback(async (caseId: number) => {
+    try {
+      const data = await apiFetch<any>(`/cases/${caseId}/full`);
+      setCaseFull(data);
+    } catch { /* silent */ }
+  }, []);
+
   useEffect(() => { fetchCases(); }, [fetchCases]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
@@ -299,6 +462,7 @@ export default function CaseManagementPage() {
   useEffect(() => {
     if (selected) {
       fetchNotes(selected.id);
+      fetchFullCase(selected.id);
       let factors: Record<string, any> = {};
       try {
         factors = selected.solvability_factors
@@ -307,7 +471,7 @@ export default function CaseManagementPage() {
       } catch { /* malformed JSON in DB — use empty */ }
       setSolvFactors(factors);
     }
-  }, [selected, fetchNotes]);
+  }, [selected, fetchNotes, fetchFullCase]);
 
   const handleCreate = async () => {
     if (!formData.title.trim()) { addToast('Title is required', 'error'); return; }
@@ -514,7 +678,7 @@ export default function CaseManagementPage() {
         </div>
 
         {/* Case List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
           ) : cases.length === 0 ? (
@@ -528,7 +692,7 @@ export default function CaseManagementPage() {
             cases.map(c => (
               <button type="button"
                 key={c.id}
-                onClick={() => { setSelected(c); setDetailTab('detail'); }}
+                onClick={() => { setSelected(c); setDetailTab('overview'); }}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
                   selected?.id === c.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
@@ -542,7 +706,7 @@ export default function CaseManagementPage() {
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{c.title}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <span className={`font-bold ${getPriorityColor(c.priority)}`}>{c.priority.toUpperCase()}</span>
-                  <span>{TYPE_OPTIONS.find(t => t.value === c.case_type)?.label || c.case_type}</span>
+                  <span>{humanizeCaseType(c.case_type)}</span>
                   {c.solvability_score != null && (
                     <span className="flex items-center gap-0.5">
                       <Target style={{ width: 9, height: 9 }} />
@@ -572,22 +736,28 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
 
             {/* Tabs */}
-            <div className="flex border-b border-rmpg-700">
-              {(['detail', 'notes', 'solvability'] as const).map(tab => (
-                <button type="button"
-                  key={tab}
-                  onClick={() => setDetailTab(tab)}
-                  className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                    detailTab === tab ? 'text-white border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500 hover:text-rmpg-300'
-                  }`}
-                >
-                  {tab === 'detail' ? 'Details' : tab === 'notes' ? `Notes (${notes.length})` : 'Solvability'}
-                </button>
-              ))}
+            <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+              {DETAIL_TABS.map(tab => {
+                const count = tab.countKey && caseFull?.counts ? (caseFull.counts as any)[tab.countKey] : undefined;
+                return (
+                  <button type="button"
+                    key={tab.id}
+                    onClick={() => setDetailTab(tab.id)}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap flex items-center gap-1 ${
+                      detailTab === tab.id ? 'text-white border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500 hover:text-rmpg-300'
+                    }`}
+                  >
+                    {tab.label}
+                    {count != null && count > 0 && (
+                      <span className="text-[8px] px-1 py-0.5 bg-brand-900/40 text-brand-300 border border-brand-700/50 tabular-nums">{count}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4">
-              {detailTab === 'detail' && (
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4">
+              {detailTab === 'overview' && (
                 <div className="space-y-4">
                   {/* Status + Priority badges */}
                   <div className="flex items-center gap-2 flex-wrap">
@@ -603,6 +773,21 @@ export default function CaseManagementPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* Entity count summary cards */}
+                  {caseFull?.counts && (
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                      {DETAIL_TABS.filter(t => t.countKey).map(t => {
+                        const count = (caseFull.counts as any)[t.countKey!] || 0;
+                        return (
+                          <button type="button" key={t.id} onClick={() => setDetailTab(t.id)} className="panel-beveled p-2 text-center hover:bg-rmpg-800/40 transition-colors">
+                            <div className="text-sm font-bold text-white tabular-nums">{count}</div>
+                            <div className="text-[8px] font-mono text-rmpg-500 uppercase">{t.label}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Status change */}
                   <div className="panel-beveled p-3">
@@ -704,7 +889,7 @@ export default function CaseManagementPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
                       ['Case Number', selected.case_number],
-                      ['Type', TYPE_OPTIONS.find(t => t.value === selected.case_type)?.label],
+                      ['Type', humanizeCaseType(selected.case_type)],
                       ['Lead Investigator', selected.lead_investigator_name || '—'],
                       ['Opened', selected.opened_date ? new Date(selected.opened_date).toLocaleDateString() : '—'],
                       ['Due Date', selected.due_date ? new Date(selected.due_date).toLocaleDateString() : '—'],
@@ -732,6 +917,182 @@ export default function CaseManagementPage() {
                 </div>
               )}
 
+              {/* ── Entity Tabs ── */}
+              {detailTab === 'calls' && (
+                <LinkedEntityPanel
+                  items={caseFull?.calls || []}
+                  columns={[
+                    { key: 'call_number', label: 'CFS #', render: (v: any) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'incident_type', label: 'Type' },
+                    { key: 'priority', label: 'Priority', render: (v) => <span className="font-bold uppercase">{v || '—'}</span> },
+                    { key: 'status', label: 'Status' },
+                    { key: 'location', label: 'Location' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                  ]}
+                  entityType="calls"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/dispatch/calls"
+                  searchFields={['call_number', 'incident_type', 'location_address']}
+                />
+              )}
+
+              {detailTab === 'incidents' && (
+                <LinkedEntityPanel
+                  items={caseFull?.incidents || []}
+                  columns={[
+                    { key: 'incident_number', label: 'Incident #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'incident_type', label: 'Type' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'location', label: 'Location' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                  ]}
+                  entityType="incidents"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/incidents"
+                  searchFields={['incident_number', 'incident_type', 'location']}
+                />
+              )}
+
+              {detailTab === 'persons' && (
+                <LinkedEntityPanel
+                  items={caseFull?.persons || []}
+                  columns={[
+                    { key: 'last_name', label: 'Name', render: (_v, row) => <span className="font-bold text-white">{row.last_name}, {row.first_name}</span> },
+                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'role', label: 'Role', render: (v) => <span className="text-[9px] px-1 border border-rmpg-700 bg-rmpg-800/50">{v || 'involved'}</span> },
+                    { key: 'phone', label: 'Phone' },
+                  ]}
+                  entityType="persons"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/records/persons"
+                  searchFields={['last_name', 'first_name', 'date_of_birth']}
+                />
+              )}
+
+              {detailTab === 'vehicles' && (
+                <LinkedEntityPanel
+                  items={caseFull?.vehicles || []}
+                  columns={[
+                    { key: 'plate_number', label: 'Plate', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'make', label: 'Make' },
+                    { key: 'model', label: 'Model' },
+                    { key: 'year', label: 'Year' },
+                    { key: 'color', label: 'Color' },
+                    { key: 'vin', label: 'VIN' },
+                  ]}
+                  entityType="vehicles"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/records/vehicles"
+                  searchFields={['plate_number', 'make', 'model', 'color']}
+                />
+              )}
+
+              {detailTab === 'properties' && (
+                <LinkedEntityPanel
+                  items={caseFull?.properties || []}
+                  columns={[
+                    { key: 'description', label: 'Description', render: (v) => <span className="text-white">{v || '—'}</span> },
+                    { key: 'property_type', label: 'Type' },
+                    { key: 'serial_number', label: 'Serial #' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'estimated_value', label: 'Value', render: (v) => v ? `$${Number(v).toLocaleString()}` : '—' },
+                  ]}
+                  entityType="properties"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/records/properties"
+                  searchFields={['description', 'serial_number', 'property_type']}
+                />
+              )}
+
+              {detailTab === 'evidence' && (
+                <LinkedEntityPanel
+                  items={caseFull?.evidence || []}
+                  columns={[
+                    { key: 'evidence_number', label: 'Evidence #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'description', label: 'Description' },
+                    { key: 'evidence_type', label: 'Type' },
+                    { key: 'location', label: 'Location' },
+                    { key: 'status', label: 'Status' },
+                  ]}
+                  entityType="evidence"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/records/evidence"
+                  searchFields={['evidence_number', 'description', 'evidence_type']}
+                />
+              )}
+
+              {detailTab === 'warrants' && (
+                <LinkedEntityPanel
+                  items={caseFull?.warrants || []}
+                  columns={[
+                    { key: 'warrant_number', label: 'Warrant #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'warrant_type', label: 'Type' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'subject_name', label: 'Subject' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                  ]}
+                  entityType="warrants"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/warrants"
+                  searchFields={['warrant_number', 'subject_name', 'warrant_type']}
+                />
+              )}
+
+              {detailTab === 'citations' && (
+                <LinkedEntityPanel
+                  items={caseFull?.citations || []}
+                  columns={[
+                    { key: 'citation_number', label: 'Citation #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'violation', label: 'Violation' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'violator_name', label: 'Violator' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                  ]}
+                  entityType="citations"
+                  caseId={selected.id}
+                  onRefresh={() => fetchFullCase(selected.id)}
+                  searchEndpoint="/citations"
+                  searchFields={['citation_number', 'violation', 'violator_name']}
+                />
+              )}
+
+              {/* ── Timeline Tab ── */}
+              {detailTab === 'timeline' && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-mono text-rmpg-500 uppercase">Case Timeline</div>
+                  {(caseFull?.notes || []).length === 0 && (caseFull?.calls || []).length === 0 && (caseFull?.incidents || []).length === 0 ? (
+                    <div className="text-center py-6 text-rmpg-500 text-xs">No timeline events</div>
+                  ) : (
+                    <div className="relative pl-4 border-l border-rmpg-700 space-y-3">
+                      {[
+                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.case_number || '#' + c.id} — ${c.call_type || 'Unknown'}`, color: '#888888' })),
+                        ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: '#f59e0b' })),
+                        ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: n.content?.substring(0, 80) || 'Note', color: '#8b5cf6' })),
+                      ]
+                        .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+                        .map((event, idx) => (
+                          <div key={idx} className="relative">
+                            <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />
+                            <div className="text-[9px] font-mono text-rmpg-500">{event.date ? new Date(event.date).toLocaleString() : '—'}</div>
+                            <div className="text-[10px] text-rmpg-300">
+                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type}]</span>
+                              {event.label}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Notes Tab ── */}
               {detailTab === 'notes' && (
                 <div className="space-y-3">
                   {/* Add note */}
@@ -766,6 +1127,7 @@ export default function CaseManagementPage() {
                 </div>
               )}
 
+              {/* ── Solvability Tab ── */}
               {detailTab === 'solvability' && (
                 <div className="space-y-4">
                   {/* Feature 29: Enhanced Solvability Score from server analysis */}
@@ -785,7 +1147,7 @@ export default function CaseManagementPage() {
                             onChange={e => setSolvFactors(prev => ({ ...prev, [f.key]: e.target.checked }))}
                             className="accent-brand-500"
                           />
-                          <span className="text-xs text-white flex-1">{f.label}</span>
+                          <span className="text-xs text-white flex-1" title={humanizeSolvabilityFactor(f.key)}>{f.label}</span>
                           <span className="text-[9px] font-mono text-rmpg-500">+{f.weight}pts</span>
                         </label>
                       ))}
@@ -860,7 +1222,7 @@ export default function CaseManagementPage() {
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
                 {personResults.map((p: any) => (
                   <button type="button" key={p.id} onClick={() => handleLinkPerson(p)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">

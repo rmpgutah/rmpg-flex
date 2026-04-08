@@ -297,7 +297,7 @@ export default function DlSearchPage() {
     if (src === 'MICROBILT_API' || src === 'MICROBILT_DL') {
       return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50 inline-flex items-center gap-0.5"><Wifi className="w-2.5 h-2.5" />API</span>;
     }
-    return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>;
+    return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>;
   };
 
   const statusBadge = (status: string) => {
@@ -323,17 +323,17 @@ export default function DlSearchPage() {
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
       <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
-        onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
+        onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="Last name" />
       <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
-        onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
+        onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="First name" />
       <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="DL Number" value={dlNumber}
-        onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+        onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="DL number" />
+      <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)} aria-label="DL state">
         <option value="">State</option>
         {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
       <input className="input-dark text-[10px] w-28 min-h-[36px]" type="date" placeholder="DOB" value={dob}
-        onChange={(e) => setDob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
+        onChange={(e) => setDob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="Date of birth" />
       <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[10px]">
         {loading ? 'Searching...' : 'Search'}
       </button>
@@ -386,17 +386,17 @@ export default function DlSearchPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #222222' }}>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
-              onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
+              onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="Last name" />
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="First Name" value={firstName}
-              onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
+              onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="First name" />
           </div>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="DL Number" value={dlNumber}
-              onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-            <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+              onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="DL number" />
+            <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)} aria-label="DL state">
               <option value="">State</option>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -418,7 +418,7 @@ export default function DlSearchPage() {
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
               </div>
               {/* DL OCR Scanner */}
-              <div className="border border-[#1e2d40] rounded-sm p-3 bg-[#0d1520] space-y-2 w-full max-w-xs">
+              <div className="border border-[#1e2d40] rounded-sm p-3 bg-[#050505] space-y-2 w-full max-w-xs">
                 <div className="flex items-center gap-2">
                   <CreditCard size={14} className="text-[#d4a017]" />
                   <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
@@ -429,7 +429,7 @@ export default function DlSearchPage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={ocrLoading}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
                   >
                     {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                     {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
@@ -652,8 +652,8 @@ export default function DlSearchPage() {
       {/* DL Verification Result Panel */}
       {verifyResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141e2b] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0d1520]">
+          <div className="bg-[#0a0a0a] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#050505]">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={14} className={verifyResult.verified ? 'text-green-400' : 'text-amber-400'} />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">
@@ -701,7 +701,7 @@ export default function DlSearchPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0d1520]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#050505]">
               {verifyResult.verified && (
                 <button
                   type="button"
@@ -715,7 +715,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setVerifyResult(null)}
-                className="px-4 py-2 bg-[#1a2636] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#141414] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Close
               </button>
@@ -727,8 +727,8 @@ export default function DlSearchPage() {
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141e2b] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0d1520]">
+          <div className="bg-[#0a0a0a] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#050505]">
               <div className="flex items-center gap-2">
                 <CreditCard size={14} className="text-[#d4a017]" />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">DL OCR Results</span>
@@ -778,7 +778,7 @@ export default function DlSearchPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0d1520]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#050505]">
               <button
                 type="button"
                 onClick={handleCreatePersonFromOcr}
@@ -790,7 +790,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setShowOcrPreview(false)}
-                className="px-4 py-2 bg-[#1a2636] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#141414] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Cancel
               </button>

@@ -824,20 +824,209 @@ const flatheadWarrantParser: WarrantParser = {
 };
 
 
+// ── LAPD Most Wanted (CA) ────────────────────────────────────
+const lapdWarrantParser: WarrantParser = {
+  sourceKey: 'ca_los_angeles_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const postPattern = /<article[^>]*>[\s\S]*?<\/article>/gi;
+    const posts = html.match(postPattern) || [];
+    for (const post of posts) {
+      const titleMatch = post.match(/<h[23][^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i);
+      const imgMatch = post.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const contentMatch = post.match(/<div[^>]*class="[^"]*(?:entry-content|excerpt)[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+      if (!titleMatch) continue;
+      const fullName = stripHtml(titleMatch[2]);
+      if (/^(armed|robbery|homicide|shooting|burglary)/i.test(fullName)) continue;
+      const { first, middle, last } = splitName(fullName);
+      entries.push({ warrant_id: `lapd-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: 'Los Angeles', state: 'CA', warrant_type: 'fugitive', case_number: '', court_name: 'LAPD', issue_date: '', charge_description: stripHtml(contentMatch?.[1] || '').substring(0, 500), bail_amount: '', offense_level: 'felony', photo_url: imgMatch?.[1] || '', detail_url: titleMatch[1] || '' });
+    }
+    return entries;
+  },
+};
+
+// ── Cook County Sheriff (IL) ─────────────────────────────────
+const cookCountyWarrantParser: WarrantParser = {
+  sourceKey: 'il_cook_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const cardPattern = /<div[^>]*class="[^"]*(?:wanted|fugitive|most-wanted)[^"]*"[^>]*>[\s\S]*?(?:<\/div>\s*){2,}/gi;
+    const cards = html.match(cardPattern) || [];
+    for (const card of cards) {
+      const nameMatch = card.match(/<(?:h[234]|strong|b)[^>]*>([\s\S]*?)<\/(?:h[234]|strong|b)>/i);
+      const imgMatch = card.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const textContent = stripHtml(card);
+      if (!nameMatch) continue;
+      const fullName = stripHtml(nameMatch[1]);
+      if (fullName.length < 3 || fullName.length > 60) continue;
+      const { first, middle, last } = splitName(fullName);
+      const chargeMatch = textContent.match(/(?:charge|wanted for|crime)[:\s]*([\s\S]{5,200}?)(?:\.|$)/i);
+      entries.push({ warrant_id: `cook-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: 'Chicago', state: 'IL', warrant_type: 'fugitive', case_number: '', court_name: 'Cook County Sheriff', issue_date: '', charge_description: chargeMatch?.[1]?.trim() || textContent.substring(0, 300), bail_amount: '', offense_level: textContent.toLowerCase().includes('felon') ? 'felony' : 'misdemeanor', photo_url: imgMatch?.[1] || '', detail_url: '' });
+    }
+    return entries;
+  },
+};
+
+// ── NJ State Police Wanted ───────────────────────────────────
+const njspWarrantParser: WarrantParser = {
+  sourceKey: 'nj_essex_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    // NJSP uses a structured list with suspect details
+    const itemPattern = /<li[^>]*class="[^"]*(?:wanted|suspect|fugitive)[^"]*"[^>]*>[\s\S]*?<\/li>/gi;
+    const items = html.match(itemPattern) || [];
+    for (const item of items) {
+      const nameMatch = item.match(/<(?:h[234]|strong|a)[^>]*>([\s\S]*?)<\/(?:h[234]|strong|a)>/i);
+      const imgMatch = item.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const linkMatch = item.match(/<a[^>]*href="([^"]*)"[^>]*/i);
+      if (!nameMatch) continue;
+      const fullName = stripHtml(nameMatch[1]);
+      if (fullName.length < 3) continue;
+      const { first, middle, last } = splitName(fullName);
+      entries.push({ warrant_id: `njsp-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: '', state: 'NJ', warrant_type: 'fugitive', case_number: '', court_name: 'NJ State Police', issue_date: '', charge_description: stripHtml(item).substring(0, 500), bail_amount: '', offense_level: 'felony', photo_url: imgMatch?.[1] || '', detail_url: linkMatch?.[1] || '' });
+    }
+    // Fallback to generic if structured pattern fails
+    if (entries.length === 0) return createGenericWarrantParser('nj_essex_warrants').parseWarrants(html);
+    return entries;
+  },
+};
+
+// ── NYPD Most Wanted ─────────────────────────────────────────
+const nypdWarrantParser: WarrantParser = {
+  sourceKey: 'ny_new_york_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const cardPattern = /<(?:article|div)[^>]*class="[^"]*(?:card|wanted|suspect|person)[^"]*"[^>]*>[\s\S]*?<\/(?:article|div)>/gi;
+    const cards = html.match(cardPattern) || [];
+    for (const card of cards) {
+      const nameMatch = card.match(/<(?:h[234]|strong)[^>]*>([\s\S]*?)<\/(?:h[234]|strong)>/i);
+      const imgMatch = card.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const linkMatch = card.match(/<a[^>]*href="([^"]*)"[^>]*/i);
+      if (!nameMatch) continue;
+      const fullName = stripHtml(nameMatch[1]);
+      if (fullName.length < 3 || fullName.length > 80) continue;
+      if (/^(crime|reward|tip|case)/i.test(fullName)) continue;
+      const { first, middle, last } = splitName(fullName);
+      const text = stripHtml(card);
+      entries.push({ warrant_id: `nypd-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: 'New York', state: 'NY', warrant_type: 'fugitive', case_number: '', court_name: 'NYPD', issue_date: '', charge_description: text.substring(0, 400), bail_amount: '', offense_level: 'felony', photo_url: imgMatch?.[1] || '', detail_url: linkMatch?.[1] || '' });
+    }
+    if (entries.length === 0) return createGenericWarrantParser('ny_new_york_warrants').parseWarrants(html);
+    return entries;
+  },
+};
+
+// ── Philadelphia PD Most Wanted ──────────────────────────────
+const phillyWarrantParser: WarrantParser = {
+  sourceKey: 'pa_philadelphia_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const cardPattern = /<(?:article|div)[^>]*class="[^"]*(?:wanted|fugitive|card|suspect)[^"]*"[^>]*>[\s\S]*?<\/(?:article|div)>/gi;
+    const cards = html.match(cardPattern) || [];
+    for (const card of cards) {
+      const nameMatch = card.match(/<(?:h[234]|strong)[^>]*>([\s\S]*?)<\/(?:h[234]|strong)>/i);
+      const imgMatch = card.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const linkMatch = card.match(/<a[^>]*href="([^"]*)"[^>]*/i);
+      if (!nameMatch) continue;
+      const fullName = stripHtml(nameMatch[1]);
+      if (fullName.length < 3 || /^(crime|reward|tip)/i.test(fullName)) continue;
+      const { first, middle, last } = splitName(fullName);
+      entries.push({ warrant_id: `ppd-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: 'Philadelphia', state: 'PA', warrant_type: 'fugitive', case_number: '', court_name: 'Philadelphia PD', issue_date: '', charge_description: stripHtml(card).substring(0, 400), bail_amount: '', offense_level: 'felony', photo_url: imgMatch?.[1] || '', detail_url: linkMatch?.[1] || '' });
+    }
+    if (entries.length === 0) return createGenericWarrantParser('pa_philadelphia_warrants').parseWarrants(html);
+    return entries;
+  },
+};
+
+// ── Houston Crime Stoppers (TX) ──────────────────────────────
+const houstonWarrantParser: WarrantParser = {
+  sourceKey: 'tx_harris_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const articlePattern = /<article[^>]*>[\s\S]*?<\/article>/gi;
+    const articles = html.match(articlePattern) || [];
+    for (const article of articles) {
+      const titleMatch = article.match(/<h[23][^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i);
+      const imgMatch = article.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      if (!titleMatch) continue;
+      const fullName = stripHtml(titleMatch[2]);
+      if (fullName.length < 3 || /^(armed|robbery|homicide|shooting)/i.test(fullName)) continue;
+      const { first, middle, last } = splitName(fullName);
+      entries.push({ warrant_id: `htx-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: 'Houston', state: 'TX', warrant_type: 'fugitive', case_number: '', court_name: 'Houston Crime Stoppers', issue_date: '', charge_description: stripHtml(article).substring(0, 400), bail_amount: '', offense_level: 'felony', photo_url: imgMatch?.[1] || '', detail_url: titleMatch[1] || '' });
+    }
+    if (entries.length === 0) return createGenericWarrantParser('tx_harris_warrants').parseWarrants(html);
+    return entries;
+  },
+};
+
+// ── Massachusetts Most Wanted ────────────────────────────────
+const maWarrantParser: WarrantParser = {
+  sourceKey: 'ma_suffolk_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    // Mass.gov uses structured content blocks
+    const blockPattern = /<(?:article|li|div)[^>]*class="[^"]*(?:wanted|person|fugitive|listing-item)[^"]*"[^>]*>[\s\S]*?<\/(?:article|li|div)>/gi;
+    const blocks = html.match(blockPattern) || [];
+    for (const block of blocks) {
+      const nameMatch = block.match(/<(?:h[234]|strong|a)[^>]*>([\s\S]*?)<\/(?:h[234]|strong|a)>/i);
+      const imgMatch = block.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      const linkMatch = block.match(/<a[^>]*href="([^"]*)"[^>]*/i);
+      if (!nameMatch) continue;
+      const fullName = stripHtml(nameMatch[1]);
+      if (fullName.length < 3 || fullName.length > 80) continue;
+      const { first, middle, last } = splitName(fullName);
+      entries.push({ warrant_id: `ma-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: 'Boston', state: 'MA', warrant_type: 'fugitive', case_number: '', court_name: 'Massachusetts', issue_date: '', charge_description: stripHtml(block).substring(0, 400), bail_amount: '', offense_level: 'felony', photo_url: imgMatch?.[1] || '', detail_url: linkMatch?.[1] || '' });
+    }
+    if (entries.length === 0) return createGenericWarrantParser('ma_suffolk_warrants').parseWarrants(html);
+    return entries;
+  },
+};
+
+// ── Miami-Dade Crime Stoppers (FL) ───────────────────────────
+const miamiWarrantParser: WarrantParser = {
+  sourceKey: 'fl_miami_warrants',
+  parseWarrants(html: string): WarrantEntry[] {
+    const entries: WarrantEntry[] = [];
+    const articlePattern = /<article[^>]*>[\s\S]*?<\/article>/gi;
+    const articles = html.match(articlePattern) || [];
+    for (const article of articles) {
+      const titleMatch = article.match(/<h[23][^>]*>\s*(?:<a[^>]*href="([^"]*)"[^>]*>)?([\s\S]*?)(?:<\/a>)?<\/h[23]>/i);
+      const imgMatch = article.match(/<img[^>]*src="([^"]*)"[^>]*/i);
+      if (!titleMatch) continue;
+      const fullName = stripHtml(titleMatch[2]);
+      if (fullName.length < 3 || /^(armed|robbery|homicide)/i.test(fullName)) continue;
+      const { first, middle, last } = splitName(fullName);
+      entries.push({ warrant_id: `mia-${last}-${first}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), full_name: fullName, first_name: first, last_name: last, middle_name: middle, date_of_birth: '', age: null, gender: '', race: '', city: 'Miami', state: 'FL', warrant_type: 'fugitive', case_number: '', court_name: 'Miami-Dade Crime Stoppers', issue_date: '', charge_description: stripHtml(article).substring(0, 400), bail_amount: '', offense_level: 'felony', photo_url: imgMatch?.[1] || '', detail_url: titleMatch[1] || '' });
+    }
+    if (entries.length === 0) return createGenericWarrantParser('fl_miami_warrants').parseWarrants(html);
+    return entries;
+  },
+};
+
+
 // ════════════════════════════════════════════════════════════
 //  PARSER REGISTRY
 // ════════════════════════════════════════════════════════════
 
 const WARRANT_PARSERS: Record<string, WarrantParser> = {
+  // Original 3
   co_el_paso_warrants: elPasoCoWarrantParser,
   nv_clark_warrants: lvmpdWarrantParser,
   az_maricopa_warrants: mcsoWarrantParser,
-  // ── New parsers ──
+  // Federal + Mountain West
   federal_fbi_wanted: fbiWantedParser,
   nv_washoe_warrants: washoeWarrantParser,
   az_pima_warrants: pimaWarrantParser,
   co_denver_warrants: denverCrimeStoppersParser,
   mt_flathead_warrants: flatheadWarrantParser,
+  // Major metro / state parsers
+  ca_los_angeles_warrants: lapdWarrantParser,
+  il_cook_warrants: cookCountyWarrantParser,
+  nj_essex_warrants: njspWarrantParser,
+  ny_new_york_warrants: nypdWarrantParser,
+  pa_philadelphia_warrants: phillyWarrantParser,
+  tx_harris_warrants: houstonWarrantParser,
+  ma_suffolk_warrants: maWarrantParser,
+  fl_miami_warrants: miamiWarrantParser,
   // All other sources use createGenericWarrantParser() as fallback
 };
 
@@ -856,13 +1045,28 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
     'SELECT id FROM scraped_warrants WHERE source_key = ? AND warrant_id = ?'
   );
 
+  // Only insert warrants for persons who exist in our database.
+  // Match by first_name + last_name (case-insensitive).
+  // If DOB is available, require it to match for higher confidence.
+  const matchPersonStmt = db.prepare(`
+    SELECT id FROM persons
+    WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+    LIMIT 1
+  `);
+  const matchPersonDobStmt = db.prepare(`
+    SELECT id FROM persons
+    WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND dob = ?
+    LIMIT 1
+  `);
+
   const insertStmt = db.prepare(`
     INSERT INTO scraped_warrants
       (source_key, warrant_id, full_name, first_name, last_name, middle_name,
        date_of_birth, age, gender, race, city, state, warrant_type,
        case_number, court_name, issue_date, charge_description, bail_amount,
-       offense_level, photo_url, detail_url, status, first_seen_at, last_seen_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+       offense_level, photo_url, detail_url, status, first_seen_at, last_seen_at,
+       person_id, dob_verified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
   `);
 
   const updateStmt = db.prepare(`
@@ -877,6 +1081,7 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
 
   const txn = db.transaction(() => {
     for (const entry of entries) {
+      // Check if this warrant already exists (always update existing records)
       const existing = checkStmt.get(sourceKey, entry.warrant_id);
       if (existing) {
         updateStmt.run(
@@ -888,12 +1093,32 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
         );
         updated++;
       } else {
+        // Only INSERT new warrants if the person exists in our database
+        let personId: number | null = null;
+        let dobVerified = 0;
+
+        if (entry.first_name && entry.last_name) {
+          // Try DOB match first (higher confidence)
+          if (entry.date_of_birth) {
+            const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
+            if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+          }
+          // Fall back to name-only match
+          if (!personId) {
+            const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
+            if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
+          }
+        }
+
+        // Skip warrants for people NOT in our system
+        if (!personId) continue;
+
         insertStmt.run(
           sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
           entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
           entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
           entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
-          entry.photo_url, entry.detail_url, now, now
+          entry.photo_url, entry.detail_url, now, now, personId, dobVerified
         );
         inserted++;
       }

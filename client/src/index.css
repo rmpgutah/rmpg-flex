@@ -10,25 +10,25 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  --surface-base: #141e2b;
-  --surface-raised: #1a2636;
-  --surface-sunken: #0d1520;
-  --surface-overlay: #0a1018;
-  --surface-deep: #060c14;
-  --border-default: #1e3048;
-  --border-subtle: #182840;
-  --border-strong: #2a3e58;
-  --text-primary: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --brand-blue: #1a5a9e;
+  --surface-base: #0a0a0a;
+  --surface-raised: #141414;
+  --surface-sunken: #050505;
+  --surface-overlay: #030303;
+  --surface-deep: #000000;
+  --border-default: #222222;
+  --border-subtle: #1a1a1a;
+  --border-strong: #2e2e2e;
+  --text-primary: #e0e0e0;
+  --text-secondary: #999999;
+  --text-muted: #666666;
+  --brand-blue: #888888;
   --brand-gold: #d4a017;
-  --toolbar-gradient-start: #1a5a9e;
-  --toolbar-gradient-end: #2570b5;
-  --grid-header-bg: #0f1a28;
-  --grid-row-alt: #121c2a;
+  --toolbar-gradient-start: #1a1a1a;
+  --toolbar-gradient-end: #242424;
+  --grid-header-bg: #080808;
+  --grid-row-alt: #0e0e0e;
   --field-label-color: #d4a017;
-  --border-panel: #1e3048;
+  --border-panel: #222222;
 }
 
 /* --- Global Base Overrides --- */
@@ -38,6 +38,7 @@
     height: 100%; /* fallback for older browsers */
     max-width: 100vw;
     overflow-x: hidden;
+    overscroll-behavior: none;
   }
   html {
     font-size: 13px;
@@ -47,6 +48,61 @@
     overflow-x: hidden;
     /* iOS Safari: respect notch/home indicator safe areas */
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* ── SPILLMAN FLEX VISUAL DESIGN LAYER ──────────────────────
+   Hardware-grade CAD console visual treatments applied globally.
+   These create the industrial/tactical feel of real dispatch software.
+   ────────────────────────────────────────────────────────────── */
+
+/* Subtle vignette on the app shell — darker edges like a CRT monitor */
+
+/* ALL page containers get a subtle top-line accent */
+[role="main"],
+.p-4:first-child {
+  position: relative;
+}
+
+/* Universal panel chrome — any bordered container gets 3D depth */
+.panel-beveled,
+[class*="border"][class*="bg-surface"],
+[class*="border-rmpg"][class*="rounded"] {
+  border-top-color: #2e2e2e;
+  border-left-color: #2e2e2e;
+  border-bottom-color: #030303;
+  border-right-color: #030303;
+}
+
+/* Data readout containers — sunken inset for all stat displays */
+[class*="font-mono"][class*="tabular-nums"],
+[class*="font-mono"][class*="text-2xl"],
+[class*="font-mono"][class*="text-xl"],
+[class*="font-mono"][class*="text-lg"] {
+  text-shadow: 0 0 8px currentColor;
+  filter: brightness(1.1);
+}
+
+/* Gold section labels — any uppercase tracking-wider label */
+[class*="uppercase"][class*="tracking-wider"],
+[class*="uppercase"][class*="tracking-widest"] {
+  text-rendering: geometricPrecision;
+}
+
+/* Status LED dot enhancements — hardware LED look */
+[class*="led-dot"],
+[class*="led-green"],
+[class*="led-red"],
+[class*="led-amber"],
+[class*="led-gray"] {
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  box-sizing: content-box;
+}
+
+/* --- PWA standalone mode: prevent iOS status bar overlap --- */
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
   }
 }
 
@@ -66,20 +122,21 @@
 
 /* --- Scrollbar Styling (Dark Theme) --- */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface-base);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: #2a2a2a;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a5070;
+  background: #3a3a3a;
 }
 
 /* Firefox scrollbar */
@@ -147,12 +204,11 @@ body.fx-vignette::before {
   inset: 0;
   pointer-events: none;
   z-index: 99998;
-  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.35) 100%);
 }
 
 /* --- Phosphor Bloom (subtle glow on bright text) --- */
 body.fx-bloom {
-  --bloom-color: rgba(26, 90, 158, 0.08);
+  --bloom-color: rgba(136, 136, 136, 0.08);
 }
 body.fx-bloom * {
   text-shadow: 0 0 4px var(--bloom-color), 0 0 12px var(--bloom-color);
@@ -214,7 +270,7 @@ body.fx-noise::after {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .panel-hover-glow:hover {
-  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* Sidebar active indicator animation */
@@ -233,9 +289,7 @@ body.fx-noise::after {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background-image:
-    linear-gradient(rgba(26, 90, 158, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(26, 90, 158, 0.04) 1px, transparent 1px);
+  background: #0a0a0a;
   background-size: 40px 40px;
   animation: login-grid-drift 20s linear infinite;
   pointer-events: none;
@@ -243,8 +297,8 @@ body.fx-noise::after {
 
 /* Login input focus glow */
 .login-input-glow:focus {
-  border-color: #1a5a9e !important;
-  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.15);
+  border-color: #888888 !important;
+  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.3), 0 0 12px rgba(136, 136, 136, 0.15);
 }
 
 /* --- LED Indicator Animations (Spillman Flex) --- */
@@ -306,7 +360,7 @@ body.fx-noise::after {
   /* Dark scrollbar for scrollable panels */
   .scrollbar-dark {
     scrollbar-width: thin;
-    scrollbar-color: #2a3e58 transparent;
+    scrollbar-color: #2e2e2e transparent;
   }
   .scrollbar-dark::-webkit-scrollbar {
     width: 6px;
@@ -316,11 +370,11 @@ body.fx-noise::after {
     background: transparent;
   }
   .scrollbar-dark::-webkit-scrollbar-thumb {
-    background: #2a3e58;
+    background: #2e2e2e;
     border-radius: 3px;
   }
   .scrollbar-dark::-webkit-scrollbar-thumb:hover {
-    background: #3a5070;
+    background: #383838;
   }
 }
 
@@ -347,13 +401,13 @@ body.fx-noise::after {
 
   .table-dark thead {
     @apply border-b;
-    background: linear-gradient(180deg, #1e3048 0%, var(--grid-header-bg) 100%);
-    border-color: #2a3e58;
+    background: var(--grid-header-bg);
+    border-color: #2e2e2e;
   }
 
   .table-dark thead th {
     @apply px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
-    color: #8a9aaa;
+    color: #888888;
     border-right: 1px solid rgba(30, 48, 72, 0.5);
   }
 
@@ -367,7 +421,7 @@ body.fx-noise::after {
   }
 
   .table-dark tbody tr:hover {
-    background: rgba(26, 90, 158, 0.1);
+    background: rgba(136, 136, 136, 0.15);
   }
 
   .table-dark tbody tr:nth-child(even) {
@@ -376,7 +430,7 @@ body.fx-noise::after {
 
   .table-dark tbody td {
     @apply px-3 py-1.5;
-    color: #b0bcc8;
+    color: #aaaaaa;
     font-size: 11px;
   }
 
@@ -537,7 +591,7 @@ body.fx-noise::after {
   .section-header-bordered {
     @apply text-label font-bold uppercase tracking-wider pb-2 mb-3 flex items-center gap-2;
     color: var(--text-secondary);
-    border-bottom: 1px solid #1e3048;
+    border-bottom: 1px solid #222222;
   }
 
   .field-label {
@@ -555,7 +609,7 @@ body.fx-noise::after {
   }
 
   .priority-border-P3 {
-    border-left: 4px solid #4a90c4;
+    border-left: 4px solid #888888;
   }
 
   .priority-border-P4 {
@@ -571,31 +625,55 @@ body.fx-noise::after {
     50% { border-left-color: #ff4444; box-shadow: -4px 0 12px rgba(220, 38, 38, 0.3); }
   }
 
+  /* P2 Priority Amber Pulse Border */
+  .p2-pulse-border {
+    animation: p2-border-pulse 3s ease-in-out infinite;
+  }
+  @keyframes p2-border-pulse {
+    0%, 100% { border-left-color: #d97706; box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+    50% { border-left-color: #f59e0b; box-shadow: -4px 0 10px rgba(245, 158, 11, 0.25); }
+  }
+
+  /* --- Panel Surface Classes --- */
+  .panel-base {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+  }
+  .panel-raised {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+  }
+  .panel-sunken {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+  }
+
   /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
   .input-dark {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
-    caret-color: #3b8ad4;
+    border-top-color: #050505;
+    border-left-color: #050505;
+    border-bottom-color: #2e2e2e;
+    border-right-color: #2e2e2e;
+    caret-color: #aaaaaa;
     transition: border-color 0.1s;
   }
   .input-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.45), 0 0 0 3px rgba(136, 136, 136, 0.15);
+    outline: none;
   }
 
   .select-dark {
     @apply w-full px-3 py-1.5 text-sm text-white focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    border-top-color: #050505;
+    border-left-color: #050505;
+    border-bottom-color: #2e2e2e;
+    border-right-color: #2e2e2e;
     appearance: none;
     -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6e80'/%3E%3C/svg%3E");
@@ -606,7 +684,7 @@ body.fx-noise::after {
   }
   .select-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.35);
   }
   .select-dark option {
     background: var(--surface-base);
@@ -617,36 +695,36 @@ body.fx-noise::after {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
-    caret-color: #3b8ad4;
+    border-top-color: #050505;
+    border-left-color: #050505;
+    border-bottom-color: #2e2e2e;
+    border-right-color: #2e2e2e;
+    caret-color: #aaaaaa;
     transition: border-color 0.1s;
   }
   .textarea-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.35);
   }
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
   .btn-primary {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #164d87;
-    border: 1px solid #1a5a9e;
+    background: #444444;
+    border: 1px solid #888888;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #1a5a9e;
+    background: #888888;
   }
 
   .btn-secondary {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
-    background: #1e3048;
-    border: 1px solid #2a3e58;
-    color: #d0d8e0;
+    background: #222222;
+    border: 1px solid #2e2e2e;
+    color: #cccccc;
   }
   .btn-secondary:hover {
-    background: #2a3e58;
+    background: #2e2e2e;
   }
 
   .btn-danger {
@@ -704,9 +782,11 @@ body.fx-noise::after {
     box-shadow: 0 0 4px #ef4444, 0 0 8px rgba(239, 68, 68, 0.4);
   }
 
-  .led-blue {
-    background: #3b82f6;
-    box-shadow: 0 0 4px #3b82f6, 0 0 8px rgba(59, 130, 246, 0.4);
+  .led-gray {
+    background: #888888;
+    box-shadow: 0 0 4px #88888880, inset 0 -1px 1px rgba(0,0,0,0.3);
+    background: #888888;
+    box-shadow: 0 0 4px #888888, 0 0 8px rgba(136, 136, 136, 0.4);
   }
 
   .led-purple {
@@ -715,25 +795,25 @@ body.fx-noise::after {
   }
 
   .led-off {
-    background: #4b5563;
+    background: #555555;
     box-shadow: none;
   }
 
   /* --- Beveled Panel Borders (3D Raised / Inset) --- */
   .panel-beveled {
-    border: 1px solid #2a3e58;
-    border-top-color: #3a5070;
-    border-left-color: #3a5070;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    border: 1px solid #2e2e2e;
+    border-top-color: #383838;
+    border-left-color: #383838;
+    border-bottom-color: #050505;
+    border-right-color: #050505;
   }
 
   .panel-inset {
-    border: 1px solid #0d1520;
-    border-top-color: #0a1018;
-    border-left-color: #0a1018;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    border: 1px solid #050505;
+    border-top-color: #030303;
+    border-left-color: #030303;
+    border-bottom-color: #2e2e2e;
+    border-right-color: #2e2e2e;
   }
 
   /* --- Panel Title Bar (Desktop Window Chrome) --- */
@@ -742,24 +822,35 @@ body.fx-noise::after {
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 50%, #1a2636 100%);
-    border-bottom: 1px solid #0d1520;
-    border-top: 1px solid #2a3e58;
+    background: var(--surface-raised);
+    border-bottom: 1px solid #050505;
+    border-top: 1px solid #383838;
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #b0bcc8;
+    letter-spacing: 0.08em;
+    color: #d4a017;
     user-select: none;
     flex-wrap: nowrap;
-    min-height: 24px;
+    min-height: 26px;
     overflow: hidden;
+    position: relative;
+  }
+  .panel-title-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: transparent;
   }
 
   .panel-title-bar .title-icon {
     width: 12px;
     height: 12px;
-    color: #3b8ad4;
+    color: #d4a017;
+    filter: drop-shadow(0 0 3px rgba(212, 160, 23, 0.3));
   }
 
   /* --- Tab Bar (Spillman Flex Tabs) --- */
@@ -767,7 +858,7 @@ body.fx-noise::after {
     display: flex;
     gap: 0;
     background: var(--surface-base);
-    border-bottom: 2px solid #1e3048;
+    border-bottom: 2px solid #222222;
     padding: 0 4px;
     overflow-x: auto;
     overflow-y: hidden;
@@ -780,7 +871,7 @@ body.fx-noise::after {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #8a9aaa;
+    color: #888888;
     border: 1px solid transparent;
     border-bottom: none;
     cursor: pointer;
@@ -792,14 +883,14 @@ body.fx-noise::after {
   }
 
   .tab-bar-item:hover {
-    color: #d0d8e0;
-    background: rgba(26, 90, 158, 0.1);
+    color: #cccccc;
+    background: rgba(136, 136, 136, 0.1);
   }
 
   .tab-bar-item.active {
-    color: #ffffff;
+    color: #d4a017;
     background: var(--surface-raised);
-    border-color: #1e3048;
+    border-color: #222222;
     border-bottom: 2px solid var(--surface-raised);
   }
 
@@ -813,28 +904,30 @@ body.fx-noise::after {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: #b0bcc8;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 100%);
-    border: 1px solid #2a3e58;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    color: #aaaaaa;
+    background: var(--surface-raised);
+    border: 1px solid #2e2e2e;
+    border-bottom-color: #050505;
+    border-right-color: #050505;
     cursor: pointer;
-    transition: background 0.1s;
+    transition: all 0.15s ease;
     white-space: nowrap;
     flex-shrink: 0;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .toolbar-btn:hover {
-    background: linear-gradient(180deg, #2a3e58 0%, #1e3048 100%);
+    background: var(--surface-raised);
     color: #ffffff;
   }
 
   .toolbar-btn:active {
-    background: #0d1520;
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    background: #050505;
+    border-top-color: #050505;
+    border-left-color: #050505;
+    border-bottom-color: #2e2e2e;
+    border-right-color: #2e2e2e;
   }
 
   .toolbar-btn:disabled {
@@ -844,24 +937,24 @@ body.fx-noise::after {
   }
 
   .toolbar-btn-primary {
-    background: linear-gradient(180deg, var(--toolbar-gradient-start) 0%, #124070 100%);
-    border-color: #3b8ad4;
-    border-bottom-color: #0e3359;
-    border-right-color: #0e3359;
+    background: var(--brand-blue);
+    border-color: #aaaaaa;
+    border-bottom-color: #1a1a1a;
+    border-right-color: #1a1a1a;
     color: #ffffff;
   }
 
   .toolbar-btn-primary:hover {
-    background: linear-gradient(180deg, #3b8ad4 0%, #164d87 100%);
+    background: var(--surface-raised);
   }
 
   .toolbar-btn-danger {
-    background: linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%);
+    background: var(--surface-raised);
     border-color: #dc2626;
     color: #ffffff;
   }
   .toolbar-btn-danger:hover {
-    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
+    background: var(--surface-raised);
   }
 
   /* Context menu items (right-click menus) */
@@ -872,7 +965,7 @@ body.fx-noise::after {
     width: 100%;
     padding: 5px 12px;
     font-size: 11px;
-    color: #b0bcc8;
+    color: #aaaaaa;
     background: transparent;
     border: none;
     text-align: left;
@@ -880,23 +973,23 @@ body.fx-noise::after {
     transition: background 0.1s;
   }
   .context-menu-item:hover {
-    background: #2a3e58;
+    background: #2e2e2e;
     color: #ffffff;
   }
 
   .toolbar-btn-success {
-    background: linear-gradient(180deg, #047857 0%, #065f46 100%);
+    background: var(--surface-raised);
     border-color: #059669;
     color: #ffffff;
   }
   .toolbar-btn-success:hover {
-    background: linear-gradient(180deg, #059669 0%, #047857 100%);
+    background: var(--surface-raised);
   }
 
   .toolbar-separator {
     width: 1px;
     height: 20px;
-    background: #1e3048;
+    background: #222222;
     margin: 0 4px;
     align-self: center;
   }
@@ -909,7 +1002,7 @@ body.fx-noise::after {
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #8a9aaa;
+    color: #888888;
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
@@ -918,15 +1011,15 @@ body.fx-noise::after {
     white-space: nowrap;
   }
   .menu-bar-btn:hover {
-    background: rgba(26, 90, 158, 0.15);
-    color: #d0d8e0;
+    background: rgba(136, 136, 136, 0.15);
+    color: #cccccc;
   }
   /* 53: Active menu button with bottom highlight bar */
   .menu-bar-btn-active {
     background: var(--surface-base);
     color: #ffffff;
     font-weight: 600;
-    border-color: #1e3048;
+    border-color: #222222;
     border-bottom-color: var(--surface-base);
   }
 
@@ -936,11 +1029,11 @@ body.fx-noise::after {
     z-index: 9990;
     min-width: 220px;
     background: var(--surface-base);
-    border: 1px solid #2a3e58;
-    border-top-color: #3a5070;
-    border-left-color: #3a5070;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    border: 1px solid #2e2e2e;
+    border-top-color: #383838;
+    border-left-color: #383838;
+    border-bottom-color: #050505;
+    border-right-color: #050505;
     box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
     padding: 2px 0;
   }
@@ -974,7 +1067,7 @@ body.fx-noise::after {
     white-space: nowrap;
   }
   .menu-item:hover {
-    background: linear-gradient(180deg, #1a5a9e 0%, #124070 100%);
+    background: var(--surface-raised);
     color: #ffffff;
   }
   .menu-item:hover .menu-item-shortcut {
@@ -1032,7 +1125,7 @@ body.fx-noise::after {
   .menu-separator {
     height: 1px;
     margin: 4px 8px;
-    background: linear-gradient(90deg, transparent, #1e3048 15%, #1e3048 85%, transparent);
+    background: #222222;
   }
 
   /* --- PANIC Button Styles --- */
@@ -1046,7 +1139,7 @@ body.fx-noise::after {
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: #ffffff;
-    background: linear-gradient(180deg, #d93030 0%, #8a0c0c 100%);
+    background: var(--surface-raised);
     border: 2px solid #ff4444;
     cursor: pointer;
     transition: background 0.1s, box-shadow 0.1s;
@@ -1055,7 +1148,7 @@ body.fx-noise::after {
   }
 
   .panic-btn:hover {
-    background: linear-gradient(180deg, #ff4444 0%, #bc1010 100%);
+    background: var(--surface-raised);
     box-shadow: 0 0 16px rgba(255, 68, 68, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15);
   }
 
@@ -1107,11 +1200,11 @@ body.fx-noise::after {
     align-items: center;
     gap: 0;
     height: 22px;
-    background: linear-gradient(180deg, #162236 0%, var(--surface-base) 100%);
-    border-top: 1px solid #1e3048;
+    background: var(--surface-base);
+    border-top: 1px solid #222222;
     font-size: 10px;
     font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-    color: #8a9aaa;
+    color: #888888;
     padding: 0 8px;
     flex-shrink: 0;
   }
@@ -1122,7 +1215,7 @@ body.fx-noise::after {
     gap: 4px;
     padding: 0 8px;
     height: 100%;
-    border-right: 1px solid #1e3048;
+    border-right: 1px solid #222222;
   }
 
   .status-bar-section:last-child {
@@ -1166,46 +1259,46 @@ body.fx-noise::after {
 
 .leaflet-control-zoom a {
   background-color: var(--surface-base) !important;
-  color: #b0bcc8 !important;
-  border-color: #1e3048 !important;
+  color: #aaaaaa !important;
+  border-color: #222222 !important;
   border-radius: 0 !important;
 }
 
 .leaflet-control-zoom a:hover {
-  background-color: #1e3048 !important;
+  background-color: #222222 !important;
 }
 
 .leaflet-popup-content-wrapper {
   background-color: var(--surface-base) !important;
-  color: #d0d8e0 !important;
-  border: 1px solid #1e3048;
+  color: #cccccc !important;
+  border: 1px solid #222222;
   border-radius: 2px !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7) !important;
 }
 
 .leaflet-popup-tip {
   background-color: var(--surface-base) !important;
-  border: 1px solid #1e3048;
+  border: 1px solid #222222;
 }
 
 .leaflet-popup-close-button {
-  color: #8a9aaa !important;
+  color: #888888 !important;
 }
 
 /* --- Recharts Overrides --- */
 .recharts-cartesian-grid line {
-  stroke: #1e3048;
+  stroke: #222222;
 }
 
 .recharts-text {
-  fill: #8a9aaa;
+  fill: #888888;
 }
 
 /* --- Toolbar-style headers --- */
 .toolbar-header {
-  background: linear-gradient(180deg, #1e3048 0%, var(--surface-base) 100%);
-  border-bottom: 1px solid #1e3048;
-  border-top: 1px solid #1e3048;
+  background: var(--surface-raised);
+  border-bottom: 1px solid #222222;
+  border-top: 1px solid #222222;
 }
 
 /* ============================================================
@@ -1213,6 +1306,14 @@ body.fx-noise::after {
    Optimized for 360-430px phone screens
    ============================================================ */
 @media (max-width: 768px) {
+  /* Prevent sub-11px text on mobile — officers need readability in sunlight */
+  .text-\[8px\], .text-\[9px\] {
+    font-size: 11px !important;
+  }
+  .text-\[10px\] {
+    font-size: 11px !important;
+  }
+
   /* Increase base font for readability on phones */
   html {
     font-size: 14px;
@@ -1333,11 +1434,11 @@ body.fx-noise::after {
     min-height: 44px;
   }
 
-  /* PANIC button: larger on mobile */
+  /* PANIC button: sized for mobile header — readable but not oversized */
   .panic-btn {
-    padding: 8px 16px;
-    font-size: 12px;
-    min-height: 44px;
+    padding: 6px 12px;
+    font-size: 11px;
+    min-height: 36px;
   }
 
   /* Cards: full width */
@@ -1377,8 +1478,8 @@ body.fx-noise::after {
   padding: 12px;
   min-height: 48px;
   background: var(--surface-base);
-  border: 1px solid #1e3048;
-  border-left: 3px solid #2a3e58;
+  border: 1px solid #222222;
+  border-left: 3px solid #2e2e2e;
   box-shadow:
     inset 1px 1px 0 rgba(255,255,255,0.02),
     inset -1px -1px 0 rgba(0,0,0,0.3);
@@ -1387,17 +1488,17 @@ body.fx-noise::after {
 }
 
 .mobile-card:active {
-  background: #1a2636;
+  background: #141414;
   transform: scale(0.98);
 }
 
 .mobile-card.priority-P1 { border-left-color: #ef4444; }
 .mobile-card.priority-P2 { border-left-color: #f97316; }
 .mobile-card.priority-P3 { border-left-color: #eab308; }
-.mobile-card.priority-P4 { border-left-color: #6b7280; }
+.mobile-card.priority-P4 { border-left-color: #666666; }
 .mobile-card.selected {
-  background: rgba(26, 90, 158, 0.15);
-  border-color: #1a5a9e;
+  background: rgba(136, 136, 136, 0.15);
+  border-color: #888888;
 }
 
 /* --- Mobile Card List (scrollable container) --- */
@@ -1446,8 +1547,8 @@ body.fx-noise::after {
   bottom: 0;
   width: min(85vw, 320px);
   z-index: 9999;
-  background: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-sunken) 100%);
-  border-right: 1px solid #1e3048;
+  background: var(--surface-raised);
+  border-right: 1px solid #222222;
   transform: translateX(-100%);
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
@@ -1462,8 +1563,8 @@ body.fx-noise::after {
 .mobile-header {
   height: 48px;
   padding: 0 8px;
-  background: linear-gradient(180deg, #1a2636 0%, var(--surface-base) 100%);
-  border-bottom: 1px solid #1e3048;
+  background: var(--surface-raised);
+  border-bottom: 1px solid #222222;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -1479,10 +1580,10 @@ body.fx-noise::after {
   height: 40px;
   padding: 0 12px;
   background: var(--surface-sunken);
-  border: 1px solid #1e3048;
+  border: 1px solid #222222;
   font-family: 'Consolas', 'Courier New', monospace;
   font-size: 14px;
-  color: #e5e7eb;
+  color: #e0e0e0;
 }
 .mobile-search-bar input {
   flex: 1;
@@ -1508,16 +1609,16 @@ body.fx-noise::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, #1a5a9e 0%, #124070 100%);
-  border: 2px solid #3b8ad4;
-  box-shadow: 0 6px 20px rgba(26, 90, 158, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
+  background: var(--surface-raised);
+  border: 2px solid #aaaaaa;
+  box-shadow: 0 6px 20px rgba(136, 136, 136, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
   color: #fff;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .mobile-fab:active {
   transform: scale(0.92);
-  box-shadow: 0 2px 8px rgba(26, 90, 158, 0.3);
+  box-shadow: 0 2px 8px rgba(136, 136, 136, 0.3);
 }
 
 /* --- Mobile Pill Tabs (horizontal scrollable filter tabs) --- */
@@ -1530,7 +1631,7 @@ body.fx-noise::after {
   scrollbar-width: none;
   flex-shrink: 0;
   background: var(--surface-base);
-  border-bottom: 1px solid #1e3048;
+  border-bottom: 1px solid #222222;
 }
 .mobile-pill-tabs::-webkit-scrollbar { display: none; }
 
@@ -1543,9 +1644,9 @@ body.fx-noise::after {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
-  background: #0d1520;
-  border: 1px solid #1e3048;
-  color: #5a6e80;
+  background: #050505;
+  border: 1px solid #222222;
+  color: #666666;
   cursor: pointer;
   transition: all 0.1s ease;
   min-height: 32px;
@@ -1554,8 +1655,8 @@ body.fx-noise::after {
   transform: scale(0.96);
 }
 .mobile-pill-tab.active {
-  background: rgba(26, 90, 158, 0.2);
-  border-color: #1a5a9e;
+  background: rgba(136, 136, 136, 0.2);
+  border-color: #888888;
   color: #fff;
 }
 
@@ -1566,8 +1667,8 @@ body.fx-noise::after {
   right: 0;
   bottom: 0;
   z-index: 40;
-  background: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-sunken) 100%);
-  border-top: 1px solid #1e3048;
+  background: var(--surface-raised);
+  border-top: 1px solid #222222;
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
   transition: height 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   will-change: height;
@@ -1587,7 +1688,7 @@ body.fx-noise::after {
   content: '';
   width: 36px;
   height: 4px;
-  background: #2a3e58;
+  background: #2e2e2e;
   border-radius: 2px;
 }
 
@@ -1620,7 +1721,7 @@ body.fx-noise::after {
 
 .cad-command-line {
   background: var(--surface-deep);
-  border-top: 1px solid #1e3048;
+  border-top: 1px solid #222222;
   font-family: 'Courier New', 'Consolas', monospace;
   padding: 0;
 }
@@ -1680,7 +1781,7 @@ body.fx-noise::after {
   color: #d4a017;
   font-size: 11px;
   line-height: 1.5;
-  border-top: 1px solid #1e3048;
+  border-top: 1px solid #222222;
   background: #040810;
 }
 
@@ -1743,7 +1844,7 @@ body.fx-noise::after {
   display: flex;
   flex-direction: column;
   background: var(--surface-deep);
-  border-left: 2px solid #1e3048;
+  border-left: 2px solid #222222;
   box-shadow: -4px 0 20px rgba(0, 0, 0, 0.6);
 }
 
@@ -1752,8 +1853,8 @@ body.fx-noise::after {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: #0d1520;
-  border-bottom: 1px solid #1e3048;
+  background: #050505;
+  border-bottom: 1px solid #222222;
 }
 
 .ncic-close-btn {
@@ -1788,7 +1889,7 @@ body.fx-noise::after {
 }
 
 .ncic-output::-webkit-scrollbar-thumb {
-  background: #2a3e58;
+  background: #2e2e2e;
   border-radius: 0;
 }
 
@@ -1924,7 +2025,7 @@ body.fx-noise::after {
   gap: 6px;
   padding: 8px 12px;
   background: #040810;
-  border-top: 2px solid #1e3048;
+  border-top: 2px solid #222222;
 }
 
 .ncic-prompt {
@@ -1963,7 +2064,7 @@ body.fx-noise::after {
 .premise-history {
   margin-top: 6px;
   background: var(--surface-overlay);
-  border: 1px solid #1e3048;
+  border: 1px solid #222222;
   font-size: 11px;
 }
 
@@ -1982,7 +2083,7 @@ body.fx-noise::after {
   justify-content: space-between;
   padding: 4px 8px;
   background: var(--surface-base);
-  border-bottom: 1px solid #1e3048;
+  border-bottom: 1px solid #222222;
   color: #d4d4d4;
 }
 
@@ -2079,7 +2180,7 @@ body.fx-noise::after {
     --text-primary: #111111 !important;
     --text-secondary: #333333 !important;
     --text-muted: #666666 !important;
-    --brand-blue: #124070 !important;
+    --brand-blue: #333333 !important;
     --brand-gold: #8a6b0a !important;
   }
 
@@ -2119,7 +2220,7 @@ body.fx-noise::after {
   .led-green,
   .led-amber,
   .led-red,
-  .led-blue,
+  .led-gray,
   .led-purple,
   .led-off,
   .btn-primary,
@@ -2194,7 +2295,7 @@ body.fx-noise::after {
   }
 
   /* Remove brand accent lines (decorative) */
-  [style*="background: linear-gradient(90deg, #0e3359"] {
+  [style*="background: linear-gradient(90deg, #1a1a1a"] {
     display: none !important;
   }
 
@@ -2290,7 +2391,7 @@ body.fx-noise::after {
   .badge-p4 { border-color: #bbb !important; }
   .badge-available { border-color: #2a7a2a !important; color: #2a7a2a !important; }
   .badge-dispatched { border-color: #8a6b0a !important; color: #8a6b0a !important; }
-  .badge-onscene { border-color: #6a2aaa !important; color: #6a2aaa !important; }
+  .badge-onscene { border-color: #9b59b6 !important; color: #9b59b6 !important; }
 
   /* --- Cards & Panels --- */
   .card-dark,
@@ -2418,10 +2519,10 @@ body.fx-noise::after {
   [style*="background: #282828"],
   [style*="background: #303030"],
   [style*="background: #383838"],
-  [style*="background: #141e2b"],
-  [style*="background: #1a2636"],
-  [style*="background: #0d1520"],
-  [style*="background: #0a1018"],
+  [style*="background: #0a0a0a"],
+  [style*="background: #141414"],
+  [style*="background: #050505"],
+  [style*="background: #030303"],
   [style*="background: #060c14"],
   [style*="background: linear-gradient"] {
     background: white !important;
@@ -2490,7 +2591,7 @@ body.fx-noise::after {
   .text-red-400,
   .text-green-400,
   .text-amber-400,
-  .text-blue-400,
+  .text-gray-400,
   .text-purple-400 {
     color: #222 !important;
   }
@@ -2797,7 +2898,7 @@ body.fx-noise::after {
 
 .unit-rec-panel {
   background: var(--surface-raised);
-  border: 1px solid #2a3e58;
+  border: 1px solid #2e2e2e;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   min-width: 240px;
   max-height: 320px;
@@ -2810,7 +2911,7 @@ body.fx-noise::after {
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  border-bottom: 1px solid #1e3048;
+  border-bottom: 1px solid #222222;
   background: var(--surface-base);
 }
 
@@ -2830,7 +2931,7 @@ body.fx-noise::after {
 }
 
 .unit-rec-item:hover {
-  background: rgba(26, 90, 158, 0.1);
+  background: rgba(136, 136, 136, 0.1);
 }
 
 .unit-rec-top-pick {
@@ -2876,7 +2977,7 @@ body.fx-noise::after {
 
 .unit-rec-footer {
   padding: 5px 10px;
-  border-top: 1px solid #1e3048;
+  border-top: 1px solid #222222;
   background: var(--surface-base);
 }
 
@@ -3003,15 +3104,15 @@ html.font-large { font-size: 19px; }
 html.theme-light {
   --surface-base: #f0f2f5;
   --surface-raised: #ffffff;
-  --surface-sunken: #e4e7eb;
+  --surface-sunken: #e0e0e0;
   --surface-overlay: rgba(255, 255, 255, 0.95);
-  --surface-deep: #d1d5db;
-  --border-default: #c0c4cc;
-  --border-subtle: #d1d5db;
-  --border-strong: #9ca3af;
+  --surface-deep: #cccccc;
+  --border-default: #c0c0c0;
+  --border-subtle: #cccccc;
+  --border-strong: #999999;
   --text-primary: #111827;
-  --text-secondary: #374151;
-  --text-muted: #6b7280;
+  --text-secondary: #444444;
+  --text-muted: #666666;
 }
 
 html.theme-light body {
@@ -3057,7 +3158,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   /* Print badge styles */
   [class*="bg-red-900"],
   [class*="bg-green-900"],
-  [class*="bg-blue-900"],
+  [class*="bg-gray-900"],
   [class*="bg-amber-900"],
   [class*="bg-purple-900"] {
     background: transparent !important;
@@ -3073,7 +3174,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
-  scrollbar-color: #2a3e58 transparent;
+  scrollbar-color: #2e2e2e transparent;
 }
 .table-responsive::-webkit-scrollbar {
   height: 4px;
@@ -3082,7 +3183,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   background: transparent;
 }
 .table-responsive::-webkit-scrollbar-thumb {
-  background: #2a3e58;
+  background: #2e2e2e;
   border-radius: 2px;
 }
 
@@ -3104,8 +3205,8 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--grid-header-bg, #0f1a28);
-  box-shadow: 0 1px 0 0 var(--border-default, #1e3048);
+  background: var(--grid-header-bg, #080808);
+  box-shadow: 0 1px 0 0 var(--border-default, #222222);
 }
 .table-sticky-header thead th::after {
   content: '';
@@ -3114,7 +3215,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   right: 0;
   bottom: 0;
   height: 1px;
-  background: var(--border-default, #1e3048);
+  background: var(--border-default, #222222);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -3181,6 +3282,22 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
+/* iOS: safe area insets for modals and fixed overlays */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .fixed.inset-0, [class*="fixed inset-0"] {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* iOS Safari: eliminate 300ms click delay on all interactive elements */
+button, [role="button"], .toolbar-btn, a, input[type="button"], input[type="submit"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* iOS-specific overrides (detects iOS Safari via -webkit-touch-callout) */
 @supports (-webkit-touch-callout: none) {
   /* Fix min-h-screen: iOS Safari 100vh includes the URL bar */
@@ -3239,16 +3356,1057 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   .backdrop-blur-xl {
     -webkit-backdrop-filter: blur(24px);
   }
+
+  /* iOS Safari: prevent button tap issues in scrollable containers */
+  button, [role="button"], .toolbar-btn {
+    /* Prevent scroll container from capturing button taps */
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Ensure buttons in overflow:auto containers are tappable */
+  .overflow-auto button,
+  .overflow-y-auto button,
+  .overflow-x-auto button {
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* Responsive breakpoints for very small phones */
+@media (max-width: 480px) {
+  .toolbar-btn {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .toolbar-btn-primary {
+    min-height: 48px;
+    padding: 10px 16px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Modal backdrop blur — polished overlay effect
+   ═══════════════════════════════════════════════════════════════ */
+.fixed.inset-0.bg-black\/50,
+.fixed.inset-0.bg-black\/60,
+.fixed.inset-0.bg-black\/70 {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Panel card shadows — subtle elevation for cards and panels
+   ═══════════════════════════════════════════════════════════════ */
+.panel-beveled {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  transition: background-color 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Button disabled state consistency
+   ═══════════════════════════════════════════════════════════════ */
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Dispatch print styles — clean printout of dispatch page
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  .toolbar-btn, .status-bar, nav, .mobile-nav,
+  .mobile-bottom-nav, .mobile-header,
+  [data-nav-dropdown] {
+    display: none !important;
+  }
 }
 
 /* Desktop-only hover effects — prevent sticky hover on touch devices */
 @media (hover: hover) and (pointer: fine) {
   .panel-hover-glow:hover {
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 }
 @media (hover: none) {
   .panel-hover-glow:hover {
     box-shadow: none;
   }
+}
+
+/* ============================================================
+   FIX 1: Touch-action + tap highlight on ALL interactive elements
+   Prevents 300ms delay and ghost highlights on iOS/Android
+   ============================================================ */
+button, a, select, [role="button"], [tabindex], label[for],
+.toolbar-btn, input[type="button"], input[type="submit"],
+input[type="checkbox"], input[type="radio"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================================
+   FIX 2: Minimum touch target on mobile (36px relaxed for inline)
+   ============================================================ */
+@media (max-width: 768px) {
+  button:not(.no-min-touch), [role="button"]:not(.no-min-touch) {
+    min-height: 36px;
+  }
+}
+
+/* ============================================================
+   FIX 3: Select elements on iOS — custom chevron + appearance fix
+   (Only for selects NOT using .select-dark which has its own styling)
+   ============================================================ */
+select:not(.select-dark) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+/* ============================================================
+   FIX 4: Focus-visible for keyboard users only
+   ============================================================ */
+:focus-visible {
+  outline: 2px solid #888888;
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ============================================================
+   FIX 5: Smooth scroll behavior (respects reduced motion)
+   ============================================================ */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* ============================================================
+   FIX 6: Android/touch active press feedback (scale effect)
+   ============================================================ */
+@media (hover: none) and (pointer: coarse) {
+  button:active, .toolbar-btn:active, [role="button"]:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease;
+  }
+}
+
+/* ============================================================
+   FIX 7: Prevent text selection on buttons
+   ============================================================ */
+button, .toolbar-btn, [role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ============================================================
+   FIX 13: Modal scroll containers — prevent iOS rubber-band bounce
+   ============================================================ */
+.modal-scroll-contain,
+form.overflow-y-auto,
+[role="dialog"] .overflow-y-auto {
+  overscroll-behavior: contain;
+}
+
+/* ============================================================
+   FIX 18: Prevent iOS auto-zoom on input focus (font-size < 16px)
+   ============================================================ */
+@media (max-width: 768px) {
+  .input-dark, .select-dark, .textarea-dark,
+  input[type="text"], input[type="email"], input[type="password"],
+  input[type="tel"], input[type="number"], input[type="search"],
+  input[type="url"], textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* ============================================================
+   FIX 21: Google Maps zoom controls — larger on mobile
+   ============================================================ */
+@media (max-width: 768px) {
+  .gm-style .gm-control-active {
+    min-width: 40px !important;
+    min-height: 40px !important;
+  }
+}
+
+/* ============================================================
+   FIX 22-23: Table horizontal scroll + touch scrolling on mobile
+   ============================================================ */
+.table-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* ============================================================
+   FIX 30: Skip to content link (visually hidden, keyboard accessible)
+   ============================================================ */
+.skip-to-content {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 99999;
+}
+.skip-to-content:focus {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  padding: 8px 16px;
+  background: #888888;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  border: 2px solid #aaaaaa;
+  z-index: 99999;
+  text-decoration: none;
+}
+
+/* ═══ iOS COMPREHENSIVE FIX PACK (50 fixes) ═══ */
+
+/* 1. Prevent rubber-band bounce on all scroll containers */
+.overflow-auto, .overflow-y-auto, .overflow-x-auto,
+[class*="overflow-auto"], [class*="overflow-y-auto"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 2. Fix sticky positioning in scroll containers */
+@supports (-webkit-touch-callout: none) {
+  .sticky { position: -webkit-sticky; position: sticky; }
+}
+
+/* 3. Fix backdrop-filter performance on iOS */
+@supports (-webkit-touch-callout: none) {
+  .backdrop-blur-sm, .backdrop-blur, .backdrop-blur-md, .backdrop-blur-lg {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* 4. Fix 300ms hover delay on iOS — hover should be instant on first tap */
+@media (hover: none) {
+  .hover\:bg-surface-raised:active { background: var(--color-surface-raised, #141414); }
+  .hover\:bg-rmpg-700:active { background: var(--color-rmpg-700, #141414); }
+  .hover\:text-white:active { color: white; }
+}
+
+/* 5. Fix tab bar scroll on iOS */
+@supports (-webkit-touch-callout: none) {
+  [role="tablist"] {
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+  }
+  [role="tab"] { scroll-snap-align: center; }
+}
+
+/* 6. Fix iOS keyboard pushing fixed elements */
+@supports (-webkit-touch-callout: none) {
+  .fixed.bottom-0 {
+    position: -webkit-sticky;
+    position: sticky;
+  }
+}
+
+/* 7. Fix text truncation on iOS */
+@supports (-webkit-touch-callout: none) {
+  .truncate, .line-clamp-2, .line-clamp-3 {
+    -webkit-line-clamp: inherit;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+  }
+}
+
+/* 8. Fix checkbox/radio alignment on iOS */
+@supports (-webkit-touch-callout: none) {
+  input[type="checkbox"], input[type="radio"] {
+    min-width: 20px;
+    min-height: 20px;
+    margin: 0;
+  }
+}
+
+/* 9. Fix range slider on iOS */
+@supports (-webkit-touch-callout: none) {
+  input[type="range"] {
+    -webkit-appearance: none;
+    height: 36px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #888888;
+    border: 2px solid white;
+  }
+}
+
+/* 10. Fix number input spinner on iOS */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 11. Fix iOS momentum scroll snap */
+@supports (-webkit-touch-callout: none) {
+  .scroll-snap-type-y-mandatory {
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 12. Ensure modals render above iOS status bar */
+@supports (-webkit-touch-callout: none) {
+  [role="dialog"] {
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* 13. Fix iOS safe area for landscape mode */
+@supports (padding-left: env(safe-area-inset-left)) {
+  @media (orientation: landscape) {
+    body {
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+  }
+}
+
+/* 14. Fix table header sticky on iOS */
+@supports (-webkit-touch-callout: none) {
+  thead.sticky th, thead th.sticky {
+    position: -webkit-sticky;
+    position: sticky;
+    z-index: 10;
+  }
+}
+
+/* 15. Prevent iOS callout on images */
+img, video, canvas {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+
+/* 16. Fix iOS animation jank */
+@supports (-webkit-touch-callout: none) {
+  .animate-spin, .animate-pulse, [class*="animate-"] {
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* 17. Fix iOS textarea resize */
+textarea {
+  resize: vertical;
+  -webkit-appearance: none;
+}
+
+/* 18. Fix iOS date input height */
+@media (max-width: 768px) {
+  input[type="date"], input[type="time"], input[type="datetime-local"] {
+    min-height: 44px;
+    line-height: 44px;
+  }
+}
+
+/* 19. Fix border-radius rendering on iOS */
+@supports (-webkit-touch-callout: none) {
+  .rounded-sm { -webkit-border-radius: 2px; }
+  .rounded { -webkit-border-radius: 4px; }
+  .rounded-md { -webkit-border-radius: 6px; }
+  .rounded-lg { -webkit-border-radius: 8px; }
+  .rounded-full { -webkit-border-radius: 9999px; }
+}
+
+/* 20. Fix flexbox gap on older iOS (15 and below) */
+@supports not (gap: 1px) {
+  .gap-1 > * + * { margin-left: 0.25rem; }
+  .gap-2 > * + * { margin-left: 0.5rem; }
+  .gap-3 > * + * { margin-left: 0.75rem; }
+  .gap-4 > * + * { margin-left: 1rem; }
+}
+
+/* 21. Fix scroll indicator visibility */
+@supports (-webkit-touch-callout: none) {
+  ::-webkit-scrollbar { display: none; }
+  .scrollbar-dark::-webkit-scrollbar { display: block; width: 4px; }
+  .scrollbar-dark::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+}
+
+/* 22. Fix iOS status bar text color in standalone */
+@media (display-mode: standalone) {
+  meta[name="apple-mobile-web-app-status-bar-style"] { content: "black-translucent"; }
+}
+
+/* 23. Prevent double-tap zoom on interactive areas */
+@supports (-webkit-touch-callout: none) {
+  .panel-beveled, .panel-inset, .panel-card, .toolbar-btn,
+  [role="button"], [role="tab"], [role="menuitem"] {
+    touch-action: manipulation;
+  }
+}
+
+/* 24. Fix iOS dark mode color scheme */
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; }
+}
+
+/* 25. Fix notification badge positioning on iOS */
+@supports (-webkit-touch-callout: none) {
+  .absolute.-top-1, .absolute.-top-0\.5 {
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* ============================================================
+   26. iOS MOBILE MAP IMPROVEMENTS
+   Larger zoom controls, safe areas, touch targets, polish
+   ============================================================ */
+
+/* iOS status bar spacing for mobile header */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 768px) {
+    .mobile-header {
+      min-height: calc(48px + env(safe-area-inset-top, 0px));
+      padding-top: env(safe-area-inset-top, 0px);
+    }
+  }
+}
+
+/* Google Maps zoom controls — larger on mobile for 44px touch targets */
+@media (max-width: 768px) {
+  .gm-style .gm-control-active {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    font-size: 18px !important;
+  }
+  .gm-style .gm-bundled-control {
+    margin-right: 8px !important;
+    margin-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  /* Map type control — larger touch targets */
+  .gm-style .gm-style-mtc button {
+    min-height: 36px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* Map overlay buttons — 44px minimum on mobile */
+@media (max-width: 768px) {
+  .mobile-fab,
+  .map-overlay-btn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
+  }
+}
+
+/* Mobile search bar text — 16px prevents iOS Safari zoom on focus */
+@media (max-width: 768px) {
+  input[placeholder="Search address..."] {
+    font-size: 16px !important;
+  }
+}
+
+/* Mobile compact map panels */
+@media (max-width: 768px) {
+  .map-mobile-compact {
+    padding: 0.5rem !important;
+  }
+  .map-mobile-compact .text-sm {
+    font-size: 12px;
+  }
+}
+
+/* Scroll containers — iOS momentum scrolling + overscroll containment */
+@media (max-width: 768px) {
+  .overflow-y-auto,
+  .overflow-auto,
+  .overflow-y-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* Sliding panels — GPU acceleration on iOS */
+@media (max-width: 768px) {
+  .mobile-bottom-sheet,
+  [class*="translate-y"],
+  [class*="translate-x"] {
+    will-change: transform;
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* Bottom panels — safe-area-inset-bottom for iOS home indicator */
+@media (max-width: 768px) {
+  .mobile-bottom-sheet {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+}
+
+/* Smooth transitions on all interactive map elements */
+@media (max-width: 768px) {
+  .mobile-fab,
+  .map-overlay-btn,
+  button[aria-label*="layer"],
+  button[aria-label*="Toggle"] {
+    transition: background-color 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+  }
+}
+
+/* Prevent white flash on page load in dark mode */
+html, body {
+  background-color: #0a0a0a;
+}
+@media (prefers-color-scheme: dark) {
+  html { background-color: #0a0a0a; }
+}
+
+/* ============================================================
+   SPILLMAN FLEX VISUAL ENHANCEMENTS
+   Authentic Motorola CAD/RMS console aesthetic refinements
+   ============================================================ */
+
+/* --- CRT Scanline Overlay (subtle, desktop only) --- */
+@media (min-width: 768px) {
+  #root::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99999;
+  }
+}
+
+/* --- Enhanced Grid / Table Styling (CAD data grid) --- */
+@layer components {
+  .cad-grid {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .cad-grid thead th {
+    background: var(--grid-header-bg);
+    color: var(--brand-gold);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 4px 8px;
+    border-bottom: 2px solid var(--border-strong);
+    text-align: left;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .cad-grid tbody tr {
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background 0.1s;
+  }
+  .cad-grid tbody tr:nth-child(even) {
+    background: var(--grid-row-alt);
+  }
+  .cad-grid tbody tr:hover {
+    background: rgba(136, 136, 136, 0.12);
+  }
+  .cad-grid tbody tr.selected {
+    background: rgba(136, 136, 136, 0.2);
+    box-shadow: inset 3px 0 0 var(--brand-blue);
+  }
+  .cad-grid tbody td {
+    padding: 3px 8px;
+    color: var(--text-primary);
+    vertical-align: middle;
+  }
+
+  /* --- Spillman Section Headers (gold accent bar) --- */
+  .section-header-spillman {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: transparent;
+    border-left: 3px solid var(--brand-gold);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--brand-gold);
+    user-select: none;
+  }
+  .section-header-spillman .section-count {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* --- LED Status Indicators (enhanced) --- */
+  .led-indicator {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .led-green {
+    background: #22c55e;
+    box-shadow: 0 0 4px #22c55e80, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-red {
+    background: #ef4444;
+    box-shadow: 0 0 4px #ef444480, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-amber {
+    background: #f59e0b;
+    box-shadow: 0 0 4px #f59e0b80, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-gray {
+    background: #888888;
+    box-shadow: 0 0 4px #88888880, inset 0 -1px 1px rgba(0,0,0,0.3);
+    background: #888888;
+    box-shadow: 0 0 4px #88888880, inset 0 -1px 1px rgba(0,0,0,0.3);
+  }
+  .led-blink {
+    animation: led-blink 1s ease-in-out infinite;
+  }
+  @keyframes led-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* --- Spillman Data Cards (record items) --- */
+  .spillman-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    border-top-color: var(--border-strong);
+    border-left-color: var(--border-strong);
+    border-bottom-color: #050505;
+    border-right-color: #050505;
+    padding: 8px 10px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .spillman-card:hover {
+    background: #1e1e1e;
+    border-color: var(--border-strong);
+  }
+  .spillman-card.selected {
+    background: rgba(136, 136, 136, 0.15);
+    border-left: 3px solid var(--brand-blue);
+    box-shadow: inset 0 0 0 1px rgba(136, 136, 136, 0.2);
+  }
+
+  /* --- Spillman Badge Styles (status/priority/role) --- */
+  .badge-spillman {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .badge-p1 { color: #fca5a5; background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.4); }
+  .badge-p2 { color: #fcd34d; background: rgba(217,119,6,0.2); border-color: rgba(217,119,6,0.4); }
+  .badge-p3 { color: #93c5fd; background: rgba(37,99,235,0.15); border-color: rgba(37,99,235,0.3); }
+  .badge-p4 { color: #999999; background: rgba(102,102,102,0.15); border-color: rgba(102,102,102,0.3); }
+  .badge-active { color: #86efac; background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.3); }
+  .badge-pending { color: #fbbf24; background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); }
+  .badge-cleared { color: #666666; background: rgba(102,102,102,0.1); border-color: rgba(102,102,102,0.2); }
+
+  /* --- Monospace Data Readout (CAD terminal style) --- */
+  .cad-readout {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+
+  /* --- Spillman Form Fields --- */
+  .spillman-field-label {
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--brand-gold);
+    margin-bottom: 3px;
+  }
+
+  /* --- Inset Data Panel (for record detail sections) --- */
+  .data-panel-inset {
+    background: var(--surface-sunken);
+    border: 1px solid #030303;
+    border-top-color: #060c14;
+    border-left-color: #060c14;
+    border-bottom-color: var(--border-default);
+    border-right-color: var(--border-default);
+    padding: 8px 10px;
+  }
+
+  /* --- Divider with Label (horizontal rule with text) --- */
+  .divider-labeled {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+  }
+  .divider-labeled::before,
+  .divider-labeled::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-subtle);
+  }
+
+  /* --- Spillman Console Glow Effects --- */
+  .glow-blue {
+    text-shadow: 0 0 8px rgba(136, 136, 136, 0.4);
+  }
+  .glow-green {
+    text-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+  }
+  .glow-red {
+    text-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+  }
+  .glow-gold {
+    text-shadow: 0 0 8px rgba(212, 160, 23, 0.4);
+  }
+
+  /* --- Enhanced Scrollbar (dark chrome) --- */
+  .spillman-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .spillman-scroll::-webkit-scrollbar-track {
+    background: var(--surface-sunken);
+  }
+  .spillman-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 0;
+  }
+  .spillman-scroll::-webkit-scrollbar-thumb:hover {
+    background: #383838;
+  }
+
+  /* --- Quick Action Chip (inline action buttons) --- */
+  .action-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    font-size: 9px;
+    font-weight: 600;
+    color: #aaaaaa;
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .action-chip:hover {
+    background: var(--surface-raised);
+    color: #ffffff;
+    border-color: var(--border-strong);
+  }
+}
+
+/* ============================================================
+   SPILLMAN FLEX ENFORCEMENT — Global Overrides
+   Forces ALL elements to match authentic CAD console aesthetic.
+   These rules override Tailwind utilities and inline styles.
+   ============================================================ */
+
+/* --- 1. SHARP CORNERS EVERYWHERE ---
+   Spillman Flex uses 2px max radius. No rounded-lg/xl/2xl anywhere. */
+.rounded-lg { border-radius: 2px !important; }
+.rounded-xl { border-radius: 2px !important; }
+.rounded-2xl { border-radius: 2px !important; }
+.rounded-3xl { border-radius: 2px !important; }
+.rounded-t-lg { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-lg { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+.rounded-l-lg { border-top-left-radius: 2px !important; border-bottom-left-radius: 2px !important; }
+.rounded-r-lg { border-top-right-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+.rounded-t-xl { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-xl { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+.rounded-t-2xl { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-2xl { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+/* Force rounded-md to 2px too (slightly smaller but still too round for CAD) */
+.rounded-md { border-radius: 2px !important; }
+.rounded-t-md { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
+.rounded-b-md { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+
+/* --- 2. SUBTLE SHADOWS ONLY ---
+   Replace web-app drop shadows with CAD console depth via borders. */
+.shadow-lg {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}
+.shadow-xl {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}
+.shadow-2xl {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
+}
+
+/* --- 3. NAVY NOT BLACK ---
+   Force pure black backgrounds to navy steel-blue. */
+.bg-black { background-color: #050505 !important; }
+.bg-\[\#000\] { background-color: #050505 !important; }
+.bg-\[\#000000\] { background-color: #050505 !important; }
+.bg-\[\#0a0a0a\] { background-color: #050505 !important; }
+.bg-\[\#0a0a12\] { background-color: #050505 !important; }
+.bg-\[\#111\] { background-color: #050505 !important; }
+.bg-\[\#111111\] { background-color: #050505 !important; }
+
+/* --- 4. MODAL / DIALOG CONSISTENCY ---
+   All overlays use the Spillman beveled panel style. */
+[role="dialog"] > div,
+[aria-modal="true"] > div {
+  border-radius: 2px !important;
+}
+
+/* --- 5. ALL SCROLLBARS — Dark Chrome ---
+   Consistent dark scrollbars across the entire app. */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-sunken);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #383838;
+}
+::-webkit-scrollbar-corner {
+  background: var(--surface-sunken);
+}
+
+/* --- 6. TABLE / GRID CONSISTENCY ---
+   All tables get the CAD grid aesthetic. */
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+th {
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* --- 7. SELECT DROPDOWN ARROWS ---
+   Custom dropdown arrow matching the navy theme. */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+}
+
+/* --- 8. FOCUS RINGS — Blue Motorola accent ---
+   Consistent focus styling across all interactive elements. */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(136, 136, 136, 0.2);
+}
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(136, 136, 136, 0.2);
+}
+
+/* --- 9. TOOLTIP CONSISTENCY --- */
+[title]:not([title=""]) {
+  cursor: help;
+}
+
+/* --- 10. BACKDROP BLUR — Consistent overlay treatment --- */
+.backdrop-blur-sm { backdrop-filter: blur(4px) !important; -webkit-backdrop-filter: blur(4px) !important; }
+.backdrop-blur-md { backdrop-filter: blur(6px) !important; -webkit-backdrop-filter: blur(6px) !important; }
+.backdrop-blur-lg { backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important; }
+
+/* --- 11. TEXT SELECTION — Brand blue highlight --- */
+::selection {
+  background: rgba(136, 136, 136, 0.35);
+  color: #ffffff;
+}
+
+/* --- 12. MONOSPACE DATA FIELDS ---
+   All numeric/code displays use monospace. */
+.tabular-nums,
+[class*="font-mono"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 13. FORM INPUT GLOBAL CONSISTENCY ---
+   Force ALL form controls to Spillman CAD input style. */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+input[type="password"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+textarea,
+select {
+  border-radius: 2px !important;
+  font-size: 12px;
+  background: var(--surface-sunken) !important;
+  color: #e0e0e0 !important;
+  border: 1px solid var(--border-strong) !important;
+  border-top-color: #050505 !important;
+  border-left-color: #050505 !important;
+  border-bottom-color: #2e2e2e !important;
+  border-right-color: #2e2e2e !important;
+  caret-color: #aaaaaa;
+  padding: 5px 10px;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--brand-blue) !important;
+  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.45), 0 0 0 3px rgba(136, 136, 136, 0.15) !important;
+  outline: none !important;
+}
+input::placeholder, textarea::placeholder {
+  color: #555555 !important;
+}
+/* Checkbox + radio — smaller, tinted */
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--brand-blue);
+  border-radius: 2px !important;
+}
+
+/* --- 14. UNIVERSAL ELEMENT TREATMENT ---
+   Force ALL divs/sections/articles to use navy not gray. */
+div, section, article, aside, nav, header, footer, main, form {
+  border-radius: inherit;
+}
+/* Kill ALL pure-gray borders */
+[class*="border-gray-"] {
+  border-color: var(--border-default) !important;
+}
+[class*="border-slate-"] {
+  border-color: var(--border-default) !important;
+}
+[class*="border-zinc-"] {
+  border-color: var(--border-default) !important;
+}
+[class*="border-neutral-"] {
+  border-color: var(--border-default) !important;
+}
+/* Kill gray text — use theme text colors */
+.text-gray-300 { color: #aaaaaa !important; }
+.text-gray-400 { color: #888888 !important; }
+.text-gray-500 { color: #666666 !important; }
+.text-gray-600 { color: #555555 !important; }
+.text-gray-200 { color: #cccccc !important; }
+.text-slate-300 { color: #aaaaaa !important; }
+.text-slate-400 { color: #888888 !important; }
+.text-slate-500 { color: #666666 !important; }
+/* Kill gray backgrounds everywhere */
+.bg-gray-900 { background-color: #050505 !important; }
+.bg-gray-800 { background-color: #0a0a0a !important; }
+.bg-gray-700 { background-color: #141414 !important; }
+.bg-gray-600 { background-color: #222222 !important; }
+.bg-gray-500 { background-color: #2e2e2e !important; }
+.bg-gray-400 { background-color: #383838 !important; }
+.bg-gray-100 { background-color: #141414 !important; }
+.bg-gray-50 { background-color: #0a0a0a !important; }
+.bg-slate-900 { background-color: #050505 !important; }
+.bg-slate-800 { background-color: #0a0a0a !important; }
+.bg-slate-700 { background-color: #141414 !important; }
+.bg-zinc-900 { background-color: #050505 !important; }
+.bg-zinc-800 { background-color: #0a0a0a !important; }
+.bg-neutral-900 { background-color: #050505 !important; }
+.bg-neutral-800 { background-color: #0a0a0a !important; }
+/* White background → navy */
+.bg-white { background-color: #141414 !important; }
+
+/* --- 15. BUTTON GLOBAL TREATMENT ---
+   ALL buttons use the Spillman beveled toolbar style. */
+button:not(.leaflet-control-zoom-in):not(.leaflet-control-zoom-out):not([class*="gm-"]) {
+  border-radius: 2px !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.1s ease;
+}
+
+/* --- 16. HEADING / LABEL TREATMENT ---
+   Section labels are gold uppercase by default. */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: 0.03em;
+}
+
+/* --- 17. ALL MODALS — Spillman window chrome --- */
+[role="dialog"],
+[aria-modal="true"] {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+[role="dialog"] > div:first-child,
+[aria-modal="true"] > div:first-child {
+  border-radius: 2px !important;
+  border: 1px solid var(--border-strong) !important;
+  border-top-color: #383838 !important;
+  border-left-color: #383838 !important;
+  border-bottom-color: #050505 !important;
+  border-right-color: #050505 !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset !important;
+}
+
+/* --- 18. LINK STYLING --- */
+a:not([class]) {
+  color: #aaaaaa;
+  text-decoration: none;
+}
+a:not([class]):hover {
+  color: #999999;
+  text-decoration: underline;
+}
+
+/* --- 19. HR / DIVIDER TREATMENT --- */
+hr, [class*="divide-"] > * + * {
+  border-color: var(--border-subtle) !important;
+}
+
+/* --- 20. BADGE / TAG GLOBAL STYLE --- */
+.inline-flex[class*="text-\[8px\]"],
+.inline-flex[class*="text-\[9px\]"] {
+  border-radius: 1px !important;
+}
+
+/* --- 15. CARD HOVER STATES ---
+   Consistent hover glow on interactive cards. */
+[class*="hover\\:bg-"] {
+  transition: background-color 0.1s ease, border-color 0.1s ease;
 }

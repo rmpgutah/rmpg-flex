@@ -924,7 +924,6 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       `Created fleet vehicle: ${vehicle_number}`,
       req.ip || 'unknown'
     );
-    try { auditLog(req, 'CREATE' as any, 'fleet_vehicle' as any, result.lastInsertRowid as number, `Created fleet vehicle: ${vehicle_number}`); } catch { /* non-critical */ }
 
     res.status(201).json({
       ...created,
@@ -1030,7 +1029,6 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       `Updated fleet vehicle: ${updated.vehicle_number}`,
       req.ip || 'unknown'
     );
-    try { auditLog(req, 'UPDATE' as any, 'fleet_vehicle' as any, parseInt(id), `Updated fleet vehicle: ${updated.vehicle_number}`); } catch { /* non-critical */ }
 
     res.json({
       ...updated,
@@ -1341,7 +1339,6 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
       `Logged ${type || 'maintenance'} for vehicle ${vehicle.vehicle_number}: ${description}`,
       req.ip || 'unknown'
     );
-    try { auditLog(req, 'CREATE' as any, 'fleet_maintenance' as any, result.lastInsertRowid as number, `Logged ${type || 'maintenance'} for vehicle ${vehicle.vehicle_number}: ${description}`); } catch { /* non-critical */ }
 
     res.status(201).json(record);
   } catch (error: any) {
@@ -3621,7 +3618,6 @@ router.put('/:id/mileage', requireRole('admin', 'manager', 'supervisor', 'office
 
     let serviceDue = false;
     if (vehicle.next_service_mileage && mileage >= vehicle.next_service_mileage) serviceDue = true;
-    try { auditLog(req, 'UPDATE' as any, 'fleet_vehicle' as any, parseInt(req.params.id), `Mileage updated: ${vehicle.current_mileage || 0} -> ${mileage} for vehicle ${vehicle.vehicle_number}`); } catch { /* non-critical */ }
     broadcastFleetUpdate({ type: 'mileage_updated', vehicle_id: Number(req.params.id), mileage });
     res.json({ success: true, service_due: serviceDue });
   } catch (error: any) {
@@ -3795,7 +3791,7 @@ router.post('/maintenance-templates', requireRole('admin', 'manager'), (req: Req
     const { name, service_type, interval_months, interval_miles, estimated_cost, checklist } = req.body;
     if (!name || !service_type) { return res.status(400).json({ error: 'name and service_type are required' }); }
     const result = db.prepare(`INSERT INTO fleet_maintenance_templates (name, service_type, interval_months, interval_miles, estimated_cost, checklist) VALUES (?, ?, ?, ?, ?, ?)`).run(name, service_type, interval_months || null, interval_miles || null, estimated_cost || null, JSON.stringify(checklist || []));
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Error creating maintenance template:', error);
     res.status(500).json({ error: 'Failed to create maintenance template', code: 'MAINT_TEMPLATE_ERROR' });

@@ -173,7 +173,6 @@ export interface Property {
   hazard_notes?: string;
   access_instructions?: string;
   is_active: boolean;
-  // Enhanced property fields - Building
   building_year_built?: number;
   building_square_footage?: number;
   building_floors?: number;
@@ -189,7 +188,6 @@ export interface Property {
   entry_points_notes?: string;
   occupancy_capacity?: number;
   ada_accessible?: number;
-  // Security
   security_system_type?: string;
   security_company?: string;
   security_company_phone?: string;
@@ -203,7 +201,6 @@ export interface Property {
   fire_panel_location?: string;
   fire_sprinkler_system?: number;
   backup_generator?: number;
-  // CCTV
   cctv_camera_count?: number;
   cctv_recording_location?: string;
   cctv_retention_days?: number;
@@ -212,7 +209,6 @@ export interface Property {
   cctv_access_credentials?: string;
   cctv_ptz_capable?: number;
   cctv_audio_recording?: number;
-  // Access & Keys
   key_type?: string;
   key_location?: string;
   key_box_code?: string;
@@ -222,7 +218,6 @@ export interface Property {
   key_holder_secondary_phone?: string;
   access_card_system?: string;
   restricted_access_areas?: string;
-  // Management
   owner_name?: string;
   owner_phone?: string;
   property_manager_name?: string;
@@ -233,14 +228,12 @@ export interface Property {
   lease_expiry?: string;
   after_hours_contact_name?: string;
   after_hours_contact_phone?: string;
-  // Utilities
   water_source?: string;
   septic_or_sewer?: string;
   internet_provider?: string;
   phone_system_type?: string;
   utility_shutoff_locations?: string;
   dumpster_locations?: string;
-  // Patrol & Safety
   patrol_frequency?: string;
   patrol_priority?: string;
   last_patrol_date?: string;
@@ -411,6 +404,7 @@ export interface CallForService {
   closed_at?: string;
   archived_at?: string;
   previous_status?: CallStatus;
+  risk_score?: number | null;
   created_by: string;
   updated_at: string;
   // Visit history (PSO calls)
@@ -549,6 +543,8 @@ export interface Person {
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;
+  photo_url?: string;
+  photo?: string;
   id_type?: string;
   id_number?: string;
   id_state?: string;
@@ -579,7 +575,6 @@ export interface Person {
   caution_flags?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
-  // Enhanced person fields
   preferred_name?: string;
   suffix?: string;
   nickname_street_name?: string;
@@ -667,7 +662,6 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
-  // Enhanced vehicle fields
   interior_color?: string;
   wrap_or_paint_custom?: string;
   license_plate_frame?: string;
@@ -1021,6 +1015,12 @@ export interface BodyCamera {
 
 export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
 
+export type BwcInteractionType =
+  | 'traffic_stop' | 'arrest' | 'use_of_force' | 'search_warrant'
+  | 'domestic_violence' | 'welfare_check' | 'community_contact'
+  | 'foot_pursuit' | 'vehicle_pursuit' | 'interview'
+  | 'evidence_collection' | 'field_training' | 'other';
+
 export interface BodyCamVideo {
   id: number;
   camera_id: number;
@@ -1032,6 +1032,7 @@ export interface BodyCamVideo {
   mime_type: string;
   recorded_at: string;
   case_number?: string;
+  interaction_type?: BwcInteractionType | null;
   classification: VideoClassification;
   retention_status: VideoRetention;
   overlay_status?: OverlayStatus;
@@ -1086,6 +1087,12 @@ export interface DashCamVideo {
   burn_progress?: number;
   burn_error?: string;
   thumbnail_path?: string;
+  camera_serial?: string;
+  camera_id?: number;
+  officer_name?: string;
+  call_sign?: string;
+  device_name?: string;
+  heading?: number | null;
 }
 
 // --- Equipment ---
@@ -2430,6 +2437,41 @@ export interface CaseNote {
   created_at: string;
 }
 
+// Case Master Folder — linked entity types
+export interface CaseFull {
+  id: number;
+  case_number: string;
+  title: string;
+  case_type: string;
+  status: string;
+  priority: string;
+  lead_investigator_id?: number;
+  lead_investigator_name?: string;
+  summary?: string;
+  narrative?: string;
+  disposition?: string;
+  opened_date?: string;
+  due_date?: string;
+  closed_date?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Linked entities
+  calls: any[];
+  incidents: any[];
+  persons: any[];
+  vehicles: any[];
+  properties: any[];
+  evidence: any[];
+  warrants: any[];
+  citations: any[];
+  notes: any[];
+  counts: {
+    calls: number; incidents: number; persons: number;
+    vehicles: number; properties: number; evidence: number;
+    warrants: number; citations: number; notes: number;
+  };
+}
+
 // --- Code Enforcement ---
 
 export type ViolationType = 'noise' | 'property_maintenance' | 'zoning' | 'signage' | 'health' | 'fire' | 'nuisance' | 'other';
@@ -3052,3 +3094,218 @@ export interface ServeSkipAddress {
   type: string;
   last_seen: string | null;
 }
+
+// --- Dispatch Geography ---
+
+export interface DispatchArea {
+  id: number;
+  area_code: string;
+  area_name: string;
+  color: string;
+  description?: string;
+  commander?: string;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  section_count?: number;
+}
+
+export interface DispatchSection {
+  id: number;
+  section_code: string;
+  section_name: string;
+  area_id?: number;
+  area_code?: string;
+  area_name?: string;
+  color: string;
+  description?: string;
+  supervisor?: string;
+  radio_channel?: string;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  zone_count?: number;
+}
+
+export interface DispatchZone {
+  id: number;
+  zone_code: string;
+  zone_name: string;
+  section_id?: number;
+  section_code?: string;
+  section_name?: string;
+  color?: string;
+  description?: string;
+  primary_unit?: string;
+  backup_unit?: string;
+  radio_channel?: string;
+  hazard_notes?: string;
+  notes?: string;
+  population_estimate?: number;
+  sq_miles?: number;
+  sort_order: number;
+  active: number;
+  beat_count?: number;
+  active_calls?: number;
+}
+
+export interface DispatchBeat {
+  id: number;
+  beat_code: string;
+  beat_name: string;
+  beat_descriptor?: string;
+  zone_id?: number;
+  zone_code?: string;
+  zone_name?: string;
+  section_code?: string;
+  section_name?: string;
+  dispatch_code?: string;
+  color?: string;
+  assigned_unit?: string;
+  backup_unit?: string;
+  hazard_notes?: string;
+  patrol_frequency?: string;
+  priority_modifier?: number;
+  population_estimate?: number;
+  sq_miles?: number;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  active_calls?: number;
+}
+
+export interface DispatchCodeEntry {
+  id: number;
+  code: string;
+  description: string;
+  category: string;
+  priority: string;
+  color: string;
+  requires_backup: number;
+  officer_safety: number;
+  ems_needed: number;
+  fire_needed: number;
+  notes?: string;
+  active: number;
+}
+
+export interface PremiseAlert {
+  id: number;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  alert_type: string;
+  alert_level: string;
+  title: string;
+  description?: string;
+  flags: string;
+  expires_at?: string;
+  created_by?: number;
+  active: number;
+}
+
+// --- Incident Offenses (Spillman Flex-style) ---
+
+export interface IncidentOffense {
+  id: number;
+  incident_id: number;
+  offense_code: string;
+  statute_id?: number;
+  description: string;
+  offense_date?: string;
+  offense_level: 'infraction' | 'misdemeanor' | 'felony' | 'other';
+  ucr_code?: string;
+  nibrs_code?: string;
+  attempted_completed: 'attempted' | 'completed';
+  suspect_person_id?: number;
+  victim_person_id?: number;
+  suspect_first?: string;
+  suspect_last?: string;
+  victim_first?: string;
+  victim_last?: string;
+  location_type?: string;
+  weapon_force?: string;
+  criminal_activity?: string;
+  bias_motivation?: string;
+  disposition?: string;
+  disposition_date?: string;
+  counts: number;
+  notes?: string;
+  statute_number?: string;
+  statute_title?: string;
+}
+
+export type OfficerIncidentRole = 'primary' | 'responding' | 'backup' | 'supervisor' | 'investigator' | 'evidence_tech' | 'other';
+
+export interface IncidentOfficer {
+  id: number;
+  incident_id: number;
+  officer_id: number;
+  role: OfficerIncidentRole;
+  arrived_at?: string;
+  departed_at?: string;
+  action_taken?: string;
+  notes?: string;
+  first_name?: string;
+  last_name?: string;
+  badge_number?: string;
+  call_sign?: string;
+  rank?: string;
+}
+
+export type IncidentLinkType = 'incident' | 'call' | 'case' | 'warrant' | 'citation' | 'arrest';
+
+export interface IncidentLink {
+  id: number;
+  incident_id: number;
+  linked_type: IncidentLinkType;
+  linked_id: number;
+  link_reason?: string;
+  detail?: Record<string, any>;
+}
+
+export interface MniPersonResult {
+  id: number;
+  first_name: string;
+  last_name: string;
+  date_of_birth?: string;
+  gender?: string;
+  race?: string;
+  drivers_license_number?: string;
+  phone?: string;
+  address?: string;
+  flags?: string;
+  incident_count: number;
+  call_count: number;
+  known_roles?: string;
+}
+
+export interface MniPersonDetail {
+  person: Record<string, any>;
+  incidents: { id: number; incident_number: string; incident_type: string; status: string; priority: string; location_address: string; created_at: string; role: string }[];
+  calls: { id: number; call_number: string; incident_type: string; status: string; priority: string; location_address: string; created_at: string; role: string }[];
+  warrants: Record<string, any>[];
+  citations: Record<string, any>[];
+  arrests: Record<string, any>[];
+  trespass: Record<string, any>[];
+  total_records: number;
+}
+
+export interface GeographyTree {
+  areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
+  unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
+}
+
+// ── Integration Hub ──
+export type IntegrationId = 'clearpathgps' | 'servemanager' | 'microbilt' | 'iped';
+export type IntegrationHealth = 'healthy' | 'degraded' | 'error' | 'unconfigured';
+export interface IntegrationStatus { id: IntegrationId; name: string; description: string; configured: boolean; connected: boolean; lastSync: string | null; lastError: string | null; lastHealthCheck: string | null; health: IntegrationHealth; syncing: boolean; syncProgress: number | null; uptimePercent: number | null; stats: Record<string, number>; }
+
+// ── ClearPathGPS ──
+export interface CpgpsVehicle { id: number; cpgps_id: string; vehicle_id: number | null; name: string; vin: string; make: string; model: string; year: number; license_plate: string; device_serial: string; last_lat: number | null; last_lon: number | null; last_speed: number | null; last_heading: number | null; last_reported_at: string; odometer: number | null; engine_hours: number | null; synced_at: string; created_at: string; fleet_vehicle_number?: string; fleet_make?: string; fleet_model?: string; fleet_year?: number; }
+export interface CpgpsTrip { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; trip_start: string; trip_end: string; start_lat: number | null; start_lon: number | null; end_lat: number | null; end_lon: number | null; start_address: string; end_address: string; distance_miles: number | null; max_speed: number | null; avg_speed: number | null; idle_duration_seconds: number | null; drive_duration_seconds: number | null; synced_at: string; created_at: string; }
+export interface CpgpsAlert { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; alert_type: string; severity: string; message: string; triggered_at: string; lat: number | null; lon: number | null; synced_at: string; created_at: string; }
+
+// ── Dash Camera (fleet) ──
+export type DashCameraStatus = 'available' | 'installed' | 'maintenance' | 'damaged' | 'lost';
+export interface DashCamera { id: number; vehicle_id: number; camera_id: string; make: string; model: string; firmware_version: string; storage_capacity_gb: number; channel_count: number; status: DashCameraStatus; condition: string; installed_at: string; removed_at: string; notes: string; created_by: string; created_at: string; updated_at: string; vehicle_number?: string; vehicle_make?: string; vehicle_model?: string; vehicle_year?: number; }

@@ -10,7 +10,31 @@ import {
   Users,
   Plus,
   Trash2,
+  Zap,
+  Car,
+  Search,
+  AlertOctagon,
+  Shield,
 } from 'lucide-react';
+
+// ─── Quick Deploy Preset Types ─────────────────────────────
+
+export type QuickDeployPreset = 'traffic_stop' | 'building_search' | 'active_threat' | 'crowd_control';
+
+interface QuickDeployConfig {
+  key: QuickDeployPreset;
+  label: string;
+  icon: React.ElementType;
+  accent: string;
+  description: string;
+}
+
+const QUICK_DEPLOY_PRESETS: QuickDeployConfig[] = [
+  { key: 'traffic_stop', label: 'Traffic Stop', icon: Car, accent: '#f59e0b', description: '1 rally point, 100m perimeter' },
+  { key: 'building_search', label: 'Building Search', icon: Search, accent: '#888888', description: '4 entry pts (N/S/E/W), 200m K9' },
+  { key: 'active_threat', label: 'Active Threat', icon: AlertOctagon, accent: '#ef4444', description: '300m inner, 500m outer, rally pt' },
+  { key: 'crowd_control', label: 'Crowd Control', icon: Shield, accent: '#a855f7', description: '4 corner rally pts, 500m perimeter' },
+];
 
 interface TacticalToolsPanelProps {
   rallyPoint: { lat: number; lng: number; label: string } | null;
@@ -27,6 +51,7 @@ interface TacticalToolsPanelProps {
   onHideEmergencyServices: () => void;
   onAddEntryPoint: (label: string) => void;
   onClearEntryPoints: () => void;
+  onQuickDeploy?: (preset: QuickDeployPreset) => void;
   onClose: () => void;
 }
 
@@ -58,6 +83,7 @@ export default function TacticalToolsPanel({
   onHideEmergencyServices,
   onAddEntryPoint,
   onClearEntryPoints,
+  onQuickDeploy,
   onClose,
 }: TacticalToolsPanelProps) {
   const [entryLabel, setEntryLabel] = useState('');
@@ -78,7 +104,7 @@ export default function TacticalToolsPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100vh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
+      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100dvh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
       style={{ top: 8, right: 8 }}
     >
       {/* Header */}
@@ -88,13 +114,49 @@ export default function TacticalToolsPanel({
         </span>
         <button type="button"
           onClick={onClose}
-          className="text-rmpg-400 hover:text-white hover:bg-[#1a2636] transition-colors duration-150 rounded-sm p-0.5"
+          className="text-rmpg-400 hover:text-white hover:bg-[#141414] transition-colors duration-150 rounded-sm p-0.5"
           title="Close"
           aria-label="Close tactical tools"
         >
           <X size={14} />
         </button>
       </div>
+
+      {/* Quick Deploy Presets */}
+      {onQuickDeploy && (
+        <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #d4a017', background: 'rgba(212,160,23,0.02)' }}>
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
+            <Zap size={11} className="text-yellow-400" />
+            Quick Deploy
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            {QUICK_DEPLOY_PRESETS.map((preset) => {
+              const Icon = preset.icon;
+              return (
+                <button
+                  type="button"
+                  key={preset.key}
+                  onClick={() => onQuickDeploy(preset.key)}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-sm text-left transition-all duration-150 active:scale-[0.97] hover:brightness-125"
+                  style={{
+                    background: `${preset.accent}10`,
+                    border: `1px solid ${preset.accent}30`,
+                  }}
+                  title={preset.description}
+                >
+                  <Icon size={10} style={{ color: preset.accent, flexShrink: 0 }} />
+                  <div className="min-w-0">
+                    <div className="text-[8px] font-bold uppercase tracking-wider truncate" style={{ color: preset.accent }}>
+                      {preset.label}
+                    </div>
+                    <div className="text-[7px] text-rmpg-500 truncate">{preset.description}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* #30: Rally point section with left accent border glow */}
       <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #d4a017', background: 'rgba(212,160,23,0.03)' }}>
@@ -129,9 +191,9 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* #31: Command rings section with blue accent */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #3b82f6', background: 'rgba(59,130,246,0.03)' }}>
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #888888', background: 'rgba(59,130,246,0.03)' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
-          <Circle size={11} className="text-blue-400" />
+          <Circle size={11} className="text-gray-400" />
           Command Rings
         </div>
         <div className="text-[9px] font-mono text-rmpg-400">

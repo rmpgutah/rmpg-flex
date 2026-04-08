@@ -358,16 +358,6 @@ export default function DashboardPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
-  // ═══ Shift Summary (units + calls overview) ═══
-  const [shiftSummary, setShiftSummary] = useState<{
-    officersOnDuty: number;
-    officersTotal: number;
-    unitsAvailable: number;
-    unitsTotal: number;
-    callsThisShift: number;
-    avgResponseMin: number | null;
-  } | null>(null);
-
   // ═══ Dashboard widget states (Features 31-43) ═══
   const [shiftComparison, setShiftComparison] = useState<any>(null);
   const [clearanceRate, setClearanceRate] = useState<any>(null);
@@ -484,7 +474,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, units, dStats] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -494,8 +484,6 @@ export default function DashboardPage() {
       safe<any>('/admin/shift-stats'),
       safe<any>('/admin/upcoming-court-dates?days=30'),
       safe<any>('/admin/expiring-certifications?days=30'),
-      safe<any[]>('/dispatch/units'),
-      safe<any>('/dispatch/dashboard/stats'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -506,17 +494,6 @@ export default function DashboardPage() {
     if (ss) setShiftStats(ss);
     if (cd) setCourtDatesCount(cd.count ?? 0);
     if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
-    // Shift Summary card data
-    const allUnits = Array.isArray(units) ? units : [];
-    const onDuty = allUnits.filter(u => u.status !== 'off_duty' && u.status !== 'out_of_service');
-    setShiftSummary({
-      officersOnDuty: onDuty.length,
-      officersTotal: allUnits.length,
-      unitsAvailable: allUnits.filter(u => u.status === 'available').length,
-      unitsTotal: allUnits.length,
-      callsThisShift: dStats?.active_calls ?? 0,
-      avgResponseMin: dStats?.avg_response_time ?? null,
-    });
   }, []);
 
   useEffect(() => {
@@ -587,12 +564,12 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard">
+    <div className="p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
       {/* Portal Header — RMPG Logo + System Title */}
       <div className="panel-beveled bg-surface-base overflow-hidden shadow-lg shadow-black/20">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1 min-w-0">
@@ -613,7 +590,7 @@ export default function DashboardPage() {
           </div>
           <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span className="border-l border-[#1e3048] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-[#222222] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
@@ -678,41 +655,14 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Shift Summary Card */}
-      <div className="panel-inset bg-surface-sunken p-3 rounded-sm" role="region" aria-label="Shift summary">
-        <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 flex items-center gap-1">
-          <Shield className="w-3 h-3 text-brand-400" /> Shift Summary
-        </div>
-        <div className={`grid ${isMobile ? 'grid-cols-2 gap-3' : 'grid-cols-4 gap-3'} text-center`}>
-          <div>
-            <div className="text-lg font-bold font-mono text-white">{shiftSummary?.officersOnDuty ?? '\u2014'}</div>
-            <div className="text-[9px] text-rmpg-400">On Duty</div>
-          </div>
-          <div>
-            <div className="text-lg font-bold font-mono text-green-400">{shiftSummary?.unitsAvailable ?? '\u2014'}</div>
-            <div className="text-[9px] text-rmpg-400">Available</div>
-          </div>
-          <div>
-            <div className="text-lg font-bold font-mono text-amber-400">{shiftSummary?.callsThisShift ?? '\u2014'}</div>
-            <div className="text-[9px] text-rmpg-400">Active Calls</div>
-          </div>
-          <div>
-            <div className="text-lg font-bold font-mono text-rmpg-200">
-              {shiftSummary?.avgResponseMin != null ? `${shiftSummary.avgResponseMin}m` : '\u2014'}
-            </div>
-            <div className="text-[9px] text-rmpg-400">Avg Response</div>
-          </div>
-        </div>
-      </div>
-
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
         {[
-          { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
-          { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-          { key: 'P3', label: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#1a5a9e' },
-          { key: 'P4', label: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#4b5563' },
-        ].map(({ key, label, led, border, count, valueColor }) => (
+          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
+          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-gray', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#555555' },
+        ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
             onClick={() => navigate('/dispatch')}
@@ -726,7 +676,7 @@ export default function DashboardPage() {
             <span className={`led-dot ${led} ${count > 0 && key === 'P1' ? 'animate-led-pulse' : ''}`} />
             <div className="flex-1 min-w-0">
               <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
-              <div className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide truncate`}>{label}</div>
+              <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
             </div>
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
           </div>
@@ -753,13 +703,13 @@ export default function DashboardPage() {
             </div>
             {/* Progress Bar */}
             <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
-              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#1e3048] shadow-inner">
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#222222] shadow-inner">
                 <div
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
                     width: `${Math.round(shiftInfo.progress * 100)}%`,
-                    background: `linear-gradient(90deg, #0e3359, #1a5a9e ${Math.round(shiftInfo.progress * 100)}%)`,
-                    boxShadow: '0 0 6px rgba(26, 90, 158, 0.4)',
+                    background: `linear-gradient(90deg, #1a1a1a, #888888 ${Math.round(shiftInfo.progress * 100)}%)`,
+                    boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
                   }}
                 />
               </div>
@@ -770,7 +720,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-2 border-t border-[#1e3048]">
+            <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
               {[
                 { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
                 { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
@@ -789,7 +739,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Weather Widget */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions">
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions" style={{ minWidth: 260 }}>
           <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
           <div className="p-3">
             {weather ? (() => {
@@ -798,8 +748,8 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#1e3048] shadow-inner">
-                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#60a5fa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#94a3b8' }} />
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#222222] shadow-inner">
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
                     </div>
                     <div>
                       <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
@@ -819,16 +769,16 @@ export default function DashboardPage() {
                   )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
-                    <div className="flex items-center gap-2 p-2.5 bg-blue-900/20 border border-blue-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-blue-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
                       <div>
-                        <div className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Road Conditions Warning</div>
-                        <div className="text-[10px] text-blue-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
                       </div>
                     </div>
                   )}
                   {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#1e3048]">
+                  <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
                     <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
                       Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -864,14 +814,14 @@ export default function DashboardPage() {
                 { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
                 { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
                 { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
-                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#3b82f6' },
+                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
                 { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
-                { icon: Mail, label: 'Email', path: '/email', color: '#06b6d4' },
+                { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
               ].map(({ icon: ActionIcon, label, path, color, action }) => (
                 <button type="button"
                   key={label}
                   onClick={() => action ? action() : navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2e2e2e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
                   aria-label={label}
                 >
                   <ActionIcon
@@ -926,19 +876,19 @@ export default function DashboardPage() {
                 <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
                   <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
                   <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
                   <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
                   <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
                 </div>
@@ -984,45 +934,45 @@ export default function DashboardPage() {
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.02} />
+                  <stop offset="5%" stopColor="#888888" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
-                tickLine={{ stroke: '#1e3048' }}
-                axisLine={{ stroke: '#1e3048' }}
+                tick={{ fill: '#666666', fontSize: 9 }}
+                tickLine={{ stroke: '#222222' }}
+                axisLine={{ stroke: '#222222' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
-                tickLine={{ stroke: '#1e3048' }}
-                axisLine={{ stroke: '#1e3048' }}
+                tick={{ fill: '#666666', fontSize: 9 }}
+                tickLine={{ stroke: '#222222' }}
+                axisLine={{ stroke: '#222222' }}
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#141e2b',
-                  border: '1px solid #2a3e58',
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #2e2e2e',
                   borderRadius: '2px',
-                  color: '#d0d8e0',
+                  color: '#cccccc',
                   fontSize: '11px',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                   padding: '8px 12px',
                 }}
-                labelStyle={{ color: '#8a9aaa', fontSize: '10px', marginBottom: '4px' }}
-                cursor={{ stroke: '#1a5a9e', strokeWidth: 1, strokeDasharray: '4 4' }}
+                labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
+                cursor={{ stroke: '#888888', strokeWidth: 1, strokeDasharray: '4 4' }}
               />
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke="#1a5a9e"
+                stroke="#888888"
                 strokeWidth={2}
                 fill="url(#callsGradient)"
-                dot={{ fill: '#1a5a9e', r: 2, strokeWidth: 0 }}
-                activeDot={{ fill: '#3b8ad4', r: 5, strokeWidth: 2, stroke: '#ffffff' }}
+                dot={{ fill: '#888888', r: 2, strokeWidth: 0 }}
+                activeDot={{ fill: '#aaaaaa', r: 5, strokeWidth: 2, stroke: '#ffffff' }}
                 animationDuration={800}
                 animationEasing="ease-out"
               />
@@ -1041,8 +991,8 @@ export default function DashboardPage() {
               const pieData = [
                 { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: '#dc2626' },
                 { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#1a5a9e' },
-                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#4b5563' },
+                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#888888' },
+                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#555555' },
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
@@ -1064,10 +1014,10 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#141e2b',
-                        border: '1px solid #2a3e58',
+                        backgroundColor: '#0a0a0a',
+                        border: '1px solid #2e2e2e',
                         borderRadius: '2px',
-                        color: '#d0d8e0',
+                        color: '#cccccc',
                         fontSize: '11px',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                         padding: '8px 12px',
@@ -1085,12 +1035,12 @@ export default function DashboardPage() {
             })()}
 
             {/* Pie Legend */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#1e3048]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#222222]">
               {[
                 { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
                 { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
-                { key: 'P3', label: 'Routine', color: '#1a5a9e', count: stats.calls_by_priority.P3 },
-                { key: 'P4', label: 'Scheduled', color: '#4b5563', count: stats.calls_by_priority.P4 },
+                { key: 'P3', label: 'Routine', color: '#888888', count: stats.calls_by_priority.P3 },
+                { key: 'P4', label: 'Scheduled', color: '#555555', count: stats.calls_by_priority.P4 },
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors">
                   <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: color }} />
@@ -1102,7 +1052,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions — compact */}
-          <div className="border-t border-[#1e3048] px-3 py-2.5 space-y-1.5">
+          <div className="border-t border-[#222222] px-3 py-2.5 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest select-none">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
@@ -1125,10 +1075,10 @@ export default function DashboardPage() {
       {/* Shift Summary Row */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics">
         {[
-          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#3b82f6', path: '/dispatch' },
+          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#888888', path: '/dispatch' },
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
           { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: '#22c55e', path: '/personnel' },
-          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#1a5a9e', path: '/reports' },
+          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#888888', path: '/reports' },
           { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: '#f59e0b', path: '/warrants' },
           { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? '#ef4444' : '#22c55e', path: '/communications' },
         ].map(({ icon: Icon, label, value, color, path }) => (
@@ -1170,7 +1120,7 @@ export default function DashboardPage() {
           </div>
           <div className="relative w-16 h-16 mx-auto my-1">
             <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-              <circle cx="18" cy="18" r="14" fill="none" stroke="#1e3048" strokeWidth="3" />
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#222222" strokeWidth="3" />
               <circle
                 cx="18" cy="18" r="14" fill="none"
                 stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
@@ -1200,14 +1150,14 @@ export default function DashboardPage() {
                 data={[
                   { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
                   { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#1a5a9e' },
-                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#4b5563' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#555555' },
                 ].filter(d => d.value > 0)}
                 cx="50%" cy="50%" innerRadius={20} outerRadius={32}
                 paddingAngle={2} dataKey="value" stroke="none"
               >
                 {[
-                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#1a5a9e' }, { fill: '#4b5563' },
+                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#555555' },
                 ].map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
             </PieChart>
@@ -1311,7 +1261,7 @@ export default function DashboardPage() {
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Calls</span>
-                          <span className="text-xs font-bold font-mono text-blue-400 tabular-nums">{s.calls}</span>
+                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Incidents</span>
@@ -1401,10 +1351,10 @@ export default function DashboardPage() {
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-blue-500">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3 h-3 text-blue-400" />
+                    <Phone className="w-3 h-3 text-gray-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-blue-400 tabular-nums">{psoStats.todayCalls}</div>
+                  <div className="text-lg font-bold font-mono text-gray-400 tabular-nums">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">
@@ -1413,12 +1363,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-lg font-bold font-mono text-green-400 tabular-nums">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : '#f59e0b' }} />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
                   </div>
-                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
+                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
                     {serveRate !== null ? `${serveRate}%` : 'N/A'}
                   </div>
                 </div>
@@ -1622,7 +1572,7 @@ export default function DashboardPage() {
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
               <table className="w-full text-xs" role="table" aria-label="Expiring credentials list">
                 <thead>
-                  <tr className="border-b border-[#1e3048]">
+                  <tr className="border-b border-[#222222]">
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Officer</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Credential</th>
                     {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Expiry Date</th>}
@@ -1664,7 +1614,7 @@ export default function DashboardPage() {
         const ROLE_COLORS: Record<string, string> = {
           admin: '#ef4444',
           supervisor: '#f59e0b',
-          manager: '#3b82f6',
+          manager: '#888888',
           officer: '#22c55e',
         };
         const ROLE_ORDER = ['admin', 'supervisor', 'manager', 'officer'];
@@ -1686,7 +1636,7 @@ export default function DashboardPage() {
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,
-          fill: ROLE_COLORS[o.role] || '#5a6e80',
+          fill: ROLE_COLORS[o.role] || '#666666',
         }));
 
         return (
@@ -1704,18 +1654,18 @@ export default function DashboardPage() {
               </div>
               <ResponsiveContainer width="100%" height={Math.max(180, chartRows.length * 32)}>
                 <BarChart data={chartRows} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e3048" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#8a9aaa', fontSize: 10 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222222" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 10 }} allowDecimals={false} />
                   <YAxis
                     type="category"
                     dataKey="name"
                     width={140}
-                    tick={{ fill: '#b0bcc8', fontSize: 10 }}
+                    tick={{ fill: '#aaaaaa', fontSize: 10 }}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#141e2b',
-                      border: '1px solid #2a3e58',
+                      backgroundColor: '#0a0a0a',
+                      border: '1px solid #2e2e2e',
                       borderRadius: '2px',
                       color: '#e0e0e0',
                       fontSize: '11px',
@@ -1726,7 +1676,7 @@ export default function DashboardPage() {
                       `${value} actions`,
                       `${ROLE_LABELS[props.payload.role] || props.payload.role} — Badge #${props.payload.badge || '—'}`,
                     ]}
-                    cursor={{ fill: 'rgba(26, 90, 158, 0.08)' }}
+                    cursor={{ fill: 'rgba(136, 136, 136, 0.08)' }}
                   />
                   <Bar dataKey="actions" radius={[0, 3, 3, 0]}>
                     {chartRows.map((entry) => (

@@ -15,6 +15,7 @@ interface StatusBarProps {
   isConnected: boolean;
   user: { first_name: string; last_name: string; role: string; badge_number?: string } | null;
   activeCallCount: number;
+  callsByPriority?: { priority: string; count: number }[];
   activeBOLOs: number;
   gpsTracking?: boolean;
   gpsUnitCallSign?: string | null;
@@ -26,6 +27,7 @@ export default function StatusBar({
   isConnected,
   user,
   activeCallCount,
+  callsByPriority,
   activeBOLOs,
   gpsTracking,
   gpsUnitCallSign,
@@ -55,9 +57,15 @@ export default function StatusBar({
         <span style={{ letterSpacing: '0.02em' }}>RMPG-FLEX v{APP_VERSION}</span>
       </div>
 
-      {/* 28: Active Calls with tabular-nums and color highlight */}
+      {/* 28: Active Calls with tabular-nums and color highlight + priority breakdown */}
       <div className="status-bar-section">
-        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span></span>
+        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span>
+        {callsByPriority && callsByPriority.length > 0 && activeCallCount > 0 && (
+          <span style={{ color: '#666666', marginLeft: 4 }}>
+            ({callsByPriority.filter(p => p.count > 0).map(p => `${p.count} ${p.priority}`).join(', ')})
+          </span>
+        )}
+        </span>
       </div>
 
       {/* 29: BOLOs with tabular-nums */}
@@ -72,25 +80,32 @@ export default function StatusBar({
 
       {/* 30: GPS Status with tabular-nums for accuracy/time */}
       <div className="status-bar-section">
-        {gpsTracking ? (
-          <>
-            <span className="led-dot led-green animate-led-blink" />
-            <span style={{ color: '#22c55e', fontWeight: 700 }}>
-              GPS: {gpsUnitCallSign || 'ON'}
-            </span>
-            {gpsAccuracy != null && (
-              <span className="tabular-nums" style={{ color: '#5a6e80', marginLeft: 4 }}>
-                ±{Math.round(gpsAccuracy)}m
+        {gpsTracking ? (() => {
+          const ageSec = gpsLastSent ? (Date.now() - new Date(gpsLastSent).getTime()) / 1000 : Infinity;
+          const isLost = ageSec > 600;     // >10 min
+          const isStale = ageSec > 120;    // >2 min
+          const ledClass = isLost ? 'led-red' : isStale ? 'led-amber' : 'led-green';
+          const gpsColor = isLost ? '#ef4444' : isStale ? '#f59e0b' : '#22c55e';
+          return (
+            <>
+              <span className={`led-dot ${ledClass} animate-led-blink`} />
+              <span style={{ color: gpsColor, fontWeight: 700 }}>
+                GPS: {gpsUnitCallSign || 'ON'}
               </span>
-            )}
-            {gpsLastSent && (
-              <span className="tabular-nums" style={{ color: '#505050', marginLeft: 4 }}>
-                {safeTimeStr(gpsLastSent)}
-              </span>
-            )}
-          </>
-        ) : (
-          <span style={{ color: '#3a4e60' }}>GPS: OFF</span>
+              {gpsAccuracy != null && (
+                <span className="tabular-nums" style={{ color: '#666666', marginLeft: 4 }}>
+                  ±{Math.round(gpsAccuracy)}m
+                </span>
+              )}
+              {gpsLastSent && (
+                <span className="tabular-nums" style={{ color: isStale ? gpsColor : '#505050', marginLeft: 4 }}>
+                  {safeTimeStr(gpsLastSent)}
+                </span>
+              )}
+            </>
+          );
+        })() : (
+          <span style={{ color: '#3a3a3a' }}>GPS: OFF</span>
         )}
       </div>
 
@@ -109,7 +124,7 @@ export default function StatusBar({
         <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
-        <span style={{ color: '#5a6e80', marginLeft: 8 }}>
+        <span style={{ color: '#666666', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',

@@ -48,7 +48,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 
 // ============================================================
@@ -88,6 +88,7 @@ interface Warrant {
   notes: string | null;
   archived_at: string | null;
   source?: string | null;
+  service_attempt_count: number;
   created_at: string;
   updated_at: string;
   activity?: ActivityEntry[];
@@ -308,10 +309,18 @@ const STATUS_COLORS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   arrest: 'bg-red-900/40 text-red-300 border-red-700/50',
-  search: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  search: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
   bench: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
   civil: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
+};
+
+const TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  arrest: Shield,
+  search: Search,
+  bench: Gavel,
+  civil: Scale,
+  other: FileText,
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -439,17 +448,21 @@ const timeAgo = (date: string): string => {
 };
 
 export default function WarrantsPage() {
-  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
+
+  const [searchParams] = useSearchParams();
+  const initialPersonId = searchParams.get('personId');
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabId>(initialPersonId ? 'warrants' : 'dashboard');
+  const [filterPersonId, setFilterPersonId] = useState<string | null>(initialPersonId);
 
   // ============================================================
   // DASHBOARD STATE
@@ -463,6 +476,7 @@ export default function WarrantsPage() {
   const [priorityWarrants, setPriorityWarrants] = useState<PriorityWarrant[]>([]);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [dashSearch, setDashSearch] = useState('');
+  const [expiringCount, setExpiringCount] = useState<number | null>(null);
   const [summaryReportOpen, setSummaryReportOpen] = useState(false);
   const [summaryFrom, setSummaryFrom] = useState('');
   const [summaryTo, setSummaryTo] = useState('');
@@ -478,6 +492,7 @@ export default function WarrantsPage() {
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [filterSource, setFilterSource] = useState<string>('');
+  const [filterCourt, setFilterCourt] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -565,20 +580,6 @@ export default function WarrantsPage() {
   const [checkingPerson, setCheckingPerson] = useState(false);
 
   // ============================================================
-  // UTAH SEARCH TAB STATE
-  // ============================================================
-  const [utahSearchFirst, setUtahSearchFirst] = useState('');
-  const [utahSearchLast, setUtahSearchLast] = useState('');
-  const [utahSearching, setUtahSearching] = useState(false);
-  const [utahResults, setUtahResults] = useState<UtahSearchResults | null>(null);
-  const [utahSearchHistory, setUtahSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
-
-  // Utah warrant detail modal
-  const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
-  const [addingToLocal, setAddingToLocal] = useState(false);
-  const [addedToLocal, setAddedToLocal] = useState(false);
-
-  // ============================================================
   // UNIFIED SEARCH TAB STATE
   // ============================================================
   const [uniSearchFirst, setUniSearchFirst] = useState('');
@@ -600,6 +601,11 @@ export default function WarrantsPage() {
   const [nameTypeahead, setNameTypeahead] = useState<Person[]>([]);
   const [nameTypeaheadLoading, setNameTypeaheadLoading] = useState(false);
   const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Utah warrant detail modal (shared for unified search results)
+  const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
+  const [addingToLocal, setAddingToLocal] = useState(false);
+  const [addedToLocal, setAddedToLocal] = useState(false);
 
   // ============================================================
   // WATCH LIST TAB STATE
@@ -659,6 +665,7 @@ export default function WarrantsPage() {
     if (activeTab !== 'dashboard') return;
     fetchDashStats();
     fetchPriority();
+    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => setExpiringCount(r.count)).catch(() => {});
     const interval = setInterval(fetchDashStats, 30_000);
     return () => clearInterval(interval);
   }, [activeTab, fetchDashStats, fetchPriority]);
@@ -680,42 +687,36 @@ export default function WarrantsPage() {
       if (filterStatus) params.set('status', filterStatus);
       if (filterType) params.set('type', filterType);
       if (filterSource) params.set('source', filterSource);
+      if (filterCourt) params.set('court', filterCourt);
       if (filterSeverity) params.set('severity', filterSeverity);
+      if (filterPersonId) params.set('person_id', filterPersonId);
       if (searchQuery) params.set('subject_name', searchQuery);
       params.set('archived', showArchived ? 'true' : 'false');
       params.set('page', String(page));
       params.set('per_page', '50');
 
-      // Try unified endpoint first, fall back to standard
-      try {
-        const res = await apiFetch<{ warrants: UnifiedWarrant[]; total: number }>(
-          `/warrants/unified?${params.toString()}`
-        );
-        setWarrants(res.warrants || []);
-        setTotalCount(res.total || 0);
-        setTotalPages(Math.ceil((res.total || 0) / 50) || 1);
-      } catch {
-        // Fallback to standard endpoint
-        const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
-          `/warrants?${params.toString()}`
-        );
-        setWarrants(res.data || []);
-        setTotalPages(res.pagination?.totalPages || 1);
-        setTotalCount(res.pagination?.total || 0);
-      }
+      const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
+        `/warrants?${params.toString()}`
+      );
+      setWarrants(res.data || []);
+      setTotalPages(res.pagination?.totalPages || 1);
+      setTotalCount(res.pagination?.total || 0);
     } catch (err: any) {
       if (!options?.silent) setError(err?.message || 'Failed to load warrants');
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterSeverity, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
   }, [activeTab, fetchWarrants]);
 
-  // Live sync
-  const silentRefreshWarrants = useCallback(() => fetchWarrants({ silent: true }), [fetchWarrants]);
+  // Live sync — skip while form modal is open to prevent UI freezes during person search
+  const silentRefreshWarrants = useCallback(() => {
+    if (formOpen) return; // Don't refresh list while editing
+    fetchWarrants({ silent: true });
+  }, [fetchWarrants, formOpen]);
   useLiveSync('alerts', silentRefreshWarrants);
 
   // Fetch warrant detail
@@ -726,7 +727,7 @@ export default function WarrantsPage() {
     } catch { /* keep existing */ }
   }, []);
 
-  // Person search for form
+  // Person search for form — uses the dedicated search endpoint
   useEffect(() => {
     if (!personSearch || personSearch.length < 2) {
       setPersonResults([]);
@@ -735,8 +736,8 @@ export default function WarrantsPage() {
     const timer = setTimeout(async () => {
       setPersonSearchLoading(true);
       try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&limit=10`);
-        setPersonResults(res.data || res as any || []);
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(personSearch)}`);
+        setPersonResults(Array.isArray(res) ? res.slice(0, 10) : []);
       } catch { setPersonResults([]); }
       finally { setPersonSearchLoading(false); }
     }, 300);
@@ -776,24 +777,6 @@ export default function WarrantsPage() {
   // SOURCES TAB FETCHES
   // ============================================================
 
-  // ── Utah Search ──
-  const runUtahSearch = useCallback(async () => {
-    if (!utahSearchFirst.trim() || !utahSearchLast.trim()) return;
-    setUtahSearching(true);
-    try {
-      const res = await apiFetch<UtahSearchResults>('/warrants/utah-search', {
-        method: 'POST',
-        body: JSON.stringify({ firstName: utahSearchFirst.trim(), lastName: utahSearchLast.trim() }),
-      });
-      setUtahResults(res);
-      setUtahSearchHistory(prev => [
-        { first: utahSearchFirst.trim(), last: utahSearchLast.trim(), hits: res.totalHits, at: new Date().toISOString() },
-        ...prev.slice(0, 19),
-      ]);
-    } catch { /* error handled by apiFetch */ }
-    finally { setUtahSearching(false); }
-  }, [utahSearchFirst, utahSearchLast]);
-
   // ── Unified Search ──
   const runUnifiedSearch = useCallback(async () => {
     if (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim()) return;
@@ -830,6 +813,7 @@ export default function WarrantsPage() {
       uniSearchCharge, uniSearchDateFrom, uniSearchDateTo]);
 
   // ── Typeahead for unified search name fields ──
+  const [nameFieldFocused, setNameFieldFocused] = useState(false);
   useEffect(() => {
     if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
     const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
@@ -837,8 +821,8 @@ export default function WarrantsPage() {
     typeaheadTimer.current = setTimeout(async () => {
       setNameTypeaheadLoading(true);
       try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(query)}&limit=8`);
-        setNameTypeahead(res.data || []);
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
+        setNameTypeahead(Array.isArray(res) ? res.slice(0, 8) : []);
       } finally { setNameTypeaheadLoading(false); }
     }, 300);
     return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
@@ -950,62 +934,6 @@ export default function WarrantsPage() {
     if (activeTab !== 'watch') return;
     fetchAutoPollStatus();
   }, [activeTab, fetchAutoPollStatus]);
-
-  // Watch Map initialization
-  useEffect(() => {
-    if (!watchMapOpen || !watchMapRef.current) return;
-    if (watchMapInstance.current) return; // already initialized
-
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string || '';
-    if (!apiKey) return;
-
-    let cancelled = false;
-    loadGoogleMaps(apiKey).then(() => {
-      if (cancelled || !watchMapRef.current) return;
-      const map = new google.maps.Map(watchMapRef.current, {
-        center: { lat: 40.76, lng: -111.89 },
-        zoom: 11,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-      });
-      watchMapInstance.current = map;
-
-      // Add markers for flagged persons with addresses
-      if (autoPollStatus?.flaggedPersons) {
-        const geocoder = new google.maps.Geocoder();
-        autoPollStatus.flaggedPersons.forEach((p) => {
-          if (!p.address) return;
-          geocoder.geocode({ address: p.address }, (results, status) => {
-            if (cancelled) return;
-            if (status === 'OK' && results && results[0]) {
-              const marker = new google.maps.Marker({
-                position: results[0].geometry.location,
-                map,
-                title: `${p.last_name}, ${p.first_name}`,
-                icon: {
-                  path: google.maps.SymbolPath.CIRCLE,
-                  fillColor: p.warrant_severity === 'felony' ? '#ef4444' : p.warrant_severity === 'misdemeanor' ? '#f59e0b' : '#6b7280',
-                  fillOpacity: 0.9,
-                  strokeColor: '#fff',
-                  strokeWeight: 1,
-                  scale: 8,
-                },
-              });
-              marker.addListener('click', () => {
-                document.getElementById('watch-person-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              });
-            }
-          });
-        });
-      }
-    }).catch(() => { /* Google Maps load failed silently */ });
-
-    return () => {
-      cancelled = true;
-      watchMapInstance.current = null;
-    };
-  }, [watchMapOpen, autoPollStatus?.flaggedPersons]);
 
   const fetchCoverage = useCallback(async () => {
     setCoverageLoading(true);
@@ -1323,26 +1251,26 @@ export default function WarrantsPage() {
       </div>
 
       {/* ---- STATS BAR ---- */}
-      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#1e3048] text-[10px] font-mono flex-wrap">
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#222222] text-[10px] font-mono flex-wrap">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className={`led-dot ${(dashStats?.activeWarrants || 0) > 0 ? 'led-red' : 'led-off'}`} />
           <span className="text-rmpg-400">ACTIVE</span>
           <span className={`font-bold tabular-nums ${(dashStats?.activeWarrants || 0) > 0 ? 'text-red-400' : 'text-rmpg-300'}`}>
             {dashStats?.activeWarrants ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className={`led-dot ${(dashStats?.hitsToday || 0) > 0 ? 'led-amber animate-led-blink' : 'led-off'}`} />
           <span className="text-rmpg-400">HITS TODAY</span>
           <span className={`font-bold tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-rmpg-300'}`}>
             {dashStats?.hitsToday ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className="text-rmpg-400">FLAGGED</span>
           <span className="font-bold tabular-nums text-rmpg-300">{dashStats?.personsFlagged ?? '-'}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className={`led-dot ${(dashStats?.sourcesOnline || 0) > 0 ? 'led-green' : 'led-off'}`} />
           <span className="text-rmpg-400">SOURCES</span>
           <span className={`font-bold tabular-nums ${(dashStats?.sourcesOnline || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -1362,7 +1290,7 @@ export default function WarrantsPage() {
           TAB 1: DASHBOARD
          ================================================================ */}
       {activeTab === 'dashboard' && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
           <div className="p-4 space-y-4">
             {/* Quick Search */}
             <div className="relative">
@@ -1479,6 +1407,13 @@ export default function WarrantsPage() {
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
               </div>
+              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors" onClick={() => { setActiveTab('warrants'); }}>
+                <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
+                  {expiringCount ?? '\u2014'}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Expiring Soon</div>
+                <div className="text-[9px] text-rmpg-500 mt-0.5">within 30 days</div>
+              </div>
             </div>
 
             {/* Main content: Feed (left) + Priority (right) */}
@@ -1516,7 +1451,7 @@ export default function WarrantsPage() {
                   </div>
                 </div>
 
-                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                   {feedLoading ? (
                     <div className="flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading feed...
@@ -1564,7 +1499,7 @@ export default function WarrantsPage() {
                   Priority Warrants
                 </h2>
 
-                <div className="space-y-2 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+                <div className="space-y-2 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                   {priorityLoading ? (
                     <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...
@@ -1597,13 +1532,13 @@ export default function WarrantsPage() {
                                 {(pw.offense_level || pw.type || 'WARRANT').toUpperCase()}
                               </span>
                             </div>
-                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{pw.charge_description}</div>
+                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{chargesFromJson(pw.charge_description)}</div>
                             <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
                               {pw.bail_amount != null && pw.bail_amount > 0 && (
                                 <span className="text-green-400 font-mono font-bold">{formatCurrency(pw.bail_amount)}</span>
                               )}
                               {pw.source && (
-                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded-sm bg-blue-900/30 text-blue-300 border border-blue-700/30">
+                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded-sm bg-gray-900/30 text-gray-300 border border-gray-700/30">
                                   {pw.source}
                                 </span>
                               )}
@@ -1679,8 +1614,38 @@ export default function WarrantsPage() {
                     <option key={l.value} value={l.value}>{l.label}</option>
                   ))}
                 </select>
+                {/* Court filter */}
+                <input
+                  type="text"
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                  placeholder="Court..."
+                  value={filterCourt}
+                  onChange={(e) => { setFilterCourt(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                />
+                {/* Source filter */}
+                <select
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                  value={filterSource}
+                  onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                >
+                  <option value="">All Sources</option>
+                  <option value="manual">Local</option>
+                  <option value="utah_api">Utah API</option>
+                  <option value="scraper">Scraped</option>
+                </select>
               </div>
             </div>
+
+            {/* Person filter indicator */}
+            {filterPersonId && (
+              <div className="px-3 py-1.5 bg-brand-900/30 border-b border-brand-700/50 text-brand-300 text-xs flex items-center gap-2">
+                <User className="w-3 h-3" />
+                <span>Filtered by person #{filterPersonId}</span>
+                <button type="button" onClick={() => { setFilterPersonId(null); setPage(1); }} className="ml-auto text-brand-400 hover:text-white text-[10px] underline">Clear filter</button>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
@@ -1709,7 +1674,7 @@ export default function WarrantsPage() {
             )}
 
             {/* Table */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
               {loading ? (
                 <div className="flex items-center justify-center h-full text-rmpg-400">
                   <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading warrants...
@@ -1742,9 +1707,9 @@ export default function WarrantsPage() {
                         </div>
                       </div>
                       <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
-                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{w.charge_description}</div>
+                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{chargesFromJson(w.charge_description)}</div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level}` : ''}
+                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
                       </div>
                       {/* UPGRADE 42: Expiration warning highlight */}
@@ -1759,7 +1724,7 @@ export default function WarrantsPage() {
                 </div>
               ) : (
                 <table className="table-dark">
-                  <thead className="sticky top-0 z-10 bg-[#0d1520]">
+                  <thead className="sticky top-0 z-10 bg-[#050505]">
                     <tr>
                       {(isGodMode || isAdminOrManager) && (
                         <th style={{ width: 30 }}>
@@ -1774,6 +1739,7 @@ export default function WarrantsPage() {
                       <th style={{ width: 80 }}>Severity</th>
                       <th style={{ width: 90 }}>Court</th>
                       <th style={{ width: 80 }}>Bail</th>
+                      <th style={{ width: 60 }}>Attempts</th>
                       <th style={{ width: 95 }}>Date</th>
                     </tr>
                   </thead>
@@ -1782,7 +1748,7 @@ export default function WarrantsPage() {
                       <tr
                         key={w.id}
                         onClick={() => fetchWarrantDetail(w.id)}
-                        className={`cursor-pointer hover:bg-[#1a2636]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
+                        className={`cursor-pointer hover:bg-[#141414]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
                         {(isGodMode || isAdminOrManager) && (
                           <td onClick={e => e.stopPropagation()}>
@@ -1793,6 +1759,12 @@ export default function WarrantsPage() {
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
                           </span>
+                          {w.expires_at && w.status === 'active' && (() => {
+                            const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            if (daysLeft < 0) return <span className="ml-1 text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1 py-0.5 rounded-sm font-bold">EXPIRED</span>;
+                            if (daysLeft <= 7) return <span className="ml-1 text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1 py-0.5 rounded-sm font-bold">{daysLeft}d</span>;
+                            return null;
+                          })()}
                         </td>
                         <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
                         <td className="text-xs">
@@ -1812,11 +1784,12 @@ export default function WarrantsPage() {
                           </div>
                         </td>
                         <td>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                            {(() => { const Icon = TYPE_ICONS[w.type] || TYPE_ICONS.other; return <Icon className="w-3 h-3" />; })()}
                             {w.type.toUpperCase()}
                           </span>
                         </td>
-                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
+                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{chargesFromJson(w.charge_description)}</td>
                         <td>
                           {w.offense_level ? (
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
@@ -1826,6 +1799,13 @@ export default function WarrantsPage() {
                         </td>
                         <td className="text-[10px] text-rmpg-400 truncate">{w.issuing_court || '-'}</td>
                         <td className="text-xs text-rmpg-400 font-mono">{w.bail_amount ? formatCurrency(w.bail_amount) : '-'}</td>
+                        <td className="text-center">
+                          {w.service_attempt_count > 0 ? (
+                            <span className="text-amber-400 font-mono">{w.service_attempt_count}</span>
+                          ) : (
+                            <span className="text-rmpg-500">&mdash;</span>
+                          )}
+                        </td>
                         <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
                       </tr>
                     ))}
@@ -1850,7 +1830,7 @@ export default function WarrantsPage() {
 
           {/* RIGHT: Warrant Detail */}
           <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
-            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#1e3048] bg-[var(--grid-header-bg)]`}>
+            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#222222] bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
               <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Warrant Detail</span>
               <span className="flex-1" />
@@ -1893,7 +1873,7 @@ export default function WarrantsPage() {
             </div>
 
             {selectedWarrant ? (
-              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
                 {/* Header */}
                 <div className="panel-beveled p-4">
                   <div className="flex items-start justify-between mb-3">
@@ -1940,7 +1920,7 @@ export default function WarrantsPage() {
                   )}
                   <div className="mb-3">
                     <span className="text-[10px] text-[#d4a017] uppercase font-bold tracking-wider">Charge Description</span>
-                    <p className="text-sm text-white mt-0.5">{selectedWarrant.charge_description}</p>
+                    <p className="text-sm text-white mt-0.5">{chargesFromJson(selectedWarrant.charge_description)}</p>
                   </div>
 
                   {/* Dates row */}
@@ -1980,13 +1960,7 @@ export default function WarrantsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
                         <span className="text-rmpg-400">Name</span>
-                        {selectedWarrant.subject_person_id ? (
-                          <button type="button" onClick={() => navigate(`/records?tab=persons&personId=${selectedWarrant.subject_person_id}`)} className="text-white font-bold hover:text-brand-400 underline underline-offset-2 decoration-rmpg-500 hover:decoration-brand-400 transition-colors text-left">
-                            {selectedWarrant.subject_name}
-                          </button>
-                        ) : (
-                          <div className="text-white font-bold">{selectedWarrant.subject_name}</div>
-                        )}
+                        <div className="text-white font-bold">{selectedWarrant.subject_name}</div>
                       </div>
                       {selectedWarrant.subject_dob && (
                         <div>
@@ -2137,6 +2111,9 @@ export default function WarrantsPage() {
                       placeholder="First name..."
                       value={uniSearchFirst}
                       onChange={(e) => setUniSearchFirst(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
+                      autoComplete="off"
                       autoFocus
                     />
                   </div>
@@ -2148,6 +2125,9 @@ export default function WarrantsPage() {
                       placeholder="Last name..."
                       value={uniSearchLast}
                       onChange={(e) => setUniSearchLast(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
+                      autoComplete="off"
                     />
                   </div>
                   <div className="w-[140px]">
@@ -2159,9 +2139,9 @@ export default function WarrantsPage() {
                       onChange={(e) => setUniSearchDob(e.target.value)}
                     />
                   </div>
-                  {/* Typeahead dropdown */}
-                  {nameTypeahead.length > 0 && (
-                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-surface-border shadow-lg max-h-48 overflow-auto">
+                  {/* Typeahead dropdown — only visible when name fields are focused */}
+                  {nameTypeahead.length > 0 && nameFieldFocused && (
+                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-[var(--border-strong)] shadow-lg max-h-48 overflow-auto">
                       {nameTypeaheadLoading && (
                         <div className="p-2 text-[10px] text-rmpg-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
                       )}
@@ -2556,7 +2536,7 @@ export default function WarrantsPage() {
                     onClick={async () => {
                       if (!autoPollStatus?.flaggedPersons?.length) return;
                       try {
-                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets, setGenerationTimestamp } = await import('../utils/pdfGenerator');
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
                         const branding = await fetchPdfBranding();
                         setActiveBranding(branding);
                         await loadPdfAssets();
@@ -2623,7 +2603,7 @@ export default function WarrantsPage() {
                   </div>
                 )}
 
-                {/* Flagged Persons — Rich Cards */}
+                {/* Flagged Persons -- Rich Cards */}
                 {autoPollStatus.flaggedPersons.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -2793,7 +2773,7 @@ export default function WarrantsPage() {
                                     subject_address: p.address || undefined,
                                     subject_photo_url: p.photo_url || undefined,
                                     charge_description: allWarrants[0]?.charge_description || allUtah[0]?.charges || '',
-                                    offense_level: allWarrants[0]?.offense_level as any || null,
+                                    offense_level: allWarrants[0]?.offense_level as any || undefined,
                                     bail_amount: allWarrants[0]?.bail_amount || undefined,
                                     issuing_court: allWarrants[0]?.issuing_court || allUtah[0]?.court_name || undefined,
                                     issuing_judge: undefined,
@@ -2881,7 +2861,7 @@ export default function WarrantsPage() {
                                   r.status === 'completed' ? 'bg-green-900/30 text-green-400' :
                                   r.status === 'running' ? 'bg-brand-blue/20 text-brand-blue' :
                                   'bg-red-900/30 text-red-400'
-                                }`}>{r.status}</span>
+                                }`}>{(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                               </td>
                             </tr>
                           ))}
@@ -2902,7 +2882,7 @@ export default function WarrantsPage() {
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
       {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {/* Coverage Section */}
             {coverageLoading ? (
@@ -3024,7 +3004,7 @@ export default function WarrantsPage() {
                     </summary>
                     <div className="mt-3 overflow-x-auto">
                       <table className="table-dark text-[10px] w-full">
-                        <thead className="sticky top-0 z-10 bg-[#0d1520]">
+                        <thead className="sticky top-0 z-10 bg-[#050505]">
                           <tr>
                             <th className="text-left px-2 py-1">Source</th>
                             <th className="text-left px-2 py-1">State</th>
@@ -3038,7 +3018,7 @@ export default function WarrantsPage() {
                         </thead>
                         <tbody>
                           {coverageSources.map(src => (
-                            <tr key={src.source_key} className="border-t border-rmpg-800/50 hover:bg-[#1a2636]/30 transition-colors">
+                            <tr key={src.source_key} className="border-t border-rmpg-800/50 hover:bg-[#141414]/30 transition-colors">
                               <td className="px-2 py-1 font-mono text-rmpg-300">{src.source_key}</td>
                               <td className="px-2 py-1">{src.state}</td>
                               <td className="px-2 py-1 text-rmpg-400">{src.county || '-'}</td>
@@ -3095,12 +3075,12 @@ export default function WarrantsPage() {
                         <span className="font-mono text-xs text-rmpg-200 font-bold">{run.run_id}</span>
                         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${
                           run.status === 'completed' ? 'bg-green-900/50 text-green-400 border-green-700/50'
-                            : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                            : run.status === 'running' ? 'bg-gray-900/50 text-gray-400 border-gray-700/50'
                             : 'bg-red-900/50 text-red-400 border-red-700/50'
                         }`}>
                           {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />}
                           <span className={`led-dot ${
-                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-blue animate-led-pulse' : 'led-red'
+                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-gray animate-led-pulse' : 'led-red'
                           }`} />
                           {run.status.toUpperCase()}
                         </span>
@@ -3157,7 +3137,7 @@ export default function WarrantsPage() {
         <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setPersonProfileOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
-            className={`relative ${isMobile ? 'w-full' : 'w-[420px]'} h-full bg-surface-base border-l border-rmpg-600 shadow-2xl flex flex-col overflow-hidden`}
+            className={`relative ${isMobile ? 'w-full' : 'w-[420px]'} h-full bg-surface-base border-l border-rmpg-600 shadow-md flex flex-col overflow-hidden`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600 bg-[var(--grid-header-bg)]">
@@ -3174,7 +3154,7 @@ export default function WarrantsPage() {
                 <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading profile...
               </div>
             ) : personProfile ? (
-              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
                 {/* Person header */}
                 <div className="panel-beveled p-4 flex items-start gap-3">
                   {personProfile.person.photo_url ? (
@@ -3260,7 +3240,7 @@ export default function WarrantsPage() {
                               {w.type.toUpperCase()}
                             </span>
                           </div>
-                          <div className="text-xs text-rmpg-300">{w.charge_description}</div>
+                          <div className="text-xs text-rmpg-300">{chargesFromJson(w.charge_description)}</div>
                           <div className="text-[10px] text-rmpg-500 mt-1">
                             {formatDate(w.created_at)}
                             {w.issuing_court && ` \u2022 ${w.issuing_court}`}
@@ -3364,7 +3344,7 @@ export default function WarrantsPage() {
                       onFocus={() => setShowPersonDropdown(true)}
                     />
                     {showPersonDropdown && personResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
+                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
                         {personResults.map((p) => (
                           <button
                             key={p.id}
@@ -3529,18 +3509,18 @@ export default function WarrantsPage() {
       {utahDetailWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setUtahDetailWarrant(null)}>
           <div
-            className="bg-[#0d1520] border border-[#1e3048] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-2xl"
+            className="bg-[#050505] border border-[#222222] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048] bg-[#141e2b]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222222] bg-[#0a0a0a]">
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <span className="text-base font-bold text-white truncate">
                   {utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}
                 </span>
                 <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border flex-shrink-0 ${
                   utahDetailWarrant._source === 'utah' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                  utahDetailWarrant._source === 'local' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50' :
+                  utahDetailWarrant._source === 'local' ? 'bg-gray-900/50 text-gray-400 border-gray-700/50' :
                   'bg-amber-900/50 text-amber-400 border-amber-700/50'
                 }`}>
                   {utahDetailWarrant._source === 'utah' ? 'UTAH STATE' : utahDetailWarrant._source === 'local' ? 'LOCAL' : 'SCRAPED'}
@@ -3554,10 +3534,10 @@ export default function WarrantsPage() {
             <div className="p-4 space-y-4">
               {/* SUBJECT INFORMATION */}
               <div>
-                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Subject Information</span>
                 </div>
-                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Full Name</span>
@@ -3581,10 +3561,10 @@ export default function WarrantsPage() {
 
               {/* WARRANT DETAILS */}
               <div>
-                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Warrant Details</span>
                 </div>
-                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     {(utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id) && (
                       <div>
@@ -3614,7 +3594,7 @@ export default function WarrantsPage() {
                             utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                             utahDetailWarrant.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                             'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                          }`}>{utahDetailWarrant.offense_level}</span>
+                          }`}>{(utahDetailWarrant.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                         </div>
                       </div>
                     )}
@@ -3638,10 +3618,10 @@ export default function WarrantsPage() {
               {/* COURT INFORMATION */}
               {(utahDetailWarrant.court_name || utahDetailWarrant.case_id || utahDetailWarrant.issue_date) && (
                 <div>
-                  <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                  <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                     <span className="text-[10px] font-bold text-white uppercase tracking-widest">Court Information</span>
                   </div>
-                  <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                  <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                       {utahDetailWarrant.court_name && (
                         <div>
@@ -3672,10 +3652,10 @@ export default function WarrantsPage() {
 
               {/* SOURCE / VERIFICATION */}
               <div>
-                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Source / Verification</span>
                 </div>
-                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Data Source</span>
@@ -3701,7 +3681,7 @@ export default function WarrantsPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#1e3048] bg-[#141e2b] flex-wrap">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#222222] bg-[#0a0a0a] flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"

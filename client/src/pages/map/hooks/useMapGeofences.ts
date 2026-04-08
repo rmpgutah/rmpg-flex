@@ -30,6 +30,10 @@ export interface GeofenceAlert {
   timestamp: string;
 }
 
+interface UseMapGeofencesOptions {
+  onAlert?: (alert: GeofenceAlert) => void;
+}
+
 interface UseMapGeofencesReturn {
   geofences: Geofence[];
   loading: boolean;
@@ -38,6 +42,51 @@ interface UseMapGeofencesReturn {
   drawnVertices: google.maps.LatLngLiteral[];
   clearDrawing: () => void;
   alerts: GeofenceAlert[];
+}
+
+// ─── Web Audio beep ────────────────────────────────────────
+
+let audioCtxCache: AudioContext | null = null;
+
+function playGeofenceBeep(isEnter: boolean): void {
+  try {
+    const audible = localStorage.getItem('rmpg-audible-alerts');
+    if (audible === 'false' || audible === '0') return;
+
+    if (!audioCtxCache) {
+      audioCtxCache = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioCtxCache;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Enter = higher pitch double beep, Exit = lower single beep
+    osc.type = 'sine';
+    osc.frequency.value = isEnter ? 880 : 440;
+    gain.gain.value = 0.15;
+
+    const now = ctx.currentTime;
+    osc.start(now);
+
+    if (isEnter) {
+      // Double beep: on-off-on
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.setValueAtTime(0, now + 0.08);
+      gain.gain.setValueAtTime(0.15, now + 0.12);
+      gain.gain.setValueAtTime(0, now + 0.2);
+      osc.stop(now + 0.22);
+    } else {
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.stop(now + 0.27);
+    }
+  } catch {
+    // Audio not available — silent fail
+  }
 }
 
 // ─── Parse polygon coords ───────────────────────────────────
@@ -81,6 +130,7 @@ function computeCentroid(path: google.maps.LatLngLiteral[]): google.maps.LatLngL
 export function useMapGeofences(
   map: google.maps.Map | null,
   enabled: boolean,
+  options?: UseMapGeofencesOptions,
 ): UseMapGeofencesReturn {
   const { subscribe } = useWebSocket();
 
@@ -142,7 +192,7 @@ export function useMapGeofences(
     // Fix 88: zone type color mapping
     const ZONE_TYPE_COLORS: Record<string, string> = {
       restricted: '#dc2626',     // red
-      patrol: '#3b82f6',         // blue
+      patrol: '#888888',         // blue
       safety: '#f59e0b',         // amber
       exclusion: '#ef4444',      // bright red
       monitoring: '#8b5cf6',     // purple
@@ -164,7 +214,7 @@ export function useMapGeofences(
       if (path.length < 3) return;
 
       // Fix 88: color code by zone type, fallback to fence color
-      const color = ZONE_TYPE_COLORS[fence.zone_type?.toLowerCase()] || fence.color || '#3b82f6';
+      const color = ZONE_TYPE_COLORS[fence.zone_type?.toLowerCase()] || fence.color || '#888888';
 
       const polygon = new google.maps.Polygon({
         paths: path,
@@ -292,7 +342,7 @@ export function useMapGeofences(
           scale: 5,
           fillColor: '#d4a017',
           fillOpacity: 1,
-          strokeColor: '#0d1520',
+          strokeColor: '#050505',
           strokeWeight: 2,
         },
         clickable: false,
@@ -363,11 +413,17 @@ export function useMapGeofences(
           timestamp: payload.timestamp || new Date().toISOString(),
         };
         setAlerts((prev) => [alert, ...prev].slice(0, 50)); // keep last 50
+
+        // Play audible beep notification
+        playGeofenceBeep(alert.eventType === 'enter');
+
+        // Notify parent via callback (for toast display)
+        options?.onAlert?.(alert);
       }
     });
 
     return unsub;
-  }, [subscribe]);
+  }, [subscribe, options?.onAlert]);
 
   // ── Cleanup on unmount ──────────────────────────────────
 

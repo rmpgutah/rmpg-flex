@@ -13,8 +13,8 @@ import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#141e2b',
-    border: '1px solid #1e3048',
+    backgroundColor: '#0a0a0a',
+    border: '1px solid #222222',
     color: '#e0e0e0',
     fontSize: 10,
     fontFamily: 'Consolas, monospace',
@@ -50,7 +50,7 @@ const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-const ISSUE_BAR_COLORS = ['#1a5a9e', '#2068b0', '#2b78c2', '#3888d4', '#d4a017'];
+const ISSUE_BAR_COLORS = ['#888888', '#555555', '#666666', '#888888', '#d4a017'];
 
 const STATUS_DOT_COLORS: Record<string, string> = {
   in_service: '#22c55e',
@@ -170,7 +170,7 @@ function InfoTooltip({ text }: { text: string }) {
         <Info className="w-2.5 h-2.5" />
       </button>
       {show && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 px-2 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-[8px] text-rmpg-300 font-normal normal-case tracking-normal shadow-lg pointer-events-none">
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 px-2 py-1.5 bg-[#050505] border border-[#222222] rounded-[2px] text-[8px] text-rmpg-300 font-normal normal-case tracking-normal shadow-lg pointer-events-none">
           {text}
         </div>
       )}
@@ -360,8 +360,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             onClick={() => handlePeriodChange(opt.value)}
             className={`px-2.5 py-1 text-[9px] font-mono font-bold tracking-wider rounded-[2px] border transition-colors duration-150
               ${period === opt.value
-                ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white'
-                : 'bg-[#0d1520] border-[#1e3048] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
+                ? 'bg-[#888888] border-[#888888] text-white'
+                : 'bg-[#050505] border-[#222222] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
               }`}
           >
             {opt.label}
@@ -372,7 +372,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 1: KPI Cards with Tooltips */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Total Fleet Costs */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <DollarSign className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Fleet Costs</span>
@@ -388,7 +388,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Average MPG */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Fuel className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Average MPG</span>
@@ -401,7 +401,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Service Compliance */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Wrench className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Service Compliance</span>
@@ -416,7 +416,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Inspection Pass Rate */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <CheckCircle className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Inspection Pass Rate</span>
@@ -434,19 +434,19 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 2: Maintenance Cost Trend + Fuel Economy Trend */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Maintenance Cost Trend (Bar Chart) */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <DollarSign className="w-3 h-3" /> Maintenance Cost Trend
           </h4>
           {maintenance_cost_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={maintenance_cost_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
-                <XAxis dataKey="month" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }} />
-                <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
+                <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
                   tickFormatter={(v) => `$${v}`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [`$${Number(value).toFixed(0)}`, 'Cost']} />
-                <Bar dataKey="total_cost" fill="#1a5a9e" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="total_cost" fill="#888888" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -455,16 +455,16 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fuel Economy Trend (Line Chart) */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Fuel className="w-3 h-3" /> Fuel Economy Trend
           </h4>
           {fuel_economy_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
-                <XAxis dataKey="month" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }} />
-                <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
+                <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
                   tickFormatter={(v) => `${v} mpg`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [value != null ? `${value} mpg` : 'N/A', 'Avg MPG']} />
                 <Line type="monotone" dataKey="avg_mpg" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} connectNulls />
@@ -479,7 +479,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 3: Top Vehicles by Cost + Service Alerts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Vehicles by Cost */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3" /> Top Vehicles by Cost
           </h4>
@@ -487,7 +487,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="overflow-x-auto">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#222222]">
                     <th className="text-left py-1 pr-2">Vehicle</th>
                     <th className="text-left py-1 pr-2">Make/Model</th>
                     <th className="text-right py-1 pr-2 font-mono">$/Mile</th>
@@ -496,7 +496,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 </thead>
                 <tbody>
                   {cost_per_mile_ranking.map((v) => (
-                    <tr key={v.id} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                    <tr key={v.id} className="border-b border-[#222222]/50 hover:bg-[#050505] transition-colors duration-150">
                       <td className="py-1 pr-2 font-mono font-bold text-white">{v.vehicle_number}</td>
                       <td className="py-1 pr-2 text-rmpg-400">{v.make} {v.model}</td>
                       <td className="py-1 pr-2 text-right font-mono tabular-nums text-green-400">
@@ -516,7 +516,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Service Alerts */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <ShieldAlert className="w-3 h-3" /> Service Alerts
             {serviceAlerts.length > 0 && (
@@ -553,16 +553,16 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 4: Mileage Distribution + Fleet Status */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Mileage Distribution (Bar Chart) */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Gauge className="w-3 h-3" /> Mileage Distribution
           </h4>
           {mileage_distribution.some(d => d.count > 0) ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={mileage_distribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
-                <XAxis dataKey="range" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }} />
-                <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <XAxis dataKey="range" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
+                <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} />
                 <Bar dataKey="count" fill="#4a90c4" radius={[2, 2, 0, 0]} />
               </BarChart>
@@ -573,7 +573,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fleet Status (Donut) */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Car className="w-3 h-3" /> Fleet Status
           </h4>
@@ -607,7 +607,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   </div>
                 ))}
                 {utilization && (
-                  <div className="mt-2 pt-2 border-t border-[#1e3048] text-[9px] text-rmpg-400">
+                  <div className="mt-2 pt-2 border-t border-[#222222] text-[9px] text-rmpg-400">
                     <span>Utilization: </span>
                     <span className="font-mono font-bold text-[#d4a017] tabular-nums">{utilization.rate}%</span>
                     <span className="ml-1">({utilization.assigned} assigned)</span>
@@ -624,7 +624,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 5: Daily Fleet Utilization + Maintenance Forecast */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Fleet Utilization (Area Chart) */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Activity className="w-3 h-3" /> Daily Fleet Utilization
           </h4>
@@ -633,25 +633,25 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <AreaChart data={daily_usage}>
                 <defs>
                   <linearGradient id="utilGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.05} />
+                    <stop offset="5%" stopColor="#888888" stopOpacity={0.6} />
+                    <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: '#5a6e80', fontSize: 8 }}
+                  tick={{ fill: '#666666', fontSize: 8 }}
                   tickLine={false}
-                  axisLine={{ stroke: '#1e3048' }}
+                  axisLine={{ stroke: '#222222' }}
                   tickFormatter={(v) => {
                     const d = new Date(v + 'T00:00:00');
                     return `${d.getMonth() + 1}/${d.getDate()}`;
                   }}
                 />
                 <YAxis
-                  tick={{ fill: '#5a6e80', fontSize: 9 }}
+                  tick={{ fill: '#666666', fontSize: 9 }}
                   tickLine={false}
-                  axisLine={{ stroke: '#1e3048' }}
+                  axisLine={{ stroke: '#222222' }}
                   allowDecimals={false}
                 />
                 <Tooltip
@@ -665,7 +665,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <Area
                   type="monotone"
                   dataKey="active_vehicles"
-                  stroke="#1a5a9e"
+                  stroke="#888888"
                   strokeWidth={2}
                   fill="url(#utilGradient)"
                 />
@@ -677,7 +677,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Maintenance Forecast */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Forecast
           </h4>
@@ -685,7 +685,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="overflow-x-auto">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#222222]">
                     <th className="text-left py-1 pr-2">Vehicle #</th>
                     <th className="text-right py-1 pr-2 font-mono">Current Mi</th>
                     <th className="text-right py-1 pr-2 font-mono">Next Svc</th>
@@ -700,7 +700,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       : days < 30 ? 'text-amber-400'
                       : 'text-green-400';
                     return (
-                      <tr key={v.id} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                      <tr key={v.id} className="border-b border-[#222222]/50 hover:bg-[#050505] transition-colors duration-150">
                         <td className="py-1 pr-2 font-mono font-bold text-white">{v.vehicle_number}</td>
                         <td className="py-1 pr-2 text-right font-mono tabular-nums text-rmpg-300">
                           {v.current_mileage != null ? v.current_mileage.toLocaleString() : '--'}
@@ -726,7 +726,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 6: Quick Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Avg Daily Miles */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Gauge className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Avg Daily Miles</span>
@@ -738,7 +738,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Total Vehicles */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Car className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Vehicles</span>
@@ -750,7 +750,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Oldest Vehicle */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Calendar className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Oldest Vehicle</span>
@@ -762,7 +762,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fleet Utilization */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Activity className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Fleet Utilization</span>
@@ -772,7 +772,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </div>
           {utilization && (
             <div className="mt-1.5">
-              <div className="h-1.5 bg-[#0d1520] rounded-[1px] overflow-hidden">
+              <div className="h-1.5 bg-[#050505] rounded-[1px] overflow-hidden">
                 <div
                   className="h-full rounded-[1px] transition-all duration-150"
                   style={{
@@ -790,7 +790,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 7: Combined Cost Trend (Full Width) */}
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
         <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
           <TrendingUp className="w-3 h-3" /> Combined Cost Trend (12 Months)
         </h4>
@@ -799,17 +799,17 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <AreaChart data={costTrendChartData}>
               <defs>
                 <linearGradient id="maintGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.6} />
-                  <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.05} />
+                  <stop offset="5%" stopColor="#888888" stopOpacity={0.6} />
+                  <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
                 </linearGradient>
                 <linearGradient id="fuelGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6} />
                   <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
-              <XAxis dataKey="month" tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }} />
-              <YAxis tick={{ fill: '#5a6e80', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#1e3048' }}
+              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
+              <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
@@ -818,7 +818,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return [`$${Number(value).toFixed(0)}`, label];
                 }}
               />
-              <Area type="monotone" dataKey="maintenance_cost" stackId="1" stroke="#1a5a9e" strokeWidth={2} fill="url(#maintGradient)" />
+              <Area type="monotone" dataKey="maintenance_cost" stackId="1" stroke="#888888" strokeWidth={2} fill="url(#maintGradient)" />
               <Area type="monotone" dataKey="fuel_cost" stackId="1" stroke="#22c55e" strokeWidth={2} fill="url(#fuelGradient)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -827,7 +827,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         )}
         <div className="flex items-center gap-4 mt-2">
           <div className="flex items-center gap-1.5 text-[8px]">
-            <div className="w-3 h-1.5 bg-[#1a5a9e] rounded-[1px]" />
+            <div className="w-3 h-1.5 bg-[#888888] rounded-[1px]" />
             <span className="text-rmpg-400">Maintenance</span>
           </div>
           <div className="flex items-center gap-1.5 text-[8px]">
@@ -840,7 +840,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 8: Top Maintenance Issues + Vehicle Lifecycle */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Maintenance Issues (Horizontal Bar Chart) */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Top Maintenance Issues
           </h4>
@@ -857,12 +857,12 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         {issue.count}x &middot; ${issue.total_cost >= 1000 ? `${(issue.total_cost / 1000).toFixed(1)}k` : (issue.total_cost || 0).toFixed(0)}
                       </span>
                     </div>
-                    <div className="h-2 bg-[#0d1520] rounded-[1px] overflow-hidden">
+                    <div className="h-2 bg-[#050505] rounded-[1px] overflow-hidden">
                       <div
                         className="h-full rounded-[1px] transition-all duration-150"
                         style={{
                           width: `${pct}%`,
-                          backgroundColor: ISSUE_BAR_COLORS[idx] || '#1a5a9e',
+                          backgroundColor: ISSUE_BAR_COLORS[idx] || '#888888',
                         }}
                       />
                     </div>
@@ -876,7 +876,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Vehicle Lifecycle Table */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Activity className="w-3 h-3" /> Vehicle Lifecycle
           </h4>
@@ -884,7 +884,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="overflow-x-auto max-h-[200px] overflow-y-auto">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048] sticky top-0 bg-[#141e2b]">
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#222222] sticky top-0 bg-[#0a0a0a]">
                     <th className="text-left py-1 pr-1">Vehicle</th>
                     <th className="text-right py-1 pr-1 font-mono">Age</th>
                     <th className="text-right py-1 pr-1 font-mono">Miles</th>
@@ -899,10 +899,10 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       : v.estimated_remaining_life_years < 3 ? 'text-amber-400'
                       : 'text-green-400';
                     return (
-                      <tr key={v.id} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                      <tr key={v.id} className="border-b border-[#222222]/50 hover:bg-[#050505] transition-colors duration-150">
                         <td className="py-1 pr-1">
                           <div className="flex items-center gap-1">
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || '#6b7280' }} />
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || '#666666' }} />
                             <span className="font-mono font-bold text-white">{v.vehicle_number}</span>
                           </div>
                         </td>
@@ -929,10 +929,10 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 9: Vehicle Comparison Tool (Collapsible) */}
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px]">
+      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px]">
         <button
           onClick={() => setCompareExpanded(!compareExpanded)}
-          className="w-full flex items-center justify-between p-3 hover:bg-[#0d1520] transition-colors duration-150"
+          className="w-full flex items-center justify-between p-3 hover:bg-[#050505] transition-colors duration-150"
         >
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Search className="w-3 h-3" /> Compare Vehicles
@@ -959,8 +959,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       onClick={() => toggleVehicleSelection(v.id)}
                       className={`px-2 py-1 text-[9px] font-mono rounded-[2px] border transition-colors duration-150
                         ${isSelected
-                          ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white'
-                          : 'bg-[#0d1520] border-[#1e3048] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
+                          ? 'bg-[#888888] border-[#888888] text-white'
+                          : 'bg-[#050505] border-[#222222] text-rmpg-400 hover:text-white hover:border-[#2a4060]'
                         }`}
                     >
                       {v.vehicle_number}
@@ -972,7 +972,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <button
                   onClick={handleCompare}
                   disabled={selectedIds.length < 2 || selectedIds.length > 5 || compareLoading}
-                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#1a5a9e] text-white border border-[#1a5a9e] hover:bg-[#2068b0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#888888] text-white border border-[#888888] hover:bg-[#2068b0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
                 >
                   {compareLoading ? 'Loading...' : 'Compare'}
                 </button>
@@ -992,7 +992,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div className="overflow-x-auto">
                 <table className="w-full text-[10px]">
                   <thead>
-                    <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                    <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#222222]">
                       <th className="text-left py-1.5 pr-3 font-bold">Metric</th>
                       {comparisonResults.map((v) => (
                         <th key={v.id} className="text-right py-1.5 px-2 font-mono font-bold text-white">{v.vehicle_number}</th>
@@ -1001,14 +1001,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   </thead>
                   <tbody>
                     {/* Make/Model */}
-                    <tr className="border-b border-[#1e3048]/50">
+                    <tr className="border-b border-[#222222]/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Make/Model</td>
                       {comparisonResults.map((v) => (
                         <td key={v.id} className="py-1.5 px-2 text-right text-rmpg-300">{v.make} {v.model} ({v.year})</td>
                       ))}
                     </tr>
                     {/* Total Cost */}
-                    <tr className="border-b border-[#1e3048]/50">
+                    <tr className="border-b border-[#222222]/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Total Cost</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('total_cost', true);
@@ -1020,7 +1020,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Cost/Mile */}
-                    <tr className="border-b border-[#1e3048]/50">
+                    <tr className="border-b border-[#222222]/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Cost/Mile</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('cost_per_mile', true);
@@ -1032,7 +1032,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Avg MPG */}
-                    <tr className="border-b border-[#1e3048]/50">
+                    <tr className="border-b border-[#222222]/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Avg MPG</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('avg_mpg', false);
@@ -1044,7 +1044,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Mileage */}
-                    <tr className="border-b border-[#1e3048]/50">
+                    <tr className="border-b border-[#222222]/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Mileage</td>
                       {comparisonResults.map((v) => (
                         <td key={v.id} className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
@@ -1053,7 +1053,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       ))}
                     </tr>
                     {/* Inspections */}
-                    <tr className="border-b border-[#1e3048]/50">
+                    <tr className="border-b border-[#222222]/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Inspections</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('inspection_pass_rate', false);
@@ -1067,7 +1067,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Days Since Last Service */}
-                    <tr className="border-b border-[#1e3048]/50">
+                    <tr className="border-b border-[#222222]/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Days Since Service</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('days_since_last_service', true);
@@ -1087,7 +1087,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 10: Vehicle Health Dashboard */}
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Heart className="w-3 h-3" /> Vehicle Health Scores
@@ -1095,7 +1095,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <select
             value={healthSort}
             onChange={(e) => setHealthSort(e.target.value as 'score' | 'number' | 'age')}
-            className="text-[9px] bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-rmpg-300 px-2 py-1 font-mono"
+            className="text-[9px] bg-[#050505] border border-[#222222] rounded-[2px] text-rmpg-300 px-2 py-1 font-mono"
           >
             <option value="score">Sort: Worst First</option>
             <option value="number">Sort: Vehicle #</option>
@@ -1110,14 +1110,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               const strokeDash = (v.health_score / 100) * circumference;
               const badgeColors: Record<string, string> = {
                 Excellent: 'text-green-400 bg-green-900/20 border-green-800/40',
-                Good: 'text-blue-400 bg-blue-900/20 border-blue-800/40',
+                Good: 'text-gray-400 bg-gray-900/20 border-gray-800/40',
                 Fair: 'text-amber-400 bg-amber-900/20 border-amber-800/40',
                 Poor: 'text-orange-400 bg-orange-900/20 border-orange-800/40',
                 Critical: 'text-red-400 bg-red-900/20 border-red-800/40',
               };
               const factorLabels = ['age', 'mileage', 'service', 'inspection', 'cost'] as const;
               return (
-                <div key={v.vehicle_id} className="bg-[#0d1520] border border-[#1e3048] rounded-[2px] p-2.5">
+                <div key={v.vehicle_id} className="bg-[#050505] border border-[#222222] rounded-[2px] p-2.5">
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <div className="text-[11px] font-mono font-bold text-white">{v.vehicle_number}</div>
@@ -1125,7 +1125,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     </div>
                     <div className="relative w-16 h-16 flex-shrink-0">
                       <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                        <circle cx="32" cy="32" r="28" fill="none" stroke="#1e3048" strokeWidth="4" />
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="#222222" strokeWidth="4" />
                         <circle
                           cx="32" cy="32" r="28" fill="none"
                           stroke={scoreColor} strokeWidth="4" strokeLinecap="round"
@@ -1143,7 +1143,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <div className="flex gap-0.5 mb-1.5">
                     {factorLabels.map((f) => (
                       <div key={f} className="flex-1" title={`${f}: ${v.factors[f]}`}>
-                        <div className="h-1 bg-[#1e3048] rounded-full overflow-hidden">
+                        <div className="h-1 bg-[#222222] rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-150"
                             style={{
@@ -1169,7 +1169,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 11: Maintenance Schedule */}
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
         <div className="flex items-center gap-2 mb-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Schedule
@@ -1184,7 +1184,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
               <thead>
-                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#222222]">
                   <th className="text-left py-1.5 pr-3 font-bold">Vehicle#</th>
                   <th className="text-left py-1.5 pr-3 font-bold">Service Type</th>
                   <th className="text-right py-1.5 px-2 font-bold">Due Date</th>
@@ -1198,14 +1198,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   const urgencyColors: Record<string, { dot: string; text: string }> = {
                     overdue: { dot: '#ef4444', text: 'text-red-400' },
                     critical: { dot: '#f59e0b', text: 'text-amber-400' },
-                    upcoming: { dot: '#3b82f6', text: 'text-blue-400' },
+                    upcoming: { dot: '#888888', text: 'text-gray-400' },
                     ok: { dot: '#22c55e', text: 'text-green-400' },
                   };
                   const uc = urgencyColors[m.urgency] || urgencyColors.ok;
                   return (
-                    <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                    <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-[#222222]/50 hover:bg-[#050505] transition-colors duration-150">
                       <td className="py-1.5 pr-3 font-mono font-bold text-white">{m.vehicle_number}</td>
-                      <td className="py-1.5 pr-3 text-rmpg-300">{m.service_type}</td>
+                      <td className="py-1.5 pr-3 text-rmpg-300">{(m.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         {m.due_date || '--'}
                       </td>
@@ -1233,7 +1233,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 12: Driver Performance */}
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] p-3">
+      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] p-3">
         <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5 mb-3">
           <User className="w-3 h-3" /> Driver Performance
         </h4>
@@ -1241,7 +1241,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
               <thead>
-                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#1e3048]">
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#222222]">
                   <th className="text-left py-1.5 pr-3 font-bold">Officer</th>
                   <th className="text-left py-1.5 pr-2 font-bold">Call Sign</th>
                   <th className="text-right py-1.5 px-2 font-bold">Miles</th>
@@ -1258,14 +1258,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 {driverPerf.map((d) => {
                   const scoreColor = d.overall_score >= 80 ? 'text-green-400' : d.overall_score >= 40 ? 'text-amber-400' : 'text-red-400';
                   return (
-                    <tr key={d.call_sign} className="border-b border-[#1e3048]/50 hover:bg-[#0d1520] transition-colors duration-150">
+                    <tr key={d.call_sign} className="border-b border-[#222222]/50 hover:bg-[#050505] transition-colors duration-150">
                       <td className="py-1.5 pr-3 text-rmpg-300 truncate max-w-[120px]">{d.officer_name}</td>
                       <td className="py-1.5 pr-2 font-mono font-bold text-white">{d.call_sign}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_miles.toLocaleString()}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_hours}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         <span className="inline-flex items-center gap-1">
-                          <span className="inline-block w-8 h-1 bg-[#1e3048] rounded-full overflow-hidden">
+                          <span className="inline-block w-8 h-1 bg-[#222222] rounded-full overflow-hidden">
                             <span className="block h-full rounded-full" style={{ width: `${d.idle_pct}%`, backgroundColor: d.idle_pct > 60 ? '#ef4444' : d.idle_pct > 30 ? '#f59e0b' : '#22c55e' }} />
                           </span>
                           {d.idle_pct}%
@@ -1312,9 +1312,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {serviceAlerts.slice(0, 8).map((a: any) => (
-              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-blue-900/20 border-blue-800/40 text-blue-400'}`}>
+              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-gray-900/20 border-gray-800/40 text-gray-400'}`}>
                 <span className="font-mono font-bold">{a.vehicle_number}</span>
-                <span>{a.service_type}</span>
+                <span>{(a.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                 <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>
               </div>
             ))}

@@ -145,7 +145,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#6b7280';
+      default: return '#666666';
     }
   };
 
@@ -235,7 +235,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
             <div className="flex items-center gap-2 text-[9px] text-rmpg-500">
               <Clock style={{ width: 9, height: 9 }} />
               <span>{safeDateStr(call.created_at)}</span>
-              {call.disposition && <span>• {call.disposition}</span>}
+              {call.disposition && <span>• {call.disposition.replace(/_/g, ' ')}</span>}
               {call.weapons_involved && <span className="text-red-500 font-bold">WEAPONS</span>}
               {call.domestic_violence && <span className="text-orange-500 font-bold">DV</span>}
             </div>

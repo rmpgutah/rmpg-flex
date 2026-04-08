@@ -161,7 +161,7 @@ export function useMapUnitSafety(
       entries.forEach((u) => {
         const prev = history.get(u.call_sign);
         if (prev) {
-          const moved = haversineMi(prev.lat, prev.lng, u.lat, u.lng) > 0.012; // ~20m
+          const moved = haversineMi(prev.lat, prev.lng, u.lat, u.lng) > 0.02; // ~20m
           if (moved) {
             history.set(u.call_sign, { lat: u.lat, lng: u.lng, since: now });
           } else if (now - prev.since > STATIONARY_THRESHOLD_MS) {
@@ -196,7 +196,7 @@ export function useMapUnitSafety(
         const nearby = entries.filter(
           (o) =>
             o.call_sign !== u.call_sign &&
-            haversineMi(u.lat, u.lng, o.lat, o.lng) * 1609.34 < CLUSTER_RADIUS_M,
+            haversineMi(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M,
         );
         if (nearby.length >= 2) {
           const clusterUnits = [u.call_sign, ...nearby.map((n) => n.call_sign)];
@@ -269,9 +269,9 @@ export function useMapUnitSafety(
         const circle = new google.maps.Circle({
           center: { lat: cl.lat, lng: cl.lng },
           radius: 100,
-          fillColor: '#3b82f6',
+          fillColor: '#888888',
           fillOpacity: 0.15,
-          strokeColor: '#3b82f6',
+          strokeColor: '#888888',
           strokeWeight: 2,
           strokeOpacity: 0.5,
           map,
@@ -378,7 +378,7 @@ export function useMapUnitSafety(
         const nearby = entries.filter(
           (o) =>
             o.call_sign !== u.call_sign &&
-            haversineMi(u.lat, u.lng, o.lat, o.lng) * 1609.34 < CLUSTER_RADIUS_M,
+            haversineMi(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M,
         );
         if (nearby.length >= 2) {
           const cUnits = [u.call_sign, ...nearby.map((n) => n.call_sign)];

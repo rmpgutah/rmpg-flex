@@ -102,7 +102,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#17263c',
+        backgroundColor: '#171717',
         gestureHandling: 'greedy',
       });
       mapInstanceRef.current = map;
@@ -157,7 +157,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         title: cp.name,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
-          fillColor: cp.is_active ? '#22c55e' : '#6b7280',
+          fillColor: cp.is_active ? '#22c55e' : '#666666',
           fillOpacity: 0.9,
           strokeColor: '#fff',
           strokeWeight: 2,
@@ -182,7 +182,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       scansByDate.set(date, list);
     });
 
-    const colors = ['#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
+    const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
     scansByDate.forEach((dayScans) => {
       const sorted = dayScans.sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());
@@ -617,7 +617,7 @@ const PatrolPage: React.FC = () => {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>
@@ -676,9 +676,9 @@ const PatrolPage: React.FC = () => {
             <span className="text-green-400 font-bold">{checkpoints.filter(c => c.is_active).length}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-blue-400" />
+            <Clock className="w-3 h-3 text-gray-400" />
             <span className="text-rmpg-400">Scans Today:</span>
-            <span className="text-blue-400 font-bold">
+            <span className="text-gray-400 font-bold">
               {scans.filter(s => {
                 const today = new Date().toDateString();
                 return new Date(s.scanned_at).toDateString() === today;
@@ -712,17 +712,17 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 1: Route Optimization Results */}
       {optimizedRoute && (
-        <div className="mx-3 mt-2 p-2 bg-blue-900/20 border border-blue-700/50 text-xs text-blue-300">
+        <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
           <div className="flex items-center justify-between mb-1">
             <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_mi} mi total</span>
-            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-blue-500 hover:text-blue-300"><X className="w-3 h-3" /></button>
+            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300"><X className="w-3 h-3" /></button>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
               <div key={cp.id} className="flex gap-2">
-                <span className="text-blue-500 w-4">{i + 1}.</span>
+                <span className="text-gray-500 w-4">{i + 1}.</span>
                 <span className="text-white">{cp.name}</span>
-                <span className="text-blue-500 ml-auto">{cp.distance_from_previous_mi} mi</span>
+                <span className="text-gray-500 ml-auto">{cp.distance_from_previous_mi} mi</span>
               </div>
             ))}
           </div>
@@ -747,7 +747,7 @@ const PatrolPage: React.FC = () => {
               <div key={i} className="flex gap-2">
                 <span className="text-rmpg-500 w-24">{safeTimeStr(e.time)}</span>
                 <span className="text-white flex-1">{e.checkpoint}</span>
-                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status}</span>
+                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : e.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                 {e.time_since_prev_min != null && <span className="text-rmpg-500">{e.time_since_prev_min}m</span>}
               </div>
             ))}
