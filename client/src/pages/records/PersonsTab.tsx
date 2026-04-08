@@ -215,6 +215,10 @@ export interface PersonsTabState {
   setDeleteTarget: PersonsTabProps['setDeleteTarget'];
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
+  // Duplicate detection
+  duplicateWarning: any[] | null;
+  handleForceCreate: () => void;
+  handleCancelDuplicate: () => void;
 }
 
 // ════════════════════════════════════════════════════
@@ -442,6 +446,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     searchQuery, setSearchQuery, showArchived,
     openEditPerson, setDeleteTarget, handleArchive, handleUnarchive,
     personModalOpen, editingPerson, personSubmitting, personSubmitError, handlePersonSubmit, closeModal,
+    duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
 
   return (
@@ -681,6 +686,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
     selectedPerson, personAlerts, ssnRevealed, setSSNRevealed,
     linkRefreshKey, openLinkModal,
+    duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
 
   if (!selectedPerson) return null;
