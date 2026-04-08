@@ -472,12 +472,49 @@ router.post('/', (req: Request, res: Response) => {
       auditLog(req, 'ADMIN_OVERRIDE', 'incident', 0, `Admin God Mode: overrode created_at to ${req.body.created_at} on new incident`);
     }
 
-    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    const newIncidentId = result.lastInsertRowid as number;
+
+    // Copy linked persons and vehicles from the source call
+    if (call_id) {
+      try {
+        const callPersons = db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(call_id) as any[];
+        for (const cp of callPersons) {
+          db.prepare('INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)').run(
+            newIncidentId, cp.person_id, cp.role || 'involved', cp.notes || null, req.user!.userId
+          );
+        }
+        const callVehicles = db.prepare('SELECT vehicle_id, role, notes FROM call_vehicles WHERE call_id = ?').all(call_id) as any[];
+        for (const cv of callVehicles) {
+          db.prepare('INSERT OR IGNORE INTO incident_vehicles (incident_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)').run(
+            newIncidentId, cv.vehicle_id, cv.role || 'involved', cv.notes || null, req.user!.userId
+          );
+        }
+      } catch (e) { /* call_persons/call_vehicles tables may not exist yet */ }
+
+      // Inherit beat/location from call if not already set on the incident
+      try {
+        const srcCall = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat, latitude, longitude, location_address FROM calls_for_service WHERE id = ?').get(call_id) as any;
+        if (srcCall) {
+          const updates: string[] = [];
+          const vals: any[] = [];
+          if (!autoZoneBeat && srcCall.zone_beat) { updates.push('zone_beat = ?'); vals.push(srcCall.zone_beat); }
+          if (!autoSectionId && srcCall.section_id) { updates.push('section_id = ?'); vals.push(srcCall.section_id); }
+          if (!autoZoneId && srcCall.zone_id) { updates.push('zone_id = ?'); vals.push(srcCall.zone_id); }
+          if (!autoBeatId && srcCall.beat_id) { updates.push('beat_id = ?'); vals.push(srcCall.beat_id); }
+          if (updates.length > 0) {
+            vals.push(newIncidentId);
+            db.prepare(`UPDATE incidents SET ${updates.join(', ')} WHERE id = ?`).run(...vals);
+          }
+        }
+      } catch (e) { /* non-critical */ }
+    }
+
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(newIncidentId);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
+    `).run(req.user!.userId, newIncidentId, `Created ${incidentNumber}`, req.ip || 'unknown');
 
     res.status(201).json(incident);
   } catch (error: any) {
