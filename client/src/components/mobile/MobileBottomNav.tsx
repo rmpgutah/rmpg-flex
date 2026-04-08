@@ -2,6 +2,7 @@
 // Mobile Bottom Navigation Bar
 // 5 primary tabs: Dashboard, Map, Dispatch, Radio, More
 // Designed for one-handed use with 48dp+ touch targets
+// Optimized for iPhone 17 Pro (393×852, 34px bottom safe area)
 // ============================================================
 
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -31,13 +32,13 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
   return (
     <nav
       style={{
-        height: 68,
         background: 'var(--surface-raised)',
         borderTop: '1px solid var(--border-default)',
         display: 'flex',
         alignItems: 'stretch',
         zIndex: 50,
         flexShrink: 0,
+        /* 56px for the nav itself + safe area for home indicator */
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         WebkitTransform: 'translateZ(0)',
       }}
@@ -55,19 +56,19 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4,
+              gap: 2,
               background: active ? 'rgba(212, 160, 23, 0.1)' : 'transparent',
               border: 'none',
               borderTop: active ? '2px solid var(--brand-gold)' : '2px solid transparent',
               cursor: 'pointer',
               position: 'relative',
-              padding: 0,
+              padding: '6px 0',
               minWidth: 0,
-              minHeight: 56,
+              minHeight: 48,
             }}
           >
             <Icon
-              size={24}
+              size={22}
               style={{
                 color: active ? 'var(--brand-gold)' : '#666666',
                 transition: 'color 0.15s',
@@ -75,7 +76,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             />
             <span
               style={{
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
@@ -90,20 +91,20 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
               <span
                 style={{
                   position: 'absolute',
-                  top: 8,
+                  top: 4,
                   right: '50%',
-                  marginRight: -18,
+                  marginRight: -16,
                   background: '#ef4444',
                   color: '#fff',
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: 700,
                   borderRadius: 10,
-                  minWidth: 18,
-                  height: 18,
+                  minWidth: 16,
+                  height: 16,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '0 5px',
+                  padding: '0 4px',
                 }}
               >
                 {unreadAlerts > 99 ? '99+' : unreadAlerts}
@@ -122,18 +123,18 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 4,
+          gap: 2,
           background: !isPrimaryPage ? 'rgba(212, 160, 23, 0.1)' : 'transparent',
           border: 'none',
           borderTop: !isPrimaryPage ? '2px solid var(--brand-gold)' : '2px solid transparent',
           cursor: 'pointer',
-          padding: 0,
+          padding: '6px 0',
           minWidth: 0,
-          minHeight: 56,
+          minHeight: 48,
         }}
       >
         <Menu
-          size={24}
+          size={22}
           style={{
             color: !isPrimaryPage ? 'var(--brand-gold)' : '#666666',
             transition: 'color 0.15s',
@@ -141,7 +142,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
         />
         <span
           style={{
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',

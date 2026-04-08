@@ -24,15 +24,15 @@ export default function MobileContextBar({
   return (
     <div
       style={{
-        height: 36,
+        height: 28,
         background: '#050505',
         borderBottom: '1px solid var(--border-default)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 12px',
+        padding: '0 10px',
         flexShrink: 0,
-        gap: 10,
+        gap: 8,
         overflow: 'hidden',
       }}
     >
@@ -47,7 +47,7 @@ export default function MobileContextBar({
         {/* Unit call sign */}
         <span
           style={{
-            fontSize: 13,
+            fontSize: 11,
             fontFamily: 'var(--font-mono, monospace)',
             fontWeight: 700,
             color: '#999999',
@@ -59,12 +59,12 @@ export default function MobileContextBar({
         </span>
 
         {/* Separator */}
-        <span style={{ color: 'var(--border-default)', fontSize: 12 }}>│</span>
+        <span style={{ color: 'var(--border-default)', fontSize: 10 }}>│</span>
 
         {/* Radio channel */}
         <span
           style={{
-            fontSize: 12,
+            fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
             color: radioChannel ? '#22c55e' : '#666666',
             textTransform: 'uppercase',
@@ -77,10 +77,10 @@ export default function MobileContextBar({
         {/* Active call */}
         {activeCallNumber && (
           <>
-            <span style={{ color: 'var(--border-default)', fontSize: 12 }}>│</span>
+            <span style={{ color: 'var(--border-default)', fontSize: 10 }}>│</span>
             <span
               style={{
-                fontSize: 12,
+                fontSize: 10,
                 fontFamily: 'var(--font-mono, monospace)',
                 color: 'var(--brand-gold)',
                 fontWeight: 600,

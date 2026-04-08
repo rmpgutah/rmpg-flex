@@ -411,7 +411,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.text(title.toUpperCase(), margin + 5, yPos + 5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     yPos += 10;
   }
 
@@ -430,7 +430,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       doc.text(col.label, xOff + 1, yPos + 3.5);
       xOff += col.w;
     }
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     yPos += 6;
   }
 
@@ -457,7 +457,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       doc.setFont('helvetica', 'bold');
       doc.text(brandText, textX, 9);
       doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.text(`DAILY PATROL REPORT  |  ${dateStr}  |  FORM PS-210`, pageW - margin, 9, { align: 'right' });
 
       // Accent strip
@@ -528,7 +528,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   doc.text(brandText, pageW / 2, titleY, { align: 'center' });
 
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...CLR.TEXT_SEC);
   doc.text(brandSub, pageW / 2, titleY + 6, { align: 'center' });
 
@@ -539,7 +539,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   doc.text('DAILY PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...CLR.TEXT_MUTED);
   doc.text(`FORM PS-210  |  Rev. 2026-03`, pageW / 2, titleY + 19, { align: 'center' });
 

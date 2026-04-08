@@ -331,13 +331,13 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #161b21 100%)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #161b21 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
       {/* Animated grid background */}
       <div className="login-grid-bg" />
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div
-        className="w-full max-w-lg mb-2 sm:mb-3 px-3 sm:px-0 relative z-10"
+        className="w-full max-w-lg mb-1 sm:mb-3 px-3 sm:px-0 relative z-10"
         role="alert"
         aria-label="Security warning"
       >
@@ -364,22 +364,22 @@ export default function LoginPage() {
       {/* ── Main Content ─────────────────────────────── */}
       <div className="relative w-full max-w-lg px-2 sm:px-0 z-10">
         {/* Logo */}
-        <div className="text-center mb-2">
+        <div className="text-center mb-1 sm:mb-2">
           <div className="inline-flex items-center justify-center">
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
               className="drop-shadow-[0_0_15px_rgba(26,90,158,0.25)]"
               style={{
-                height: 'clamp(56px, 14vw, 88px)',
-                width: 'clamp(56px, 14vw, 88px)',
+                height: 'clamp(48px, 12vw, 88px)',
+                width: 'clamp(48px, 12vw, 88px)',
                 objectFit: 'contain',
               }}
               draggable={false}
               loading="eager"
             />
           </div>
-          <div className="flex items-center justify-center gap-2 mt-1">
+          <div className="flex items-center justify-center gap-2 mt-0.5 sm:mt-1">
             <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #333333)' }} />
             <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(136, 136, 136, 0.65)' }}>
               Secure Authentication
@@ -982,8 +982,9 @@ export default function LoginPage() {
         </div>
 
         {/* ── System Info + Device Info Panels ─────────── */}
+        {/* Hidden on phones to keep login form above fold. Uses CSS class. */}
         {isCredentialStep && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+          <div className="login-system-info grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
             {/* System Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">

@@ -266,7 +266,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const totX = pageWidth - LAYOUT.PAGE_MARGIN - 60;
   const totVX = pageWidth - LAYOUT.PAGE_MARGIN;
   const addTotal = (label: string, value: string, bold = false, color?: readonly [number, number, number]) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFont('courier', bold ? 'bold' : 'normal');
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
@@ -295,7 +295,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const balBoxW = totVX - balBoxX + 3;
   const balBoxH = 9; // Balance due box height
   doc.rect(balBoxX, y - 2, balBoxW, balBoxH);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });

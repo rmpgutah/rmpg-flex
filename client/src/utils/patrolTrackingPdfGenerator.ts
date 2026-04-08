@@ -197,7 +197,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.line(0, footerY, pageW, footerY);
     doc.setTextColor(...COLOR.TEXT_MUTED);
     doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.text(sanitizePdfText(`${formNum}  |  INTERNAL USE ONLY  |  Page ${pageNum} of ${totalPages}`), margin, footerY + footerH / 2 + 0.5);
     doc.text(sanitizePdfText(`GENERATED: ${reportDate.toUpperCase()}`), pageW - margin, footerY + footerH / 2 + 0.5, { align: 'right' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -212,7 +212,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setFont('helvetica', 'bold');
     doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + FONT.SIZE_SECTION_TITLE * 0.14);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += barH + SPACING.LG;
   }
@@ -233,7 +233,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.text(col.label.toUpperCase(), xOff + 1, yPos + 3.5);
       xOff += col.w;
     }
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += hdrH + 1;
   }
@@ -292,7 +292,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_MUTED);
   doc.text(`${formNum}  |  ${FORM_REVISION}`, pageW / 2, titleY + 19, { align: 'center' });
 

@@ -675,7 +675,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
       doc.line(margin, y, margin + contentWidth, y);
       y += 5;
       doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(9);
     };
 

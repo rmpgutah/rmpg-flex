@@ -205,7 +205,7 @@ export function addConfidentialWatermark(doc: jsPDF) {
 
   // @ts-expect-error jsPDF GState — visible on both white and dark backgrounds
   doc.setGState(new doc.GState({ opacity: 0.06 }));
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
 
   const cx = pageWidth / 2;
@@ -234,7 +234,7 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.saveGraphicsState();
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.12 }));
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(220, 38, 38); // Red
 
   const cx = pageWidth / 2;
@@ -258,7 +258,7 @@ export function addClassificationBar(doc: jsPDF, priority: string, yStart: numbe
 
   doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, yStart, cw, LAYOUT.CLASSIF_BAR_H, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_CLASSIF_BAR);
   doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
   doc.text(prio.label, doc.internal.pageSize.getWidth() / 2, yStart + 4.2, { align: 'center' });
@@ -343,7 +343,7 @@ export function addReportHeader(
   metaParts.push(FORM_REVISION);
   metaParts.push(reportDate);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(headerMetaColor[0], headerMetaColor[1], headerMetaColor[2]);
   doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
@@ -362,7 +362,7 @@ export function addReportHeader(
     const prioLabelText = prioShortNames[prioKey]
       || (pKey === 'P1' ? 'P1 - Emergency' : pKey === 'P2' ? 'P2 - Urgent'
         : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(5);
     const prioW = doc.getTextWidth(prioLabelText) + 4;
     const prioX = textStartX;
@@ -402,7 +402,7 @@ export function addReportHeader(
   doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw, LAYOUT.ACCENT_STRIP_H, 'F');
 
   // ── Reset drawing state ────────────────────────────────
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
@@ -438,7 +438,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
 
   // Reset text color to primary (black) — prevents white text leaking into content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
 
   // Content starts after header bar + content padding (not tight against bar)
   return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y, sectionPage: doc.getNumberOfPages() };
@@ -657,7 +657,7 @@ export function addFlagBadges(
   };
   const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(fontSize);
 
   let curX = x;
@@ -698,7 +698,7 @@ export function addFlagBadges(
 
   // Reset
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   return curY + pillH + 1.5;
 }
 
@@ -942,7 +942,7 @@ export function addStackedSignatures(
     }
   }
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text('COMPANY', cx, cy - 1.5, { align: 'center' });
@@ -975,7 +975,7 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const textY = barY + 5;
 
   // Left: Form # + INTERNAL USE ONLY — bold, readable
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
@@ -1377,7 +1377,7 @@ export function addImageToPage(
     doc.setDrawColor(...COLOR.BORDER_FIELD);
     doc.setLineWidth(BORDER.FIELD);
     doc.rect(x, y, renderW, renderH);
-    doc.setFont('helvetica', 'italic');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text('[Image unavailable]', x + renderW / 2, y + renderH / 2, { align: 'center' });
@@ -1490,7 +1490,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 

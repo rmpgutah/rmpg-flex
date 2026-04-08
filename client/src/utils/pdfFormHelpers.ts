@@ -308,7 +308,7 @@ export function drawCheckboxGrid(
       : items[i].label;
     const labelText = sanitizePdfText(rawLabel);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(labelText, cbX + cbSize + 0.8, cbY + cbSize - 0.2, {
@@ -367,7 +367,7 @@ export function drawCodeReferenceTable(
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(sanitizePdfText(codes[i].code || ''), cellX + 1, curY + 2.3);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(sanitizePdfText(`= ${codes[i].description || ''}`), cellX + 5.5, curY + 2.3, {
@@ -573,7 +573,7 @@ export function drawNibrsHeader(
   // Sub-header row: Form number (left) + Report date (right)
   y += 1;
   if (config.formNumber || config.reportDate) {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     if (config.formNumber) {

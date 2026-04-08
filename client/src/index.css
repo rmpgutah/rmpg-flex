@@ -61,8 +61,8 @@
   body {
     background: var(--surface-base);
     overflow-x: hidden;
-    /* iOS Safari: respect notch/home indicator safe areas */
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Safe-area insets handled by mobile shell components (MobileHeader, MobileBottomNav)
+       to avoid double-padding. Body only sets it on desktop as a fallback. */
     /* Spillman Flex: subtle noise texture on body */
     background-image:
   }
@@ -1535,7 +1535,9 @@ body.fx-noise::after {
 
 /* ============================================================
    MOBILE / ANDROID RESPONSIVE STYLES
-   Optimized for 360-430px phone screens
+   Optimized for 393×852 iPhone 17 Pro and similar 360-430px screens.
+   Safe-area insets are handled by MobileHeader (top) and
+   MobileBottomNav (bottom) — NOT on <body> — to avoid double padding.
    ============================================================ */
 @media (max-width: 768px) {
   /* ── MOBILE FONT READABILITY ─────────────────────────────
@@ -1562,10 +1564,11 @@ body.fx-noise::after {
     display: none !important;
   }
 
-  /* Safe area for Android notch/status bar */
+  /* Body safe area: NONE — shell components handle these.
+     env() padding on body caused double-inset on iPhone. */
   body {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   /* ── LAYOUT ──────────────────────────────────────────────
@@ -1870,6 +1873,18 @@ body.fx-noise::after {
   }
   .split-panel-horizontal > .split-panel-divider {
     display: none !important;
+  }
+
+  /* ── LOGIN PAGE: phone-fit ─────────────────────────────── */
+  /* Hide system/device info panels on phones — they push the
+     form below the fold on 393×852 screens. */
+  .login-system-info {
+    display: none !important;
+  }
+
+  /* Tighter padding on login security warning banner */
+  [role="alert"][aria-label="Security warning"] {
+    margin-bottom: 4px;
   }
 }
 

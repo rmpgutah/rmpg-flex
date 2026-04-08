@@ -1470,7 +1470,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('DESCRIPTION', lx, y);
     y += 2;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
       const cw = getContentWidth(doc);
@@ -1542,7 +1542,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       // Visit header line
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('courier', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(`Visit #${visit.visit_number}`, lx, y);
