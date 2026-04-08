@@ -674,7 +674,7 @@ export default function TrespassOrdersPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                  <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -682,7 +682,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                  <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -690,7 +690,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                  <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
                     {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}

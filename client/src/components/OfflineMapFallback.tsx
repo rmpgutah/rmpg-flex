@@ -293,7 +293,7 @@ export default function OfflineMapFallback({
               width:0;height:0;
               border-left:9px solid transparent;
               border-right:9px solid transparent;
-              border-bottom:24px solid rgba(59,130,246,0.5);
+              border-bottom:24px solid rgba(136,136,136,0.5);
               transform-origin:center bottom;
               transform:rotate(${headingDeg >= 0 ? headingDeg : 0}deg);
               margin-left:-9px;margin-top:-38px;
@@ -504,7 +504,7 @@ export default function OfflineMapFallback({
           width:10px;height:10px;border-radius:50%;
           background:radial-gradient(circle at 35% 35%, #999999, #222222);
           border:2px solid rgba(255,255,255,0.9);
-          box-shadow:0 0 6px rgba(59,130,246,0.6), 0 1px 3px rgba(0,0,0,0.4);
+          box-shadow:0 0 6px rgba(136,136,136,0.6), 0 1px 3px rgba(0,0,0,0.4);
         "></div>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7],

@@ -1425,7 +1425,7 @@ function migrateSchema(): void {
   const addCol = (table: string, col: string, typedef: string) => {
     try {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${typedef}`);
-    } catch (e) {
+    } catch {
       // Column already exists — safe to ignore
     }
   };
@@ -1849,7 +1849,7 @@ function migrateSchema(): void {
       `);
       console.log('[migrate] Widened notifications type constraint for login_alert/security');
     }
-  } catch (e) { /* Already migrated or table structure compatible */ }
+  } catch { /* Already migrated or table structure compatible */ }
 
   // ── CLIENTS — new contract fields ─────────────────────
   addCol('clients', 'billing_email', 'TEXT');
@@ -1971,7 +1971,7 @@ function migrateSchema(): void {
   // Backfill serve_queue_id from queue_id for existing rows
   try {
     db.exec(`UPDATE serve_attempts SET serve_queue_id = queue_id WHERE serve_queue_id IS NULL AND queue_id IS NOT NULL`);
-  } catch (e) { /* safe — either column may not exist yet */ }
+  } catch { /* safe — either column may not exist yet */ }
 
   // ── serve_routes — optimization columns ──
   addCol('serve_routes', 'optimized_order_json', 'TEXT');
@@ -2000,10 +2000,10 @@ function migrateSchema(): void {
         FOREIGN KEY (searched_by) REFERENCES users(id)
       )
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_serve_skip_traces_queue ON serve_skip_traces(serve_queue_id)`);
-  } catch (e) { /* index exists */ }
+  } catch { /* index exists */ }
 
   // ── call_visit_history — missing columns for redispatch ──────────
   addCol('call_visit_history', 'status', 'TEXT');
@@ -2017,11 +2017,11 @@ function migrateSchema(): void {
   // (SQLite can't ALTER TABLE to add FK constraints, but we can add a unique index)
   try {
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_persons_unique ON call_persons(call_id, person_id)`);
-  } catch (e) { /* index already exists */ }
+  } catch { /* index already exists */ }
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_call_persons_call_id ON call_persons(call_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_call_persons_person_id ON call_persons(person_id)`);
-  } catch (e) { /* indexes exist */ }
+  } catch { /* indexes exist */ }
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema
@@ -2099,7 +2099,7 @@ function migrateSchema(): void {
         UNIQUE(source_type, source_id, target_type, target_id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── Expand record_links to support incident/call/case/warrant types ──
   try {
@@ -2107,7 +2107,7 @@ function migrateSchema(): void {
     try {
       db.prepare("INSERT INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES ('incident', -999, 'person', -999, 'test', 1)").run();
       db.prepare("DELETE FROM record_links WHERE source_id = -999").run();
-    } catch (e) {
+    } catch {
       // CHECK constraint blocks new types — recreate table without CHECK
       try {
         db.exec(`DROP TABLE IF EXISTS record_links_new`);
@@ -2153,7 +2153,7 @@ function migrateSchema(): void {
       const num = `EV-${yr}-${String(row.id).padStart(5, '0')}`;
       db.prepare("UPDATE evidence SET evidence_number = ? WHERE id = ?").run(num, row.id);
     }
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
 
   // Populate first_name / last_name from full_name for existing users
   try {
@@ -2164,14 +2164,14 @@ function migrateSchema(): void {
       const lastName = parts.slice(1).join(' ') || '';
       db.prepare("UPDATE users SET first_name = ?, last_name = ? WHERE id = ?").run(firstName, lastName, u.id);
     }
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
 
   // ── INJURIES — fix INTEGER→TEXT mismatch ─────────────
   // Column was created as INTEGER but form sends TEXT values ('none','minor','major','fatal','unknown').
   // SQLite stores them fine regardless, but convert any leftover 0 values to 'none' for consistency.
   try {
     db.prepare("UPDATE incidents SET injuries = 'none' WHERE injuries = '0' OR injuries = 0 OR injuries IS NULL").run();
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
 
   // Migrate existing INC-YYYY-NNNNN and RMP- incident numbers to RKY format
   migrateIncidentNumbers(db);
@@ -2234,7 +2234,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_statutes_title ON utah_statutes(title);
       CREATE INDEX IF NOT EXISTS idx_statutes_offense ON utah_statutes(offense_level);
     `);
-  } catch (e) { /* table/indexes already exist */ }
+  } catch { /* table/indexes already exist */ }
 
   // ── ENTITY_STATUTES — link statutes to warrants/incidents/calls ──
   try {
@@ -2252,7 +2252,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_entity_statutes_entity ON entity_statutes(entity_type, entity_id);
       CREATE INDEX IF NOT EXISTS idx_entity_statutes_statute ON entity_statutes(statute_id);
     `);
-  } catch (e) { /* table/indexes already exist */ }
+  } catch { /* table/indexes already exist */ }
 
   // ── UTAH STATUTES — citation fine amount for traffic/infractions ──
   addCol('utah_statutes', 'citation_fine', 'REAL');
@@ -2261,7 +2261,7 @@ function migrateSchema(): void {
   try {
     db.exec('DROP INDEX IF EXISTS idx_statutes_citation');
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_statutes_citation ON utah_statutes(citation)');
-  } catch (e) { /* already unique */ }
+  } catch { /* already unique */ }
 
   // ── INCIDENTS — statute linkage for charge/citation ──
   addCol('incidents', 'statute_id', 'INTEGER');
@@ -2429,7 +2429,7 @@ function migrateSchema(): void {
         UNIQUE(client_id, person_id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── CRIMINAL_HISTORY — criminal records for persons ──────────────
   try {
@@ -2457,7 +2457,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── Field Interview (FI) Cards ──
   try {
@@ -2505,7 +2505,7 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_officer ON field_interviews(officer_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_property ON field_interviews(property_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_created ON field_interviews(created_at)`);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── Trespass / Exclusion Orders ──
   try {
@@ -2549,7 +2549,7 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_property ON trespass_orders(property_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_status ON trespass_orders(status)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_created ON trespass_orders(created_at)`);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── FIX CORRUPTED DATA — undo HTML entity encoding of quotes/apostrophes ──
   // The old sanitize middleware was encoding ' → &#x27; and " → &quot; in stored data
@@ -2565,7 +2565,7 @@ function migrateSchema(): void {
         db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&#039;', '''') WHERE ${col.name} LIKE '%&#039;%'`);
         db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&amp;', '&') WHERE ${col.name} LIKE '%&amp;%'`);
       }
-    } catch (e) { /* table may not exist */ }
+    } catch { /* table may not exist */ }
   }
 
   // ── TIME ENTRIES — add 'on_break' to CHECK constraint (production fix) ──
@@ -2602,7 +2602,7 @@ function migrateSchema(): void {
       console.log("Migrated time_entries: status CHECK now includes 'on_break'");
     }
   } catch (err) {
-    try { db.pragma('foreign_keys = ON'); } catch (e) {}
+    try { db.pragma('foreign_keys = ON'); } catch {}
     console.log('time_entries CHECK migration skipped or already done:', (err as Error).message);
   }
 
@@ -2641,7 +2641,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   try {
     db.exec(`
@@ -2658,7 +2658,7 @@ function migrateSchema(): void {
         FOREIGN KEY (author_id) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── CODE VIOLATIONS — municipal code enforcement ──
   try {
@@ -2691,7 +2691,7 @@ function migrateSchema(): void {
         FOREIGN KEY (reporting_officer_id) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── VEHICLE TOWS — tow tracking and lifecycle ──
   try {
@@ -2736,7 +2736,7 @@ function migrateSchema(): void {
         FOREIGN KEY (officer_id) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── COURT EVENTS — court date and legal tracking ──
   try {
@@ -2774,7 +2774,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── DAILY ACTIVITY REPORTS — structured shift reports ──
   try {
@@ -2812,7 +2812,7 @@ function migrateSchema(): void {
         FOREIGN KEY (reviewed_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── OFFENDER ALERTS — known offender registry ──
   try {
@@ -2840,7 +2840,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table already exists */ }
+  } catch { /* table already exists */ }
 
   // ── Migrate existing height text into feet/inches ──
   try {
@@ -2857,7 +2857,7 @@ function migrateSchema(): void {
         }
       }
     }
-  } catch (e) { /* ignore parse errors */ }
+  } catch { /* ignore parse errors */ }
 
   // ── gps_breadcrumbs — road name and cross-street columns ──
   addCol('gps_breadcrumbs', 'road_name', 'TEXT');
@@ -2910,7 +2910,7 @@ function migrateSchema(): void {
             );
             filled++;
           }
-        } catch (e) { /* skip individual failures */ }
+        } catch { /* skip individual failures */ }
       }
       if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} calls`);
     }
@@ -2940,7 +2940,7 @@ function migrateSchema(): void {
             );
             filled++;
           }
-        } catch (e) { /* skip */ }
+        } catch { /* skip */ }
       }
       if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} incidents`);
     }
@@ -2963,7 +2963,7 @@ function migrateSchema(): void {
         beat_descriptor TEXT
       )
     `);
-  } catch (e) { /* already exists */ }
+  } catch { /* already exists */ }
 
   // Seed dispatch_districts if empty
   try {
@@ -3318,7 +3318,7 @@ function migrateSchema(): void {
       )
     `);
     db.exec('CREATE INDEX IF NOT EXISTS idx_citation_violations_citation ON citation_violations(citation_id)');
-  } catch (e) { /* already exists */ }
+  } catch { /* already exists */ }
 
   // ── Additional operational flags for calls and incidents ──
   const flagTables = ['calls_for_service', 'incidents'] as const;
@@ -3390,7 +3390,7 @@ function migrateSchema(): void {
         console.log(`  Backfilled dispatch district data on ${callsNeedingDistrict.length} calls`);
       }
     }
-  } catch (e) { /* safe to ignore */ }
+  } catch { /* safe to ignore */ }
 
   // ── Migrate existing case numbers to YY-######-XX format ──────
   try {
@@ -3419,7 +3419,7 @@ function migrateSchema(): void {
     if (oldCases.length > 0) {
       console.log(`  Migrated ${oldCases.length} case numbers to YY-######-XX format`);
     }
-  } catch (e) { /* safe to ignore */ }
+  } catch { /* safe to ignore */ }
 
   // ── ONE-TIME DATA CLEANUP: Remove specific breadcrumb entries ──
   try {
@@ -3430,7 +3430,7 @@ function migrateSchema(): void {
          OR (recorded_at LIKE '2026-02-27 17:04:32%' AND latitude BETWEEN 40.723 AND 40.725)
          OR (recorded_at LIKE '2026-02-28 23:04:12%' AND latitude BETWEEN 40.694 AND 40.695)
     `).run();
-  } catch (e) { /* table may not exist yet — safe to ignore */ }
+  } catch { /* table may not exist yet — safe to ignore */ }
 
   // ── OFAC tables — fix column names to match Treasury CSV format ──
   try {
@@ -3446,7 +3446,7 @@ function migrateSchema(): void {
       createTables();
       console.log('[migrate] Recreated OFAC tables with corrected column names');
     }
-  } catch (e) { /* tables may not exist yet */ }
+  } catch { /* tables may not exist yet */ }
 
   addCol('ofac_sdn_addresses', 'add_num', 'INTEGER');
   addCol('ofac_sdn_addresses', 'add_remarks', 'TEXT');
@@ -3580,7 +3580,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
       CREATE INDEX IF NOT EXISTS idx_forensic_activity_case ON forensic_activity_log(forensic_case_id);
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   // ── EMAIL SYSTEM — Templates, Logs, Preferences ────────────
   try {
@@ -3642,7 +3642,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_email_logs_context ON email_logs(context_type, context_id);
       CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   // ── MESSAGES — thread + type fields ───────────────────────
   addCol('messages', 'case_id', 'INTEGER');
@@ -3728,7 +3728,7 @@ function migrateSchema(): void {
         FOREIGN KEY (changed_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* already exists */ }
+  } catch { /* already exists */ }
 
   // ── RECORD LOCKS table ──
   try {
@@ -3744,7 +3744,7 @@ function migrateSchema(): void {
         UNIQUE(entity_type, entity_id)
       );
     `);
-  } catch (e) { /* already exists */ }
+  } catch { /* already exists */ }
 
   // ── BROADCAST TEMPLATES table ──
   try {
@@ -3761,7 +3761,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* already exists */ }
+  } catch { /* already exists */ }
 
   // ── SYSTEM ANNOUNCEMENTS table ──
   try {
@@ -3779,7 +3779,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* already exists */ }
+  } catch { /* already exists */ }
 
   // ── PERSONNEL — fitness tracking, commendations, status history ──────
   addCol('users', 'fitness_scores', "TEXT DEFAULT '[]'");
@@ -3929,7 +3929,7 @@ function migrateSchema(): void {
         FOREIGN KEY (documented_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   // ── FLEET — tire tracking, damage, recalls, fuel cards ──────────────
   try {
@@ -3999,7 +3999,7 @@ function migrateSchema(): void {
         FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
       );
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   addCol('fleet_vehicles', 'total_maintenance_cost', 'REAL DEFAULT 0');
   addCol('fleet_vehicles', 'total_fuel_cost', 'REAL DEFAULT 0');
@@ -4114,7 +4114,7 @@ function migrateSchema(): void {
       );
       CREATE INDEX IF NOT EXISTS idx_overtime_officer ON overtime_requests(officer_id);
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   // ── HR Payroll + Advanced HR tables ──────────────────────
   try {
@@ -4234,7 +4234,7 @@ function migrateSchema(): void {
       );
       CREATE INDEX IF NOT EXISTS idx_call_unit_assignments_call ON call_unit_assignments(call_id);
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   // ── Case Management junction tables ──────────────────────
   try {
@@ -4330,7 +4330,7 @@ function migrateSchema(): void {
         UNIQUE(case_id, property_id)
       );
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   // ── Shift Management tables ──────────────────────────────
   try {
@@ -4370,7 +4370,7 @@ function migrateSchema(): void {
         FOREIGN KEY (target_officer_id) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* tables already exist */ }
+  } catch { /* tables already exist */ }
 
   // ── Notification Rules table ─────────────────────────────
   try {
@@ -4387,7 +4387,7 @@ function migrateSchema(): void {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
     `);
-  } catch (e) { /* table exists */ }
+  } catch { /* table exists */ }
 
   // ── Use of Force reporting table ─────────────────────────
   try {
@@ -4420,7 +4420,7 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_uof_incident ON use_of_force(incident_id);
       CREATE INDEX IF NOT EXISTS idx_uof_officer ON use_of_force(officer_id);
     `);
-  } catch (e) { /* table exists */ }
+  } catch { /* table exists */ }
 
   // ── Trespass Violations table ────────────────────────────
   try {
@@ -4443,7 +4443,7 @@ function migrateSchema(): void {
         FOREIGN KEY (incident_id) REFERENCES incidents(id)
       );
     `);
-  } catch (e) { /* table exists */ }
+  } catch { /* table exists */ }
 
   addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
 
@@ -4470,7 +4470,7 @@ function migrateSchema(): void {
       updated_at TEXT,
       UNIQUE(officer_id, tour_date)
     )`);
-  } catch (e) { /* already exists */ }
+  } catch { /* already exists */ }
 
   // Feature 8: Weather on patrol scans
   addCol('patrol_scans', 'weather_json', 'TEXT');
@@ -4849,284 +4849,8 @@ function migrateSchema(): void {
 
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
-  addCol('warrant_scraper_config', 'display_name', 'TEXT');
-  addCol('warrant_scraper_config', 'source_type', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
-
-  // ── scraped_warrants missing columns ──
-  addCol('scraped_warrants', 'middle_name', 'TEXT');
-  addCol('scraped_warrants', 'age', 'INTEGER');
-  addCol('scraped_warrants', 'gender', 'TEXT');
-  addCol('scraped_warrants', 'race', 'TEXT');
-  addCol('scraped_warrants', 'city', 'TEXT');
-  addCol('scraped_warrants', 'state', 'TEXT');
-  addCol('scraped_warrants', 'photo_url', 'TEXT');
-  addCol('scraped_warrants', 'detail_url', 'TEXT');
-  addCol('scraped_warrants', 'first_seen_at', 'TEXT');
-  addCol('scraped_warrants', 'last_seen_at', 'TEXT');
-  addCol('scraped_warrants', 'cleared_at', 'TEXT');
-  addCol('scraped_warrants', 'dob_verified', 'INTEGER DEFAULT 0');
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)'); } catch (e) { /* */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)'); } catch (e) { /* */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_offense ON scraped_warrants(offense_level)'); } catch (e) { /* */ }
-
-  // ── Seed warrant scraper sources — All 50 US States + Federal ──
-  {
-    const s = db.prepare('INSERT OR IGNORE INTO warrant_scraper_config (source_key, state, county, source_url, source_name, source_type, scrape_interval_minutes, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    // Federal
-    s.run('federal_fbi_wanted', 'US', '', 'https://api.fbi.gov/wanted/v1/list', 'FBI Most Wanted', 'api', 360, 1);
-    s.run('federal_usmarshals', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/15-most-wanted-fugitive', 'US Marshals Most Wanted', 'html', 1440, 0);
-    // Alabama
-    s.run('al_jefferson_warrants', 'AL', 'Jefferson', 'https://www.jeffcosheriffal.com/most-wanted', 'Jefferson County AL', 'html', 720, 0);
-    // Alaska
-    s.run('ak_anchorage_warrants', 'AK', 'Anchorage', 'https://www.muni.org/departments/prior/APD/Pages/MostWanted.aspx', 'Anchorage PD', 'html', 720, 0);
-    // Arizona
-    s.run('az_maricopa_warrants', 'AZ', 'Maricopa', 'https://www.mcso.org/Most-Wanted', 'Maricopa County SO', 'html', 720, 1);
-    s.run('az_pima_warrants', 'AZ', 'Pima', 'https://88crime.org/category/wanted-fugitives/', 'Pima County 88-CRIME', 'html', 720, 1);
-    // Arkansas
-    s.run('ar_pulaski_warrants', 'AR', 'Pulaski', 'https://www.littlerock.gov/city-administration/city-departments/police/most-wanted/', 'Little Rock PD', 'html', 720, 0);
-    // California
-    s.run('ca_los_angeles_warrants', 'CA', 'Los Angeles', 'https://www.lapdonline.org/most-wanted/', 'LAPD Most Wanted', 'html', 720, 1);
-    s.run('ca_san_diego_warrants', 'CA', 'San Diego', 'https://www.sdcda.org/helping/fugitives.html', 'San Diego DA Fugitives', 'html', 720, 0);
-    // Colorado
-    s.run('co_el_paso_warrants', 'CO', 'El Paso', 'https://www.epcsheriffsoffice.com/active-warrants', 'El Paso County SO', 'html', 720, 1);
-    s.run('co_denver_warrants', 'CO', 'Denver', 'https://www.metrodenvercrimestoppers.com/', 'Metro Denver Crime Stoppers', 'html', 720, 1);
-    s.run('co_adams_warrants', 'CO', 'Adams', 'https://adamscosheriff.net/portal/MostWanted', 'Adams County SO', 'html', 720, 0);
-    // Connecticut
-    s.run('ct_hartford_warrants', 'CT', 'Hartford', 'https://www.manchesterct.gov/Police-Department/Most-Wanted', 'Hartford Area', 'html', 720, 0);
-    // Delaware
-    s.run('de_new_castle_warrants', 'DE', 'New Castle', 'https://www.tipsubmit.com/WebTips.aspx?AgencyID=256', 'Delaware Crime Stoppers', 'html', 720, 0);
-    // Florida
-    s.run('fl_miami_warrants', 'FL', 'Miami-Dade', 'https://www.crimestoppersmiami.com/mostwanted', 'Miami-Dade Crime Stoppers', 'html', 720, 1);
-    s.run('fl_hillsborough_warrants', 'FL', 'Hillsborough', 'https://www.hcso.tampa.fl.us/Community/Most-Wanted', 'Hillsborough County SO', 'html', 720, 0);
-    // Georgia
-    s.run('ga_fulton_warrants', 'GA', 'Fulton', 'https://www.fultoncountyga.gov/services/sheriff-s-office/most-wanted', 'Fulton County GA', 'html', 720, 0);
-    // Hawaii
-    s.run('hi_honolulu_warrants', 'HI', 'Honolulu', 'https://www.crimestoppershonolulu.org/', 'Honolulu Crime Stoppers', 'html', 1440, 0);
-    // Idaho
-    s.run('id_ada_warrants', 'ID', 'Ada', 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx', 'Ada County', 'search_form', 720, 0);
-    // Illinois
-    s.run('il_cook_warrants', 'IL', 'Cook', 'https://www.cookcountysheriff.org/most-wanted/', 'Cook County SO', 'html', 720, 1);
-    // Indiana
-    s.run('in_marion_warrants', 'IN', 'Marion', 'https://www.indycrimestoppers.org/', 'Indianapolis Crime Stoppers', 'html', 720, 0);
-    // Iowa
-    s.run('ia_polk_warrants', 'IA', 'Polk', 'https://www.polkcountyiowa.gov/county-sheriff/most-wanted/', 'Polk County IA', 'html', 720, 0);
-    // Kansas
-    s.run('ks_sedgwick_warrants', 'KS', 'Sedgwick', 'https://www.sedgwickcounty.org/sheriff/most-wanted/', 'Sedgwick County KS', 'html', 720, 0);
-    // Kentucky
-    s.run('ky_jefferson_warrants', 'KY', 'Jefferson', 'https://www.lmpd.org/wanted.html', 'Louisville Metro PD', 'html', 720, 0);
-    // Louisiana
-    s.run('la_orleans_warrants', 'LA', 'Orleans', 'https://www.crimestoppersgno.org/mostwanted', 'New Orleans Crime Stoppers', 'html', 720, 0);
-    // Maine
-    s.run('me_cumberland_warrants', 'ME', 'Cumberland', 'https://www.maine.gov/dps/msp/wanted-missing', 'Maine State Police', 'html', 720, 0);
-    // Maryland
-    s.run('md_baltimore_warrants', 'MD', 'Baltimore', 'https://www.baltimorepolice.org/most-wanted', 'Baltimore PD', 'html', 720, 0);
-    // Massachusetts
-    s.run('ma_suffolk_warrants', 'MA', 'Suffolk', 'https://www.mass.gov/most-wanted', 'Massachusetts Most Wanted', 'html', 720, 1);
-    // Michigan
-    s.run('mi_wayne_warrants', 'MI', 'Wayne', 'https://www.crimestoppers.com/', 'Detroit Crime Stoppers', 'html', 720, 0);
-    // Minnesota
-    s.run('mn_hennepin_warrants', 'MN', 'Hennepin', 'https://www.hennepinsheriff.org/jail-warrants/warrants', 'Hennepin County', 'html', 720, 0);
-    // Mississippi
-    s.run('ms_hinds_warrants', 'MS', 'Hinds', 'https://www.mscrimestoppers.com/mostwanted', 'Mississippi Crime Stoppers', 'html', 720, 0);
-    // Missouri
-    s.run('mo_jackson_warrants', 'MO', 'Jackson', 'https://www.kcpd.org/crime/most-wanted/', 'Kansas City PD', 'html', 720, 0);
-    // Montana
-    s.run('mt_flathead_warrants', 'MT', 'Flathead', 'https://apps.flathead.mt.gov/warrants/warrants_list.php', 'Flathead County', 'html', 720, 1);
-    // Nebraska
-    s.run('ne_douglas_warrants', 'NE', 'Douglas', 'https://www.omahacrimestoppers.org/mostwanted', 'Omaha Crime Stoppers', 'html', 720, 0);
-    // Nevada
-    s.run('nv_clark_warrants', 'NV', 'Clark', 'https://www.lvmpd.com/en-us/Pages/MostWanted.aspx', 'LVMPD Most Wanted', 'html', 720, 1);
-    s.run('nv_washoe_warrants', 'NV', 'Washoe', 'https://secretwitness.com/current-cases/current-fugitive-cases/', 'Washoe County Secret Witness', 'html', 720, 1);
-    // New Hampshire
-    s.run('nh_hillsborough_warrants', 'NH', 'Hillsborough', 'https://www.manchesternh.gov/Departments/Police/Most-Wanted', 'Manchester NH PD', 'html', 720, 0);
-    // New Jersey
-    s.run('nj_essex_warrants', 'NJ', 'Essex', 'https://www.njsp.org/wanted/index.shtml', 'NJ State Police', 'html', 720, 1);
-    // New Mexico
-    s.run('nm_bernalillo_warrants', 'NM', 'Bernalillo', 'https://bcapp.bernco.gov/BCSO_WarrantInterWITS/', 'Bernalillo County WITS', 'search_form', 720, 0);
-    // New York
-    s.run('ny_new_york_warrants', 'NY', 'New York', 'https://www.nyc.gov/nypd/most-wanted', 'NYPD Most Wanted', 'html', 720, 1);
-    // North Carolina
-    s.run('nc_mecklenburg_warrants', 'NC', 'Mecklenburg', 'https://www.crimestoppersofcharlotte.org/', 'Charlotte Crime Stoppers', 'html', 720, 0);
-    // North Dakota
-    s.run('nd_cass_warrants', 'ND', 'Cass', 'https://www.fargond.gov/city-government/departments/police/most-wanted', 'Fargo PD', 'html', 720, 0);
-    // Ohio
-    s.run('oh_cuyahoga_warrants', 'OH', 'Cuyahoga', 'https://www.cuyahogacounty.gov/sheriff/most-wanted', 'Cuyahoga County', 'html', 720, 0);
-    // Oklahoma
-    s.run('ok_oklahoma_warrants', 'OK', 'Oklahoma', 'https://www.okcpd.org/about-us/most-wanted/', 'Oklahoma City PD', 'html', 720, 0);
-    // Oregon
-    s.run('or_multnomah_warrants', 'OR', 'Multnomah', 'https://www.mcso.us/warrants/', 'Multnomah County', 'html', 720, 0);
-    // Pennsylvania
-    s.run('pa_philadelphia_warrants', 'PA', 'Philadelphia', 'https://www.phillypolice.com/forms/most-wanted/', 'Philadelphia PD', 'html', 720, 1);
-    // Rhode Island
-    s.run('ri_providence_warrants', 'RI', 'Providence', 'https://www.riag.ri.gov/most-wanted', 'Rhode Island AG', 'html', 720, 0);
-    // South Carolina
-    s.run('sc_richland_warrants', 'SC', 'Richland', 'https://www.rcsd.net/most-wanted', 'Richland County SC', 'html', 720, 0);
-    // South Dakota
-    s.run('sd_minnehaha_warrants', 'SD', 'Minnehaha', 'https://www.siouxfallspolice.com/resources/most-wanted', 'Sioux Falls PD', 'html', 720, 0);
-    // Tennessee
-    s.run('tn_davidson_warrants', 'TN', 'Davidson', 'https://www.nashville.gov/departments/police/most-wanted', 'Nashville PD', 'html', 720, 0);
-    // Texas
-    s.run('tx_harris_warrants', 'TX', 'Harris', 'https://www.crime-stoppers.org/mostwanted', 'Houston Crime Stoppers', 'html', 720, 1);
-    s.run('tx_dallas_warrants', 'TX', 'Dallas', 'https://www.ntcrimestoppers.com/fugitives', 'North Texas Crime Stoppers', 'html', 720, 0);
-    // Utah (statewide API handled by utahWarrantScraper.ts)
-    s.run('ut_statewide', 'UT', '', 'https://warrants.utah.gov/api/v1', 'Utah State Warrants API', 'api', 360, 1);
-    // Vermont
-    s.run('vt_chittenden_warrants', 'VT', 'Chittenden', 'https://www.burlingtonvt.gov/Police/Most-Wanted', 'Burlington VT PD', 'html', 1440, 0);
-    // Virginia
-    s.run('va_fairfax_warrants', 'VA', 'Fairfax', 'https://www.fairfaxcounty.gov/police/wanted', 'Fairfax County PD', 'html', 720, 0);
-    // Washington
-    s.run('wa_king_warrants', 'WA', 'King', 'https://www.kingcounty.gov/en/dept/dajd/courts-jails-legal/warrants', 'King County WA', 'html', 720, 0);
-    // West Virginia
-    s.run('wv_kanawha_warrants', 'WV', 'Kanawha', 'https://www.wvsp.gov/pages/Most-Wanted.aspx', 'WV State Police', 'html', 720, 0);
-    // Wisconsin
-    s.run('wi_milwaukee_warrants', 'WI', 'Milwaukee', 'https://www.milwaukeecountywi.gov/county-departments/sheriff/most-wanted/', 'Milwaukee County', 'html', 720, 0);
-    // Wyoming
-    s.run('wy_laramie_warrants', 'WY', 'Laramie', 'https://www.laramiecountywy.gov/County-Government/Elected-Officials/Laramie-County-Sheriffs-Office/Most-Wanted', 'Laramie County', 'html', 720, 0);
-
-    // ── Additional State Sources (expanded coverage) ──────────────────
-    // Alaska
-    s.run('ak_state_troopers', 'AK', '', 'https://www.prior.dps.alaska.gov/ast/AKMostWanted/MostWanted.aspx', 'Alaska State Troopers', 'html', 1440, 1);
-    s.run('ak_mat_su_warrants', 'AK', 'Mat-Su', 'https://www.prior.matsugov.us/sheriff/wanted', 'Mat-Su Borough', 'html', 720, 1);
-    // Alabama
-    s.run('al_mobile_warrants', 'AL', 'Mobile', 'https://www.mobilecountysheriffal.com/most-wanted/', 'Mobile County SO', 'html', 720, 1);
-    s.run('al_state_crimestop', 'AL', '', 'https://www.crime-stoppers.org/al/mostwanted', 'Alabama Crime Stoppers', 'html', 720, 1);
-    // Arizona
-    s.run('az_yavapai_warrants', 'AZ', 'Yavapai', 'https://yavapaisw.com/wanted-fugitives/', 'Yavapai Silent Witness', 'html', 720, 1);
-    // Arkansas
-    s.run('ar_benton_warrants', 'AR', 'Benton', 'https://www.bentoncountycrimestoppers.org/', 'Benton County Crime Stoppers', 'html', 720, 1);
-    // California
-    s.run('ca_riverside_warrants', 'CA', 'Riverside', 'https://www.riversidesheriff.org/810/Most-Wanted', 'Riverside County SO', 'html', 720, 1);
-    s.run('ca_sacramento_warrants', 'CA', 'Sacramento', 'https://www.sacsheriff.com/pages/most_wanted.aspx', 'Sacramento County SO', 'html', 720, 1);
-    s.run('ca_fresno_warrants', 'CA', 'Fresno', 'https://www.valleycrimestoppers.org/most-wanted', 'Fresno Valley Crime Stoppers', 'html', 720, 1);
-    s.run('ca_kern_warrants', 'CA', 'Kern', 'https://www.kerncounty.com/government/sheriff/most-wanted', 'Kern County SO', 'html', 720, 1);
-    s.run('ca_san_bernardino_warrants', 'CA', 'San Bernardino', 'https://www.ieanonymoustips.org/', 'IE Crime Stoppers', 'html', 720, 1);
-    // Colorado
-    s.run('co_pueblo_warrants', 'CO', 'Pueblo', 'https://www.pueblocrimestoppers.com/', 'Pueblo Crime Stoppers', 'html', 720, 1);
-    s.run('co_larimer_warrants', 'CO', 'Larimer', 'https://www.nococrimestoppers.com/', 'Northern CO Crime Stoppers', 'html', 720, 1);
-    s.run('co_weld_warrants', 'CO', 'Weld', 'https://www.weldcountysheriff.com/most-wanted', 'Weld County SO', 'html', 720, 1);
-    s.run('co_mesa_warrants', 'CO', 'Mesa', 'https://www.mesacounty.us/sheriff/most-wanted', 'Mesa County SO', 'html', 720, 1);
-    s.run('co_arapahoe_warrants', 'CO', 'Arapahoe', 'https://www.arapahoegov.com/847/Most-Wanted', 'Arapahoe County', 'html', 720, 1);
-    s.run('co_jefferson_warrants', 'CO', 'Jefferson', 'https://www.jeffco.us/3847/Most-Wanted', 'Jefferson County SO', 'html', 720, 1);
-    s.run('co_boulder_warrants', 'CO', 'Boulder', 'https://www.northerncoloradocrimestoppers.com/', 'Boulder Area Crime Stoppers', 'html', 720, 1);
-    s.run('co_springs_warrants', 'CO', 'El Paso', 'https://www.crimestoppersandpikespeakregion.com/', 'Pikes Peak Crime Stoppers', 'html', 720, 1);
-    // Connecticut
-    s.run('ct_state_police', 'CT', '', 'https://portal.ct.gov/DESPP/Division-of-State-Police/Most-Wanted', 'CT State Police', 'html', 720, 1);
-    // Delaware
-    s.run('de_state_police', 'DE', '', 'https://dsp.delaware.gov/crime-stoppers/', 'Delaware State Police', 'html', 720, 1);
-    // Florida
-    s.run('fl_broward_warrants', 'FL', 'Broward', 'https://www.browardsheriff.org/community/most-wanted', 'Broward County SO', 'html', 720, 1);
-    s.run('fl_orange_warrants', 'FL', 'Orange', 'https://www.ocso.com/most-wanted/', 'Orange County SO', 'html', 720, 1);
-    s.run('fl_duval_warrants', 'FL', 'Duval', 'https://www.fccrimestoppers.com/', 'First Coast Crime Stoppers', 'html', 720, 1);
-    // Georgia
-    s.run('ga_dekalb_warrants', 'GA', 'DeKalb', 'https://www.dekalbcountyga.gov/sheriff/most-wanted', 'DeKalb County SO', 'html', 720, 1);
-    s.run('ga_gwinnett_warrants', 'GA', 'Gwinnett', 'https://www.atlantacrimestoppers.com/', 'Atlanta Crime Stoppers', 'html', 720, 1);
-    // Hawaii
-    s.run('hi_maui_warrants', 'HI', 'Maui', 'https://www.mpd.maui.gov/crime-stoppers/', 'Maui Crime Stoppers', 'html', 1440, 1);
-    // Idaho
-    s.run('id_canyon_warrants', 'ID', 'Canyon', 'https://www.canyoncounty.id.gov/sheriff/most-wanted', 'Canyon County SO', 'html', 720, 1);
-    s.run('id_bonneville_warrants', 'ID', 'Bonneville', 'https://www.co.bonneville.id.us/sheriff/most-wanted', 'Bonneville County SO', 'html', 720, 1);
-    s.run('id_kootenai_warrants', 'ID', 'Kootenai', 'https://www.kcgov.us/154/Most-Wanted', 'Kootenai County SO', 'html', 720, 1);
-    s.run('id_twin_falls_warrants', 'ID', 'Twin Falls', 'https://www.twinfallscounty.org/sheriff/most-wanted', 'Twin Falls County SO', 'html', 720, 1);
-    s.run('id_state_police', 'ID', '', 'https://isp.idaho.gov/wanted/', 'Idaho State Police', 'html', 720, 1);
-    // Illinois
-    s.run('il_dupage_warrants', 'IL', 'DuPage', 'https://www.crimestoppersil.com/', 'Illinois Crime Stoppers', 'html', 720, 1);
-    // Indiana
-    s.run('in_allen_warrants', 'IN', 'Allen', 'https://www.allencountyindianawarrants.org/', 'Allen County Warrants', 'html', 720, 1);
-    // Iowa
-    s.run('ia_linn_warrants', 'IA', 'Linn', 'https://www.linncountyiowa.gov/1112/Most-Wanted', 'Linn County SO', 'html', 720, 1);
-    s.run('ia_state_crimestop', 'IA', '', 'https://iowacrimestoppers.org/', 'Iowa Crime Stoppers', 'html', 720, 1);
-    // Kansas
-    s.run('ks_johnson_warrants', 'KS', 'Johnson', 'https://www.jocosheriff.org/most-wanted', 'Johnson County SO', 'html', 720, 1);
-    // Kentucky
-    s.run('ky_fayette_warrants', 'KY', 'Fayette', 'https://www.bluegrasscrimestoppers.com/', 'Bluegrass Crime Stoppers', 'html', 720, 1);
-    // Louisiana
-    s.run('la_east_baton_rouge', 'LA', 'East Baton Rouge', 'https://www.crimestoppersbr.org/most-wanted', 'Baton Rouge Crime Stoppers', 'html', 720, 1);
-    // Maine
-    s.run('me_state_police', 'ME', '', 'https://www.maine.gov/dps/msp/wanted-missing', 'Maine State Police', 'html', 720, 1);
-    // Maryland
-    s.run('md_prince_georges', 'MD', 'Prince Georges', 'https://www.pgcrimesolvers.com/most-wanted', 'Prince Georges Crime Solvers', 'html', 720, 1);
-    // Michigan
-    s.run('mi_kent_warrants', 'MI', 'Kent', 'https://www.silentobserver.org/', 'Kent County Silent Observer', 'html', 720, 1);
-    s.run('mi_oakland_warrants', 'MI', 'Oakland', 'https://www.oaklandsheriff.com/most-wanted', 'Oakland County SO', 'html', 720, 1);
-    // Minnesota
-    s.run('mn_ramsey_warrants', 'MN', 'Ramsey', 'https://www.crimestoppersmn.org/', 'Minnesota Crime Stoppers', 'html', 720, 1);
-    // Mississippi
-    s.run('ms_harrison_warrants', 'MS', 'Harrison', 'https://www.mscoastcrimestoppers.com/', 'MS Coast Crime Stoppers', 'html', 720, 1);
-    // Missouri
-    s.run('mo_st_louis_warrants', 'MO', 'St. Louis', 'https://www.stlrcs.org/most-wanted', 'St. Louis Crime Stoppers', 'html', 720, 1);
-    // Montana
-    s.run('mt_cascade_warrants', 'MT', 'Cascade', 'https://www.cascadecountymt.gov/departments/sheriff/most-wanted', 'Cascade County SO', 'html', 720, 1);
-    s.run('mt_yellowstone_warrants', 'MT', 'Yellowstone', 'https://www.co.yellowstone.mt.gov/sheriff/most-wanted', 'Yellowstone County SO', 'html', 720, 1);
-    // Nebraska
-    s.run('ne_lancaster_warrants', 'NE', 'Lancaster', 'https://www.lincoln.ne.gov/City/Departments/Police-Department/Most-Wanted', 'Lincoln PD', 'html', 720, 1);
-    // New Hampshire
-    s.run('nh_state_police', 'NH', '', 'https://www.nh.gov/safety/divisions/nhsp/wanted/', 'NH State Police', 'html', 720, 1);
-    // New Jersey
-    s.run('nj_camden_warrants', 'NJ', 'Camden', 'https://www.camdencountypd.org/most-wanted', 'Camden County PD', 'html', 720, 1);
-    s.run('nj_passaic_warrants', 'NJ', 'Passaic', 'https://www.passaicsheriff.com/wanted/', 'Passaic County SO', 'html', 720, 1);
-    // New Mexico
-    s.run('nm_state_police', 'NM', '', 'https://www.nmsp.dps.state.nm.us/', 'NM State Police', 'html', 720, 1);
-    // New York
-    s.run('ny_suffolk_warrants', 'NY', 'Suffolk', 'https://www.suffolkcountyny.gov/sheriff/most-wanted', 'Suffolk County SO', 'html', 720, 1);
-    // North Carolina
-    s.run('nc_wake_warrants', 'NC', 'Wake', 'https://www.raleighcrimestoppers.org/', 'Raleigh Crime Stoppers', 'html', 720, 1);
-    s.run('nc_guilford_warrants', 'NC', 'Guilford', 'https://www.crimestoppersgso.org/', 'Greensboro Crime Stoppers', 'html', 720, 1);
-    // North Dakota
-    s.run('nd_burleigh_warrants', 'ND', 'Burleigh', 'https://www.bismarcknd.gov/1082/Most-Wanted', 'Bismarck PD', 'html', 720, 1);
-    // Ohio
-    s.run('oh_hamilton_warrants', 'OH', 'Hamilton', 'https://www.crimestoppers.com/cincinnati', 'Cincinnati Crime Stoppers', 'html', 720, 1);
-    s.run('oh_franklin_warrants', 'OH', 'Franklin', 'https://www.centralohiocrimestoppers.org/', 'Central Ohio Crime Stoppers', 'html', 720, 1);
-    // Oklahoma
-    s.run('ok_tulsa_warrants', 'OK', 'Tulsa', 'https://www.tulsacrimestoppers.org/most-wanted', 'Tulsa Crime Stoppers', 'html', 720, 1);
-    // Oregon
-    s.run('or_clackamas_warrants', 'OR', 'Clackamas', 'https://www.clackamas.us/sheriff/mostwanted', 'Clackamas County SO', 'html', 720, 1);
-    s.run('or_lane_warrants', 'OR', 'Lane', 'https://www.lanecountyor.gov/sheriff/most-wanted', 'Lane County SO', 'html', 720, 1);
-    // Pennsylvania
-    s.run('pa_allegheny_warrants', 'PA', 'Allegheny', 'https://www.pittsburghcrimestoppers.com/', 'Pittsburgh Crime Stoppers', 'html', 720, 1);
-    // Rhode Island
-    s.run('ri_state_police', 'RI', '', 'https://www.risp.ri.gov/most-wanted', 'RI State Police', 'html', 720, 1);
-    // South Carolina
-    s.run('sc_charleston_warrants', 'SC', 'Charleston', 'https://www.charlestoncrimestoppers.com/', 'Charleston Crime Stoppers', 'html', 720, 1);
-    // South Dakota
-    s.run('sd_pennington_warrants', 'SD', 'Pennington', 'https://www.rapidcity.com/police-department/most-wanted', 'Rapid City PD', 'html', 720, 1);
-    // Tennessee
-    s.run('tn_shelby_warrants', 'TN', 'Shelby', 'https://www.crimestopmem.org/mostwanted', 'Memphis Crime Stoppers', 'html', 720, 1);
-    s.run('tn_knox_warrants', 'TN', 'Knox', 'https://www.knoxcrimestoppers.com/', 'Knoxville Crime Stoppers', 'html', 720, 1);
-    // Texas
-    s.run('tx_bexar_warrants', 'TX', 'Bexar', 'https://www.sacrimestoppers.com/most-wanted', 'San Antonio Crime Stoppers', 'html', 720, 1);
-    s.run('tx_tarrant_warrants', 'TX', 'Tarrant', 'https://www.tarrantcrimestoppers.org/', 'Tarrant County Crime Stoppers', 'html', 720, 1);
-    s.run('tx_el_paso_warrants', 'TX', 'El Paso', 'https://www.crimestoppersofelpaso.org/most-wanted', 'El Paso Crime Stoppers', 'html', 720, 1);
-    s.run('tx_travis_warrants', 'TX', 'Travis', 'https://www.austincrimestoppers.org/', 'Austin Crime Stoppers', 'html', 720, 1);
-    // US Federal (additional)
-    s.run('federal_dea_fugitives', 'US', '', 'https://www.dea.gov/fugitives', 'DEA Fugitives', 'html', 1440, 1);
-    s.run('federal_atf_wanted', 'US', '', 'https://www.atf.gov/most-wanted', 'ATF Most Wanted', 'html', 1440, 1);
-    s.run('federal_ice_wanted', 'US', '', 'https://www.ice.gov/most-wanted', 'ICE Most Wanted', 'html', 1440, 1);
-    s.run('federal_secret_service', 'US', '', 'https://www.secretservice.gov/investigation/most-wanted', 'Secret Service Most Wanted', 'html', 1440, 1);
-    s.run('federal_usms_top15', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/most-wanted-fugitives', 'US Marshals 15 Most Wanted', 'html', 1440, 1);
-    s.run('federal_postal_inspectors', 'US', '', 'https://www.uspis.gov/investigations/wanted-fugitives', 'US Postal Inspectors', 'html', 1440, 1);
-    // Virginia
-    s.run('va_henrico_warrants', 'VA', 'Henrico', 'https://henrico.us/police/most-wanted/', 'Henrico County PD', 'html', 720, 1);
-    // Vermont
-    s.run('vt_state_police', 'VT', '', 'https://vsp.vermont.gov/wanted', 'Vermont State Police', 'html', 1440, 1);
-    // Washington
-    s.run('wa_pierce_warrants', 'WA', 'Pierce', 'https://www.piercecountywa.gov/2090/Most-Wanted', 'Pierce County SO', 'html', 720, 1);
-    s.run('wa_spokane_warrants', 'WA', 'Spokane', 'https://www.crimestoppersinlandnw.org/', 'Inland NW Crime Stoppers', 'html', 720, 1);
-    s.run('wa_snohomish_warrants', 'WA', 'Snohomish', 'https://snohomishcountywa.gov/282/Most-Wanted', 'Snohomish County SO', 'html', 720, 1);
-    // West Virginia
-    s.run('wv_kanawha_crimestop', 'WV', 'Kanawha', 'https://www.p3tips.com/TipForm.aspx?ID=104', 'Charleston WV Crime Stoppers', 'html', 720, 1);
-    // Wisconsin
-    s.run('wi_dane_warrants', 'WI', 'Dane', 'https://www.madisoncrimestoppers.com/', 'Madison Crime Stoppers', 'html', 720, 1);
-    // Wyoming
-    s.run('wy_natrona_warrants', 'WY', 'Natrona', 'https://www.natronacounty-wy.gov/603/Most-Wanted', 'Natrona County SO', 'html', 720, 1);
-    s.run('wy_sweetwater_warrants', 'WY', 'Sweetwater', 'https://www.sweet.wy.us/sheriff/most-wanted', 'Sweetwater County SO', 'html', 720, 1);
-    s.run('wy_albany_warrants', 'WY', 'Albany', 'https://www.co.albany.wy.us/sheriff/most-wanted', 'Albany County SO', 'html', 720, 1);
-    s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
-  }
-
-  // Enable ALL warrant scraper sources — circuit breaker auto-disables sources that fail 5 times
-  db.prepare("UPDATE warrant_scraper_config SET enabled = 1 WHERE enabled = 0 AND source_type != 'search_form'").run();
 
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
@@ -5201,226 +4925,221 @@ function migrateSchema(): void {
     );
   `);
 
-  // ── CRM + Serve + HR Migrations ─────────────────────
-  addCol('serve_queue', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
-  try { db.prepare("CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id)").run(); } catch (e) { /* */ }
-  addCol('properties', 'risk_level', "TEXT DEFAULT 'normal'");
+  // ══════════════════════════════════════════════════════════════
+  // Phase 1: Dispatch & Records Spillman-Grade Overhaul
+  // ══════════════════════════════════════════════════════════════
 
-  // ── Person Enhanced Fields (65 columns) ──
-  addCol('persons', 'preferred_name', 'TEXT');
-  addCol('persons', 'alias_dob', 'TEXT');
-  addCol('persons', 'tribal_affiliation', 'TEXT');
-  addCol('persons', 'immigration_status', 'TEXT');
-  addCol('persons', 'country_of_origin', 'TEXT');
-  addCol('persons', 'ethnicity_detail', 'TEXT');
-  addCol('persons', 'religion', 'TEXT');
-  addCol('persons', 'gender_identity', 'TEXT');
-  addCol('persons', 'interpreter_needed', 'INTEGER DEFAULT 0');
-  addCol('persons', 'literacy_level', 'TEXT');
-  addCol('persons', 'primary_language', 'TEXT');
-  addCol('persons', 'secondary_language', 'TEXT');
-  addCol('persons', 'nickname_street_name', 'TEXT');
-  addCol('persons', 'maiden_name', 'TEXT');
-  addCol('persons', 'suffix', 'TEXT');
-  addCol('persons', 'tattoo_locations', 'TEXT');
-  addCol('persons', 'tattoo_descriptions', 'TEXT');
-  addCol('persons', 'tattoo_count', 'INTEGER');
-  addCol('persons', 'piercing_locations', 'TEXT');
-  addCol('persons', 'prosthetics', 'TEXT');
-  addCol('persons', 'wheelchair_dependent', 'INTEGER DEFAULT 0');
-  addCol('persons', 'hearing_impaired', 'INTEGER DEFAULT 0');
-  addCol('persons', 'vision_impaired', 'TEXT');
-  addCol('persons', 'speech_impediment', 'TEXT');
-  addCol('persons', 'dominant_hand', 'TEXT');
-  addCol('persons', 'body_odor_notable', 'TEXT');
-  addCol('persons', 'gait_description', 'TEXT');
-  addCol('persons', 'driver_license_status', 'TEXT');
-  addCol('persons', 'last_law_enforcement_contact', 'TEXT');
-  addCol('persons', 'known_contact_method', 'TEXT');
-  addCol('persons', 'mental_health_flags', 'TEXT');
-  addCol('persons', 'medication_alerts', 'TEXT');
-  addCol('persons', 'suicide_risk', 'TEXT');
-  addCol('persons', 'violent_history', 'TEXT');
-  addCol('persons', 'escape_risk', 'TEXT');
-  addCol('persons', 'restraining_orders', 'TEXT');
-  addCol('persons', 'curfew_restrictions', 'TEXT');
-  addCol('persons', 'gps_monitor', 'INTEGER DEFAULT 0');
-  addCol('persons', 'gang_rank', 'TEXT');
-  addCol('persons', 'gang_set', 'TEXT');
-  addCol('persons', 'gang_territory', 'TEXT');
-  addCol('persons', 'gang_rivals', 'TEXT');
-  addCol('persons', 'homeless_status', 'INTEGER DEFAULT 0');
-  addCol('persons', 'homeless_location', 'TEXT');
-  addCol('persons', 'frequented_locations', 'TEXT');
-  addCol('persons', 'known_vehicles', 'TEXT');
-  addCol('persons', 'modus_operandi', 'TEXT');
-  addCol('persons', 'military_branch', 'TEXT');
-  addCol('persons', 'military_discharge_type', 'TEXT');
-  addCol('persons', 'military_rank', 'TEXT');
-  addCol('persons', 'military_service_dates', 'TEXT');
-  addCol('persons', 'va_benefits_active', 'INTEGER DEFAULT 0');
-  addCol('persons', 'employer_address', 'TEXT');
-  addCol('persons', 'employer_phone', 'TEXT');
-  addCol('persons', 'employer_supervisor', 'TEXT');
-  addCol('persons', 'employment_schedule', 'TEXT');
-  addCol('persons', 'next_of_kin_name', 'TEXT');
-  addCol('persons', 'next_of_kin_phone', 'TEXT');
-  addCol('persons', 'next_of_kin_relationship', 'TEXT');
-  addCol('persons', 'next_of_kin_address', 'TEXT');
-  addCol('persons', 'fingerprint_on_file', 'INTEGER DEFAULT 0');
-  addCol('persons', 'dna_on_file', 'INTEGER DEFAULT 0');
-  addCol('persons', 'dental_records_on_file', 'INTEGER DEFAULT 0');
-  addCol('persons', 'photo_date_taken', 'TEXT');
-  addCol('persons', 'prior_booking_count', 'INTEGER DEFAULT 0');
+  // ── Field Interviews (FI Cards) ─────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS field_interviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fi_number TEXT UNIQUE NOT NULL,
+        officer_id INTEGER NOT NULL,
+        person_id INTEGER,
+        date TEXT NOT NULL,
+        time TEXT,
+        location TEXT,
+        latitude REAL,
+        longitude REAL,
+        contact_reason TEXT DEFAULT 'other',
+        contact_type TEXT DEFAULT 'field',
+        action_taken TEXT DEFAULT 'none',
+        narrative TEXT,
+        vehicle_id INTEGER,
+        vehicle_plate TEXT,
+        vehicle_description TEXT,
+        subject_first_name TEXT,
+        subject_last_name TEXT,
+        subject_dob TEXT,
+        subject_gender TEXT,
+        subject_race TEXT,
+        subject_height TEXT,
+        subject_weight TEXT,
+        subject_hair TEXT,
+        subject_eye TEXT,
+        subject_clothing TEXT,
+        subject_description TEXT,
+        gang_affiliation TEXT,
+        associated_call_id TEXT,
+        associated_incident_id TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        archived_at TEXT,
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (person_id) REFERENCES persons(id),
+        FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_fi_person ON field_interviews(person_id);
+      CREATE INDEX IF NOT EXISTS idx_fi_officer ON field_interviews(officer_id);
+      CREATE INDEX IF NOT EXISTS idx_fi_date ON field_interviews(date);
+    `);
+  } catch { /* table already exists */ }
 
-  // ── Vehicle Enhanced Fields (65 columns) ──
-  addCol('vehicles_records', 'registration_status', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_name', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_address', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_phone', 'TEXT');
-  addCol('vehicles_records', 'registered_owner_dob', 'TEXT');
-  addCol('vehicles_records', 'registration_state', 'TEXT');
-  addCol('vehicles_records', 'title_status', 'TEXT');
-  addCol('vehicles_records', 'title_number', 'TEXT');
-  addCol('vehicles_records', 'temporary_plate_expiry', 'TEXT');
-  addCol('vehicles_records', 'fleet_number', 'TEXT');
-  addCol('vehicles_records', 'vehicle_alert_code', 'TEXT');
-  addCol('vehicles_records', 'repossession_status', 'TEXT');
-  addCol('vehicles_records', 'repossession_company', 'TEXT');
-  addCol('vehicles_records', 'repossession_date', 'TEXT');
-  addCol('vehicles_records', 'last_seen_location', 'TEXT');
-  addCol('vehicles_records', 'last_seen_date', 'TEXT');
-  addCol('vehicles_records', 'impound_status', 'TEXT');
-  addCol('vehicles_records', 'impound_lot', 'TEXT');
-  addCol('vehicles_records', 'impound_case_number', 'TEXT');
-  addCol('vehicles_records', 'impound_date', 'TEXT');
-  addCol('vehicles_records', 'bumper_stickers_decals', 'TEXT');
-  addCol('vehicles_records', 'window_tint_level', 'TEXT');
-  addCol('vehicles_records', 'sunroof', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'roof_rack', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'trailer_hitch', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'aftermarket_wheels', 'TEXT');
-  addCol('vehicles_records', 'aftermarket_exhaust', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'lift_kit', 'TEXT');
-  addCol('vehicles_records', 'lowered', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'wrap_or_paint_custom', 'TEXT');
-  addCol('vehicles_records', 'antenna_type', 'TEXT');
-  addCol('vehicles_records', 'license_plate_frame', 'TEXT');
-  addCol('vehicles_records', 'front_bumper_damage', 'TEXT');
-  addCol('vehicles_records', 'rear_bumper_damage', 'TEXT');
-  addCol('vehicles_records', 'rust_locations', 'TEXT');
-  addCol('vehicles_records', 'interior_color', 'TEXT');
-  addCol('vehicles_records', 'seat_material', 'TEXT');
-  addCol('vehicles_records', 'aftermarket_stereo', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'dash_camera_installed', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'cb_radio_installed', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'child_seat_present', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'handicap_placard', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'rideshare_sticker', 'TEXT');
-  addCol('vehicles_records', 'equipment_violations', 'TEXT');
-  addCol('vehicles_records', 'airbag_status', 'TEXT');
-  addCol('vehicles_records', 'mileage_last_recorded', 'INTEGER');
-  addCol('vehicles_records', 'mileage_date_recorded', 'TEXT');
-  addCol('vehicles_records', 'emissions_status', 'TEXT');
-  addCol('vehicles_records', 'emissions_test_date', 'TEXT');
-  addCol('vehicles_records', 'catalytic_converter_status', 'TEXT');
-  addCol('vehicles_records', 'tire_condition', 'TEXT');
-  addCol('vehicles_records', 'brake_condition', 'TEXT');
-  addCol('vehicles_records', 'headlight_type', 'TEXT');
-  addCol('vehicles_records', 'insurance_agent_name', 'TEXT');
-  addCol('vehicles_records', 'insurance_agent_phone', 'TEXT');
-  addCol('vehicles_records', 'insurance_policy_number', 'TEXT');
-  addCol('vehicles_records', 'insurance_coverage_type', 'TEXT');
-  addCol('vehicles_records', 'insurance_verified_date', 'TEXT');
-  addCol('vehicles_records', 'sr22_required', 'INTEGER DEFAULT 0');
-  addCol('vehicles_records', 'tow_fee', 'REAL');
-  addCol('vehicles_records', 'tow_driver_name', 'TEXT');
-  addCol('vehicles_records', 'tow_company_phone', 'TEXT');
-  addCol('vehicles_records', 'storage_fee_daily', 'REAL');
-  addCol('vehicles_records', 'lien_holder_address', 'TEXT');
-  addCol('vehicles_records', 'lien_balance', 'REAL');
+  // ── Dispatch Messages ───────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        recipient_id INTEGER,
+        recipient_unit_id INTEGER,
+        channel TEXT DEFAULT 'dispatch',
+        call_id INTEGER,
+        text TEXT NOT NULL,
+        read_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (sender_id) REFERENCES users(id),
+        FOREIGN KEY (recipient_id) REFERENCES users(id),
+        FOREIGN KEY (recipient_unit_id) REFERENCES units(id),
+        FOREIGN KEY (call_id) REFERENCES calls_for_service(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_dm_recipient ON dispatch_messages(recipient_id);
+      CREATE INDEX IF NOT EXISTS idx_dm_unit ON dispatch_messages(recipient_unit_id);
+      CREATE INDEX IF NOT EXISTS idx_dm_call ON dispatch_messages(call_id);
+    `);
+  } catch { /* table already exists */ }
 
-  // ── Property Enhanced Fields (73 columns) ──
-  addCol('properties', 'security_company', 'TEXT');
-  addCol('properties', 'security_company_phone', 'TEXT');
-  addCol('properties', 'security_company_account', 'TEXT');
-  addCol('properties', 'security_system_type', 'TEXT');
-  addCol('properties', 'security_panel_location', 'TEXT');
-  addCol('properties', 'security_code_day', 'TEXT');
-  addCol('properties', 'security_code_night', 'TEXT');
-  addCol('properties', 'duress_code', 'TEXT');
-  addCol('properties', 'security_zones_count', 'INTEGER');
-  addCol('properties', 'security_last_tested', 'TEXT');
-  addCol('properties', 'key_holder_name', 'TEXT');
-  addCol('properties', 'key_holder_phone', 'TEXT');
-  addCol('properties', 'key_holder_secondary_name', 'TEXT');
-  addCol('properties', 'key_holder_secondary_phone', 'TEXT');
-  addCol('properties', 'key_location', 'TEXT');
-  addCol('properties', 'key_box_code', 'TEXT');
-  addCol('properties', 'key_type', 'TEXT');
-  addCol('properties', 'access_card_system', 'TEXT');
-  addCol('properties', 'cctv_camera_count', 'INTEGER');
-  addCol('properties', 'cctv_retention_days', 'INTEGER');
-  addCol('properties', 'cctv_vendor', 'TEXT');
-  addCol('properties', 'cctv_access_credentials', 'TEXT');
-  addCol('properties', 'cctv_recording_location', 'TEXT');
-  addCol('properties', 'cctv_ptz_capable', 'INTEGER DEFAULT 0');
-  addCol('properties', 'cctv_remote_viewable', 'INTEGER DEFAULT 0');
-  addCol('properties', 'cctv_audio_recording', 'INTEGER DEFAULT 0');
-  addCol('properties', 'building_floors', 'INTEGER');
-  addCol('properties', 'building_square_footage', 'INTEGER');
-  addCol('properties', 'building_material', 'TEXT');
-  addCol('properties', 'building_year_built', 'INTEGER');
-  addCol('properties', 'roof_type', 'TEXT');
-  addCol('properties', 'roof_access', 'TEXT');
-  addCol('properties', 'basement_present', 'INTEGER DEFAULT 0');
-  addCol('properties', 'basement_access', 'TEXT');
-  addCol('properties', 'elevator_count', 'INTEGER');
-  addCol('properties', 'stairwell_count', 'INTEGER');
-  addCol('properties', 'occupancy_capacity', 'INTEGER');
-  addCol('properties', 'ada_accessible', 'INTEGER DEFAULT 0');
-  addCol('properties', 'officer_caution_notes', 'TEXT');
-  addCol('properties', 'lighting_description', 'TEXT');
-  addCol('properties', 'lighting_timer', 'TEXT');
-  addCol('properties', 'entry_points_count', 'INTEGER');
-  addCol('properties', 'entry_points_notes', 'TEXT');
-  addCol('properties', 'sensitive_areas', 'TEXT');
-  addCol('properties', 'restricted_access_areas', 'TEXT');
-  addCol('properties', 'fire_panel_location', 'TEXT');
-  addCol('properties', 'fire_sprinkler_system', 'TEXT');
-  addCol('properties', 'utility_shutoff_locations', 'TEXT');
-  addCol('properties', 'hazmat_on_site', 'TEXT');
-  addCol('properties', 'weapons_on_premises', 'TEXT');
-  addCol('properties', 'patrol_priority', 'TEXT');
-  addCol('properties', 'patrol_frequency', 'TEXT');
-  addCol('properties', 'last_patrol_date', 'TEXT');
-  addCol('properties', 'problem_type_tags', 'TEXT');
-  addCol('properties', 'after_hours_contact_name', 'TEXT');
-  addCol('properties', 'after_hours_contact_phone', 'TEXT');
-  addCol('properties', 'parking_lot_spaces', 'INTEGER');
-  addCol('properties', 'parking_lot_gated', 'INTEGER DEFAULT 0');
-  addCol('properties', 'loading_dock_count', 'INTEGER');
-  addCol('properties', 'dumpster_locations', 'TEXT');
-  addCol('properties', 'tenant_count', 'INTEGER');
-  addCol('properties', 'tenant_list', 'TEXT');
-  addCol('properties', 'property_manager_name', 'TEXT');
-  addCol('properties', 'property_manager_phone', 'TEXT');
-  addCol('properties', 'property_manager_email', 'TEXT');
-  addCol('properties', 'owner_name', 'TEXT');
-  addCol('properties', 'owner_phone', 'TEXT');
-  addCol('properties', 'lease_expiry', 'TEXT');
-  addCol('properties', 'internet_provider', 'TEXT');
-  addCol('properties', 'phone_system_type', 'TEXT');
-  addCol('properties', 'backup_generator', 'INTEGER DEFAULT 0');
-  addCol('properties', 'water_source', 'TEXT');
-  addCol('properties', 'septic_or_sewer', 'TEXT');
+  // ── Photo Lineups ──────────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS photo_lineups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lineup_number TEXT UNIQUE,
+        case_id INTEGER,
+        incident_id INTEGER,
+        suspect_person_id INTEGER NOT NULL,
+        filler_person_ids TEXT DEFAULT '[]',
+        suspect_position INTEGER,
+        witness_person_id INTEGER,
+        witness_name TEXT,
+        administered_by INTEGER,
+        administered_at TEXT,
+        identification_result TEXT,
+        identified_position INTEGER,
+        notes TEXT,
+        status TEXT DEFAULT 'created',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (suspect_person_id) REFERENCES persons(id),
+        FOREIGN KEY (witness_person_id) REFERENCES persons(id),
+        FOREIGN KEY (administered_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
 
-  addCol('crm_proposals', 'stage_entered_at', 'TEXT');
-  addCol('crm_tasks', 'auto_created_by', 'TEXT');
-  addCol('invoices', 'recurrence_interval', 'TEXT');
-  addCol('invoices', 'recurrence_anchor', 'TEXT');
-  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_proposal_versions (id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, version_num INTEGER NOT NULL, snapshot TEXT NOT NULL, edited_by TEXT, edited_at TEXT)`).run(); } catch (e) { /* */ }
-  try { db.prepare(`CREATE TABLE IF NOT EXISTS crm_payments (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_at TEXT, method TEXT, reference TEXT, recorded_by TEXT)`).run(); } catch (e) { /* */ }
+  // ── NIBRS Submissions ──────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS nibrs_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        incident_count INTEGER DEFAULT 0,
+        offense_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'draft',
+        submitted_at TEXT,
+        submitted_by INTEGER,
+        validation_errors TEXT DEFAULT '[]',
+        export_data TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (submitted_by) REFERENCES users(id),
+        UNIQUE(year, month)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Saved Searches ─────────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS saved_searches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        search_type TEXT DEFAULT 'compound',
+        query_params TEXT NOT NULL,
+        is_shared INTEGER DEFAULT 0,
+        use_count INTEGER DEFAULT 0,
+        last_used_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Record Merge Log ───────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS record_merge_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        surviving_id INTEGER NOT NULL,
+        merged_id INTEGER NOT NULL,
+        entity_type TEXT NOT NULL DEFAULT 'person',
+        merged_data TEXT,
+        conflict_resolutions TEXT,
+        merged_by INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (merged_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Officer Activity Summary ───────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS officer_activity_summary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        shift_date TEXT NOT NULL,
+        calls_responded INTEGER DEFAULT 0,
+        citations_issued INTEGER DEFAULT 0,
+        arrests_made INTEGER DEFAULT 0,
+        field_interviews INTEGER DEFAULT 0,
+        reports_written INTEGER DEFAULT 0,
+        mileage_driven REAL DEFAULT 0,
+        time_on_calls_minutes INTEGER DEFAULT 0,
+        time_available_minutes INTEGER DEFAULT 0,
+        time_admin_minutes INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        UNIQUE(officer_id, shift_date)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Warrants: NCIC fields + assignment ──────────────────────
+  addCol('warrants', 'oca_number', 'TEXT');
+  addCol('warrants', 'ori', 'TEXT');
+  addCol('warrants', 'ncic_entry_number', 'TEXT');
+  addCol('warrants', 'extradition', 'TEXT');
+  addCol('warrants', 'assigned_officer_id', 'INTEGER');
+  addCol('warrants', 'assigned_unit_id', 'INTEGER');
+  addCol('warrants', 'priority_score', 'INTEGER DEFAULT 0');
+
+  // ── Vehicles: NCIC + stolen tracking ────────────────────────
+  addCol('vehicles_records', 'nic_number', 'TEXT');
+  addCol('vehicles_records', 'oca_number_v', 'TEXT');
+  addCol('vehicles_records', 'stolen_agency', 'TEXT');
+  addCol('vehicles_records', 'recovery_location', 'TEXT');
+
+  // ── Calls: premise history + ETA + stacking ─────────────────
+  addCol('calls_for_service', 'premise_history_count', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'eta_seconds', 'INTEGER');
+  addCol('calls_for_service', 'call_stack_position', 'INTEGER');
+
+  // ── Persons: FI tracking + merge ────────────────────────────
+  addCol('persons', 'fi_count', 'INTEGER DEFAULT 0');
+  addCol('persons', 'last_fi_date', 'TEXT');
+  addCol('persons', 'merge_source_ids', 'TEXT');
+
+  // ── Warrant service attempts: GPS + photos ──────────────────
+  addCol('warrant_service_attempts', 'gps_lat', 'REAL');
+  addCol('warrant_service_attempts', 'gps_lng', 'REAL');
+  addCol('warrant_service_attempts', 'gps_accuracy', 'REAL');
+  addCol('warrant_service_attempts', 'badge_number', 'TEXT');
+  addCol('warrant_service_attempts', 'photos', "TEXT DEFAULT '[]'");
+  addCol('warrant_service_attempts', 'signature_data', 'TEXT');
+  addCol('warrant_service_attempts', 'attempt_duration_minutes', 'INTEGER');
 
   console.log('Schema migration completed.');
 }
@@ -5483,7 +5202,7 @@ async function backfillBreadcrumbRoads(): Promise<void> {
         if (apiCalls % 10 === 0) {
           await new Promise(r => setTimeout(r, 200));
         }
-      } catch (e) {
+      } catch {
         // Skip individual failures
       }
     }
@@ -5772,7 +5491,7 @@ function createIndexes(): void {
   for (const line of indexes.split('\n')) {
     const sql = line.trim();
     if (sql.startsWith('CREATE INDEX')) {
-      try { db.prepare(sql).run(); } catch (e) { /* table may not exist yet — skip */ }
+      try { db.prepare(sql).run(); } catch { /* table may not exist yet — skip */ }
     }
   }
 

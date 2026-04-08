@@ -587,7 +587,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     const client = await getGraphClient();
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
-      .select('id,name,contentType,size,isInline')
+      .select('id,name,contentType,size,isInline,contentId')
       .get();
 
     res.json((result.value || []).map((a: any) => ({

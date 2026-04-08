@@ -372,6 +372,7 @@ export default function DashboardPage() {
   } | null>(null);
   const [courtDatesCount, setCourtDatesCount] = useState(0);
   const [expiringCertsCount, setExpiringCertsCount] = useState(0);
+  const [unifiedStats, setUnifiedStats] = useState<any>(null);
 
   // Shift countdown timer — update every second
   useEffect(() => {
@@ -474,7 +475,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, ds] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -484,6 +485,7 @@ export default function DashboardPage() {
       safe<any>('/admin/shift-stats'),
       safe<any>('/admin/upcoming-court-dates?days=30'),
       safe<any>('/admin/expiring-certifications?days=30'),
+      safe<any>('/dashboard/stats'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -494,6 +496,7 @@ export default function DashboardPage() {
     if (ss) setShiftStats(ss);
     if (cd) setCourtDatesCount(cd.count ?? 0);
     if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
+    if (ds) setUnifiedStats(ds);
   }, []);
 
   useEffect(() => {
@@ -1099,6 +1102,78 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          Unified Stats Widgets: Warrants, Incident Backlog, Crime Types
+          ═══════════════════════════════════════════════════════ */}
+      {unifiedStats && (
+        <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 lg:grid-cols-3 gap-2'}`}>
+          {/* Active Warrants Summary */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/warrants')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-red-500" style={{ borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Active Warrants</span>
+              <span className="ml-auto text-lg font-bold font-mono text-red-400">{unifiedStats.warrants?.active || 0}</span>
+            </div>
+            <div className="space-y-1">
+              {Object.entries(unifiedStats.warrants?.by_type || {}).map(([type, count]) => (
+                <div key={type} className="flex items-center gap-2">
+                  <span className="text-[9px] text-rmpg-400 uppercase w-14 truncate">{type}</span>
+                  <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? '#ef4444' : type === 'bench' ? '#f59e0b' : type === 'search' ? '#888888' : '#888888' }} />
+                  </div>
+                  <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{count as number}</span>
+                </div>
+              ))}
+              <div className="text-[8px] text-rmpg-500 pt-1 border-t border-rmpg-700">Served (30d): <span className="text-green-400 font-mono">{unifiedStats.warrants?.served_30d || 0}</span></div>
+            </div>
+          </div>
+
+          {/* Incident Backlog */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-amber-500" style={{ borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Incident Backlog</span>
+            </div>
+            <div className="space-y-1">
+              {(unifiedStats.incidents?.by_status || []).map((s: any) => {
+                const colorMap: Record<string, string> = { draft: '#888888', submitted: '#888888', under_review: '#f59e0b', approved: '#22c55e', closed: '#6b7280', open: '#ef4444' };
+                return (
+                  <div key={s.status} className="flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                      <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || '#888888' }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{s.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Crime Type Breakdown */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2" style={{ background: '#d4a017', borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Top Incident Types</span>
+            </div>
+            <div className="space-y-1">
+              {(unifiedStats.incidents?.by_type || []).slice(0, 8).map((t: any, i: number) => {
+                const maxCount = (unifiedStats.incidents?.by_type || [])[0]?.count || 1;
+                return (
+                  <div key={t.incident_type || i} className="flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{(t.incident_type || 'Unknown').replace(/_/g, ' ')}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: '#d4a017', opacity: 1 - i * 0.08 }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{t.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════
           Features 31-43: Analytics Dashboard Widgets

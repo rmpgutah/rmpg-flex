@@ -69,6 +69,8 @@ const TrainingDocsPage = lazyRetry(() => import('./pages/TrainingDocsPage'));
 const TrainingPage = lazyRetry(() => import('./pages/TrainingPage'));
 const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
 const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
+const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
+const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
 const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
 const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
 const ArrestRecordsPage = lazyRetry(() => import('./pages/ArrestRecordsPage'));
@@ -247,6 +249,8 @@ function AppRoutes() {
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
             <Route path="/forensics" element={<RouteErrorBoundary><ForensicsPage /></RouteErrorBoundary>} />
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
+            <Route path="/use-of-force" element={<RouteErrorBoundary><UseOfForcePage /></RouteErrorBoundary>} />
+            <Route path="/security-dashboard" element={<RouteErrorBoundary><SecurityDashboardPage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
             <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />
             <Route path="/arrest-records" element={<RouteErrorBoundary><ArrestRecordsPage /></RouteErrorBoundary>} />

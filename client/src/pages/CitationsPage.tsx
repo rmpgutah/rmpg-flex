@@ -619,6 +619,9 @@ export default function CitationsPage() {
       court_time: (c as any).court_time || '',
       court_room: (c as any).court_room || '',
       appearance_required: !!(c as any).appearance_required,
+      weather_conditions: (c as any).weather_conditions || '',
+      road_conditions: (c as any).road_conditions || '',
+      is_equipment_violation: !!(c as any).is_equipment_violation,
     });
     setPersonSearch(c.person_name || '');
     setSaveError('');
@@ -1466,7 +1469,7 @@ export default function CitationsPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -1474,7 +1477,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -1482,7 +1485,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
                   {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}

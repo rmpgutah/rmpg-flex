@@ -1641,7 +1641,7 @@ export default function DispatchPage() {
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
                       style={{ fontSize: '11px', color: '#d4d4d4', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a3e58'; }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2e2e2e'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
                       <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || tpl.incident_type}</span>
@@ -1680,7 +1680,7 @@ export default function DispatchPage() {
                   </span>
                 )}
                 <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
-                <span className="text-rmpg-400">Pending: <strong className="text-blue-400">{pendingCount}</strong></span>
+                <span className="text-rmpg-400">Pending: <strong className="text-gray-400">{pendingCount}</strong></span>
                 <span className="text-rmpg-400">Active: <strong className="text-green-400">{tabCounts.active}</strong></span>
                 {/* Stacked calls indicator */}
                 {(() => {
@@ -2180,7 +2180,7 @@ export default function DispatchPage() {
                             const displayName = unitObj ? unitObj.call_sign : unitIdStr;
                             const statusColor = unitObj ? (
                               unitObj.status === 'onscene' ? '#a855f7' :
-                              unitObj.status === 'enroute' ? '#3b82f6' :
+                              unitObj.status === 'enroute' ? '#888888' :
                               unitObj.status === 'dispatched' ? '#f59e0b' :
                               '#22c55e'
                             ) : '#888';
@@ -2243,7 +2243,7 @@ export default function DispatchPage() {
                         {selectedCall.starting_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">Start:</span> {Number(selectedCall.starting_mileage).toLocaleString()} mi</span>}
                         {selectedCall.ending_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
                         {selectedCall.starting_mileage && selectedCall.ending_mileage && (
-                          <span className="text-blue-400 font-semibold">
+                          <span className="text-gray-400 font-semibold">
                             Total: {(Number(selectedCall.ending_mileage) - Number(selectedCall.starting_mileage)).toFixed(1)} mi
                           </span>
                         )}

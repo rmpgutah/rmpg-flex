@@ -18,17 +18,13 @@ import {
   CreditCard,
   Archive,
   RotateCcw,
-  GitMerge,
-  User,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
-import { useToast } from '../../components/ToastProvider';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CriminalHistorySection from '../../components/CriminalHistorySection';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
@@ -204,10 +200,6 @@ export interface PersonsTabState {
   closeModal: () => void;
   // Alerts
   personAlerts: RecordAlert[];
-  // Warrant count
-  warrantCount: number;
-  // Navigation
-  navigate: ReturnType<typeof useNavigate>;
   // SSN
   ssnRevealed: boolean;
   setSSNRevealed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -223,7 +215,6 @@ export interface PersonsTabState {
   setDeleteTarget: PersonsTabProps['setDeleteTarget'];
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
-  fetchPersons: () => Promise<void>;
 }
 
 // ════════════════════════════════════════════════════
@@ -251,12 +242,6 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
   // Alerts for selected person
   const [personAlerts, setPersonAlerts] = useState<RecordAlert[]>([]);
 
-  // Warrant count for selected person
-  const [warrantCount, setWarrantCount] = useState(0);
-
-  // Navigation
-  const navigate = useNavigate();
-
   // SSN reveal state
   const [ssnRevealed, setSSNRevealed] = useState(false);
 
@@ -274,11 +259,9 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     if (!id) { lastFetchedPersonId.current = null; return; }
     if (lastFetchedPersonId.current === id) return;
     lastFetchedPersonId.current = id;
-    let cancelled = false;
     apiFetch<Record<string, unknown>>(`/records/persons/${id}`)
-      .then(full => { if (!cancelled) setSelectedPerson(mapDbPerson(full as Record<string, unknown>)); })
+      .then(full => setSelectedPerson(mapDbPerson(full as Record<string, unknown>)))
       .catch(() => { /* keep list-level data as fallback */ });
-    return () => { cancelled = true; };
   }, [selectedPerson?.id]);
 
   // Clear selection if the person was removed from the list
@@ -319,15 +302,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     setPersonAlerts(alerts);
   }, [selectedPerson]);
 
-  // Fetch warrant count for selected person
-  useEffect(() => {
-    if (!selectedPerson?.id) { setWarrantCount(0); return; }
-    apiFetch<{ has_warrants: boolean; count: number }>(`/warrants/check/${selectedPerson.id}`)
-      .then(res => setWarrantCount(res?.count ?? 0))
-      .catch(() => setWarrantCount(0));
-  }, [selectedPerson?.id]);
-
   // ── Person CRUD ──────────────────────────────────
+
+  // Duplicate detection state for new person creation
+  const [duplicateWarning, setDuplicateWarning] = useState<any[] | null>(null);
+  const [pendingCreateData, setPendingCreateData] = useState<PersonFormData | null>(null);
 
   const handlePersonSubmit = async (data: PersonFormData) => {
     setPersonSubmitting(true);
@@ -335,14 +314,28 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     try {
       const savedId = editingPerson?.id;
       if (editingPerson) {
+        // Edit — no duplicate check needed
         await apiFetch(`/records/persons/${editingPerson.id}`, { method: 'PUT', body: JSON.stringify(data) });
       } else {
+        // New person — check for duplicates first
+        try {
+          const res = await apiFetch<{ matches: any[] }>('/records/persons/check-duplicates', {
+            method: 'POST',
+            body: JSON.stringify({ first_name: data.first_name, last_name: data.last_name, dob: data.dob || undefined }),
+          });
+          if (res.matches && res.matches.length > 0) {
+            // Show warning — pause creation
+            setDuplicateWarning(res.matches);
+            setPendingCreateData(data);
+            setPersonSubmitting(false);
+            return;
+          }
+        } catch { /* duplicate check failed — proceed with creation anyway */ }
         await apiFetch('/records/persons', { method: 'POST', body: JSON.stringify(data) });
       }
       setPersonModalOpen(false);
       setEditingPerson(undefined);
       await fetchPersons();
-      // Refresh the detail panel so it shows updated data after save
       if (savedId) {
         lastFetchedPersonId.current = null;
         try {
@@ -358,6 +351,31 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     } finally {
       setPersonSubmitting(false);
     }
+  };
+
+  // Force-create person after user dismissed duplicate warning
+  const handleForceCreate = async () => {
+    if (!pendingCreateData) return;
+    setPersonSubmitting(true);
+    setDuplicateWarning(null);
+    try {
+      await apiFetch('/records/persons', { method: 'POST', body: JSON.stringify(pendingCreateData) });
+      setPendingCreateData(null);
+      setPersonModalOpen(false);
+      setEditingPerson(undefined);
+      await fetchPersons();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save person';
+      setPersonSubmitError(msg);
+      setError(msg);
+    } finally {
+      setPersonSubmitting(false);
+    }
+  };
+
+  const handleCancelDuplicate = () => {
+    setDuplicateWarning(null);
+    setPendingCreateData(null);
   };
 
   const openEditPerson = async (person: Person) => {
@@ -405,11 +423,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     selectedPerson, setSelectedPerson,
     personModalOpen, editingPerson, personSubmitting, personSubmitError,
     openNewPerson, openEditPerson, handlePersonSubmit, closeModal,
-    personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
+    personAlerts, ssnRevealed, setSSNRevealed,
     filteredPersons, handleArchive, handleUnarchive,
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
-    fetchPersons,
+    duplicateWarning, handleForceCreate, handleCancelDuplicate,
   };
 }
 
@@ -615,6 +633,42 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         editingPerson={editingPerson}
         submitError={personSubmitError}
       />
+
+      {/* Duplicate Warning Dialog */}
+      {duplicateWarning && duplicateWarning.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={handleCancelDuplicate}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)' }}>
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Possible Duplicates Found</h2>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-300">The following existing records match the person you're creating:</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {duplicateWarning.map((m: any) => (
+                  <div key={m.id} className="flex items-center gap-3 p-2 border border-rmpg-700 bg-surface-sunken text-xs">
+                    <div className="w-2 h-2 bg-amber-400" style={{ borderRadius: '1px' }} />
+                    <div className="flex-1">
+                      <div className="font-bold text-white">{m.first_name} {m.last_name}</div>
+                      <div className="text-rmpg-400">
+                        {m.dob && <span>DOB: {m.dob}</span>}
+                        {m.address && <span className="ml-2">• {m.address}</span>}
+                        {m.dl_number && <span className="ml-2">• DL: {m.dl_number}</span>}
+                      </div>
+                    </div>
+                    <span className="text-rmpg-500 text-[9px]">#{m.id}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-rmpg-700">
+                <button type="button" onClick={handleCancelDuplicate} className="toolbar-btn" style={{ padding: '4px 12px' }}>Cancel</button>
+                <button type="button" onClick={handleForceCreate} className="toolbar-btn text-amber-400 border-amber-700 hover:bg-amber-900/30" style={{ padding: '4px 12px' }}>Create Anyway</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -625,33 +679,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 
 export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
-    selectedPerson, personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
-    linkRefreshKey, openLinkModal, fetchPersons,
+    selectedPerson, personAlerts, ssnRevealed, setSSNRevealed,
+    linkRefreshKey, openLinkModal,
   } = state;
-  const { user } = useAuth();
-  const { addToast } = useToast();
-
-  // Merge state
-  const [mergeModalOpen, setMergeModalOpen] = useState(false);
-  const [mergeSearch, setMergeSearch] = useState('');
-  const [mergeResults, setMergeResults] = useState<Person[]>([]);
-
-  // Search for merge candidates with debounce
-  useEffect(() => {
-    if (!mergeSearch || mergeSearch.length < 2) { setMergeResults([]); return; }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(mergeSearch)}`);
-        setMergeResults(Array.isArray(res) ? res : []);
-      } catch { setMergeResults([]); }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [mergeSearch]);
-
-  // Reset merge state when modal closes
-  useEffect(() => {
-    if (!mergeModalOpen) { setMergeSearch(''); setMergeResults([]); }
-  }, [mergeModalOpen]);
 
   if (!selectedPerson) return null;
 
@@ -661,7 +691,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />
         {/* Special Flags */}
-        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None') || warrantCount > 0) && (
+        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
           <div className="flex flex-wrap gap-2 mt-1">
             {selectedPerson.flags.map((flag, i) => {
               const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
@@ -676,11 +706,6 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
             {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
             {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
-            {warrantCount > 0 && (
-              <button type="button" onClick={() => navigate(`/warrants?personId=${selectedPerson.id}`)} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 hover:bg-red-800/50 cursor-pointer transition-colors animate-pulse">
-                <AlertTriangle className="w-3 h-3" /> {warrantCount} ACTIVE WARRANT{warrantCount > 1 ? 'S' : ''}
-              </button>
-            )}
           </div>
         )}
         {/* Compact person ID line */}
@@ -688,16 +713,6 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}{(() => { const b = new Date(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
           {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
           {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
-          {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor') && (
-            <button
-              type="button"
-              onClick={() => setMergeModalOpen(true)}
-              className="ml-auto px-2 py-0.5 text-[9px] flex items-center gap-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-brand-400 transition-colors border border-rmpg-700 rounded-sm"
-              title="Merge duplicate person records"
-            >
-              <GitMerge className="w-3 h-3" /> Merge
-            </button>
-          )}
         </div>
       </div>
 
@@ -898,53 +913,6 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           <FileAttachments entityType="person" entityId={selectedPerson.id} />
         </div>
       </div>
-
-      {/* ── Merge Persons Modal ─────────────────── */}
-      {mergeModalOpen && selectedPerson && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="panel-beveled w-[500px] max-h-[80vh] overflow-auto bg-surface-base p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-white">Merge Person Records</h2>
-              <button type="button" onClick={() => setMergeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-xs text-rmpg-300 mb-3">Merge a duplicate into <strong className="text-white">{selectedPerson.first_name} {selectedPerson.last_name}</strong> (the keeper). All linked records will transfer to the keeper.</p>
-            <div className="mb-3">
-              <label className="text-[10px] text-rmpg-400 uppercase tracking-wide">Search for duplicate to merge</label>
-              <input
-                type="text"
-                className="input-dark w-full text-xs mt-1"
-                placeholder="Search by name..."
-                value={mergeSearch}
-                onChange={(e) => setMergeSearch(e.target.value)}
-              />
-            </div>
-            {mergeResults.length > 0 && (
-              <div className="space-y-1 max-h-40 overflow-auto mb-3">
-                {mergeResults.filter(p => p.id !== selectedPerson.id).map(p => (
-                  <button key={p.id} type="button" className="w-full text-left px-3 py-2 text-xs hover:bg-surface-raised rounded-sm flex items-center gap-2 border border-rmpg-700 transition-colors"
-                    onClick={async () => {
-                      if (!confirm(`Merge "${p.first_name} ${p.last_name}" INTO "${selectedPerson.first_name} ${selectedPerson.last_name}"? This cannot be undone.`)) return;
-                      try {
-                        await apiFetch('/records/persons/merge', { method: 'POST', body: JSON.stringify({ keep_id: selectedPerson.id, merge_id: p.id }) });
-                        addToast('Persons merged successfully', 'success');
-                        setMergeModalOpen(false);
-                        fetchPersons();
-                      } catch (err: any) { addToast(err?.message || 'Merge failed', 'error'); }
-                    }}
-                  >
-                    <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
-                    <span className="text-white">{p.first_name} {p.last_name}</span>
-                    {p.date_of_birth && <span className="text-rmpg-400 ml-auto text-[10px]">{p.date_of_birth}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-            {mergeSearch.length >= 2 && mergeResults.filter(p => p.id !== selectedPerson.id).length === 0 && (
-              <p className="text-xs text-rmpg-500 text-center py-2">No matching persons found</p>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

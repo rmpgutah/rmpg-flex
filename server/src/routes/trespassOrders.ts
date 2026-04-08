@@ -675,15 +675,74 @@ router.post('/:id/violations', (req: Request, res: Response) => {
     const user = (req as any).user;
     const order = db.prepare('SELECT id, order_number FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
     if (!order) { res.status(404).json({ error: 'Trespass order not found', code: 'NOT_FOUND' }); return; }
-    const { violation_date, location, description, linked_incident_id, linked_call_id, notes } = req.body;
+    const { violation_date, location, description, linked_incident_id, linked_call_id, action_taken, notes } = req.body;
     const now = localNow();
-    const result = db.prepare('INSERT INTO trespass_violations (order_id, violation_date, location, description, officer_id, officer_name, linked_incident_id, linked_call_id, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(req.params.id, violation_date || now, location || null, description || null, user.userId || user.id, user.fullName || user.full_name, linked_incident_id || null, linked_call_id || null, notes || null, now);
-    // Update order status to violated
+    const result = db.prepare(`
+      INSERT INTO trespass_violations (order_id, violation_date, location, description, officer_id, officer_name, linked_incident_id, linked_call_id, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.params.id, violation_date || now, location || null,
+      description || null, user.userId || user.id, user.fullName || null,
+      linked_incident_id || null, linked_call_id || null,
+      action_taken || notes || null, now
+    );
     db.prepare("UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?").run(now, req.params.id);
     auditLog(req, 'CREATE', 'trespass_violation', Number(result.lastInsertRowid), `Violation recorded on order ${order.order_number}`);
     broadcast('alerts', 'trespass_violation_recorded', { order_id: parseInt(req.params.id), order_number: order.order_number });
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
+    const created = db.prepare('SELECT * FROM trespass_violations WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: created });
   } catch (err: any) { console.error('[TrespassOrders] Create violation error:', err?.message); res.status(500).json({ error: 'Failed to record violation', code: 'CREATE_VIOLATION_ERROR' }); }
+});
+
+// PUT /api/trespass-orders/:id/violations/:violationId — Update violation
+router.put('/:id/violations/:violationId', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
+    if (!order) { res.status(404).json({ error: 'Trespass order not found', code: 'NOT_FOUND' }); return; }
+    const violation = db.prepare('SELECT * FROM trespass_violations WHERE id = ? AND order_id = ?').get(req.params.violationId, req.params.id);
+    if (!violation) { res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' }); return; }
+
+    const fieldMap: Record<string, string> = {
+      violation_date: 'violation_date', location: 'location', description: 'description',
+      linked_incident_id: 'linked_incident_id', linked_call_id: 'linked_call_id', notes: 'notes',
+    };
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    for (const [bodyKey, dbCol] of Object.entries(fieldMap)) {
+      if (req.body[bodyKey] !== undefined) {
+        setClauses.push(`${dbCol} = ?`);
+        values.push(req.body[bodyKey] ?? null);
+      }
+    }
+    if (setClauses.length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS' }); return; }
+    values.push(req.params.violationId);
+    db.prepare(`UPDATE trespass_violations SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    auditLog(req, 'UPDATE', 'trespass_violation', Number(req.params.violationId), `Updated violation on order #${req.params.id}`);
+    const updated = db.prepare('SELECT * FROM trespass_violations WHERE id = ?').get(req.params.violationId);
+    res.json({ data: updated });
+  } catch (err: any) { console.error('[TrespassOrders] Update violation error:', err?.message); res.status(500).json({ error: 'Failed to update violation', code: 'UPDATE_VIOLATION_ERROR' }); }
+});
+
+// DELETE /api/trespass-orders/:id/violations/:violationId — Delete violation
+router.delete('/:id/violations/:violationId', requireRole('supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT id, order_number FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    if (!order) { res.status(404).json({ error: 'Trespass order not found', code: 'NOT_FOUND' }); return; }
+    const violation = db.prepare('SELECT * FROM trespass_violations WHERE id = ? AND order_id = ?').get(req.params.violationId, req.params.id);
+    if (!violation) { res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' }); return; }
+
+    db.prepare('DELETE FROM trespass_violations WHERE id = ?').run(req.params.violationId);
+    auditLog(req, 'DELETE', 'trespass_violation', Number(req.params.violationId), `Deleted violation from order ${order.order_number}`);
+
+    // If no violations remain, revert order status from 'violated' to 'active'
+    const remaining = db.prepare('SELECT COUNT(*) as cnt FROM trespass_violations WHERE order_id = ?').get(req.params.id) as any;
+    if (remaining.cnt === 0) {
+      db.prepare("UPDATE trespass_orders SET status = 'active', updated_at = ? WHERE id = ? AND status = 'violated'").run(localNow(), req.params.id);
+    }
+    res.json({ success: true });
+  } catch (err: any) { console.error('[TrespassOrders] Delete violation error:', err?.message); res.status(500).json({ error: 'Failed to delete violation', code: 'DELETE_VIOLATION_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════

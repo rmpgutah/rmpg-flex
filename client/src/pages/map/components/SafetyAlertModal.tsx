@@ -82,7 +82,7 @@ const ALERT_TYPES: AlertTypeDef[] = [
     label: 'Pursuit',
     icon: <Car size={16} />,
     color: '#888888',
-    bgColor: 'rgba(59,130,246,0.15)',
+    bgColor: 'rgba(136,136,136,0.15)',
   },
   {
     type: 'hostage',
@@ -110,7 +110,7 @@ const ALERT_TYPES: AlertTypeDef[] = [
     label: 'HAZMAT',
     icon: <Biohazard size={16} />,
     color: '#888888',
-    bgColor: 'rgba(59,130,246,0.15)',
+    bgColor: 'rgba(136,136,136,0.15)',
   },
   {
     type: 'missing_officer',
@@ -329,7 +329,7 @@ export default function SafetyAlertModal({
                   onClick={() => setRadius(r)}
                   className="flex-1 rounded-sm py-1.5 text-xs font-semibold transition-all duration-150 active:scale-[0.97]"
                   style={{
-                    background: radius === r ? 'rgba(59,130,246,0.2)' : '#050505',
+                    background: radius === r ? 'rgba(136,136,136,0.2)' : '#050505',
                     border: `1px solid ${radius === r ? '#888888' : '#1e1e1e'}`,
                     color: radius === r ? '#aaaaaa' : '#666666',
                   }}

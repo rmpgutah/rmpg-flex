@@ -1212,9 +1212,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('DESCRIPTION', lx, y + 1.5);
-    y += 2;
+    doc.text('DESCRIPTION', lx, y + 2);
+    y += 4.5;
     doc.setFont('courier', 'normal');
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
       const cw = getContentWidth(doc);
@@ -1235,7 +1236,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     };
     y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
-    y += SPACING.SM;
+    y += SPACING.MD; // Tight gap before # Subjects row
     // Pack remaining fields tightly — check page break before each group
     y = checkPageBreak(doc, y, 10, prio);
     y = addThreeColumnFields(doc, [

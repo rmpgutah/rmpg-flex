@@ -180,7 +180,7 @@ function severityBadge(level: string) {
     case 'misdemeanor':
       return 'bg-amber-900/50 text-amber-400 border border-amber-700/50';
     case 'infraction':
-      return 'bg-blue-900/50 text-blue-400 border border-blue-700/50';
+      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
     default:
       return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
   }
@@ -483,7 +483,7 @@ export default function NationalWarrantSearchPage() {
                         height={cellH}
                         rx={2}
                         fill={isHovered ? coverageHoverFill(status) : coverageFill(status)}
-                        stroke={isSelected ? '#60a5fa' : coverageStroke(status)}
+                        stroke={isSelected ? '#a0a0a0' : coverageStroke(status)}
                         strokeWidth={isSelected ? 2 : 1}
                         opacity={isHovered ? 1 : 0.85}
                       />
@@ -497,7 +497,7 @@ export default function NationalWarrantSearchPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           fontFamily: 'JetBrains Mono, monospace',
-                          fill: isSelected ? '#60a5fa' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : '#9ca3af',
+                          fill: isSelected ? '#a0a0a0' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : '#9ca3af',
                         }}
                       >
                         {st.label}
@@ -567,7 +567,7 @@ export default function NationalWarrantSearchPage() {
                 in <span className="text-brand-400">{searchTime}ms</span>
               </span>
               {stateFilter && (
-                <span className="ml-auto text-[10px] bg-blue-900/50 text-blue-400 border border-blue-700/50 px-1.5 py-0.5 rounded">
+                <span className="ml-auto text-[10px] bg-gray-900/50 text-gray-400 border border-gray-700/50 px-1.5 py-0.5 rounded">
                   Filtered: {US_STATES.find(s => s.code === stateFilter)?.label}
                 </span>
               )}

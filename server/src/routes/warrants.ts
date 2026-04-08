@@ -19,6 +19,8 @@ router.get('/', (req: Request, res: Response) => {
     const {
       status,
       type,
+      severity,
+      source,
       subject_name,
       archived,
       court,
@@ -44,9 +46,19 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND w.type = ?';
       params.push(type);
     }
+    if (severity) {
+      whereClause += ' AND w.offense_level = ?';
+      params.push(severity);
+    }
+    if (source) {
+      whereClause += ' AND COALESCE(w.source, \'manual\') = ?';
+      params.push(source);
+    }
     if (subject_name) {
-      whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ?";
-      params.push(`%${subject_name}%`);
+      // Search across name, warrant number, AND charge description
+      const q = `%${subject_name}%`;
+      whereClause += " AND ((p.first_name || ' ' || p.last_name) LIKE ? OR w.warrant_number LIKE ? OR w.charge_description LIKE ?)";
+      params.push(q, q, q);
     }
     if (court) {
       whereClause += ' AND w.issuing_court LIKE ?';
@@ -456,7 +468,14 @@ router.get('/unified', (req: Request, res: Response) => {
   try {
     const db = getDb();
 
-    // Local warrants
+    // Local warrants — fetch all (filtering done client-side below)
+    const fArchived = req.query.archived;
+    let localWhere = 'WHERE 1=1';
+    if (fArchived === 'true') {
+      localWhere += ' AND w.archived_at IS NOT NULL';
+    } else if (fArchived !== 'all') {
+      localWhere += ' AND w.archived_at IS NULL';
+    }
     const localWarrants = db.prepare(`
       SELECT w.*,
         p.first_name as subject_first_name,
@@ -467,10 +486,10 @@ router.get('/unified', (req: Request, res: Response) => {
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id
-      WHERE w.status = 'active' AND w.archived_at IS NULL
+      ${localWhere}
       ORDER BY w.created_at DESC
-    
-      LIMIT 1000
+
+      LIMIT 2000
     `).all() as any[];
 
     // Scraped warrants not already linked to a local record
@@ -542,7 +561,7 @@ router.get('/unified', (req: Request, res: Response) => {
 
     // Apply filters from query params
     let filtered = unified;
-    const { status: fStatus, type: fType, source: fSource, severity, subject_name: fName, archived: fArchived } = req.query;
+    const { status: fStatus, type: fType, source: fSource, severity, subject_name: fName } = req.query;
     if (fStatus) filtered = filtered.filter((w: any) => w.status === fStatus);
     if (fType) filtered = filtered.filter((w: any) => w.type === fType);
     if (fSource) filtered = filtered.filter((w: any) => w.source === fSource);
@@ -552,14 +571,13 @@ router.get('/unified', (req: Request, res: Response) => {
       filtered = filtered.filter((w: any) =>
         (w.subject_name || '').toLowerCase().includes(nameQ) ||
         (w.subject_first_name || '').toLowerCase().includes(nameQ) ||
-        (w.subject_last_name || '').toLowerCase().includes(nameQ)
+        (w.subject_last_name || '').toLowerCase().includes(nameQ) ||
+        (w.warrant_number || '').toLowerCase().includes(nameQ) ||
+        (w.charge_description || '').toLowerCase().includes(nameQ)
       );
     }
-    if (fArchived === 'true') {
-      filtered = filtered.filter((w: any) => w.archived_at);
-    } else if (fArchived !== 'all') {
-      filtered = filtered.filter((w: any) => !w.archived_at);
-    }
+    // Archive filtering already applied in SQL for local warrants;
+    // scraped/utah are never archived, so no further filtering needed
 
     // Pagination
     const pageNum = parseInt(req.query.page as string, 10) || 1;
@@ -1580,6 +1598,72 @@ router.post('/:id/service-attempts', requireRole('dispatcher', 'supervisor', 'ad
     }
     res.status(201).json({ data: { id: insertResult.lastInsertRowid } });
   } catch (error: any) { console.error('Create service attempt error:', error); res.status(500).json({ error: 'Failed to record service attempt', code: 'CREATE_SERVICE_ATTEMPT_ERROR' }); }
+});
+
+// PUT /api/warrants/:id/service-attempts/:attemptId — Update service attempt
+router.put('/:id/service-attempts/:attemptId', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const warrant = db.prepare('SELECT id, warrant_number FROM warrants WHERE id = ?').get(req.params.id) as any;
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    const attempt = db.prepare('SELECT * FROM warrant_service_attempts WHERE id = ? AND warrant_id = ?').get(req.params.attemptId, req.params.id) as any;
+    if (!attempt) { res.status(404).json({ error: 'Service attempt not found', code: 'ATTEMPT_NOT_FOUND' }); return; }
+
+    const fieldMap: Record<string, string> = {
+      location: 'location', method: 'method', result: 'result', notes: 'notes',
+    };
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    for (const [bodyKey, dbCol] of Object.entries(fieldMap)) {
+      if (req.body[bodyKey] !== undefined) {
+        setClauses.push(`${dbCol} = ?`);
+        values.push(req.body[bodyKey] ?? null);
+      }
+    }
+    if (setClauses.length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS' }); return; }
+    values.push(req.params.attemptId);
+    db.prepare(`UPDATE warrant_service_attempts SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+
+    // Auto-transition warrant to served if result changed to 'served'
+    if (req.body.result === 'served' && attempt.result !== 'served') {
+      const now = localNow();
+      db.prepare("UPDATE warrants SET status = 'served', served_by = ?, served_at = ?, served_location = ?, updated_at = ? WHERE id = ?").run(
+        req.user!.userId, now, req.body.location || attempt.location || null, now, req.params.id
+      );
+      broadcast('alerts', 'warrant_served', { id: parseInt(req.params.id), warrant_number: warrant.warrant_number });
+    }
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'warrant_service_attempt_updated', 'warrant', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Updated service attempt on ${warrant.warrant_number}`, req.ip || 'unknown'
+    );
+    const updated = db.prepare('SELECT wsa.*, u.full_name as attempted_by_name FROM warrant_service_attempts wsa LEFT JOIN users u ON wsa.attempted_by = u.id WHERE wsa.id = ?').get(req.params.attemptId);
+    res.json({ data: updated });
+  } catch (error: any) { console.error('Update service attempt error:', error); res.status(500).json({ error: 'Failed to update service attempt', code: 'UPDATE_SERVICE_ATTEMPT_ERROR' }); }
+});
+
+// DELETE /api/warrants/:id/service-attempts/:attemptId — Delete service attempt
+router.delete('/:id/service-attempts/:attemptId', requireRole('supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const warrant = db.prepare('SELECT id, warrant_number, status FROM warrants WHERE id = ?').get(req.params.id) as any;
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    const attempt = db.prepare('SELECT * FROM warrant_service_attempts WHERE id = ? AND warrant_id = ?').get(req.params.attemptId, req.params.id) as any;
+    if (!attempt) { res.status(404).json({ error: 'Service attempt not found', code: 'ATTEMPT_NOT_FOUND' }); return; }
+
+    db.prepare('DELETE FROM warrant_service_attempts WHERE id = ?').run(req.params.attemptId);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'warrant_service_attempt_deleted', 'warrant', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Deleted service attempt from ${warrant.warrant_number}`, req.ip || 'unknown'
+    );
+
+    // If deleted attempt was the 'served' one and warrant is served, revert to active
+    if (attempt.result === 'served' && warrant.status === 'served') {
+      const otherServed = db.prepare("SELECT id FROM warrant_service_attempts WHERE warrant_id = ? AND result = 'served'").get(req.params.id);
+      if (!otherServed) {
+        db.prepare("UPDATE warrants SET status = 'active', served_by = NULL, served_at = NULL, served_location = NULL, updated_at = ? WHERE id = ?").run(localNow(), req.params.id);
+      }
+    }
+    res.json({ success: true });
+  } catch (error: any) { console.error('Delete service attempt error:', error); res.status(500).json({ error: 'Failed to delete service attempt', code: 'DELETE_SERVICE_ATTEMPT_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════

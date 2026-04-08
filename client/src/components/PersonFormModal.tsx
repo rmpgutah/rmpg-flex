@@ -5,6 +5,7 @@ import { useFormDirty } from '../hooks/useFormDirty';
 import type { Person } from '../types';
 import { apiUploadFiles } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 interface PersonFormModalProps {
   isOpen: boolean;
@@ -74,58 +75,27 @@ export interface PersonFormData {
   known_associates: string;
   emergency_contact_relationship: string;
   caution_flags: string;
-  notes: string;
-  // ── New fields ──
-  // Other tab - Names & Identity
-  preferred_name: string;
-  suffix: string;
-  nickname_street_name: string;
-  maiden_name: string;
-  // Other tab - Language & Accessibility
-  primary_language: string;
-  secondary_language: string;
-  interpreter_needed: boolean;
-  hearing_impaired: boolean;
-  speech_impediment: string;
-  vision_impaired: boolean;
-  wheelchair_dependent: boolean;
-  prosthetics: string;
-  literacy_level: string;
-  // Other tab - Background
-  religion: string;
-  tribal_affiliation: string;
+  ncic_number: string;
+  sor_number: string;
+  fbi_number: string;
+  state_id_number: string;
+  passport_number: string;
+  passport_country: string;
   immigration_status: string;
-  homeless_status: string;
-  homeless_location: string;
-  organ_donor: boolean;
-  // Other tab - Risk Assessment
-  suicide_risk: string;
-  violent_history: string;
+  disability_flags: string;
   mental_health_flags: string;
-  medication_alerts: string;
-  restraining_orders: string;
-  modus_operandi: string;
-  known_vehicles: string;
-  known_contact_method: string;
-  last_law_enforcement_contact: string;
-  prior_booking_count: string;
-  // Contact tab - Next of Kin
-  next_of_kin_name: string;
-  next_of_kin_phone: string;
-  next_of_kin_relationship: string;
-  next_of_kin_address: string;
-  // Physical tab - Tattoo & Piercing Detail
-  tattoo_count: string;
-  tattoo_locations: string;
-  tattoo_descriptions: string;
-  piercing_locations: string;
-  photo_date_taken: string;
-  // Other tab - Military
+  substance_abuse: string;
+  medication_notes: string;
+  education_level: string;
   military_branch: string;
-  military_rank: string;
-  military_service_dates: string;
-  military_discharge_type: string;
-  va_benefits_active: boolean;
+  military_status: string;
+  tribal_affiliation: string;
+  tattoo_description: string;
+  scar_description: string;
+  piercing_description: string;
+  distinguishing_features: string;
+  identifying_marks_location: string;
+  notes: string;
 }
 
 const EMPTY_FORM: PersonFormData = {
@@ -187,51 +157,27 @@ const EMPTY_FORM: PersonFormData = {
   known_associates: '',
   emergency_contact_relationship: '',
   caution_flags: '',
-  notes: '',
-  // ── New fields ──
-  preferred_name: '',
-  suffix: '',
-  nickname_street_name: '',
-  maiden_name: '',
-  primary_language: '',
-  secondary_language: '',
-  interpreter_needed: false,
-  hearing_impaired: false,
-  speech_impediment: '',
-  vision_impaired: false,
-  wheelchair_dependent: false,
-  prosthetics: '',
-  literacy_level: '',
-  religion: '',
-  tribal_affiliation: '',
+  ncic_number: '',
+  sor_number: '',
+  fbi_number: '',
+  state_id_number: '',
+  passport_number: '',
+  passport_country: '',
   immigration_status: '',
-  homeless_status: '',
-  homeless_location: '',
-  organ_donor: false,
-  suicide_risk: '',
-  violent_history: '',
+  disability_flags: '',
   mental_health_flags: '',
-  medication_alerts: '',
-  restraining_orders: '',
-  modus_operandi: '',
-  known_vehicles: '',
-  known_contact_method: '',
-  last_law_enforcement_contact: '',
-  prior_booking_count: '',
-  next_of_kin_name: '',
-  next_of_kin_phone: '',
-  next_of_kin_relationship: '',
-  next_of_kin_address: '',
-  tattoo_count: '',
-  tattoo_locations: '',
-  tattoo_descriptions: '',
-  piercing_locations: '',
-  photo_date_taken: '',
+  substance_abuse: '',
+  medication_notes: '',
+  education_level: '',
   military_branch: '',
-  military_rank: '',
-  military_service_dates: '',
-  military_discharge_type: '',
-  va_benefits_active: false,
+  military_status: '',
+  tribal_affiliation: '',
+  tattoo_description: '',
+  scar_description: '',
+  piercing_description: '',
+  distinguishing_features: '',
+  identifying_marks_location: '',
+  notes: '',
 };
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-Binary', 'Other'];
@@ -252,12 +198,12 @@ const LANGUAGE_OPTIONS = ['English', 'Spanish', 'Portuguese', 'French', 'Mandari
 const CITIZENSHIP_OPTIONS = ['U.S. Citizen', 'Permanent Resident', 'Visa Holder', 'Refugee', 'Asylum Seeker', 'Undocumented', 'Foreign National', 'Dual Citizenship', 'Unknown', 'Other'];
 const OCCUPATION_OPTIONS = ['Unemployed', 'Student', 'Retired', 'Self-Employed', 'Construction', 'Food Service', 'Healthcare', 'Retail', 'Transportation', 'Manufacturing', 'Agriculture', 'Education', 'Public Safety', 'Military', 'IT / Technology', 'Finance / Banking', 'Legal', 'Sales', 'Skilled Trades', 'Government', 'Hospitality', 'Warehouse / Logistics', 'Maintenance / Janitorial', 'Security', 'Social Services', 'Other'];
 const GANG_OPTIONS = ['None', 'Sureños (13)', 'Norteños (14)', 'MS-13', 'Latin Kings', 'Bloods', 'Crips', '18th Street', 'Aryan Brotherhood', 'Hells Angels', 'Mongols MC', 'Bandidos MC', 'Vagos MC', 'Tongan Crip Gang', 'Other — See Notes'];
-const LITERACY_OPTIONS = ['Fluent', 'Limited', 'Non-Literate'];
-const HOMELESS_OPTIONS = ['Not Homeless', 'Sheltered', 'Unsheltered', 'Unknown'];
-const SUICIDE_RISK_OPTIONS = ['None Known', 'Low', 'Medium', 'High', 'Active'];
-const VIOLENT_HISTORY_OPTIONS = ['None Known', 'Low Risk', 'Medium Risk', 'High Risk', 'Documented'];
-const MILITARY_BRANCH_OPTIONS = ['Army', 'Navy', 'Air Force', 'Marines', 'Coast Guard', 'Space Force', 'National Guard'];
-const MILITARY_DISCHARGE_OPTIONS = ['Honorable', 'General', 'Other Than Honorable', 'Bad Conduct', 'Dishonorable', 'Entry Level', 'Unknown'];
+const ID_TYPE_OPTIONS = ['Driver License', 'State ID', 'Passport', 'Military ID', 'Tribal ID', 'Permanent Resident Card', 'Work Permit', 'Student ID', 'Foreign National ID', 'Other'];
+const IMMIGRATION_OPTIONS = ['U.S. Citizen', 'Permanent Resident', 'Visa Holder (Work)', 'Visa Holder (Student)', 'Visa Holder (Tourist)', 'Refugee', 'Asylum Seeker', 'DACA', 'TPS', 'Undocumented', 'Unknown'];
+const EDUCATION_OPTIONS = ['None', 'Some High School', 'High School / GED', 'Some College', 'Associate Degree', 'Bachelor Degree', 'Master Degree', 'Doctorate', 'Trade/Vocational', 'Other'];
+const MILITARY_BRANCH_OPTIONS = ['None', 'Army', 'Navy', 'Air Force', 'Marines', 'Coast Guard', 'Space Force', 'National Guard', 'Reserves', 'Other'];
+const MILITARY_STATUS_OPTIONS = ['Active Duty', 'Veteran', 'Retired', 'Discharged', 'Reserves', 'National Guard', 'Deceased'];
+const DISABILITY_OPTIONS = ['None', 'Mobility Impaired', 'Hearing Impaired', 'Visually Impaired', 'Cognitive/Developmental', 'Mental Health', 'Speech Impaired', 'Chronic Illness', 'Multiple', 'Other'];
 
 export default function PersonFormModal({
   isOpen,
@@ -269,7 +215,7 @@ export default function PersonFormModal({
 }: PersonFormModalProps) {
   const [form, setForm] = useState<PersonFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
-  const [activeSection, setActiveSection] = useState<'basic' | 'physical' | 'id' | 'contact' | 'other'>('basic');
+  const [activeSection, setActiveSection] = useState<'basic' | 'physical' | 'id' | 'contact' | 'law' | 'other'>('basic');
   const [showSSN, setShowSSN] = useState(false);
   const [idImageFile, setIdImageFile] = useState<File | null>(null);
   const [idImagePreview, setIdImagePreview] = useState<string | null>(null);
@@ -338,51 +284,27 @@ export default function PersonFormModal({
           known_associates: editingPerson.known_associates || '',
           emergency_contact_relationship: editingPerson.emergency_contact_relationship || '',
           caution_flags: editingPerson.caution_flags || '',
-          notes: editingPerson.notes || '',
-          // ── New fields ──
-          preferred_name: editingPerson.preferred_name || '',
-          suffix: editingPerson.suffix || '',
-          nickname_street_name: editingPerson.nickname_street_name || '',
-          maiden_name: editingPerson.maiden_name || '',
-          primary_language: editingPerson.primary_language || '',
-          secondary_language: editingPerson.secondary_language || '',
-          interpreter_needed: !!editingPerson.interpreter_needed,
-          hearing_impaired: !!editingPerson.hearing_impaired,
-          speech_impediment: editingPerson.speech_impediment || '',
-          vision_impaired: !!editingPerson.vision_impaired,
-          wheelchair_dependent: !!editingPerson.wheelchair_dependent,
-          prosthetics: editingPerson.prosthetics || '',
-          literacy_level: editingPerson.literacy_level || '',
-          religion: editingPerson.religion || '',
-          tribal_affiliation: editingPerson.tribal_affiliation || '',
+          ncic_number: editingPerson.ncic_number || '',
+          sor_number: editingPerson.sor_number || '',
+          fbi_number: editingPerson.fbi_number || '',
+          state_id_number: editingPerson.state_id_number || '',
+          passport_number: editingPerson.passport_number || '',
+          passport_country: editingPerson.passport_country || '',
           immigration_status: editingPerson.immigration_status || '',
-          homeless_status: editingPerson.homeless_status || '',
-          homeless_location: editingPerson.homeless_location || '',
-          organ_donor: !!editingPerson.organ_donor,
-          suicide_risk: editingPerson.suicide_risk || '',
-          violent_history: editingPerson.violent_history || '',
+          disability_flags: editingPerson.disability_flags || '',
           mental_health_flags: editingPerson.mental_health_flags || '',
-          medication_alerts: editingPerson.medication_alerts || '',
-          restraining_orders: editingPerson.restraining_orders || '',
-          modus_operandi: editingPerson.modus_operandi || '',
-          known_vehicles: editingPerson.known_vehicles || '',
-          known_contact_method: editingPerson.known_contact_method || '',
-          last_law_enforcement_contact: editingPerson.last_law_enforcement_contact || '',
-          prior_booking_count: editingPerson.prior_booking_count != null ? String(editingPerson.prior_booking_count) : '',
-          next_of_kin_name: editingPerson.next_of_kin_name || '',
-          next_of_kin_phone: editingPerson.next_of_kin_phone || '',
-          next_of_kin_relationship: editingPerson.next_of_kin_relationship || '',
-          next_of_kin_address: editingPerson.next_of_kin_address || '',
-          tattoo_count: editingPerson.tattoo_count != null ? String(editingPerson.tattoo_count) : '',
-          tattoo_locations: editingPerson.tattoo_locations || '',
-          tattoo_descriptions: editingPerson.tattoo_descriptions || '',
-          piercing_locations: editingPerson.piercing_locations || '',
-          photo_date_taken: editingPerson.photo_date_taken || '',
+          substance_abuse: editingPerson.substance_abuse || '',
+          medication_notes: editingPerson.medication_notes || '',
+          education_level: editingPerson.education_level || '',
           military_branch: editingPerson.military_branch || '',
-          military_rank: editingPerson.military_rank || '',
-          military_service_dates: editingPerson.military_service_dates || '',
-          military_discharge_type: editingPerson.military_discharge_type || '',
-          va_benefits_active: !!editingPerson.va_benefits_active,
+          military_status: editingPerson.military_status || '',
+          tribal_affiliation: editingPerson.tribal_affiliation || '',
+          tattoo_description: editingPerson.tattoo_description || '',
+          scar_description: editingPerson.scar_description || '',
+          piercing_description: editingPerson.piercing_description || '',
+          distinguishing_features: editingPerson.distinguishing_features || '',
+          identifying_marks_location: editingPerson.identifying_marks_location || '',
+          notes: editingPerson.notes || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -471,6 +393,7 @@ export default function PersonFormModal({
     { id: 'physical' as const, label: 'Physical' },
     { id: 'id' as const, label: 'Identification' },
     { id: 'contact' as const, label: 'Contact' },
+    { id: 'law' as const, label: 'Law Enforcement' },
     { id: 'other' as const, label: 'Other' },
   ];
 
@@ -703,39 +626,35 @@ export default function PersonFormModal({
             <textarea name="scars_marks_tattoos" rows={2} className="input-dark mt-1" placeholder="Describe location, type, and detail of any distinguishing marks" value={form.scars_marks_tattoos} onChange={handleChange} />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Description</label>
+              <textarea name="tattoo_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of tattoos — location, design, text, color" value={form.tattoo_description} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scar Description</label>
+              <textarea name="scar_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of scars — location, size, type" value={form.scar_description} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercing Description</label>
+              <textarea name="piercing_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of piercings — location, type" value={form.piercing_description} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Distinguishing Features</label>
+              <textarea name="distinguishing_features" rows={2} className="input-dark mt-1" placeholder="Any other distinguishing features — birthmarks, prosthetics, etc." value={form.distinguishing_features} onChange={handleChange} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Identifying Marks Location</label>
+            <input name="identifying_marks_location" type="text" className="input-dark mt-1" placeholder="Body location of marks (e.g. Left forearm, Right neck)" value={form.identifying_marks_location} onChange={handleChange} />
+          </div>
+
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Clothing Description</label>
             <input name="clothing_description" type="text" className="input-dark mt-1" placeholder="Last known clothing description" value={form.clothing_description} onChange={handleChange} />
-          </div>
-
-          {/* Tattoo & Piercing Detail */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Tattoo & Piercing Detail</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Count</label>
-              <input name="tattoo_count" type="number" className="input-dark mt-1" value={form.tattoo_count} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercing Locations</label>
-              <input name="piercing_locations" type="text" className="input-dark mt-1" placeholder="e.g. Ears, Nose, Lip" value={form.piercing_locations} onChange={handleChange} />
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Locations</label>
-            <textarea name="tattoo_locations" rows={2} className="input-dark mt-1" placeholder="e.g. Left forearm, Right shoulder, Chest" value={form.tattoo_locations} onChange={handleChange} />
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Descriptions</label>
-            <textarea name="tattoo_descriptions" rows={2} className="input-dark mt-1" placeholder="Describe each tattoo: type, design, text, colors" value={form.tattoo_descriptions} onChange={handleChange} />
-          </div>
-
-          {/* Photo */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Photo Record</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Photo Date Taken</label>
-              <input name="photo_date_taken" type="date" className="input-dark mt-1" value={form.photo_date_taken} onChange={handleChange} />
-            </div>
           </div>
         </>
       )}
@@ -813,13 +732,7 @@ export default function PersonFormModal({
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Type</label>
                 <select name="id_type" className="select-dark mt-1" value={form.id_type} onChange={handleChange}>
                   <option value="">-- Select --</option>
-                  <option value="state_id">State ID</option>
-                  <option value="passport">Passport</option>
-                  <option value="military_id">Military ID</option>
-                  <option value="tribal_id">Tribal ID</option>
-                  <option value="green_card">Green Card</option>
-                  <option value="visa">Visa</option>
-                  <option value="other">Other</option>
+                  {ID_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
@@ -833,6 +746,37 @@ export default function PersonFormModal({
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Expiry</label>
                 <input name="id_expiry" type="date" className="input-dark mt-1" value={form.id_expiry} onChange={handleChange} />
+              </div>
+            </div>
+          </div>
+
+          {/* Law Enforcement IDs */}
+          <div className="border-t border-rmpg-600 pt-3 mt-3">
+            <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">Law Enforcement Identifiers</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Number</label>
+                <input name="ncic_number" type="text" className="input-dark mt-1" value={form.ncic_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">SOR Number</label>
+                <input name="sor_number" type="text" className="input-dark mt-1" placeholder="Sex Offender Registry #" value={form.sor_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">FBI Number</label>
+                <input name="fbi_number" type="text" className="input-dark mt-1" value={form.fbi_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State ID Number</label>
+                <input name="state_id_number" type="text" className="input-dark mt-1" value={form.state_id_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Number</label>
+                <input name="passport_number" type="text" className="input-dark mt-1" value={form.passport_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Country</label>
+                <input name="passport_country" type="text" className="input-dark mt-1" placeholder="Issuing country" value={form.passport_country} onChange={handleChange} />
               </div>
             </div>
           </div>
@@ -955,15 +899,15 @@ export default function PersonFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-              <input name="phone" type="text" className="input-dark mt-1" value={form.phone} onChange={handleChange} />
+              <input name="phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.phone} onChange={(e) => setForm(prev => ({ ...prev, phone: formatPhoneInput(e.target.value) }))} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone (Secondary)</label>
-              <input name="phone_secondary" type="text" className="input-dark mt-1" value={form.phone_secondary} onChange={handleChange} />
+              <input name="phone_secondary" type="text" inputMode="tel" className="input-dark mt-1" value={form.phone_secondary} onChange={(e) => setForm(prev => ({ ...prev, phone_secondary: formatPhoneInput(e.target.value) }))} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
-              <input name="email" type="email" className="input-dark mt-1" value={form.email} onChange={handleChange} />
+              <input name="email" type="email" inputMode="email" className="input-dark mt-1" value={form.email} onChange={handleChange} />
             </div>
           </div>
 
@@ -976,7 +920,7 @@ export default function PersonFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Phone</label>
-                <input name="emergency_contact_phone" type="text" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={handleChange} />
+                <input name="emergency_contact_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={(e) => setForm(prev => ({ ...prev, emergency_contact_phone: formatPhoneInput(e.target.value) }))} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Relationship</label>
@@ -984,28 +928,71 @@ export default function PersonFormModal({
               </div>
             </div>
           </div>
+        </>
+      )}
 
-          {/* Next of Kin */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Next of Kin</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* ── LAW ENFORCEMENT ── */}
+      {activeSection === 'law' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Next of Kin Name</label>
-              <input name="next_of_kin_name" type="text" className="input-dark mt-1" value={form.next_of_kin_name} onChange={handleChange} />
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Immigration Status</label>
+              <select name="immigration_status" className="select-dark mt-1" value={form.immigration_status} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {IMMIGRATION_OPTIONS.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Next of Kin Phone</label>
-              <input name="next_of_kin_phone" type="text" className="input-dark mt-1" value={form.next_of_kin_phone} onChange={handleChange} />
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Disability Flags</label>
+              <select name="disability_flags" className="select-dark mt-1" value={form.disability_flags} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {DISABILITY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Mental Health Flags</label>
+              <input name="mental_health_flags" type="text" className="input-dark mt-1" placeholder="Known mental health conditions" value={form.mental_health_flags} onChange={handleChange} />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Next of Kin Relationship</label>
-              <input name="next_of_kin_relationship" type="text" className="input-dark mt-1" placeholder="e.g. Spouse, Parent, Sibling" value={form.next_of_kin_relationship} onChange={handleChange} />
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Substance Abuse</label>
+              <input name="substance_abuse" type="text" className="input-dark mt-1" placeholder="Known substance abuse history" value={form.substance_abuse} onChange={handleChange} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Next of Kin Address</label>
-              <input name="next_of_kin_address" type="text" className="input-dark mt-1" value={form.next_of_kin_address} onChange={handleChange} />
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Education Level</label>
+              <select name="education_level" className="select-dark mt-1" value={form.education_level} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {EDUCATION_OPTIONS.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
             </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tribal Affiliation</label>
+              <input name="tribal_affiliation" type="text" className="input-dark mt-1" placeholder="Tribal name or nation" value={form.tribal_affiliation} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Military Branch</label>
+              <select name="military_branch" className="select-dark mt-1" value={form.military_branch} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {MILITARY_BRANCH_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Military Status</label>
+              <select name="military_status" className="select-dark mt-1" value={form.military_status} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {MILITARY_STATUS_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes</label>
+            <textarea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
           </div>
         </>
       )}
@@ -1063,210 +1050,6 @@ export default function PersonFormModal({
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
             <textarea name="notes" rows={4} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
-          </div>
-
-          {/* Names & Identity */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Names & Identity</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Preferred Name</label>
-              <input name="preferred_name" type="text" className="input-dark mt-1" value={form.preferred_name} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Suffix</label>
-              <input name="suffix" type="text" className="input-dark mt-1" placeholder="Jr., Sr., III, etc." value={form.suffix} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Nickname / Street Name</label>
-              <input name="nickname_street_name" type="text" className="input-dark mt-1" value={form.nickname_street_name} onChange={handleChange} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Maiden Name</label>
-              <input name="maiden_name" type="text" className="input-dark mt-1" value={form.maiden_name} onChange={handleChange} />
-            </div>
-          </div>
-
-          {/* Language & Accessibility */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Language & Accessibility</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Language</label>
-              <select name="primary_language" className="select-dark mt-1" value={form.primary_language} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {LANGUAGE_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Secondary Language</label>
-              <select name="secondary_language" className="select-dark mt-1" value={form.secondary_language} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {LANGUAGE_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Literacy Level</label>
-              <select name="literacy_level" className="select-dark mt-1" value={form.literacy_level} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {LITERACY_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-6 py-2">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" name="interpreter_needed" checked={form.interpreter_needed as any} onChange={handleChange} className="accent-[#d4a017]" />
-              <span className="text-rmpg-300">Interpreter Needed</span>
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" name="hearing_impaired" checked={form.hearing_impaired as any} onChange={handleChange} className="accent-[#d4a017]" />
-              <span className="text-rmpg-300">Hearing Impaired</span>
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" name="vision_impaired" checked={form.vision_impaired as any} onChange={handleChange} className="accent-[#d4a017]" />
-              <span className="text-rmpg-300">Vision Impaired</span>
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" name="wheelchair_dependent" checked={form.wheelchair_dependent as any} onChange={handleChange} className="accent-[#d4a017]" />
-              <span className="text-rmpg-300">Wheelchair Dependent</span>
-            </label>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Speech Impediment</label>
-              <input name="speech_impediment" type="text" className="input-dark mt-1" placeholder="Describe if applicable" value={form.speech_impediment} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Prosthetics</label>
-              <input name="prosthetics" type="text" className="input-dark mt-1" placeholder="e.g. Prosthetic left leg" value={form.prosthetics} onChange={handleChange} />
-            </div>
-          </div>
-
-          {/* Background & Demographics */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Background & Demographics</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Religion</label>
-              <input name="religion" type="text" className="input-dark mt-1" value={form.religion} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tribal Affiliation</label>
-              <input name="tribal_affiliation" type="text" className="input-dark mt-1" value={form.tribal_affiliation} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Immigration Status</label>
-              <input name="immigration_status" type="text" className="input-dark mt-1" value={form.immigration_status} onChange={handleChange} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Homeless Status</label>
-              <select name="homeless_status" className="select-dark mt-1" value={form.homeless_status} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {HOMELESS_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Homeless Location</label>
-              <input name="homeless_location" type="text" className="input-dark mt-1" placeholder="Usual location, shelter name, camp area" value={form.homeless_location} onChange={handleChange} />
-            </div>
-          </div>
-          <div className="flex items-center gap-6 py-2">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" name="organ_donor" checked={form.organ_donor as any} onChange={handleChange} className="accent-[#d4a017]" />
-              <span className="text-rmpg-300">Organ Donor</span>
-            </label>
-          </div>
-
-          {/* Risk Assessment & Alerts */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Risk Assessment & Alerts</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Suicide Risk</label>
-              <select name="suicide_risk" className="select-dark mt-1" value={form.suicide_risk} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {SUICIDE_RISK_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Violent History</label>
-              <select name="violent_history" className="select-dark mt-1" value={form.violent_history} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {VIOLENT_HISTORY_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Mental Health Flags</label>
-            <textarea name="mental_health_flags" rows={2} className="input-dark mt-1" placeholder="Known mental health conditions, behavioral flags" value={form.mental_health_flags} onChange={handleChange} />
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Alerts</label>
-            <textarea name="medication_alerts" rows={2} className="input-dark mt-1" placeholder="Critical medications, allergies, medical conditions" value={form.medication_alerts} onChange={handleChange} />
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Restraining Orders</label>
-            <textarea name="restraining_orders" rows={2} className="input-dark mt-1" placeholder="Active restraining orders, protected parties" value={form.restraining_orders} onChange={handleChange} />
-          </div>
-
-          {/* Intel & Contacts */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Intel & Contacts</h3>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modus Operandi</label>
-            <textarea name="modus_operandi" rows={2} className="input-dark mt-1" placeholder="Known patterns of criminal behavior" value={form.modus_operandi} onChange={handleChange} />
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Vehicles</label>
-            <textarea name="known_vehicles" rows={2} className="input-dark mt-1" placeholder="Year/make/model/color, plate numbers" value={form.known_vehicles} onChange={handleChange} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Contact Method</label>
-              <input name="known_contact_method" type="text" className="input-dark mt-1" placeholder="Preferred method of contact" value={form.known_contact_method} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Last LE Contact</label>
-              <input name="last_law_enforcement_contact" type="date" className="input-dark mt-1" value={form.last_law_enforcement_contact} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Prior Booking Count</label>
-              <input name="prior_booking_count" type="number" className="input-dark mt-1" value={form.prior_booking_count} onChange={handleChange} />
-            </div>
-          </div>
-
-          {/* Military Service */}
-          <h3 className="text-xs font-bold text-rmpg-400 uppercase tracking-wider pt-3 border-t border-[#222]">Military Service</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Branch</label>
-              <select name="military_branch" className="select-dark mt-1" value={form.military_branch} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {MILITARY_BRANCH_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Rank</label>
-              <input name="military_rank" type="text" className="input-dark mt-1" value={form.military_rank} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Service Dates</label>
-              <input name="military_service_dates" type="text" className="input-dark mt-1" placeholder="e.g. 2010-2018" value={form.military_service_dates} onChange={handleChange} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Discharge Type</label>
-              <select name="military_discharge_type" className="select-dark mt-1" value={form.military_discharge_type} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {MILITARY_DISCHARGE_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="flex items-center gap-6 py-2">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" name="va_benefits_active" checked={form.va_benefits_active as any} onChange={handleChange} className="accent-[#d4a017]" />
-              <span className="text-rmpg-300">VA Benefits Active</span>
-            </label>
           </div>
         </>
       )}

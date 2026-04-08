@@ -6,6 +6,15 @@
     <link rel="apple-touch-icon" href="/rmpg flex.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0a" />
+    <script>
+      // Register service worker for offline caching
+      // Cache versioning (CACHE_NAME in sw.js) handles invalidation naturally
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').catch(function() {});
+        });
+      }
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RMPG Flex" />
@@ -27,15 +36,15 @@
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
-  <body class="bg-[#0a0e14] text-white">
+  <body class="bg-[#0a0a0a] text-white">
     <div id="root">
       <!-- Pre-React branded splash — hidden once React hydrates -->
-      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0e14">
+      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0a0a;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)">
         <div style="display:flex;flex-direction:column;align-items:center">
           <img src="/rmpg flex.png" alt="RMPG Flex" width="88" height="88"
-               style="filter:drop-shadow(0 0 20px rgba(26,90,158,0.3));object-fit:contain" draggable="false" />
+               style="filter:drop-shadow(0 0 20px rgba(136,136,136,0.3));object-fit:contain" draggable="false" />
           <div style="margin-top:16px;margin-bottom:12px;width:140px;height:2px;background:#1a1a1a;border-radius:1px;overflow:hidden">
-            <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#1a5a9e,transparent);animation:sl 1.6s ease-in-out infinite"></div>
+            <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#888888,transparent);animation:sl 1.6s ease-in-out infinite"></div>
           </div>
           <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:system-ui,sans-serif;margin:0">
             Initializing

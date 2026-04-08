@@ -172,82 +172,32 @@ export interface Property {
   post_orders?: string;
   hazard_notes?: string;
   access_instructions?: string;
+  notes?: string;
   is_active: boolean;
-  building_year_built?: number;
-  building_square_footage?: number;
-  building_floors?: number;
-  building_material?: string;
-  roof_type?: string;
-  roof_access?: number;
-  basement_present?: number;
-  basement_access?: string;
-  elevator_count?: number;
-  stairwell_count?: number;
-  loading_dock_count?: number;
-  entry_points_count?: number;
-  entry_points_notes?: string;
-  occupancy_capacity?: number;
-  ada_accessible?: number;
-  security_system_type?: string;
-  security_company?: string;
-  security_company_phone?: string;
-  security_company_account?: string;
-  security_panel_location?: string;
-  security_code_day?: string;
-  security_code_night?: string;
-  duress_code?: string;
-  security_zones_count?: number;
-  security_last_tested?: string;
-  fire_panel_location?: string;
-  fire_sprinkler_system?: number;
-  backup_generator?: number;
-  cctv_camera_count?: number;
-  cctv_recording_location?: string;
-  cctv_retention_days?: number;
-  cctv_remote_viewable?: number;
-  cctv_vendor?: string;
-  cctv_access_credentials?: string;
-  cctv_ptz_capable?: number;
-  cctv_audio_recording?: number;
-  key_type?: string;
-  key_location?: string;
-  key_box_code?: string;
-  key_holder_name?: string;
-  key_holder_phone?: string;
-  key_holder_secondary_name?: string;
-  key_holder_secondary_phone?: string;
-  access_card_system?: string;
-  restricted_access_areas?: string;
-  owner_name?: string;
-  owner_phone?: string;
-  property_manager_name?: string;
-  property_manager_phone?: string;
-  property_manager_email?: string;
-  tenant_count?: number;
-  tenant_list?: string;
-  lease_expiry?: string;
-  after_hours_contact_name?: string;
-  after_hours_contact_phone?: string;
-  water_source?: string;
-  septic_or_sewer?: string;
-  internet_provider?: string;
-  phone_system_type?: string;
-  utility_shutoff_locations?: string;
-  dumpster_locations?: string;
-  patrol_frequency?: string;
-  patrol_priority?: string;
-  last_patrol_date?: string;
-  parking_lot_spaces?: number;
-  parking_lot_gated?: number;
-  lighting_description?: string;
-  lighting_timer?: string;
-  officer_caution_notes?: string;
-  sensitive_areas?: string;
-  hazmat_on_site?: number;
-  weapons_on_premises?: number;
-  problem_type_tags?: string;
   created_at: string;
   updated_at: string;
+  business_type?: string;
+  structure_type?: string;
+  occupancy_status?: string;
+  year_built?: string;
+  square_footage?: string;
+  number_of_stories?: string;
+  security_features?: string;
+  key_holder_name?: string;
+  key_holder_phone?: string;
+  key_holder_relationship?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  last_inspection_date?: string;
+  inspection_status?: string;
+  alarm_company?: string;
+  alarm_account?: string;
+  camera_system?: string;
+  parking_info?: string;
+  roof_access?: string;
+  utility_shutoffs?: string;
+  known_hazards?: string;
+  previous_incidents_count?: number;
 }
 
 // --- CAD / Dispatch ---
@@ -404,7 +354,6 @@ export interface CallForService {
   closed_at?: string;
   archived_at?: string;
   previous_status?: CallStatus;
-  risk_score?: number | null;
   created_by: string;
   updated_at: string;
   // Visit history (PSO calls)
@@ -543,8 +492,6 @@ export interface Person {
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;
-  photo_url?: string;
-  photo?: string;
   id_type?: string;
   id_number?: string;
   id_state?: string;
@@ -573,51 +520,29 @@ export interface Person {
   known_associates?: string;
   emergency_contact_relationship?: string;
   caution_flags?: string;
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
+  disability_flags?: string;
+  mental_health_flags?: string;
+  substance_abuse?: string;
+  medication_notes?: string;
+  education_level?: string;
+  military_branch?: string;
+  military_status?: string;
+  tribal_affiliation?: string;
+  identifying_marks_location?: string;
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  distinguishing_features?: string;
+  identifying_marks_location?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
-  preferred_name?: string;
-  suffix?: string;
-  nickname_street_name?: string;
-  maiden_name?: string;
-  primary_language?: string;
-  secondary_language?: string;
-  interpreter_needed?: number;
-  hearing_impaired?: number;
-  speech_impediment?: string;
-  vision_impaired?: number;
-  wheelchair_dependent?: number;
-  prosthetics?: string;
-  literacy_level?: string;
-  religion?: string;
-  tribal_affiliation?: string;
-  immigration_status?: string;
-  homeless_status?: string;
-  homeless_location?: string;
-  organ_donor?: number;
-  suicide_risk?: string;
-  violent_history?: string;
-  mental_health_flags?: string;
-  medication_alerts?: string;
-  restraining_orders?: string;
-  modus_operandi?: string;
-  known_vehicles?: string;
-  known_contact_method?: string;
-  last_law_enforcement_contact?: string;
-  prior_booking_count?: number;
-  next_of_kin_name?: string;
-  next_of_kin_phone?: string;
-  next_of_kin_relationship?: string;
-  next_of_kin_address?: string;
-  tattoo_count?: number;
-  tattoo_locations?: string;
-  tattoo_descriptions?: string;
-  piercing_locations?: string;
-  photo_date_taken?: string;
-  military_branch?: string;
-  military_rank?: string;
-  military_service_dates?: string;
-  military_discharge_type?: string;
-  va_benefits_active?: number;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
@@ -662,67 +587,15 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
-  interior_color?: string;
-  wrap_or_paint_custom?: string;
-  license_plate_frame?: string;
-  window_tint_level?: string;
-  sunroof?: number;
-  roof_rack?: number;
-  trailer_hitch?: number;
-  lift_kit?: number;
-  lowered?: number;
-  rideshare_sticker?: string;
-  seat_material?: string;
-  registered_owner_name?: string;
-  registered_owner_dob?: string;
-  registered_owner_phone?: string;
-  registered_owner_address?: string;
-  temporary_plate_expiry?: string;
-  title_number?: string;
   title_status?: string;
-  registration_status?: string;
+  exterior_condition?: string;
+  interior_condition?: string;
+  estimated_value?: string;
+  window_tint?: string;
+  modifications?: string;
+  equipment_notes?: string;
+  registered_owner?: string;
   registration_state?: string;
-  insurance_status?: string;
-  insurance_expiry?: string;
-  insurance_verified_at?: string;
-  insurance_verified_by?: string;
-  insurance_agent_name?: string;
-  insurance_agent_phone?: string;
-  insurance_policy_number?: string;
-  insurance_coverage_type?: string;
-  insurance_verified_date?: string;
-  sr22_required?: number;
-  lien_holder_address?: string;
-  lien_balance?: number;
-  last_seen_date?: string;
-  last_seen_location?: string;
-  is_stolen?: number;
-  vehicle_alert_code?: string;
-  impound_status?: string;
-  impound_date?: string;
-  impound_lot?: string;
-  impound_case_number?: string;
-  repossession_status?: string;
-  repossession_date?: string;
-  repossession_company?: string;
-  rear_bumper_damage?: string;
-  rust_locations?: string;
-  tow_reason?: string;
-  tow_lot_location?: string;
-  tow_release_date?: string;
-  tow_release_to?: string;
-  tow_fee?: number;
-  tow_driver_name?: string;
-  tow_company_phone?: string;
-  storage_fee_daily?: number;
-  mileage_last_recorded?: number;
-  mileage_date_recorded?: string;
-  emissions_status?: string;
-  emissions_test_date?: string;
-  catalytic_converter_status?: string;
-  tire_condition?: string;
-  brake_condition?: string;
-  headlight_type?: string;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
@@ -1015,12 +888,6 @@ export interface BodyCamera {
 
 export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
 
-export type BwcInteractionType =
-  | 'traffic_stop' | 'arrest' | 'use_of_force' | 'search_warrant'
-  | 'domestic_violence' | 'welfare_check' | 'community_contact'
-  | 'foot_pursuit' | 'vehicle_pursuit' | 'interview'
-  | 'evidence_collection' | 'field_training' | 'other';
-
 export interface BodyCamVideo {
   id: number;
   camera_id: number;
@@ -1032,7 +899,6 @@ export interface BodyCamVideo {
   mime_type: string;
   recorded_at: string;
   case_number?: string;
-  interaction_type?: BwcInteractionType | null;
   classification: VideoClassification;
   retention_status: VideoRetention;
   overlay_status?: OverlayStatus;
@@ -1087,12 +953,6 @@ export interface DashCamVideo {
   burn_progress?: number;
   burn_error?: string;
   thumbnail_path?: string;
-  camera_serial?: string;
-  camera_id?: number;
-  officer_name?: string;
-  call_sign?: string;
-  device_name?: string;
-  heading?: number | null;
 }
 
 // --- Equipment ---
@@ -3268,9 +3128,11 @@ export interface MniPersonResult {
   id: number;
   first_name: string;
   last_name: string;
+  dob?: string;
   date_of_birth?: string;
   gender?: string;
   race?: string;
+  dl_number?: string;
   drivers_license_number?: string;
   phone?: string;
   address?: string;
@@ -3295,17 +3157,3 @@ export interface GeographyTree {
   areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
   unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
 }
-
-// ── Integration Hub ──
-export type IntegrationId = 'clearpathgps' | 'servemanager' | 'microbilt' | 'iped';
-export type IntegrationHealth = 'healthy' | 'degraded' | 'error' | 'unconfigured';
-export interface IntegrationStatus { id: IntegrationId; name: string; description: string; configured: boolean; connected: boolean; lastSync: string | null; lastError: string | null; lastHealthCheck: string | null; health: IntegrationHealth; syncing: boolean; syncProgress: number | null; uptimePercent: number | null; stats: Record<string, number>; }
-
-// ── ClearPathGPS ──
-export interface CpgpsVehicle { id: number; cpgps_id: string; vehicle_id: number | null; name: string; vin: string; make: string; model: string; year: number; license_plate: string; device_serial: string; last_lat: number | null; last_lon: number | null; last_speed: number | null; last_heading: number | null; last_reported_at: string; odometer: number | null; engine_hours: number | null; synced_at: string; created_at: string; fleet_vehicle_number?: string; fleet_make?: string; fleet_model?: string; fleet_year?: number; }
-export interface CpgpsTrip { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; trip_start: string; trip_end: string; start_lat: number | null; start_lon: number | null; end_lat: number | null; end_lon: number | null; start_address: string; end_address: string; distance_miles: number | null; max_speed: number | null; avg_speed: number | null; idle_duration_seconds: number | null; drive_duration_seconds: number | null; synced_at: string; created_at: string; }
-export interface CpgpsAlert { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; alert_type: string; severity: string; message: string; triggered_at: string; lat: number | null; lon: number | null; synced_at: string; created_at: string; }
-
-// ── Dash Camera (fleet) ──
-export type DashCameraStatus = 'available' | 'installed' | 'maintenance' | 'damaged' | 'lost';
-export interface DashCamera { id: number; vehicle_id: number; camera_id: string; make: string; model: string; firmware_version: string; storage_capacity_gb: number; channel_count: number; status: DashCameraStatus; condition: string; installed_at: string; removed_at: string; notes: string; created_by: string; created_at: string; updated_at: string; vehicle_number?: string; vehicle_make?: string; vehicle_model?: string; vehicle_year?: number; }

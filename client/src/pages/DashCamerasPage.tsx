@@ -456,7 +456,7 @@ export default function DashCamerasPage() {
           <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-[9px] font-mono font-bold uppercase tracking-wider"
             style={{
               color: selectedVideo.cpg_channel === 'outside' ? '#aaaaaa' : '#c084fc',
-              border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#2563eb40' : '#7c3aed40'}`,
+              border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#88888840' : '#7c3aed40'}`,
             }}>
             {selectedVideo.cpg_channel === 'outside' ? 'FRONT CAM' : 'REAR CAM'}
           </div>

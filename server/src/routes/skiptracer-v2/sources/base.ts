@@ -383,6 +383,10 @@ export abstract class BaseDataSource implements DataSource {
       }
     }
 
+    // Pass through meta from the first result that has it
+    const metaResult = results.find(r => r.meta);
+    if (metaResult?.meta) merged.meta = metaResult.meta;
+
     return merged;
   }
 }

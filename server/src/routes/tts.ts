@@ -1,10 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-// Lazy-imported: edge-tts-universal is optional
+
+// Lazy-imported: edge-tts-universal is optional — loaded on first request
 let Communicate: any = null;
-const edgeTtsReady = import('edge-tts-universal').then(mod => {
-  Communicate = mod.Communicate;
-}).catch(() => { /* edge-tts-universal not installed */ });
+let edgeTtsLoaded = false;
+
+async function ensureEdgeTts(): Promise<boolean> {
+  if (edgeTtsLoaded) return Communicate !== null;
+  edgeTtsLoaded = true;
+  try {
+    const mod = await (Function('return import("edge-tts-universal")')() as Promise<any>);
+    Communicate = mod.Communicate || mod.default?.Communicate;
+    console.log('[TTS] edge-tts-universal loaded successfully');
+    return true;
+  } catch (err: any) {
+    console.warn('[TTS] edge-tts-universal not available:', err?.message || 'module not found');
+    return false;
+  }
+}
 
 const router = Router();
 router.use(authenticateToken);
@@ -64,8 +77,8 @@ router.post('/', async (req: Request, res: Response) => {
     const pitch = urgent ? '+5Hz' : '+0Hz';
     const volume = urgent ? '+10%' : '+0%';
 
-    await edgeTtsReady;
-    if (!Communicate) {
+    const ttsAvailable = await ensureEdgeTts();
+    if (!ttsAvailable || !Communicate) {
       res.status(503).json({ error: 'TTS service not available (edge-tts-universal not installed)' });
       return;
     }
