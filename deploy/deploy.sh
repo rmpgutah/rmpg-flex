@@ -355,9 +355,11 @@ SVCEOF
   if [ ! -f server/.env ]; then
     echo ">>> Generating production .env..."
     JWT_SECRET=$(openssl rand -hex 64)
+    TOTP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 
     cat > server/.env << ENVEOF
 JWT_SECRET=${JWT_SECRET}
+TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
 NODE_ENV=production

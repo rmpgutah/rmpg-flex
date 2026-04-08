@@ -467,6 +467,7 @@ router.post('/persons', (req: Request, res: Response) => {
 
     // SELECT after screening so watchlist_match is included in response
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
+    broadcastRecordUpdate({ action: 'person_created', id: result.lastInsertRowid, entity: 'person' });
     res.status(201).json(person);
   } catch (error: any) {
     console.error('Create person error:', error);
@@ -571,6 +572,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
     }
 
     const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
+    broadcastRecordUpdate({ action: 'person_updated', id: Number(req.params.id), entity: 'person' });
     res.json(updated);
   } catch (error: any) {
     console.error('Update person error:', error);
@@ -962,6 +964,7 @@ router.delete('/vehicles/:id', (req: Request, res: Response) => {
       `).run(req.user!.userId, vehicle.id, `Deleted vehicle: ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''}`, req.ip || 'unknown');
     });
     deleteTx();
+    broadcastRecordUpdate({ action: 'vehicle_deleted', id: vehicle.id, entity: 'vehicle' });
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
     console.error('Delete vehicle error:', error);

@@ -514,6 +514,7 @@ router.post('/', async (req: Request, res: Response) => {
       VALUES (?, 'incident_created', 'incident', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
 
+    broadcastIncidentUpdate({ action: 'incident_created', id: result.lastInsertRowid, incident });
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error);
@@ -655,6 +656,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     `).run(req.user!.userId, req.params.id, `Updated incident ${incident.incident_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
+    broadcastIncidentUpdate({ action: 'incident_updated', id: Number(req.params.id), incident: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Update incident error:', error);
@@ -700,6 +702,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     });
     deleteIncTx();
 
+    broadcastIncidentUpdate({ action: 'incident_deleted', id: incident.id });
     res.json({ message: 'Incident deleted' });
   } catch (error: any) {
     console.error('Delete incident error:', error);
