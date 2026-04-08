@@ -100,7 +100,7 @@ export default function DataTable<T>({
 
   return (
     <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base scrollbar-dark ${className}`} role="region" aria-label={ariaLabel ? `${ariaLabel} region` : undefined} style={{ borderRadius: '2px' }}>
-      <table className="w-full text-xs" aria-label={ariaLabel}>
+      <table className="w-full text-xs sm:text-xs" aria-label={ariaLabel}>
         {/* 2: Sticky header with z-index so it stays on top during scroll */}
         <thead className="sticky top-0 z-10">
           <tr
@@ -108,7 +108,7 @@ export default function DataTable<T>({
             style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)' }}
           >
             {showRowNumbers && (
-              <th className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8" scope="col">#</th>
+              <th className="px-2 py-2.5 sm:py-2 text-[10px] sm:text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8" scope="col">#</th>
             )}
             {columns.map((col) => {
               const isSortable = col.sortable && onSort;
@@ -116,7 +116,7 @@ export default function DataTable<T>({
               return (
                 <th
                   key={col.key}
-                  className={`group px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap ${alignClass(col.align)} ${
+                  className={`group px-3 py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap ${alignClass(col.align)} ${
                     isSortable ? 'cursor-pointer select-none hover:text-rmpg-200 hover:bg-white/[0.02] transition-colors' : ''
                   }`}
                   style={col.width ? { width: col.width } : undefined}
@@ -171,13 +171,13 @@ export default function DataTable<T>({
                 >
                   {/* 6: Row number column with monospaced font and muted color */}
                   {showRowNumbers && (
-                    <td className="px-2 py-2 text-rmpg-500 text-center tabular-nums font-mono text-[10px]">{idx + 1}</td>
+                    <td className="px-2 py-3 sm:py-2 text-rmpg-500 text-center tabular-nums font-mono text-[10px]">{idx + 1}</td>
                   )}
                   {/* 7: Cell vertical padding increased for readability; 8: Whitespace nowrap on narrow cells */}
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-3 py-2.5 text-rmpg-200 ${alignClass(col.align)}`}
+                      className={`px-3 py-3 sm:py-2.5 text-rmpg-200 text-sm sm:text-xs ${alignClass(col.align)}`}
                       style={col.width ? { width: col.width } : undefined}
                     >
                       {col.render
