@@ -70,6 +70,7 @@ const EMPTY_FORM = {
   vehicle_plate: '', vehicle_description: '',
   person_id: '',
   section_id: '', zone_id: '', beat_id: '',
+  gang_affiliation: '',
 };
 
 const timeAgo = (date: string): string => {
@@ -584,7 +585,7 @@ export default function FieldInterviewsPage() {
               {/* UPGRADE 44: Gang Affiliation field */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div><label className="field-label">Gang Affiliation</label>
-                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={(formData as any).gang_affiliation || ''} onChange={e => update('gang_affiliation' as any, e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={formData.gang_affiliation} onChange={e => update('gang_affiliation', e.target.value)} /></div>
                 <div><label className="field-label">Description</label>
                   <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Physical description" value={formData.subject_description} onChange={e => update('subject_description', e.target.value)} /></div>
               </div>

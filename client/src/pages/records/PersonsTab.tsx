@@ -185,6 +185,15 @@ export interface PersonsTabProps {
 
 // ── Hook Return ────────────────────────────────────
 
+export interface DuplicateMatch {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  dob?: string | null;
+  address?: string | null;
+  dl_number?: string | null;
+}
+
 export interface PersonsTabState {
   // Selection
   selectedPerson: Person | null;
@@ -216,7 +225,7 @@ export interface PersonsTabState {
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
   // Duplicate detection
-  duplicateWarning: any[] | null;
+  duplicateWarning: DuplicateMatch[] | null;
   handleForceCreate: () => void;
   handleCancelDuplicate: () => void;
 }
@@ -334,7 +343,10 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
             setPersonSubmitting(false);
             return;
           }
-        } catch { /* duplicate check failed — proceed with creation anyway */ }
+        } catch (duplicateCheckError) {
+          // duplicate check failed — proceed with creation anyway, but do not suppress the error silently
+          console.warn('Duplicate check unavailable; continuing person creation.', duplicateCheckError);
+        }
         await apiFetch('/records/persons', { method: 'POST', body: JSON.stringify(data) });
       }
       setPersonModalOpen(false);
@@ -498,7 +510,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             </p>
           </div>
         )}
-        {filteredPersons.map((person, idx) => (
+        {filteredPersons.map((person, idx) => {
+          const personWithPhoto = person as Person & { photo?: string | null };
+          return (
           <div
             key={person.id}
             role="listitem"
@@ -516,9 +530,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           >
             <div className="flex items-center gap-3">
               {person.id_image_url ? (
-                <img src={(person as any).photo || person.photo_url || person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
-              ) : (person as any).photo || person.photo_url ? (
-                <img src={(person as any).photo || person.photo_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+                <img src={personWithPhoto.photo || person.photo_url || person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+              ) : personWithPhoto.photo || person.photo_url ? (
+                <img src={personWithPhoto.photo || person.photo_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
               ) : (
                 <div
                   className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white select-none"
@@ -626,7 +640,8 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               </div>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* Person Form Modal (portals to body) */}
@@ -651,7 +666,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             <div className="p-4 space-y-3">
               <p className="text-xs text-rmpg-300">The following existing records match the person you're creating:</p>
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {duplicateWarning.map((m: any) => (
+                {duplicateWarning.map((m: DuplicateMatch) => (
                   <div key={m.id} className="flex items-center gap-3 p-2 border border-rmpg-700 bg-surface-sunken text-xs">
                     <div className="w-2 h-2 bg-amber-400" style={{ borderRadius: '1px' }} />
                     <div className="flex-1">

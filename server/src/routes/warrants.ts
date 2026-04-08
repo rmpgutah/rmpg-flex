@@ -1763,7 +1763,7 @@ router.post('/search-all', (req: Request, res: Response) => {
 
       const localWarrants = db.prepare(`
         SELECT w.*, p.first_name, p.last_name, p.dob as person_dob,
-          u.display_name as entered_by_name
+          u.full_name as entered_by_name
         FROM warrants w
         LEFT JOIN persons p ON w.subject_person_id = p.id
         LEFT JOIN users u ON w.entered_by = u.id
@@ -1817,7 +1817,7 @@ router.post('/search-all', (req: Request, res: Response) => {
       const duration = Date.now() - startTime;
       const totalHits = localWarrants.length + utahResults.length + scrapedWarrants.length;
 
-      auditLog(req, 'SEARCH', 'warrants', null, null, {
+      auditLog(req, 'SEARCH', 'warrants', 0, null, {
         params: { firstName, lastName, dob, warrantNumber, court, source, offenseLevel, status, type, chargeKeyword, dateFrom, dateTo },
         totalHits, duration
       });
