@@ -421,6 +421,8 @@ router.post('/persons', (req: Request, res: Response) => {
       identifying_marks_location, tattoo_description, scar_description,
       piercing_description, distinguishing_features,
       photo_url, flags, notes,
+      email_secondary, date_last_seen, location_last_seen, alias_dob,
+      home_phone, work_phone,
     } = req.body;
 
     if (!first_name || !last_name) {
@@ -447,8 +449,10 @@ router.post('/persons', (req: Request, res: Response) => {
         education_level, military_branch, military_status, tribal_affiliation,
         identifying_marks_location, tattoo_description, scar_description,
         piercing_description, distinguishing_features,
-        photo_url, flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        photo_url, flags, notes,
+        email_secondary, date_last_seen, location_last_seen, alias_dob,
+        home_phone, work_phone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
@@ -473,6 +477,8 @@ router.post('/persons', (req: Request, res: Response) => {
       identifying_marks_location || null, tattoo_description || null, scar_description || null,
       piercing_description || null, distinguishing_features || null,
       photo_url || null, JSON.stringify(flags || []), notes || null,
+      email_secondary || null, date_last_seen || null, location_last_seen || null, alias_dob || null,
+      home_phone || null, work_phone || null,
     );
 
     db.prepare(`
@@ -571,6 +577,9 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       scar_description: v => v ?? null, piercing_description: v => v ?? null,
       distinguishing_features: v => v ?? null,
       photo_url: v => v ?? null, notes: v => v ?? null,
+      email_secondary: v => v ?? null, date_last_seen: v => v ?? null,
+      location_last_seen: v => v ?? null, alias_dob: v => v ?? null,
+      home_phone: v => v ?? null, work_phone: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -860,6 +869,8 @@ router.post('/vehicles', (req: Request, res: Response) => {
       window_tint, modifications, equipment_notes,
       owner_name, registered_owner, registration_state,
       flags, notes,
+      insurance_expiry, owner_dob, owner_dl_number, tow_location,
+      ncic_entry_number, primary_driver_name, vehicle_use,
     } = req.body;
 
     const result = db.prepare(`
@@ -875,8 +886,10 @@ router.post('/vehicles', (req: Request, res: Response) => {
         title_status, exterior_condition, interior_condition, estimated_value,
         window_tint, modifications, equipment_notes,
         owner_name, registered_owner, registration_state,
-        flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        flags, notes,
+        insurance_expiry, owner_dob, owner_dl_number, tow_location,
+        ncic_entry_number, primary_driver_name, vehicle_use)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       plate_number || null, state || null, make || null, model || null,
       year || null, color || null, secondary_color || null,
@@ -892,6 +905,8 @@ router.post('/vehicles', (req: Request, res: Response) => {
       window_tint || null, modifications || null, equipment_notes || null,
       owner_name || null, registered_owner || null, registration_state || null,
       JSON.stringify(flags || []), notes || null,
+      insurance_expiry || null, owner_dob || null, owner_dl_number || null, tow_location || null,
+      ncic_entry_number || null, primary_driver_name || null, vehicle_use || null,
     );
 
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
@@ -961,6 +976,10 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       window_tint: v => v ?? null, modifications: v => v ?? null,
       equipment_notes: v => v ?? null, owner_name: v => v ?? null,
       registered_owner: v => v ?? null, registration_state: v => v ?? null,
+      insurance_expiry: v => v ?? null, owner_dob: v => v ?? null,
+      owner_dl_number: v => v ?? null, tow_location: v => v ?? null,
+      ncic_entry_number: v => v ?? null, primary_driver_name: v => v ?? null,
+      vehicle_use: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(vFieldMap)) {
@@ -1159,6 +1178,8 @@ router.post('/properties', (req: Request, res: Response) => {
       key_holder_relationship, owner_name, owner_phone, last_inspection_date,
       inspection_status, alarm_company, alarm_account, camera_system, parking_info,
       roof_access, utility_shutoffs, known_hazards,
+      contact_email, secondary_contact_name, secondary_contact_phone,
+      patrol_frequency, opening_hours, closing_hours,
     } = req.body;
 
     if (!name || !address) {
@@ -1173,8 +1194,10 @@ router.post('/properties', (req: Request, res: Response) => {
         number_of_stories, security_features, key_holder_name, key_holder_phone,
         key_holder_relationship, owner_name, owner_phone, last_inspection_date,
         inspection_status, alarm_company, alarm_account, camera_system, parking_info,
-        roof_access, utility_shutoffs, known_hazards)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        roof_access, utility_shutoffs, known_hazards,
+        contact_email, secondary_contact_name, secondary_contact_phone,
+        patrol_frequency, opening_hours, closing_hours)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
       latitude || null, longitude || null,
@@ -1190,6 +1213,8 @@ router.post('/properties', (req: Request, res: Response) => {
       alarm_company || null, alarm_account || null, camera_system || null,
       parking_info || null, roof_access || null,
       utility_shutoffs || null, known_hazards || null,
+      contact_email || null, secondary_contact_name || null, secondary_contact_phone || null,
+      patrol_frequency || null, opening_hours || null, closing_hours || null,
     );
 
     // Activity log
@@ -1342,6 +1367,11 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
       lab_case_number: v => v ?? null, lab_name: v => v ?? null,
       disposal_method: v => v ?? null, disposal_date: v => v ?? null,
       disposal_authorized_by: v => v ?? null, notes: v => v ?? null,
+      location_found: v => v ?? null, condition: v => v ?? null,
+      quantity: v => v != null && v !== '' ? parseInt(v, 10) : null,
+      is_biological: v => v ? 1 : 0,
+      narcotics_flag: v => v ? 1 : 0,
+      temperature_sensitive: v => v ? 1 : 0,
     };
 
     for (const [key, transform] of Object.entries(eFieldMap)) {
@@ -2075,6 +2105,10 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       camera_system: v => v ?? null, parking_info: v => v ?? null,
       roof_access: v => v ?? null, utility_shutoffs: v => v ?? null,
       known_hazards: v => v ?? null,
+      contact_email: v => v ?? null, secondary_contact_name: v => v ?? null,
+      secondary_contact_phone: v => v ?? null,
+      patrol_frequency: v => v ?? null, opening_hours: v => v ?? null,
+      closing_hours: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {
@@ -2184,7 +2218,9 @@ router.post('/evidence', (req: Request, res: Response) => {
       collected_date, packaging_type, dimensions, weight,
       photo_taken, lab_submitted, lab_case_number, lab_name,
       disposal_method, disposal_date, disposal_authorized_by,
-      serial_number, brand, model, estimated_value, category, notes
+      serial_number, brand, model, estimated_value, category, notes,
+      location_found, condition, quantity, is_biological,
+      narcotics_flag, temperature_sensitive,
     } = req.body;
 
     if (!description || !evidence_type) {
@@ -2211,9 +2247,11 @@ router.post('/evidence', (req: Request, res: Response) => {
         collected_date, packaging_type, dimensions, weight,
         photo_taken, lab_submitted, lab_case_number, lab_name,
         disposal_method, disposal_date, disposal_authorized_by,
-        serial_number, brand, model, estimated_value, category, notes
+        serial_number, brand, model, estimated_value, category, notes,
+        location_found, condition, quantity, is_biological,
+        narcotics_flag, temperature_sensitive
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       evidenceNumber, incident_id || null, description, evidence_type,
       storage_location || null, req.user!.userId,
@@ -2221,7 +2259,13 @@ router.post('/evidence', (req: Request, res: Response) => {
       photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
       serial_number || null, brand || null, model || null, estimated_value || null, category || null,
-      notes || null
+      notes || null,
+      location_found || null,
+      condition || null,
+      quantity != null && quantity !== '' ? parseInt(quantity, 10) : 1,
+      is_biological ? 1 : 0,
+      narcotics_flag ? 1 : 0,
+      temperature_sensitive ? 1 : 0,
     );
 
     // Activity log

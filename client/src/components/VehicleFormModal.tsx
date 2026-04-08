@@ -60,6 +60,13 @@ export interface VehicleFormData {
   owner_name: string;
   registered_owner: string;
   registration_state: string;
+  insurance_expiry: string;
+  owner_dob: string;
+  owner_dl_number: string;
+  tow_location: string;
+  ncic_entry_number: string;
+  primary_driver_name: string;
+  vehicle_use: string;
 }
 
 const EMPTY_FORM: VehicleFormData = {
@@ -107,6 +114,13 @@ const EMPTY_FORM: VehicleFormData = {
   owner_name: '',
   registered_owner: '',
   registration_state: '',
+  insurance_expiry: '',
+  owner_dob: '',
+  owner_dl_number: '',
+  tow_location: '',
+  ncic_entry_number: '',
+  primary_driver_name: '',
+  vehicle_use: '',
 };
 
 const BODY_STYLES = [
@@ -142,6 +156,8 @@ const STOLEN_STATUS_OPTIONS = ['None', 'Stolen', 'Recovered', 'Attempt'];
 const TITLE_STATUS_OPTIONS = ['Clean', 'Salvage', 'Rebuilt', 'Flood', 'Lemon', 'Bonded', 'Junk', 'Unknown'];
 const CONDITION_OPTIONS = ['Excellent', 'Good', 'Fair', 'Poor', 'Totaled', 'Unknown'];
 const WINDOW_TINT_OPTIONS = ['None', 'Factory', 'Light (50%+)', 'Medium (35-50%)', 'Dark (20-35%)', 'Limo (5-20%)', 'Illegal (<5%)', 'Unknown'];
+
+const VEHICLE_USE_OPTIONS = ['Personal', 'Commercial', 'Government', 'Law Enforcement', 'Emergency Services', 'Rental', 'Leased', 'Fleet', 'Other'];
 
 export default function VehicleFormModal({
   isOpen,
@@ -204,6 +220,13 @@ export default function VehicleFormModal({
           owner_name: editingVehicle.owner_name || '',
           registered_owner: editingVehicle.registered_owner || '',
           registration_state: editingVehicle.registration_state || '',
+          insurance_expiry: (editingVehicle as any).insurance_expiry || '',
+          owner_dob: (editingVehicle as any).owner_dob || '',
+          owner_dl_number: (editingVehicle as any).owner_dl_number || '',
+          tow_location: (editingVehicle as any).tow_location || '',
+          ncic_entry_number: (editingVehicle as any).ncic_entry_number || '',
+          primary_driver_name: (editingVehicle as any).primary_driver_name || '',
+          vehicle_use: (editingVehicle as any).vehicle_use || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -452,6 +475,31 @@ export default function VehicleFormModal({
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Insurance Expiry</label>
+              <input name="insurance_expiry" type="date" className="input-dark mt-1" value={form.insurance_expiry} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Vehicle Use</label>
+              <select name="vehicle_use" className="select-dark mt-1" value={form.vehicle_use} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {VEHICLE_USE_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Driver</label>
+              <input name="primary_driver_name" type="text" className="input-dark mt-1" placeholder="Name of primary driver" value={form.primary_driver_name} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Entry #</label>
+              <input name="ncic_entry_number" type="text" className="input-dark mt-1" placeholder="NCIC stolen vehicle entry number" value={form.ncic_entry_number} onChange={handleChange} />
+            </div>
+          </div>
+
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -464,7 +512,7 @@ export default function VehicleFormModal({
                 <input name="registered_owner" type="text" className="input-dark mt-1" placeholder="Registered owner (if different)" value={form.registered_owner} onChange={handleChange} />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Address</label>
                 <AddressAutocomplete
@@ -478,6 +526,16 @@ export default function VehicleFormModal({
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Phone</label>
                 <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Date of Birth</label>
+                <input name="owner_dob" type="date" className="input-dark mt-1" value={form.owner_dob} onChange={handleChange} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner DL #</label>
+                <input name="owner_dl_number" type="text" className="input-dark mt-1" placeholder="Owner's driver license number" value={form.owner_dl_number} onChange={handleChange} />
               </div>
             </div>
           </div>
@@ -518,6 +576,10 @@ export default function VehicleFormModal({
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Date</label>
                 <input name="tow_date" type="date" className="input-dark mt-1" value={form.tow_date} onChange={handleChange} />
               </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Location / Impound Lot</label>
+              <input name="tow_location" type="text" className="input-dark mt-1" placeholder="Where vehicle was towed / impounded" value={form.tow_location} onChange={handleChange} />
             </div>
           </div>
 
