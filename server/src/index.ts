@@ -428,13 +428,6 @@ app.use('/assets', express.static(path.join(clientDistPath, 'assets'), {
   immutable: true,
 }));
 
-// Service worker — always fresh (no cache)
-app.get('/sw.js', (_req, res) => {
-  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.set('Service-Worker-Allowed', '/');
-  res.sendFile(path.join(clientDistPath, 'sw.js'));
-});
-
 // Everything else — short cache
 app.use(express.static(clientDistPath, {
   maxAge: '5m',
@@ -614,16 +607,32 @@ try {
     console.log('');
 
     // Start patrol monitor for missed scan alerts
-    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    try {
+      startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    } catch (err: any) {
+      console.warn('[Patrol Monitor] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start midnight daily patrol report scheduler
-    startDailyReportScheduler();
+    try {
+      startDailyReportScheduler();
+    } catch (err: any) {
+      console.warn('[Daily Report] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    scheduleOfacSync();
+    try {
+      scheduleOfacSync();
+    } catch (err: any) {
+      console.warn('[OFAC Sync] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
-    startHealthChecker();
+    try {
+      startHealthChecker();
+    } catch (err: any) {
+      console.warn('[Health Checker] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {
@@ -640,12 +649,11 @@ try {
       console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
     }
 
-    // Start multi-state warrant scraper (all 50 states + federal)
+    // Start multi-state warrant scraper (polls configured sources on schedule)
     try {
       scheduleWarrantScraper();
-      console.log('[Warrant Scraper] Multi-state scraper started');
     } catch (err: any) {
-      console.warn('[Warrant Scraper] Failed to start:', err?.message || err);
+      console.warn('[Warrant Scraper] Failed to start scheduler:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
