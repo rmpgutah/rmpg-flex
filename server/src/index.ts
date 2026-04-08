@@ -24,6 +24,7 @@ import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
 import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { getDb } from './models/database';
+import { localNow } from './utils/timeUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -460,7 +461,7 @@ h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head>
 });
 
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('/{*splat}', (req, res) => {
+app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {
@@ -711,7 +712,7 @@ try {
         if (unchecked.length > 0) {
           console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
           let matches = 0;
-          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+          const now = localNow();
           for (const p of unchecked) {
             try {
               const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });
