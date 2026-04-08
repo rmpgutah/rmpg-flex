@@ -213,14 +213,17 @@ router.get('/analytics', (req: Request, res: Response) => {
     `).all(dateCutoff) as any[];
 
     // Compute approximate MPG per month from odometer-based logs
+    const parsedFuelLogLimit = Number.parseInt(process.env.FLEET_FUEL_LOG_LIMIT || '', 10);
+    const fuelLogProcessingLimit = Number.isFinite(parsedFuelLogLimit) && parsedFuelLogLimit > 0
+      ? parsedFuelLogLimit
+      : 1000;
     const fuelLogsWithOdo = db.prepare(`
       SELECT vehicle_id, fuel_date, gallons, odometer_reading
       FROM fleet_fuel_logs
       WHERE fuel_date >= ? AND odometer_reading IS NOT NULL
       ORDER BY vehicle_id, fuel_date
-    
-      LIMIT 1000
-    `).all(dateCutoff) as any[];
+      LIMIT ?
+    `).all(dateCutoff, fuelLogProcessingLimit) as any[];
 
     // Group by vehicle, compute per-interval MPG
     const mpgByMonth: Record<string, { total_miles: number; total_gallons: number }> = {};

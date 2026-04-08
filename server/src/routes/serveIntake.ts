@@ -19,6 +19,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
+const PDFTOTEXT_BIN = process.env.PDFTOTEXT_PATH || '/usr/bin/pdftotext';
 
 const router = Router();
 router.use(authenticateToken);
@@ -199,12 +200,12 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
       writeFileSync(tmpPdf, body);
 
       try {
-        const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
+        const { stdout } = await execFileAsync(PDFTOTEXT_BIN, ['-layout', tmpPdf, '-']);
         res.json({ text: stdout, length: stdout.length });
       } catch {
         // Fallback: try without -layout
         try {
-          const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
+          const { stdout } = await execFileAsync(PDFTOTEXT_BIN, [tmpPdf, '-']);
           res.json({ text: stdout, length: stdout.length });
         } catch {
           res.json({ text: '', length: 0 });

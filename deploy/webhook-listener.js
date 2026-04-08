@@ -7,13 +7,14 @@
 
 const http = require('http');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const PORT = parseInt(process.env.WEBHOOK_PORT || '9000', 10);
 const REPO_DIR = path.resolve(process.env.REPO_DIR || '/opt/rmpg-flex');
 const DEPLOY_SCRIPT = path.resolve(process.env.DEPLOY_SCRIPT || '/opt/deploy-rmpg.sh');
+const EXPECTED_REMOTE_URL = (process.env.EXPECTED_REMOTE_URL || 'git@github.com:your-org/rmpg-flex.git').trim();
 
 // Validate paths to prevent command injection via env vars
 if (!/^\/[\w./-]+$/.test(REPO_DIR) || !/^\/[\w./-]+$/.test(DEPLOY_SCRIPT)) {
@@ -58,9 +59,27 @@ function verifySignature(body, signature) {
   }
 }
 
+function isTrustedOriginRemote() {
+  try {
+    const remote = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+      cwd: REPO_DIR,
+      timeout: 5000,
+      encoding: 'utf8',
+    }).trim();
+    return remote === EXPECTED_REMOTE_URL;
+  } catch {
+    return false;
+  }
+}
+
 // ── Deploy ──
 function triggerDeploy(commitSha, branch, pusher) {
   log(`DEPLOY TRIGGERED — branch=${branch}, commit=${commitSha}, by=${pusher}`);
+
+  if (!isTrustedOriginRemote()) {
+    log(`DEPLOY BLOCKED — origin remote URL does not match expected value: ${EXPECTED_REMOTE_URL}`);
+    return;
+  }
 
   // Run: git pull then deploy script — using execFile with args to avoid shell injection
   const child = execFile('/bin/bash', ['-c', 'git pull origin main && exec bash "$1"', '--', DEPLOY_SCRIPT], {

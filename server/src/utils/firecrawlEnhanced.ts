@@ -213,15 +213,24 @@ export function extractBusinessInfo(
   return { name, description, industry, address, phone, email, socialLinks };
 }
 
+const SOCIAL_PLATFORM_MAP: Record<string, string> = {
+  linkedin: 'linkedin',
+  twitter: 'twitter',
+  x: 'twitter',
+  facebook: 'facebook',
+  instagram: 'instagram',
+  youtube: 'youtube',
+  github: 'github',
+  tiktok: 'tiktok',
+};
+
+const SOCIAL_PLATFORM_REGEX = /(?:\/\/|\.)\b(linkedin|twitter|x|facebook|instagram|youtube|github|tiktok)\.com/i;
+
 function detectSocialPlatform(url: string): string | null {
-  if (/(?:\/\/|\.)\blinkedin\.com/i.test(url)) return 'linkedin';
-  if (/(?:\/\/|\.)\b(?:twitter|x)\.com/i.test(url)) return 'twitter';
-  if (/(?:\/\/|\.)\bfacebook\.com/i.test(url)) return 'facebook';
-  if (/(?:\/\/|\.)\binstagram\.com/i.test(url)) return 'instagram';
-  if (/(?:\/\/|\.)\byoutube\.com/i.test(url)) return 'youtube';
-  if (/(?:\/\/|\.)\bgithub\.com/i.test(url)) return 'github';
-  if (/(?:\/\/|\.)\btiktok\.com/i.test(url)) return 'tiktok';
-  return null;
+  const match = url.match(SOCIAL_PLATFORM_REGEX);
+  if (!match) return null;
+  const key = match[1].toLowerCase();
+  return SOCIAL_PLATFORM_MAP[key] || null;
 }
 
 // ── 5. WHOIS Lookup ─────────────────────────────────────────
